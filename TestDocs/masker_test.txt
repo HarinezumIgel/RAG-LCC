@@ -1,0 +1,110 @@
+========================
+CREDIT CARD STRICT (4-4-4-4)
+========================
+My Visa number is 4111-1111-1111-1111
+Another format: 5500 0000 0000 0004
+Compact separators: 1234-5678 9012-3456
+
+========================
+CREDIT CARD LOOSE (13–19 digits with separators)
+========================
+Loose CC: 4 1 1 1  1 1 1 1  1 1 1 1  1 1 1 1
+Another: 6011-  0009 -  9013 -  9424
+Weird spacing:  3 7 1 4  4 9 6 3  5 3 5 8  9
+
+========================
+CREDIT CARD PLAIN (13–19 digits, no separators)
+========================
+Plain CC: 4111111111111111
+Another: 5500000000000004
+Shorter valid: 4222222222222
+
+========================
+EMAIL
+========================
+Contact me at john.doe@example.com
+Another: user+tag-123@sub.domain.co.uk
+Edge case: A_B.C-D+E@my-mail.org
+
+========================
+SSN DASH
+========================
+Employee SSN: 123-45-6789
+Another: 987-65-4321
+
+========================
+SSN PLAIN (9 digits)
+========================
+Plain SSN: 123456789
+Another: 987654321
+
+========================
+IPV4 (mask last octet)
+========================
+Server: 192.168.1.42
+Gateway: 10.0.0.1
+Public: 8.8.8.8
+
+========================
+MAC ADDRESS
+========================
+MAC: AA:BB:CC:DD:EE:FF
+Another: 01-23-45-67-89-ab
+
+========================
+UUID
+========================
+UUID: 123e4567-e89b-12d3-a456-426614174000
+Another: 550e8400-e29b-41d4-a716-446655440000
+
+========================
+JWT
+========================
+JWT token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c
+
+========================
+AWS ACCESS KEY
+========================
+AWS key: AKIA1234567890ABCD12
+Another: ASIAABCDEFGHIJKLMNOPQRST
+
+========================
+LONG BASE64-LIKE (40+ chars)
+========================
+Secret: QWxhZGRpbjpvcGVuIHNlc2FtZQpBMTIzNDU2Nzg5MDEyMzQ1Njc4OTAxMjM0NTY=
+Another: aGVsbG93b3JsZGhlbGxvd29ybGRoZWxsb3dvcmxkMTIzNDU2Nzg5MDEyMzQ1Njc4OTAx
+
+========================
+KV PASSWORDS
+========================
+password=supersecret123
+passwd : hunter2
+secret: myAPISecret
+api_key=XYZ123456789
+apikey: abcdefghijk
+access_token = tok_1234567890abcdef
+
+========================
+WINDOWS PWD
+========================
+Password=Winter2025!
+Pwd : Admin123
+pwd=letmein
+
+========================
+PASSWORD SIMPLE
+========================
+pass: qwerty123
+password = abcDEF123!
+pw: 12345
+
+========================
+DISABLED RULES (won’t match unless enabled)
+========================
+# IBAN: DE89370400440532013000
+# IPv6: 2001:0db8:85a3:0000:0000:8a2e:0370:7334
+# GCP key: a3f5c2e1b4d6f7a8c9e0b1c2d3e4f5a6b7c8d9e0
+# Connection string: User Id=admin;Password=secret;Server=localhost;
+# Phone E164: +41791234567
+# Routing ABA: 021000021
+# Custom token: CUSTOM-ABCDEF12345678901234

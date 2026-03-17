@@ -1,0 +1,2 @@
+# Prevent Git from modifying file content — required for signature verification
+* -text
