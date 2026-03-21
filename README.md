@@ -1,5 +1,9 @@
 # RAG-LCC
 
+<p align="center">
+  <img src="Documentation/pics/AI_Igel.png" alt="RAG-LCC Logo" width="50%" />
+</p>
+
 > ⚠️ **IMPORTANT NOTICE**
 >
 > RAG‑LCC is an **experimental research framework** intended solely for laboratory use,
@@ -19,7 +23,7 @@
 
 ---
 
-## Lab Environment Notice
+## 🔬 Lab Environment Notice
 
 **RAG‑LCC is a research tool for laboratory evaluation and experimentation only.**
 
@@ -44,7 +48,7 @@ occur.
 
 ---
 
-## Intended Use
+## 🎯 Intended Use
 
 RAG‑LCC is intended for:
 
@@ -57,7 +61,7 @@ It is **not intended** for end‑users, enterprises, or regulated operational us
 
 ---
 
-## High‑Level Features
+## ✨ High‑Level Features
 
 - Local document ingestion into ChromaDB
 - Retrieval‑Augmented Generation (RAG)
@@ -70,7 +74,7 @@ All outputs and classifications are heuristic and probabilistic.
 
 ---
 
-## Filter Chain (Detection Pipeline)
+## 🔗 Filter Chain (Detection Pipeline)
 
 The framework includes configurable filter chains that apply algorithms such as:
 
@@ -91,9 +95,9 @@ Detection results:
 
 ---
 
-## Human Review and Logs
+## 📋 Human Review and Logs
 
-Documents, prompts, or outputs flagged by detection pipelines are logged to `.csv` and
+Documents flagged by detection pipelines are logged to `.csv` and
 `.xlsx` files for **human review**.
 
 Audit and log files:
@@ -104,7 +108,7 @@ Audit and log files:
 
 ---
 
-## Local Operation and Internet Access
+## 🏠 Local Operation and Internet Access
 
 RAG‑LCC is designed to run **locally**.
 
@@ -116,7 +120,16 @@ Actual behavior depends on configuration, environment, and third‑party compone
 
 ---
 
-## Network Activity Observation (Optional)
+## 🔁 Incremental Processing and Human‑Review Exclusions
+
+RAG‑LCC supports optional efficiency and review‑awareness features:
+
+- **Skip unchanged documents** — files whose content hash has not changed since the last run can be detected and skipped automatically.
+- **Exclude flagged documents** — files previously flagged for human review can be excluded from further processing.
+
+---
+
+## 🔍 Network Activity Observation (Optional)
 
 RAG‑LCC includes an optional Python‑level socket activity tracer that can log certain DNS
 and connection attempts when explicitly enabled.
@@ -132,7 +145,7 @@ See `SECURITY.md` for details and limitations.
 
 ---
 
-## Model and License Consent
+## 📜 Model and License Consent
 
 RAG‑LCC does **not** bundle or redistribute:
 
@@ -154,7 +167,7 @@ particular use case or jurisdiction.
 
 ---
 
-## Third‑Party Dependencies
+## 📦 Third‑Party Dependencies
 
 All third‑party software is obtained directly from upstream sources.
 
@@ -169,7 +182,7 @@ third‑party licenses and obligations.
 
 ---
 
-## Configuration and Experimentation
+## ⚙️ Configuration and Experimentation
 
 RAG‑LCC exposes extensive configuration options, including:
 
@@ -184,7 +197,7 @@ are **not recommendations** for any specific environment or risk profile.
 
 ---
 
-## No Support, No SLA, No Maintenance
+## 🚫 No Support, No SLA, No Maintenance
 
 RAG‑LCC is provided without any obligation to:
 
@@ -199,7 +212,7 @@ There is **no support agreement**, **no SLA**, and **no maintenance commitment**
 
 ---
 
-## Documentation
+## 📖 Documentation
 
 - Architecture overview: `ARCHITECTURE.md`
 - Legal and governance notes: `LEGAL.md`
@@ -208,7 +221,7 @@ There is **no support agreement**, **no SLA**, and **no maintenance commitment**
 
 ---
 
-## Final Disclaimer
+## ⚠️ Final Disclaimer
 
 RAG‑LCC is a research and experimentation tool only.
 
@@ -218,38 +231,38 @@ assurance of correctness, safety, or regulatory conformity.
 
 Use of this software is entirely at the operator’s own risk.
 
-## Text Extraction
+## 📄 Text Extraction
 
 The framework extracts text from common file types and applies Unicode normalization and masking to the extracted text before downstream processing.
 
-## Microsoft Office document extraction
+## 📎 Microsoft Office document extraction
 
-Text from Office formats (.doc(x), .ppt(x), .xls(x)) is extracted if a local Office installation is available. See [Office Document Extraction](#office-document-extraction) for configuration options.
+Text from Office formats (.doc(x), .ppt(x), .xls(x)) is extracted if a local Office installation is available. See [Office Document Extraction](#-office-document-extraction) for configuration options.
 
 > **Note:** Microsoft Office is **not** included with or distributed by RAG‑LCC. Users must obtain and license Microsoft Office independently. The Python bridge library `pywin32` (included in the project's dependency list) provides COM automation access to a locally installed Office suite but does not replace or include Office itself.
 
 ---
 
-## Caching
+## 💾 Caching
 
 For details, see [Caching in ARCHITECTURE.md](ARCHITECTURE.md#caching).
 
 ---
 
-## Translation
+## 🌐 Translation
 
 Banned-word lists can be translated to the document language for detection using [Argos Translate](https://www.argosopentech.com/) (local, offline neural machine translation).
-For details see [6. Install Argos Translate](#6-install-argos-translate).
+For details see [6. Install Argos Translate](#-6-install-argos-translate).
 
 ---
 
-## Reverse Stemming
+## 🔄 Reverse Stemming
 
 Extracted classification keys can be reverse-stemmed optionally (best effort).
 
 ---
 
-## Examples
+## 📸 Examples
 
 Also **helpful**: see the example session and suggestions for further experimentation in [HANDS_ON_TOUR.md](HANDS_ON_TOUR.md).
 
@@ -260,7 +273,7 @@ python ./src/Apps/RAGChat.py      --doc-dir TestDocs
 python ./src/Apps/DocClassify.py  --doc-dir TestDocs
 ```
 
-### RAGLoad
+### 📥 RAGLoad
 
 `RAGLoad` upserts only chunks that passed the filter algorithms and prompt check to the vector DB. The filter algorithms and prompt check can be individually configured in `./Configuration/Config_Banned.py`.
 
@@ -296,9 +309,9 @@ Since only 2 algorithms scored above their threshold (depth check) and only 2 di
     "REQUIRED_DIFFERENT_ALGOS_HAVE_A_SCORE": 1,
 ```
 
-**Note** if you change values in `./Configuration/Config_Banned.py` you must adjust the hash value for this configuration in `./Configuration/Config_Global.py`. See [Update the hashes](#update-the-hashes).
+**Note** if you change values in `./Configuration/Config_Banned.py` you must adjust the hash value for this configuration in `./Configuration/Config_Global.py`. See [Update the hashes](#-update-the-hashes).
 
-### RAGChat
+### 💬 RAGChat
 
 `RAGChat` maintains a session with customizable retrieval parameters and per-collection chat context.
 The example of passed filter also shows how the chunks for the context were selected from the Chroma DB. This information may be useful for experimentation and parameter tuning.
@@ -309,13 +322,13 @@ And here two prompts were the first was caught by the filter chain algos and the
 
 ![User prompts blocked by filter algo chain and LLM used for prompt compliance check](Documentation/pics/RAG_Chat_NotOkPrompt.jpg)
 
-### DocClassify
+### 🏷️ DocClassify
 
 `DocClassify` classifies documents using a cascade of algorithms and configurable thresholds. Classification outputs are written to CSV and XLSX. Here the output using the configuration from `Configuration/Config_DocClassify.py`:
 
 ![Animal classification](Documentation/pics/DocClassify_CSV_Output.jpg)
 
-### Filter chain configuration state
+### 🔧 Filter chain configuration state
 
 A summary of the enabled check algorithms is shown at startup:
 ![Filter chain algos enabled](Documentation/pics/FilterChainConfiguration.jpg)
@@ -324,19 +337,19 @@ For details on filter chains, see [Consensus Scoring & Experimentation in ARCHIT
 
 ---
 
-### Algorithms
+### 🧮 Algorithms
 
 For details on detection algorithms, see [Detection Algorithm Architecture in ARCHITECTURE.md](ARCHITECTURE.md#detection-algorithm-architecture).
 
 For compliance chain details, see [Compliance Chain in ARCHITECTURE.md](ARCHITECTURE.md#compliance-chain).
 
-### Architecture
+### 🏗️ Architecture
 
 For an architecture overview refer to the [Architecture Guide](ARCHITECTURE.md).
 
 For details on the extraction and KeyBERT variant configuration, see [Extraction & KeyBERT Variant Configuration in ARCHITECTURE.md](ARCHITECTURE.md#extraction--keybert-variant-configuration).
 
-### Project Structure
+### 📂 Project Structure
 
 ```text
 src/
@@ -358,37 +371,37 @@ src/
 
 For the full file-level source tree, see [Source Tree in ARCHITECTURE.md](ARCHITECTURE.md#source-tree).
 
-### Acknowledgments
+### 🙏 Acknowledgments
 
 For third-party library acknowledgments and licensing attribution, see [ACKNOWLEDGMENTS.md](ACKNOWLEDGMENTS.md).
 
-### Class diagrams
+### 📊 Class diagrams
 
 Class and overview diagrams are in `./Documentation/ClassGraphs`.
 
 ---
 
-## Quickstart Guide for RAG-LCC
+## 🚀 Quickstart Guide for RAG-LCC
 
 This guide helps you set up RAG-LCC, an **experimental lab environment**.
 
-### Prerequisites
+### 📋 Prerequisites
 
 - **Python 3.13** (developed and tested with 3.13; minimum 3.10)
 - Memory and disk resources appropriate for the example models
-- Optional GPU for faster inference (see [GPU Setup](#gpu-setup) below)
+- Optional GPU for faster inference (see [GPU Setup](#-gpu-setup) below)
 - Optional: Visual Studio Code (used during development)
 - Tested and developed on Windows 11
 
-### 1. Pre-install Checklist
+### ✅ 1. Pre-install Checklist
 
 Complete these steps before running any install command.
 
-#### Review third-party licenses
+#### ⚖️ Review third-party licenses
 
 Inspect `./3rdPartyLicenses` and obtain any required approvals before installing dependencies.
 
-### 2. Clone and Setup
+### 📦 2. Clone and Setup
 
 > **Important:** RAG-LCC must be installed in its own dedicated directory. Do not clone it into an existing project folder or a shared location. The application uses its installation directory as a trust boundary — file and directory deletions (e.g. ChromaDB collection removal) are restricted to paths inside the project root. Placing RAG-LCC inside another project's tree may cause unintended interactions.
 
@@ -404,7 +417,7 @@ source .venv/bin/activate
 .venv\Scripts\Activate.ps1
 ```
 
-#### Verify file signatures
+#### ✅ Verify file signatures
 
 Run the signature verification script to confirm that shipped files have not been tampered with. The public key is in `verify_sign/`.
 
@@ -412,7 +425,7 @@ Run the signature verification script to confirm that shipped files have not bee
 .\scripts_posh\VerifySignature.ps1 -InputDir .
 ```
 
-### 3. Install Dependencies
+### 📥 3. Install Dependencies
 
 The `./Req_From_DEV` folder contains `requirements_final.txt` and a list of required modules. Consult [3rdPartyLicenses](3rdPartyLicenses/Licenses.md) for an overview of development environment licenses.
 
@@ -423,7 +436,7 @@ pip install -r Req_From_DEV/requirements_final.txt
 
 If pip reports a **dependency conflict** (`ResolutionImpossible`), the most common cause is a package pinned to an exact version whose dependencies clash with another pinned package. Open `Req_From_DEV/requirements_final.txt`, find the offending pin(s) and either loosen them to a minimum range (e.g. `langchain-huggingface>=1.0.1`) or remove the line(s) entirely so pip can resolve compatible versions automatically. Then re-run the install command above.
 
-### 4. Post-install license review
+### ⚖️ 4. Post-install license review
 
 To generate a new third-party license report based upon your **actual** `.venv` run in powershell:
 
@@ -435,12 +448,12 @@ You may need to install pip-licenses first.
 
 View the generated Licenses.* file, available as .md, .json, .spdx.
 
-### 5. Install Ollama (Required for Local LLMs)
+### 🤖 5. Install Ollama (Required for Local LLMs)
 
 RAG-LCC supports local LLMs via Ollama. Install Ollama from: <https://ollama.com>
 Ollama is licensed under the [MIT License](https://github.com/ollama/ollama/blob/main/LICENSE).
 
-## Model permission requirement
+## 📋 Model permission requirement
 
 Some models are distributed under licenses that require you to accept the
 license terms before use (for example, Meta's Llama Community License for the
@@ -449,14 +462,14 @@ Ollama does **not** enforce a gating step, so `ollama pull` will succeed
 without prior approval; however, **by downloading and using the model you are
 still bound by the model owner's license terms**.
 
-## Required: model license consent
+## ✅ Required: model license consent
 
 RAG-LCC does not download LLMs. On startup `RAGLoad.py`, `RAGChat.py` and `DocClassify.py` check whether the licenses belonging to the models used in `./Configuration/Config_Models.py` have been accepted.
-RAG-LCC asks you whether it may temporarily allow internet access to fetch the licenses. Then you are guided through the license consent loop. The fetched licenses and operator consent are stored in `./ModelGovernance/licenses`. Operators can monitor network activity using the built-in [Socket-Level Network Tracing](#socket-level-network-tracing).
+RAG-LCC asks you whether it may temporarily allow internet access to fetch the licenses. Then you are guided through the license consent loop. The fetched licenses and operator consent are stored in `./ModelGovernance/licenses`. Operators can monitor network activity using the built-in [Socket-Level Network Tracing](#-socket-level-network-tracing).
 
-Hugging Face models (embedder and cross-encoder) follow a separate consent-based download flow. See [Hugging Face Models (Embedder + Cross-Encoder)](#hugging-face-models-embedder--cross-encoder) for details on when and how these models are downloaded.
+Hugging Face models (embedder and cross-encoder) follow a separate consent-based download flow. See [Hugging Face Models (Embedder + Cross-Encoder)](#-hugging-face-models-embedder--cross-encoder) for details on when and how these models are downloaded.
 
-## Install the models in Ollama
+## 📥 Install the models in Ollama
 
 Pull the models referenced in your configuration (example). By downloading and using these models, you are bound by the model owner's license terms.
 
@@ -466,7 +479,7 @@ ollama pull llama3.1:8b
 ollama pull llama-guard3:8b
 ```
 
-### 6. Install Argos Translate
+### 🌍 6. Install Argos Translate
 
 RAG-LCC supports optional local translation of banned phrases from English to the detected document language using Argos Translate.
 
@@ -494,9 +507,9 @@ python src\Scripts\ArgosTranslatePackages.py install
 python src\Scripts\ArgosTranslatePackages.py remove
 ```
 
-Enable the languages you need, see [Translation configuration (Argos)](#translation-configuration-argos).
+Enable the languages you need, see [Translation configuration (Argos)](#-translation-configuration-argos).
 
-For license consent details, see [Argos](#argos).
+For license consent details, see [Argos](#-argos).
 
 Each Argos Translate language package bundles the stanza tokenizer models it needs (stored inside the package directory, e.g. `~/.local/share/argos-translate/packages/<pkg>/stanza/`). Without the correct language packages installed, translation is skipped at runtime and non-English documents fall back to English-normalized patterns (e.g. German "Pferde" would not match the banned word "horse"). The remove command uninstalls all Argos packages and their bundled stanza models.
 
@@ -520,7 +533,7 @@ os.environ["ARGOS_CHUNK_TYPE"] = "SPACY"
 
 > **Note:** You may see the warning `Language en package default expects mwt, which has been added` during translation. This is a harmless informational message from **Stanza** (the NLP tokenizer used internally by Argos Translate). It means the English language model expects a Multi-Word Token (MWT) processor and Stanza added it automatically. No action is required.
 
-### 7. NLTK Stopwords (Text Preprocessing)
+### 📝 7. NLTK Stopwords (Text Preprocessing)
 
 Install NLTK:
 NLTK license is here: <https://raw.githubusercontent.com/nltk/nltk/refs/heads/develop/LICENSE.txt>
@@ -547,7 +560,7 @@ _CUSTOM_NLTK_DATA_DIRECTORY = (
 )
 ```
 
-### 8. Installing OCR Support (Tesseract)
+### 👁️ 8. Installing OCR Support (Tesseract)
 
 RAG‑LCC uses [Tesseract OCR](https://github.com/tesseract-ocr/tesseract) ([Apache-2.0 License](https://github.com/tesseract-ocr/tesseract/blob/main/LICENSE)) to extract text from non plain text files. The Python wrapper [pytesseract](https://github.com/madmaze/pytesseract) is also licensed under [Apache-2.0](3rdPartyLicenses/Licenses.md#pytesseract-0313).
 
@@ -565,7 +578,7 @@ Then adjust in ./Configuration/Config_Global.py, eg:
 _TESSERACT_PATH = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
 ```
 
-### GPU Setup
+### 🎮 GPU Setup
 
 If your machine has an NVIDIA GPU and you want to use it for inference:
 
@@ -583,11 +596,11 @@ If your machine has an NVIDIA GPU and you want to use it for inference:
 
 If `USE_CPU` is `False` but no functional GPU is detected (possible drivers/runtime not installed in the venv), the application will automatically fall back to CPU with 32-bit precision and display a warning.
 
-## Review the example config files
+## 👀 Review the example config files
 
 Please read `Configuration/Config_Models.py` before enabling internet access or accepting model licenses.
 
-### If ok, copy example configs into place
+### 📋 If ok, copy example configs into place
 
 Manually copy the example configuration files into the `Configuration/` folder.
 
@@ -598,7 +611,7 @@ copy ./Examples/Example_Config_Models.py ./src/Configuration/Config_Models.py
 
 Open `Configuration/Config_Banned.py` and `Configuration/Config_Models.py` and configure the settings according to your needs.
 
-### 9. Run the tests
+### 🧪 9. Run the tests
 
 You may need to install [pytest](https://docs.pytest.org/en/latest/) ([MIT License](3rdPartyLicenses/Licenses.md#pytest-902)) first.
 
@@ -608,32 +621,32 @@ pip install pytest
 python .\tests\RunTests.py
 ```
 
-### 10. Adjust Configuration
+### ⚙️ 10. Adjust Configuration
 
-### LLM, Embedder and Cross Encoder
+### 🤖 LLM, Embedder and Cross Encoder
 
 For details on how model implementations are selected, see [Model Implementation Selectors in ARCHITECTURE.md](ARCHITECTURE.md#model-implementation-selectors).
 
-### Define Ollama endpoint
+### 🔌 Define Ollama endpoint
 
 ```python
 # If Ollama runs on a non-default URL/port, adjust
 _OLLAMA_BASE_URL = "http://localhost:11434/api/generate"
 ```
 
-## About internet
+## 🌍 About internet
 
-See [Internet Access](#internet-access) for details on how internet connectivity is configured and controlled.
+See [Internet Access](#-internet-access) for details on how internet connectivity is configured and controlled.
 
-## Initial consent workflow
+## 🔑 Initial consent workflow
 
 You will be guided through a two-step process which ensures that you:
 
-1. Confirm changes to Config_Models.py and Config_Banned.py. See [Update the hashes](#update-the-hashes).
-2. Consent to the licenses belonging to the models used in Models.py, see [License consent](#license-consent).
+1. Confirm changes to Config_Models.py and Config_Banned.py. See [Update the hashes](#-update-the-hashes).
+2. Consent to the licenses belonging to the models used in Models.py, see [License consent](#-license-consent).
 Both are recorded so in future runs these steps are skipped unless you make changes
 
-## Start RAGLoad.py
+## ▶️ Start RAGLoad.py
 
 ```python
 ./src/apps/RAGLoad.py
@@ -641,22 +654,22 @@ Both are recorded so in future runs these steps are skipped unless you make chan
 
 The expected configuration hashes are displayed:
 
-## Update the hashes
+## 🔒 Update the hashes
 
 - `_MODELS_CONFIG_HASH = "<new_hash>"`   — update after editing Configuration/Config_Models.py
 - `_BANNED_CONFIG_HASH = "<new_hash>"`   — update after editing Configuration/Config_Banned.py
 
 After any change in these 2 files the new required hash is displayed at startup of RAGLoad, RAGChat or DocClassify.
 
-## Start RAGLoad.py again
+## ▶️ Start RAGLoad.py again
 
 ```python
 ./src/apps/RAGLoad.py
 ```
 
-If you see a `RequestsDependencyWarning` see [Troubleshooting](#troubleshooting).
+If you see a `RequestsDependencyWarning` see [Troubleshooting](#-troubleshooting).
 
-## License consent
+## 📝 License consent
 
 You are asked to consent to the licenses for the models defined in `Config_Models.py`. With the default used in this repository  `LICENSE_DOWNLOAD = "0"`, RAG‑LCC prompts you with `[y/N]` on each individual license download. You can also set `LICENSE_DOWNLOAD` to `"1"` in `Config_Internet_Env.py` to skip the per-fetch prompt if this is acceptable for your environment and policies.
 
@@ -684,7 +697,7 @@ Press Enter to accept as-is or type your email/ID to override: y
 Press Enter to review the license ...
 ```
 
-## Internet Access
+## 🌐 Internet Access
 
 Internet access is configured in `Configuration/Config_Internet_Env.py`.
 
@@ -709,11 +722,11 @@ For convenience, these values are displayed at startup.
 ...
 ```
 
-### Socket-Level Network Tracing
+### 🔌 Socket-Level Network Tracing
 
 When `RAG_LCC_NW_TRACE` is set to `"1"`, RAG-LCC monkey-patches Python's `socket.connect` and `socket.getaddrinfo` at startup via `NetworkTracer`. Every DNS resolution and outgoing TCP connection is logged to the console with a timestamp, the destination host/port, resolved IP addresses (forward DNS) or hostname (reverse DNS), and a filtered stack trace showing only project frames (site-packages are excluded). This may assist operators in observing certain Python‑level network activity and associated code paths, but does not guarantee completeness or accuracy. Set `RAG_LCC_STACK_TRACE` to `"1"` alongside it to also get full Python stack traces on errors.
 
-### Hugging Face Models (Embedder + Cross-Encoder)
+### 🤗 Hugging Face Models (Embedder + Cross-Encoder)
 
 If you enable HF_HUB_OFFLINE="0" and accept the model licenses, RAG-LCC will download the required Hugging Face models (embedder, cross encoder). In this case, a download consent is requested. Consent is recorded in the `ModelGovernance/consents` directory.
 
@@ -752,15 +765,15 @@ Same for remaining models.
 > **Note:** After completing these steps, internet access is typically no longer required,
 > subject to configuration and third‑party behavior.
 
-## Argos
+## 🌍 Argos
 
 When language packages are pre-installed with the install script (`python src\Scripts\ArgosTranslatePackages.py install`), the script requires license consent for Argos Translate before downloading any packages. The consent is recorded in `ModelGovernance/consents/argos_translate/`.
 
 When `ARGOS_STANZA_DOWNLOAD` is set to `"1"` in `Config_Internet_Env.py`, the Argos Translate license consent is also verified at runtime — similar to the LLM and HuggingFace model consent flow. If the license has not been accepted, execution is stopped and the operator is prompted to run the install script to complete the consent.
 
-## First run with data
+## 🏃 First run with data
 
-### Load documents
+### 📥 Load documents
 
 Use the provided test documents in the `./TestDocs` directory. Load them into the Test Chroma DB collection.
 
@@ -770,7 +783,7 @@ or, since `Config_Global.py` defines  `DOC_DIR` as "TestDocs" and `COLLECTION` a
 python .\src\Apps\RAGLoad.py
 ```
 
-### Chat with the documents in the Test Collection
+### 💬 Chat with the documents in the Test Collection
 
 ```Windows
 python .\src\Apps\RAGChat.py --collection Test
@@ -778,7 +791,7 @@ or, since `Config_Global.py` defines `COLLECTION` as "Test"
 python .\src\Apps\RAGChat.py
 ```
 
-### Classify the documents in the TestDocs folder
+### 🏷️ Classify the documents in the TestDocs folder
 
 ```Windows
 python .\src\Apps\DocClassify.py --doc-dir TestDocs
@@ -791,9 +804,9 @@ See also the hints that are displayed by `DocClassify.py` on completion.
 
 For hands-on examples, see [Change provided example prompt in HANDS_ON_TOUR.md](HANDS_ON_TOUR.md#change-provided-example-prompt).
 
-## Configuration Reference
+## 📚 Configuration Reference
 
-### Lookup order
+### 📑 Lookup order
 
 RAG-LCC uses seven configuration files, all located under `src/Configuration/`. They are loaded in a fixed precedence order (highest wins):
 1-4 are loaded as Python modules and therefore require valid Python syntax. `Config_Internet_Env` contains environment variables only.
@@ -803,7 +816,7 @@ RAG-LCC uses seven configuration files, all located under `src/Configuration/`. 
 3. **Config_Models.py** — embedding, cross-encoder, and LLM model definitions
 4. **Config_Global.py** — shared defaults (paths, hardware, ChromaDB, token budget, debug)
 
-**Config_Internet_Env.py** — internet access, network tracing, and offline toggles (see [Internet Access](#internet-access))
+**Config_Internet_Env.py** — internet access, network tracing, and offline toggles (see [Internet Access](#-internet-access))
 
 Rules:
 
@@ -812,9 +825,9 @@ Rules:
 - Top-level settings must be **UPPERCASE**.
 - CLI overrides apply only to `Config_Global.py` and the **app-specific** config (`Config_RAGChat.py`, `Config_RAGLoad.py`, or `Config_DocClassify.py`). Keys in `Config_Models.py` and `Config_Banned.py` are **not** exposed as CLI arguments.
 
-### 1. Config_Global.py — Shared Defaults
+### 🌐 1. Config_Global.py — Shared Defaults
 
-#### Hardware and Device
+#### 💻 Hardware and Device
 
 | Key | Default used in this repository | Purpose |
 | --- | --- | --- |
@@ -822,7 +835,7 @@ Rules:
 | `EMBEDDER_BITS` | `32` | Quantisation for embeddings. Use `32` on CPU; `16` on GPU (requires `accelerate`). |
 | `USE_OLLAMA_GPU` | `True` | Let Ollama use the GPU for inference. |
 
-#### Paths
+#### 📁 Paths
 
 | Key | Default used in this repository | Purpose |
 | --- | --- | --- |
@@ -831,7 +844,7 @@ Rules:
 | `_CHROMA_DB_DIR` | `<project>/chromadb/docs` | ChromaDB persistent storage. |
 | `_TESSERACT_PATH` | `C:\Program Files\Tesseract-OCR\tesseract.exe` | Tesseract binary for OCR text extraction. |
 
-#### Ollama
+#### 🦙 Ollama
 
 | Key | Default used in this repository | Purpose |
 | --- | --- | --- |
@@ -839,7 +852,7 @@ Rules:
 | `OLLAMA_STREAMING_REQ` | `False` | Enable streamed responses from Ollama. |
 | `REQUEST_TIMEOUT` | `600` | Seconds to wait for an Ollama response before timing out. |
 
-#### Token Budget
+#### 🎫 Token Budget
 
 These three settings control the dynamic `max_output_tokens` calculation (see [Token Budget in ARCHITECTURE.md](ARCHITECTURE.md#token-budget) for the full formula):
 
@@ -849,14 +862,14 @@ These three settings control the dynamic `max_output_tokens` calculation (see [T
 | `TOKEN_BUDGET_RESERVED_OUTPUT` | `2048` | Upper bound of tokens reserved for the model reply. |
 | `TOKEN_BUDGET_RESERVED_SYSTEM` | `1024` | Tokens reserved for the system/instruction preamble. |
 
-#### ChromaDB and Chunking
+#### 🗄️ ChromaDB and Chunking
 
 | Key | Default used in this repository | Purpose |
 | --- | --- | --- |
 | `CHROMA_COLLECTION_KEEP` | `True` | `True` = preserve existing collection on startup. `False` = wipe and recreate. Applies to `RAGLoad.py` **only** |
 | `COLLECTION` | `"Test"` | Active ChromaDB collection name. Override with `--collection` on the CLI. |
 
-The chunking parameters are on purpose in `Config_Global.py` so RAGLoad and RAGChat both refer to these settings ([Lookup order](#lookup-order)) because they must be **identical** for both programs.
+The chunking parameters are on purpose in `Config_Global.py` so RAGLoad and RAGChat both refer to these settings ([Lookup order](#-lookup-order)) because they must be **identical** for both programs.
 
 ```python
 _CHROMA_EMBED_AND_RETRIEVE_PARAMS = {
@@ -873,7 +886,7 @@ _CHROMA_EMBED_AND_RETRIEVE_PARAMS = {
 - short articles: 128-256
 - long documents: 512-1024.
 
-#### Office Document Extraction
+#### 📎 Office Document Extraction
 
 ```python
 _OFFICE_DOC_EXTRACTION = {
@@ -887,7 +900,7 @@ Set a value to `False` if the corresponding Microsoft Office component is not in
 
 Microsoft Office is a separately licensed product and is **not** provided by RAG‑LCC.
 
-#### Exclusion
+#### ⛔ Exclusion
 
 These settings control whether excluded files are skipped during processing. For the full design, see [Exclusion + Incremental Hash Check in ARCHITECTURE.md](ARCHITECTURE.md#exclusion--incremental-hash-check-skip-unchanged-files).
 
@@ -895,7 +908,7 @@ These settings control whether excluded files are skipped during processing. For
 | --- | --- | --- |
 | `USE_EXCLUSIONS` | `False` | Skip files listed in the per-collection exclusion CSV. Excluded files are those flagged for human review. `RAGLoad` and `DocClassify`. |
 
-#### Debug Levels
+#### 🐛 Debug Levels
 
 ```python
 DEBUG_LEVEL = 3 # Default used in this repository
@@ -916,21 +929,21 @@ DEBUG_LEVEL = 3 # Default used in this repository
 - `URL_DEBUG` (`False`) enables `urllib` HTTP debug output.
 - `HF_DEBUG` (`False`) enables Hugging Face debug logging.
 
-#### Fix JSON LLM reply
+#### 🔧 Fix JSON LLM reply
 
 For individual configuration switches such as `TRY_FIX_JSON_LLM_REPLY` (automatic JSON repair for LLM responses), see [JSON Repair for LLM Replies in ARCHITECTURE.md](ARCHITECTURE.md#json-repair-for-llm-replies).
 
-#### Terminal
+#### 📟 Terminal
 
 | Key | Default used in this repository | Purpose |
 | --- | --- | --- |
 | `TERMINAL_LINE_SIZE` | `160` | Line width used when formatting output. |
 
-### 2. Config_Models.py — Model Definitions
+### 🤖 2. Config_Models.py — Model Definitions
 
 This file defines every model used by RAG-LCC. After editing it, update `_MODELS_CONFIG_HASH` in `Config_Global.py` (the new hash is printed at startup). For details on how model implementations are selected, see [Model Implementation Selectors in ARCHITECTURE.md](ARCHITECTURE.md#model-implementation-selectors).
 
-#### Implementation Selectors
+#### 🔩 Implementation Selectors
 
 `Config_Models.py` uses a two-level dictionary `_MODELS[<impl>][<role>]` to resolve model configurations. Five top-level selector variables choose which implementation (impl key) to use for each model role:
 
@@ -952,7 +965,7 @@ _OLLAMA  = "ollama"       # impl for _OLLAMA role
 
 To switch models, change the selector value to another key that carries a matching role entry in `_MODELS`.
 
-#### Embedding Model (`_MODELS["snowflake"]["_EMBED"]`)
+#### 🧲 Embedding Model (`_MODELS["snowflake"]["_EMBED"]`)
 
 Creates vector representations for semantic search. Used during RAGLoad (once per document), DocClassify (once per document), and RAGChat (every query). The impl key is selected by `_EMBED = "snowflake"`.
 
@@ -966,7 +979,7 @@ Creates vector representations for semantic search. Used during RAGLoad (once pe
 },
 ```
 
-### _LLM/_LLM_CHK Model Combinations
+### 🔄 _LLM/_LLM_CHK Model Combinations
 
 `Config_Models.py` includes configuration entries for the following LLMs. The `_LLM` and `_LLM_CHK` variables select which model implementation is used for general LLM queries and compliance checking, respectively. The table below lists all supported combinations:
 
@@ -983,11 +996,11 @@ Creates vector representations for semantic search. Used during RAGLoad (once pe
 >
 > **Attribution:** Llama 3.1 and Llama Guard 3 — Built with Meta Llama 3. Licensed under the Llama 3.1 Community License Agreement, Copyright © Meta Platforms, Inc. All Rights Reserved. By downloading and using these models, operators are bound by the model license terms.
 >
-> **Operator responsibility:** Each model has its own license. The operator is responsible for reviewing, accepting, and complying with the license terms of every model used. RAG-LCC does not warrant that any model is suitable for a particular purpose. See [License Consent](#license-consent) and [Model permission requirement](#model-permission-requirement).
+> **Operator responsibility:** Each model has its own license. The operator is responsible for reviewing, accepting, and complying with the license terms of every model used. RAG-LCC does not warrant that any model is suitable for a particular purpose. See [License Consent](#-license-consent) and [Model permission requirement](#-model-permission-requirement).
 
 ---
 
-#### Cross-Encoder Model (`_MODELS["mmarco"]["_CROSS"]`)
+#### 🔀 Cross-Encoder Model (`_MODELS["mmarco"]["_CROSS"]`)
 
 Re-ranks search results retrieved from ChromaDB to improve relevance ordering. The impl key is selected by `_CROSS = "mmarco"`. Used by `RAGChat.py`.
 
@@ -1001,7 +1014,7 @@ Re-ranks search results retrieved from ChromaDB to improve relevance ordering. T
 },
 ```
 
-#### Inference LLM (`_MODELS["mistral"]["_LLM"]`)
+#### 🧠 Inference LLM (`_MODELS["mistral"]["_LLM"]`)
 
 Generates responses (RAGChat) or classification labels (DocClassify). Runs locally via Ollama. The impl key is selected by `_LLM = "mistral"` (default used in this repository) or `_LLM = "llama"`.
 
@@ -1016,9 +1029,9 @@ Generates responses (RAGChat) or classification labels (DocClassify). Runs local
 },
 ```
 
-To switch models, change the `_LLM` selector variable in `Config_Models.py` (e.g. `_LLM = "llama"` resolves to `_MODELS["llama"]["_LLM"]` for Llama 3.1 8B). See the [_LLM/_LLM_CHK Model Combinations](#_llm_llm_chk-model-combinations) table above for all supported values.
+To switch models, change the `_LLM` selector variable in `Config_Models.py` (e.g. `_LLM = "llama"` resolves to `_MODELS["llama"]["_LLM"]` for Llama 3.1 8B). See the [_LLM/_LLM_CHK Model Combinations](#-_llm_llm_chk-model-combinations) table above for all supported values.
 
-#### Compliance-Check LLM (`_MODELS["llama_guard"]["_LLM_CHK"]`)
+#### 🛡️ Compliance-Check LLM (`_MODELS["llama_guard"]["_LLM_CHK"]`)
 
 A separate LLM used to validate prompts and outputs against compliance rules. Defaults to Llama Guard 3. The impl key is selected by `_LLM_CHK = "llama_guard"` (default used in this repository), `_LLM_CHK = "llama"`, or `_LLM_CHK = "mistral"`.
 
@@ -1033,15 +1046,15 @@ A separate LLM used to validate prompts and outputs against compliance rules. De
 },
 ```
 
-#### Ollama Provider Metadata (`_MODELS["ollama"]["_OLLAMA"]`)
+#### ℹ️ Ollama Provider Metadata (`_MODELS["ollama"]["_OLLAMA"]`)
 
 Records the Ollama provider details (URL, license). Not a model itself. The impl key is selected by `_OLLAMA = "ollama"`.
 
 > **Important:** RAG-LCC does **not** download Ollama LLM models. You must install Ollama and pull models yourself, eg. `ollama pull mistral:7b`.
 
-### 3. Config_RAGChat.py — Retrieval and Response
+### 💬 3. Config_RAGChat.py — Retrieval and Response
 
-#### Chunk Selection Strategy
+#### 🎯 Chunk Selection Strategy
 
 ```python
 CHUNK_SELECT_STRATEGY = "MEDIUM"   # One of: "NARROW", "MEDIUM", "WIDE", "ULTRA_WIDE"
@@ -1077,14 +1090,14 @@ Strategy parameters explained:
 | `batch_size` | Parallel retrieval batch size. |
 | `debug_level` | Per-strategy debug verbosity override. |
 
-#### Chat and Settings History
+#### 💾 Chat and Settings History
 
 Chat and settings history are stored in the `history/` directory. The fallback chat identifier is `_DEFAULT_CHAT_NAME = "MyFirstChat"`. Two history files are created:
 
 - `<collection>_<chat name>_Query.txt`
 - `<collection>_<chat name>_Settings.txt`
 
-### 4. Config_RAGLoad.py — Document Ingestion
+### 📥 4. Config_RAGLoad.py — Document Ingestion
 
 This is the simplest app-specific config:
 
@@ -1096,15 +1109,15 @@ This is the simplest app-specific config:
 | `_KEY_BERT.TOP_N_FIRST` | `100` | Keywords from the first KeyBERT pass. |
 | `_KEY_BERT.TOP_N_SECOND` | `60` | Keywords from the second KeyBERT pass. |
 
-#### Incremental Hash Check
+#### 🔄 Incremental Hash Check
 
 | Key | Default used in this repository | Purpose |
 | --- | --- | --- |
 | `_PROCESS_IF_UNCHANGED` | `True` | Re-process files even when their hash has not changed. Set to `False` to skip unchanged files. File hash is stored in Chroma DB. |
 
-### 5. Config_DocClassify.py — Document Classification
+### 🏷️ 5. Config_DocClassify.py — Document Classification
 
-#### Extraction Model Parameters (LLM)
+#### 🧩 Extraction Model Parameters (LLM)
 
 Controlled by `_ACTIVE_EXTRACTION_CONFIG` (default used in this repository `"STRICT"`). Each variant is a nested dict inside `_EXTRACTION_MODEL_PARAMS`:
 
@@ -1147,7 +1160,7 @@ _EXTRACTION_MODEL_PARAMS: dict[str, dict[str, float | int]] = {
 
 ```
 
-#### KeyBERT Keyword Extraction
+#### 🔑 KeyBERT Keyword Extraction
 
 Controlled by `_ACTIVE_KEYBERT_CONFIG` (default used in this repository `"STRICT"`). Each variant is a nested dict inside `_KEY_BERT`:
 
@@ -1195,7 +1208,7 @@ _KEY_BERT: dict[str, dict[str, int | tuple[int, int]]] = {
 
 The two selectors are independent — you can mix variants (e.g. `STRICT` extraction with `BALANCED` KeyBERT). `Config_RAGChat.py` and `Config_RAGLoad.py` use a **flat** `_KEY_BERT` dict (no variant nesting); `Helpers._get_keybert_config()` detects the layout automatically.
 
-#### Classification Keys
+#### 🏷️ Classification Keys
 
 `_YOUR_CLASSIFICATION_KEYS` defines which fields the LLM must return in its JSON response. The default set used in this repository is:
 
@@ -1218,17 +1231,17 @@ _YOUR_CLASSIFICATION_KEYS = [
 
 `REVERSE_STEMMING = True` post-processes classification values to replace stems with their most matching original surface word.
 
-#### Prompt Templates
+#### 📝 Prompt Templates
 
 Two prompt templates are included — `_PROMPT_CLASSIFY_MISTRAL` and `_PROMPT_CLASSIFY_LLAMA`. Both instruct the LLM to return a single JSON object with the keys listed in `_YOUR_CLASSIFICATION_KEYS`. Edit the prompt text and key list together to add or remove classification fields.
 
 For a hands-on example, see [Change provided example prompt in HANDS_ON_TOUR.md](HANDS_ON_TOUR.md#change-provided-example-prompt).
 
-### 6. Config_Banned.py — Detection, Thresholds, and Masking
+### 🚧 6. Config_Banned.py — Detection, Thresholds, and Masking
 
 After editing `Config_Banned.py` update `_BANNED_CONFIG_HASH` in `Config_Global.py`.
 
-#### Detection Algorithms
+#### 🧮 Detection Algorithms
 
 Five algorithms are available:
 
@@ -1246,7 +1259,7 @@ Five algorithms are available:
 _DEFAULT_ALGOS = [_JACCARD, _BM25, _REGEX, _KEYBERT]
 ```
 
-#### Per-App Detection Profiles
+#### 📋 Per-App Detection Profiles
 
 Detection is configured per application inside `_BANNED_DETECT[_DETECTION_CONFIG]`. Each app (RAGLoad, RAGChat, DocClassify) has three sections:
 
@@ -1256,7 +1269,7 @@ Detection is configured per application inside `_BANNED_DETECT[_DETECTION_CONFIG
 
 Example: RAGLoad disables prompt checking (`"Check": False`) but enables masking and pipeline checks. RAGChat enables all three.
 
-#### Algorithm Thresholds
+#### 📊 Algorithm Thresholds
 
 Each algorithm entry in the `PIPELINE` dict has:
 
@@ -1273,7 +1286,7 @@ Algorithm-specific parameters:
 - **KeyBERT**: `TOP_K` — number of keywords extracted per check (larger at load time, smaller at chat time).
 - **Cosine**: No additional parameters beyond `THRESHOLD` and `THRESHOLD_MIN`. Disabled by default; enable if embedding vectors are available (commented out in `Config_Banned.py`).
 
-#### Consensus Rules
+#### 🤝 Consensus Rules
 
 Two parameters control how algorithms vote together (see [Consensus Scoring & Experimentation in ARCHITECTURE.md](ARCHITECTURE.md#consensus-scoring--experimentation) for details):
 
@@ -1287,11 +1300,11 @@ Two parameters control how algorithms vote together (see [Consensus Scoring & Ex
 
 Raising these values makes detection stricter (fewer false positives, more false negatives). Lowering them catches more violations but increases false positives.
 
-#### Banned Words
+#### 🚫 Banned Words
 
 `_BANNED_CONFIG` points to the active banned-word list. The default used in this repository `_STRICT_BANNED` contains terms covering personal identifiers (SSN, passport, IBAN), credentials (API keys, JWTs, passwords), health and biometric data, protected attributes, and security-related terms. Add or remove entries to match your use case.
 
-#### Masking Regexes
+#### 🎭 Masking Regexes
 
 `_MASKING_CONFIG` points to the active masking configuration. Each rule in `_STRICT_MASKING_REGEXES["MASKING_REGEXES"]` has:
 
@@ -1309,9 +1322,9 @@ Masking is applied on document ingestion and on RAGChat query output.
 
 To define a custom masking profile, create a new dictionary (e.g. `_MY_MASKING_REGEXES`) and point `_MASKING_CONFIG` to it.
 
-### 7. Config_Internet_Env.py — Internet Access and Network Tracing
+### 🌐 7. Config_Internet_Env.py — Internet Access and Network Tracing
 
-This file controls all internet connectivity and diagnostic toggles. It is described in detail in the [Internet Access](#internet-access) section. The key environment variables are:
+This file controls all internet connectivity and diagnostic toggles. It is described in detail in the [Internet Access](#-internet-access) section. The key environment variables are:
 
 | Environment Variable | default used in this repository | Purpose |
 | --- | --- | --- |
@@ -1326,7 +1339,7 @@ This file controls all internet connectivity and diagnostic toggles. It is descr
 | `ARGOS_CHUNK_TYPE` | "SPACY" | ARGOS_CHUNK_TYPE: Select the sentence boundary detection (SBD) backend |
 | `ARGOS_MODEL_PROVIDER` | `"OPENNMT"` | Force Argos Translate to use local packages only. |
 
-## CLI Parameter Override
+## 💻 CLI Parameter Override
 
 You can override any uppercase, non-underscore-prefixed key from `Config_Global.py` or the app-specific config file (`Config_RAGChat.py`, `Config_RAGLoad.py`, `Config_DocClassify.py`) via the command line. Keys in `Config_Models.py` and `Config_Banned.py` are not available as CLI arguments — edit those files directly.
 
@@ -1338,7 +1351,7 @@ python ./src/Apps/DocClassify.py --collection mytest --debug_level 4
 
 Run with `--help` to see all overridable parameters.
 
-## Translation configuration (Argos)
+## 🌍 Translation configuration (Argos)
 
 All Argos Translate settings live in a single `_ARGOS_DEFINITIONS` slot inside
 `Config_Global.py`. It contains two keys:
@@ -1385,23 +1398,23 @@ To remove all installed packages, stanza models, and consent metadata:
 python src/Scripts/ArgosTranslatePackages.py remove
 ```
 
-## Troubleshooting
+## 🔧 Troubleshooting
 
 | Issue | Cause | Solution |
 | --- | --- | --- |
-| `Detected modification of Configuration.Config_Models` / `Update Expected hash … _MODELS_CONFIG_HASH to match expected hash` | Edited `Config_Models.py` without updating hash | Copy the new hash from the startup message into `_MODELS_CONFIG_HASH` in `Config_Global.py`. See [Update the hashes](#update-the-hashes). |
-| `Detected modification of Configuration.Config_Banned` / `Update Expected hash … _BANNED_CONFIG_HASH to match expected hash` | Edited `Config_Banned.py` without updating hash | Copy the new hash from the startup message into `_BANNED_CONFIG_HASH` in `Config_Global.py`. See [Update the hashes](#update-the-hashes). |
-| 'ModuleNotFoundError: No module named 'Configuration.Config_Banned' | You forgot to copy Config_Banned.py | See [Review the example config files](#review-the-example-config-files) and [Copy example configs into place](#if-ok-copy-example-configs-into-place) |
-| 'ModuleNotFoundError: No module named 'Configuration.Config_Models' | You forgot to copy Config_Models.py | See [Review the example config files](#review-the-example-config-files) and [Copy example configs into place](#if-ok-copy-example-configs-into-place) |
-| `Execution stopped due to compliance check` | Config hash not updated after editing `Config_Models.py` or `Config_Banned.py` | Update both `_MODELS_CONFIG_HASH` and `_BANNED_CONFIG_HASH` in `Config_Global.py` and restart. See [Update the hashes](#update-the-hashes). |
+| `Detected modification of Configuration.Config_Models` / `Update Expected hash … _MODELS_CONFIG_HASH to match expected hash` | Edited `Config_Models.py` without updating hash | Copy the new hash from the startup message into `_MODELS_CONFIG_HASH` in `Config_Global.py`. See [Update the hashes](#-update-the-hashes). |
+| `Detected modification of Configuration.Config_Banned` / `Update Expected hash … _BANNED_CONFIG_HASH to match expected hash` | Edited `Config_Banned.py` without updating hash | Copy the new hash from the startup message into `_BANNED_CONFIG_HASH` in `Config_Global.py`. See [Update the hashes](#-update-the-hashes). |
+| 'ModuleNotFoundError: No module named 'Configuration.Config_Banned' | You forgot to copy Config_Banned.py | See [Review the example config files](#-review-the-example-config-files) and [Copy example configs into place](#-if-ok-copy-example-configs-into-place) |
+| 'ModuleNotFoundError: No module named 'Configuration.Config_Models' | You forgot to copy Config_Models.py | See [Review the example config files](#-review-the-example-config-files) and [Copy example configs into place](#-if-ok-copy-example-configs-into-place) |
+| `Execution stopped due to compliance check` | Config hash not updated after editing `Config_Models.py` or `Config_Banned.py` | Update both `_MODELS_CONFIG_HASH` and `_BANNED_CONFIG_HASH` in `Config_Global.py` and restart. See [Update the hashes](#-update-the-hashes). |
 | Embeddings seem wrong | Changed embedding model without re-embedding | Set `CHROMA_COLLECTION_KEEP = False` and re-run RAGLoad or delete the collection manually (`./chromadb/docs`) |
 | RAGChat is slow | Too many `NEIGHBORS_RETRIEVE` or large `CHUNK_SIZE` | Reduce both in `Config_Global.py` |
-| Detection not working | Phrases not in banned list | Add to `Config_Banned.py` and [update the hash](#update-the-hashes) |
+| Detection not working | Phrases not in banned list | Add to `Config_Banned.py` and [update the hash](#-update-the-hashes) |
 | Low retrieval quality | Bad chunk settings | Test `CHUNK_SIZE`: 128, 256, 512. Regenerate (load) the collection |
 | `RequestsDependencyWarning: urllib3 … or chardet … doesn't match a supported version!` | `chardet` ≥ 6 installed but `requests` requires `chardet < 6` | Run `pip install "chardet<6,>=3.0.2"` to downgrade to a compatible version (e.g. 5.2.0) |
 | `Language en package default expects mwt, which has been added` | Stanza (used by Argos Translate) auto-adds the Multi-Word Token processor for the English model | Harmless informational warning — no action required |
 
-## Performance Tuning Checklist
+## ⚡ Performance Tuning Checklist
 
 - [ ] Set `_PROCESS_IF_UNCHANGED = False` to skip re-processing unchanged files
 - [ ] Set `CHROMA_COLLECTION_KEEP = True` to preserve embeddings between runs
@@ -1410,16 +1423,16 @@ python src/Scripts/ArgosTranslatePackages.py remove
 - [ ] Reduce `REQUEST_TIMEOUT` for faster failure on slow Ollama responses
 - [ ] Use a smaller LLM model
 
-## Further Information
+## ℹ️ Further Information
 
 - Architecture overview: [ARCHITECTURE.md](ARCHITECTURE.md)
 - Legal and governance: [LEGAL.md](LEGAL.md)
 - Security policy: [SECURITY.md](SECURITY.md)
 - Example usages and CLI examples: [HANDS_ON_TOUR.md](HANDS_ON_TOUR.md)
-- Configuration deep-dive: see [Configuration Reference](#configuration-reference) above
-- Troubleshooting: [Troubleshooting](#troubleshooting)
+- Configuration deep-dive: see [Configuration Reference](#-configuration-reference) above
+- Troubleshooting: [Troubleshooting](#-troubleshooting)
 
-### Constraints
+### 📌 Constraints
 
 - RAG-LCC is an experimental lab tool and may contain errors.
 - RAG-LCC does not send an `HF_TOKEN` to Hugging Face.

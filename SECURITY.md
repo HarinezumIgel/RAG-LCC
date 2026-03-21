@@ -9,7 +9,7 @@ See `LICENSE` and `LEGAL.md` for full terms and disclaimers.
 
 ---
 
-## Scope and Intent
+## 🎯 Scope and Intent
 
 RAG‑LCC is an **experimental, local‑only lab framework** intended for evaluation and
 experimentation. It has **not undergone a formal security audit** and must not be relied
@@ -20,7 +20,7 @@ the operator.
 
 ---
 
-## Architecture (Security‑Relevant Characteristics)
+## 🏗️ Architecture (Security‑Relevant Characteristics)
 
 | Aspect | Default Posture |
 | ------ | ----------------- |
@@ -35,7 +35,7 @@ components.
 
 ---
 
-## Dependency and Supply‑Chain Responsibility
+## 📦 Dependency and Supply‑Chain Responsibility
 
 RAG‑LCC does **not** bundle, ship, or redistribute:
 
@@ -61,7 +61,7 @@ and accept no liability for vulnerabilities or compromises arising from their us
 
 ---
 
-## Data Handling Considerations
+## 🗃️ Data Handling Considerations
 
 - Documents remain at their original retrieval location and are processed locally.
 - Content is stored in a local vector database as configured by the operator.
@@ -71,7 +71,7 @@ RAG‑LCC’s filtering and detection features are **diagnostic aids**, not secu
 
 ---
 
-## Known Limitations
+## ⚠️ Known Limitations
 
 - No formal security audit has been performed.
 - The codebase may contain defects or vulnerabilities.
@@ -80,7 +80,7 @@ RAG‑LCC’s filtering and detection features are **diagnostic aids**, not secu
 
 ---
 
-## Network Activity Observation (Optional)
+## 🔍 Network Activity Observation (Optional)
 
 RAG‑LCC includes an optional Python‑level socket activity tracer (`NetworkTracer`) that
 can log certain DNS and connection attempts when explicitly enabled by the operator.
@@ -95,7 +95,7 @@ It is a diagnostic tool only.
 
 ---
 
-## Vulnerability Reporting
+## 📨 Vulnerability Reporting
 
 Vulnerability reports may be submitted via the project’s issue tracker.
 
@@ -110,7 +110,7 @@ No guarantee of response, fix, or acknowledgment is provided.
 
 ---
 
-## Out of Scope
+## 🚫 Out of Scope
 
 The following are explicitly outside the scope of this project:
 
@@ -123,7 +123,7 @@ The following are explicitly outside the scope of this project:
 
 ---
 
-## No Support and No Security Commitments
+## 🚫 No Support and No Security Commitments
 
 RAG‑LCC is provided without any obligation to:
 
@@ -137,7 +137,7 @@ There is **no security SLA**, **no support agreement**, and **no maintenance com
 
 ---
 
-## Limitation of Liability
+## ⚖️ Limitation of Liability
 
 To the fullest extent permitted by applicable law, the authors and maintainers disclaim
 all liability for any security incidents, data loss, or damages arising from the use or

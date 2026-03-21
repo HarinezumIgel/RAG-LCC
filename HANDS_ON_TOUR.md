@@ -11,7 +11,7 @@
 > Nothing in this walkthrough should be interpreted as a guarantee of behavior,
 > correctness, safety, or non‑hallucination.
 
-## View the CLI parameters and defaults
+## 💻 View the CLI parameters and defaults
 
 ```Windows
 python ./src/Apps/RAGLoad.py -h
@@ -19,7 +19,7 @@ python ./src/Apps/RAGChat.py -h
 python ./src/Apps/DocClassify.py -h
 ```
 
-## Load the documents in the Test folder
+## 📥 Load the documents in the Test folder
 
 Default collection name is from COLLECTION key in Config_Global.py.
 If you work with many collection, you must specify the collection you want to use: `--collection some_collection`.
@@ -28,7 +28,7 @@ If you work with many collection, you must specify the collection you want to us
 python .\src\Apps\RAGLoad.py --doc-dir TestDocs --collection MyTestDocs
 ```
 
-## Chat with the documents in the Test folder
+## 💬 Chat with the documents in the Test folder
 
 ```Windows
 python .\src\Apps\RAGChat.py --collection MyTestDocs
@@ -81,7 +81,7 @@ Query:
 press enter
 ```
 
-## Demonstrating how insufficient context can increase hallucination risk
+## 🧠 Demonstrating how insufficient context can increase hallucination risk
 
 LLM hallucination cannot be reliably prevented and may occur even under ideal conditions.
 
@@ -236,7 +236,7 @@ Press twice enter to exit.
 
 ---
 
-### Work with a second collection
+### 🗃️ Work with a second collection
 
 The next example shows how you can switch between different collections you created. One could be about animals and another about plants.
 
@@ -292,7 +292,7 @@ press enter again to exit.
 
 ---
 
-## Classify the documentation
+## 🏷️ Classify the documentation
 
 This demonstrates `DocClassify.py`.
 
@@ -303,11 +303,11 @@ python .\src\Apps\DocClassify.py --doc-dir yourpath
 When the program is done, you see a message where the output `.csv` / `.xlsx` files can be viewed (in the logs directory).
 Open the one labeled `DocClassify_OK<date>.csv` / `.xlsx`.
 
-### Define your classification keys
+### 🔑 Define your classification keys
 
 The file `Config_DocClassify.py` contains detailed instructions how you can change classification keys.
 
-### Change provided example prompt
+### ✏️ Change provided example prompt
 
 The goal is to extract information from the *context* only about the animals discussed.
 
@@ -387,7 +387,7 @@ _YOUR_CLASSIFICATION_KEYS = [
 ]  # For user‑defined keys beyond the core set
 ```
 
-### Extraction & KeyBERT variant tuning
+### 🏚️ Extraction & KeyBERT variant tuning
 
 `Config_DocClassify.py` ships three named presets — `STRICT`, `BALANCED`,
 and `RECALL` — for both the extraction LLM parameters and the KeyBERT
@@ -397,7 +397,7 @@ and `_ACTIVE_KEYBERT_CONFIG`) let you mix and match.
 For the full variant matrix and consumer mapping see
 [Extraction & KeyBERT Variant Configuration in ARCHITECTURE.md](ARCHITECTURE.md#extraction--keybert-variant-configuration).
 
-### Add banned word
+### 🚫 Add banned word
 
 Requirement: Argostranslate and language package en → de must be installed. See [5. Install argos translate in README.md](README.md#5-install-argos-translate).
 
@@ -417,11 +417,11 @@ You may observe that the `Pferde.pdf` triggers a message similar to:
 
 ---
 
-## Further Experiments
+## 🧪 Further Experiments
 
 Below are ideas for configuration changes you can try. Each explains **what** to change and **what behaviour** you may observe.
 
-### 1. Loosen the consensus rules to block more documents
+### 🔓 1. Loosen the consensus rules to block more documents
 
 In `Config_Banned.py`, the RAGLoad pipeline requires **3** algorithms above threshold (depth) **and** **4** algorithms with any score (breadth) before a chunk is blocked. Try lowering both values:
 
@@ -434,7 +434,7 @@ In `Config_Banned.py`, the RAGLoad pipeline requires **3** algorithms above thre
 
 After editing, update `_BANNED_CONFIG_HASH` in `Config_Global.py` (the required hash is printed at startup).
 
-### 2. Tighten the consensus rules to let more documents through
+### 🔒 2. Tighten the consensus rules to let more documents through
 
 Raise the consensus values in the RAGLoad pipeline:
 
@@ -445,7 +445,7 @@ Raise the consensus values in the RAGLoad pipeline:
 
 **What changes:** All four algorithms must agree before a chunk is blocked. This makes the filter very permissive — only clearly problematic content gets rejected. Fewer false positives, but some borderline content may slip through.
 
-### 3. Disable fuzzy regex matching
+### 🔧 3. Disable fuzzy regex matching
 
 In the `Regex` section of any pipeline in `Config_Banned.py`, set:
 
@@ -455,7 +455,7 @@ In the `Regex` section of any pipeline in `Config_Banned.py`, set:
 
 **What changes:** The regex algorithm will only perform strict word-boundary matching. Fuzzy anchored matches (e.g. "bic" matching "bicycle") will no longer be found. This reduces false positives from the regex algorithm but may miss content that uses abbreviations, misspellings, or partial word overlaps.
 
-### 4. Change chunk size and observe retrieval differences
+### 🧩 4. Change chunk size and observe retrieval differences
 
 In `Config_Global.py`, modify the chunking parameters:
 
@@ -474,7 +474,7 @@ _CHROMA_EMBED_AND_RETRIEVE_PARAMS = {
 
 Try the opposite too — set `CHUNK_SIZE` to `512` with `CHUNK_OVERLAP` of `64` for longer chunks that preserve more context but may include irrelevant surrounding text.
 
-### 5. Tune HNSW neighbor exploration
+### 🔍 5. Tune HNSW neighbor exploration
 
 The same `_CHROMA_EMBED_AND_RETRIEVE_PARAMS` dict in `Config_Global.py` contains two parameters that control how thoroughly ChromaDB's HNSW index searches for similar vectors:
 
@@ -491,7 +491,7 @@ _CHROMA_EMBED_AND_RETRIEVE_PARAMS = {
 
 **What changes:** Lower values speed up loading and querying but may reduce recall (fewer relevant chunks found). Higher values improve accuracy but increase computation time. The effect is most noticeable with large collections; for the small `TestDocs` set the difference may be subtle. Unlike chunk size changes, you do **not** need to re-create the collection when changing `NEIGHBORS_RETRIEVE` — it takes effect immediately on the next query. However, changing `NEIGHBORS_ON_LOAD` only affects newly indexed chunks, so for a fair comparison you should reload the collection.
 
-### 6. Experiment with RAGChat retrieval strategies
+### 🎯 6. Experiment with RAGChat retrieval strategies
 
 Start RAGChat and switch strategies interactively to see how retrieval quality changes:
 
@@ -505,7 +505,7 @@ Start RAGChat and switch strategies interactively to see how retrieval quality c
 
 **What changes:** `NARROW` fetches fewer chunks with a high relevance bar (threshold 0.75) — answers are precise but may miss relevant context spread across documents. `ULTRA_WIDE` fetches up to 3000 vector candidates with a low threshold (0.20) — you get comprehensive answers but the LLM receives much more context, which can dilute precision or slow down responses.
 
-### 7. Lower individual algorithm thresholds
+### 📊 7. Lower individual algorithm thresholds
 
 Pick one algorithm — for example Jaccard in the RAGLoad pipeline — and lower its threshold:
 
@@ -519,7 +519,7 @@ Pick one algorithm — for example Jaccard in the RAGLoad pipeline — and lower
 
 **What changes:** Jaccard will flag more content as matching banned words because even moderate character overlap is now enough to exceed the threshold. Combined with the consensus rules, this means Jaccard will contribute a "yes" vote more often, making the overall filter stricter for Jaccard-sensitive content (short words, partial overlaps).
 
-### 8. Add your own masking rule
+### 🎭 8. Add your own masking rule
 
 In `Config_Banned.py`, find the `_STRICT_MASKING_REGEXES` dictionary and add a new rule:
 
@@ -535,7 +535,7 @@ In `Config_Banned.py`, find the `_STRICT_MASKING_REGEXES` dictionary and add a n
 
 **What changes:** Any text matching the pattern (e.g. `123-45-6789`) will be replaced with `[MASKED-ID]` before the content is stored or returned. You can verify this by placing a document containing such a pattern in your document folder and loading it — the masker output will show `[MASKED-ID]` instead of the original value.
 
-### 9. Switch the compliance-check LLM
+### 🔄 9. Switch the compliance-check LLM
 
 In `Config_Models.py`, change the compliance checker from Llama Guard to the same model used for generation:
 
@@ -547,7 +547,7 @@ _LLM_CHK = "mistral"   # was "llama_guard"
 
 After editing, update `_MODELS_CONFIG_HASH` in `Config_Global.py`.
 
-### 10. Try different DocClassify extraction presets
+### ⚙️ 10. Try different DocClassify extraction presets
 
 In `Config_DocClassify.py`, switch the extraction and KeyBERT presets:
 
@@ -558,7 +558,7 @@ _ACTIVE_KEYBERT_CONFIG = "BALANCED"      # was "STRICT"
 
 **What changes:** `RECALL` uses a slightly higher temperature and wider top-k sampling, so the LLM extracts more classification labels (higher recall, possibly more noise). `BALANCED` KeyBERT extracts more keyword candidates (80 phrases vs. 60). Together this produces richer but potentially noisier classification output. Compare the resulting CSV files side-by-side to see which preset works better for your documents.
 
-### 11. Enable the Cosine algorithm
+### 🧲 11. Enable the Cosine algorithm
 
 In `Config_Banned.py`, uncomment the Cosine entries in the pipeline and in `ALGOS_TO_PROCESS`:
 
@@ -578,7 +578,7 @@ In `Config_Banned.py`, uncomment the Cosine entries in the pipeline and in `ALGO
 
 **What changes:** A fifth algorithm votes in the consensus. Since Cosine and KeyBERT both use embedding-based similarity, they tend to produce correlated scores. This effectively gives embedding similarity more weight in the consensus decision. If you also raise `REQUIRED_DIFFERENT_ALGOS_HAVE_A_SCORE` to `5`, all five algorithms must participate — making the breadth check very strict.
 
-### General tips
+### 💡 General tips
 
 - When experimenting, changing **one thing at a time** can make it easier to observe effects.
 - Use `DEBUG_LEVEL = 4` in `Config_Global.py` to see per-algorithm scores and understand why a chunk was accepted or rejected.

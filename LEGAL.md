@@ -13,7 +13,7 @@ where legal, regulatory, contractual, or statutory obligations may apply.
 
 ---
 
-## Definition — “Compliance” (RAG‑LCC)
+## 📖 Definition — “Compliance” (RAG‑LCC)
 
 In the context of RAG‑LCC, **“compliance”** refers solely to a configurable, algorithmic
 *detection and scoring pipeline* used to flag, score, redact, or optionally block content
@@ -35,7 +35,7 @@ made by a qualified human operator.
 
 ---
 
-## Key Principles
+## 📋 Key Principles
 
 - **Detection only**
   RAG‑LCC performs automated detection and scoring. It does not make legal,
@@ -54,7 +54,7 @@ made by a qualified human operator.
 
 ---
 
-## Data Protection and Privacy
+## 🔒 Data Protection and Privacy
 
 Operators are solely responsible for determining:
 
@@ -69,7 +69,7 @@ the authors.
 
 ---
 
-## Model Licenses and Permissions
+## 📜 Model Licenses and Permissions
 
 - RAG‑LCC does **not** bundle or redistribute LLMs, embedding models, or cross‑encoders.
 - Operators must independently obtain, review, and accept all applicable model licenses
@@ -82,7 +82,7 @@ purpose or jurisdiction.
 
 ---
 
-## Third‑Party Dependencies
+## 📦 Third‑Party Dependencies
 
 RAG‑LCC does **not** bundle, ship, or redistribute any third‑party Python packages,
 pre‑trained models, translation packages, or external tools.
@@ -107,7 +107,7 @@ software.
 
 ---
 
-## No Support, No SLA, No Maintenance Obligation
+## 🚫 No Support, No SLA, No Maintenance Obligation
 
 RAG‑LCC is provided without any obligation to:
 
@@ -124,7 +124,7 @@ maintenance commitment**, whether express or implied.
 
 ---
 
-## Warranty Disclaimer and Limitation of Liability
+## ⚖️ Warranty Disclaimer and Limitation of Liability
 
 This software is provided **“as‑is”** and **“as available”**, without warranty of any
 kind, whether express, implied, or statutory, including but not limited to warranties of
@@ -139,7 +139,7 @@ entirely with the operator.
 
 ---
 
-## Governing Law and Jurisdiction
+## 🏛️ Governing Law and Jurisdiction
 
 To the extent permitted by applicable law, any dispute arising out of or in connection
 with this software shall be governed by Swiss law, excluding its conflict‑of‑laws rules,
@@ -147,7 +147,7 @@ and subject to the exclusive jurisdiction of the courts of Zurich, Switzerland.
 
 ---
 
-## Final Responsibility Notice
+## ⚠️ Final Responsibility Notice
 
 Compliance with all applicable laws and regulations — including emerging or future
 AI‑specific regulatory regimes — rests entirely with the user.
