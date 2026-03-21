@@ -1,20 +1,20 @@
 # Architecture Overview
 
-> **Lab / Research Use Only.** See [Lab Disclaimer](#lab-disclaimer) below and [LEGAL.md](LEGAL.md) for governance guidance.
+> **Lab / Research Use Only.** See [Lab Disclaimer](#-lab-disclaimer) below and [LEGAL.md](LEGAL.md) for governance guidance.
 
-## Lab Disclaimer
+## 🔬 Lab Disclaimer
 
 This software is a **research and experimental laboratory tool**. It is not a certified compliance product, a legal instrument, or a substitute for qualified legal, security, or regulatory advice.
 
 - Detection algorithms, thresholds, and consensus rules are configurable and must be tuned by the operator for their specific context. Default values are illustrative starting points only.
 - No automated system can guarantee detection of all policy violations, data leaks, or compliance issues. False negatives (missed violations) and false positives (incorrect flags) will occur.
-- The "[compliance](#definition-compliance-rag-lcc)" terminology used throughout this codebase refers to a configurable keyword/phrase detection pipeline, not to any legal standard or certification.
+- The "[compliance](#-definition-compliance-rag-lcc)" terminology used throughout this codebase refers to a configurable keyword/phrase detection pipeline, not to any legal standard or certification.
 - The operator is solely responsible for validating that the tool behaves correctly for their use case, for reviewing all outputs, and for any decisions made based on those outputs.
 - This tool does not provide legal advice, does not constitute a Data Protection Impact Assessment (DPIA), and does not satisfy any regulatory obligation on its own.
 - **This tool is not intended for production use.** It is a lab and research environment only. There is no hardening, no security audit, no SLA, and no support commitment.
 - Use is entirely at the operator's own risk.
 
-## Definition: Compliance (RAG-LCC)
+## 📖 Definition: Compliance (RAG-LCC)
 
 Compliance in the context of RAG‑LCC means the configurable, algorithmic process used to detect, flag, and optionally block or redact content according to operator‑supplied keyword lists, thresholds, and consensus rules. Compliance checks are a technical detection pipeline only and do not by themselves establish legal, regulatory, or contractual compliance. Final decisions about enforcement, disclosure, or remediation must be made by a qualified human operator.
 
@@ -30,7 +30,7 @@ Scope: Applies to document ingestion, prompt validation, and LLM output validati
 
 Limitations: Detection is probabilistic; false positives and false negatives will occur.
 
-## System Design
+## 🏗️ System Design
 
 RAG-LCC follows a modular, configuration-driven architecture intended for laboratory and research use. The system provides a tunable pipeline for experimenting with LLM parameters, detection algorithm combinations, and keyword-based filter chains.
 
@@ -40,7 +40,7 @@ Three applications share the same core infrastructure:
 - **RAGChat** — retrieves relevant chunks from the store and answers queries via an LLM; applies compliance checks to both the prompt and the LLM response.
 - **DocClassify** — classifies documents in a directory using keyword extraction, stemming, and optional LLM-assisted label generation; writes results to CSV.
 
-## Core Design Principles
+## 🎯 Core Design Principles
 
 1. **Configuration-Driven**: All behavior parameterized via Python config files (`Config_*.py`) with CLI override support
 2. **Offline-First**: Designed to operate locally; actual behavior depends on configuration and third‑party components
@@ -49,7 +49,7 @@ Three applications share the same core infrastructure:
 5. **Singleton Patterns**: Stateful components use singletons to maintain consistency
 6. **Modular Detection**: Multiple algorithms with consensus scoring for compliance checks
 
-## Component Hierarchy
+## 🧩 Component Hierarchy
 
 ```text
 ├── Applications (Entry Points)
@@ -87,11 +87,11 @@ Three applications share the same core infrastructure:
     └── Exceptions     - Error types
 ```
 
-## Data Flow
+## 🔀 Data Flow
 
 The following diagrams illustrate the intended data flow for experimentation; actual execution paths may vary depending on configuration, runtime conditions, and errors.
 
-### RAGLoad Pipeline
+### 📥 RAGLoad Pipeline
 
 ```text
 Document Input
@@ -115,7 +115,7 @@ Document Input
 [ChromaDB Storage]
 ```
 
-### RAGChat Pipeline
+### 💬 RAGChat Pipeline
 
 ```text
 User Query (Prompt)
@@ -143,7 +143,7 @@ User Query (Prompt)
 [User Output]
 ```
 
-### DocClassify Pipeline
+### 🏷️ DocClassify Pipeline
 
 ```text
 Batch of Documents
@@ -169,7 +169,7 @@ Batch of Documents
 [CSV Output]
 ```
 
-## Configuration System
+## ⚙️ Configuration System
 
 All default values referenced in this document reflect the state of this repository and are not recommendations or guarantees of suitability.
 
@@ -188,7 +188,7 @@ Each application loads from:
 
 Parameters are accessible via `Config().get(key_path)` using dot notation.
 
-### Key Configuration Areas
+### 🔑 Key Configuration Areas
 
 | Area | File | Purpose |
 | --- | --- | --- |
@@ -200,7 +200,7 @@ Parameters are accessible via `Config().get(key_path)` using dot notation.
 | Compliance | `Config_Banned.py` | Keyword/phrase lists, detection thresholds |
 | Network | `Config_Internet_Env.py` | Network connection, network trace |
 
-### Model Implementation Selectors
+### 🔩 Model Implementation Selectors
 
 `Config_Models.py` uses a two-level lookup to resolve model configurations. Five top-level variables select which *implementation* (impl) to use for each model *role*:
 
@@ -216,7 +216,7 @@ At runtime the framework resolves a role via `_MODELS[<impl>][<role>]`. For exam
 
 To switch models, change the impl value to another key that carries a matching role entry in `_MODELS` (the allowed values are listed in the inline comments above).
 
-### Extraction & KeyBERT Variant Configuration
+### 🧩 Extraction & KeyBERT Variant Configuration
 
 `Config_DocClassify.py` organises the LLM extraction parameters and the
 KeyBERT keyword-extraction parameters into **named variants** (`STRICT`,
@@ -256,9 +256,9 @@ parameters via dot-notation, e.g.
 > nesting) and does not define either selector key.  `AIHelpers.py`
 > detects this automatically and falls back to the flat layout.
 
-## Compliance Chain
+## 🛡️ Compliance Chain
 
-### Processing Layers
+### 📦 Processing Layers
 
 RAG-LCC applies checks in three sequential stages:
 
@@ -283,7 +283,7 @@ RAG-LCC applies checks in three sequential stages:
 - Subject to all limitations of the underlying LLM
 - Higher latency; output depends on model behaviour
 
-### Execution Sequence by Application
+### 🔄 Execution Sequence by Application
 
 **RAGLoad & DocClassify**:
 
@@ -324,7 +324,7 @@ GENERATION & RESPONSE VALIDATION PHASE:
               Return response to user
 ```
 
-### Design Notes
+### 📝 Design Notes
 
 1. **Normalization then masking**: Extracted text is normalized first, then masked; the masked copy is used downstream.
 2. **Algorithms are deterministic**: Results depend on the configured keyword lists and thresholds.
@@ -332,14 +332,14 @@ GENERATION & RESPONSE VALIDATION PHASE:
 4. **Response checking is optional**: Applies algorithm checks to LLM output before returning it to the caller.
 5. **No guarantee of completeness**: None of these layers guarantee that all violations will be detected.
 
-### Configuring the Chain
+### ⚙️ Configuring the Chain
 
 - **Control algorithm strictness**: Adjust individual thresholds in `Config_Banned.py`
 - **Set consensus rules**: Configure which algorithms must agree for blocking
 - **Enable/disable prompt check**: Balance between latency and coverage
 - **Chain is OR-based**: If ANY check detects issue, content is flagged
 
-## Detection Algorithm Architecture
+## 🧮 Detection Algorithm Architecture
 
 Configured algorithms work for compliance checking:
 
@@ -348,7 +348,7 @@ Config slot template used by scorers:
 - `f"{compliance_slot}.PIPELINE.<Algo>.<Key>"` where `compliance_slot` is stage/app dependent
 - Typical resolved slots include pipeline checks (e.g., `...RAGLoad.PIPELINE_CHECK`, `...RAGChat.PIPELINE_CHECK`) and chat prompt checks (`...RAGChat.PROMPT_CHECK`)
 
-### Regex Detector (`RegexScorer.py`)
+### 🔍 Regex Detector (`RegexScorer.py`)
 
 - Two-step matching: strict word-boundary match is attempted first; if it misses and `FUZZY_REGEX_EVAL_AFTER_HARD` is `True`, a fuzzy anchored pattern match is tried as fallback
 - Strict match assigns `SOFT_SCORE_HARD` (default used in this repository 1.0); fuzzy-only match assigns `SOFT_SCORE_FUZZY` (default used in this repository 0.75) — this lets the consensus layer distinguish high-confidence exact hits from approximate ones
@@ -357,7 +357,7 @@ Config slot template used by scorers:
 - RegexScorer internally calls LevenshteinScorer; their scores and thresholds are merged into a single combined result so that two similar algorithms do not carry disproportionate weight in the consensus vote
 - Config slot hints: `Regex.THRESHOLD`, `Regex.THRESHOLD_MIN`, `Regex.SOFT_SCORE_HARD`, `Regex.SOFT_SCORE_FUZZY`, `Regex.FUZZY_REGEX_EVAL_AFTER_HARD`, `Regex.WINDOW_MAX_CHARS`, `Regex.PREFIX_SUFFIX_LEN`, `Regex.SEPARATOR_CLASS`
 
-### Jaccard Scorer (`JaccardScorer.py`)
+### 🧩 Jaccard Scorer (`JaccardScorer.py`)
 
 - Token-based similarity (Jaccard index)
 - Containment scoring
@@ -365,7 +365,7 @@ Config slot template used by scorers:
 - Good for word-level variations
 - Config slot hints: `Jaccard.THRESHOLD`, `Jaccard.THRESHOLD_MIN`, `Jaccard.CHAR_NGRAM_RANGE`
 
-### Cosine Similarity Detector (`CosineKeyWordDetect.py`)
+### 📏 Cosine Similarity Detector (`CosineKeyWordDetect.py`)
 
 - SBERT embeddings (Snowflake Arctic-embed default used in this repository)
 - Semantic similarity matching
@@ -374,7 +374,7 @@ Config slot template used by scorers:
 - CosineScorer and KeyBertScorer produce very similar results. This is why CosineScorer is not activated in the provided example configuration
 - Config slot hints: `Cosine.THRESHOLD`, `Cosine.THRESHOLD_MIN`
 
-### KeyBERT Detector (`KeyBertWordDetect.py`)
+### 🔑 KeyBERT Detector (`KeyBertWordDetect.py`)
 
 - Keyword extraction using SBERT embeddings
 - Deterministic phrase ordering for stable results
@@ -384,14 +384,14 @@ Config slot template used by scorers:
 - Configurable n-gram ranges
 - Config slot hints: `Keybert.THRESHOLD`, `Keybert.THRESHOLD_MIN`, `Keybert.TOP_K`
 
-### Levenshtein Distance (`LevenshteinScorer.py`)
+### 📏 Levenshtein Distance (`LevenshteinScorer.py`)
 
 - Edit distance calculation
 - Typo and obfuscation detection
 - Captures character-level variations
 - Config slot hints: `Regex.Levenshtein.THRESHOLD` (nested under Regex pipeline settings)
 
-### BM25 Scorer (`BM25Scorer.py`)
+### 📊 BM25 Scorer (`BM25Scorer.py`)
 
 - Probabilistic relevance scoring between input text and banned phrases using BM25
 - Language-aware banlist preparation with cached token frequencies, IDF, and average phrase length
@@ -400,16 +400,16 @@ Config slot template used by scorers:
 - Percentile-based score normalization (`NORM_PERCENTILE`) to produce stable `[0,1]` scores for thresholding
 - Config slot hints: `BM25.THRESHOLD`, `BM25.THRESHOLD_MIN`, `BM25.TERM_FREQ_SATURATION`, `BM25.LENGTH_NORMALIZATION`, `BM25.MIN_OVERLAP`, `BM25.MIN_RAW_SCORE`, `BM25.NORM_PERCENTILE`
 
-### Masking (`Masker.py`)
+### 🎭 Masking (`Masker.py`)
 
 - Masking is done at document extraction and, although RAGChat works with the already masked chunks ingested into ChromaDB, also on prompt replies
 - The masker is regex-based
 
-### Unicode normalisation (`UnicodeNormalizer.py`)
+### 🔤 Unicode normalisation (`UnicodeNormalizer.py`)
 
 - Leet-speak/confusable normalization is applied on input extraction for a canonical text form.
 
-### Consensus Scoring & Experimentation
+### 🤝 Consensus Scoring & Experimentation
 
 All configured algorithms run for a given phrase; results are combined using **depth** and **breadth** consensus metrics:
 
@@ -470,9 +470,9 @@ Results combined via:
 
 **Lab note**: Depth and breadth are adjustable via `Config_Banned.py` to explore different detection behaviours. Results will vary significantly with different configurations, and you are responsible for validating the settings match your operational requirements.
 
-## Classification Output Quality
+## 🏷️ Classification Output Quality
 
-### Reverse Stemming
+### 🔄 Reverse Stemming
 
 KeyBERT keyword extraction uses a SnowballStemmer to normalise candidate terms before matching.
 This increases recall but produces stemmed tokens in classification output (e.g. `'compli'` instead of `'compliance'`).
@@ -502,22 +502,22 @@ Key properties:
 - No duplication: `prepare_for_csv_print` needs no stemming logic
 - Weight-winner: when one stem maps to multiple originals, the highest-weight source word is kept
 
-## Model Integration
+## 🤖 Model Integration
 
-### Embedding Models
+### 🧲 Embedding Models
 
 - HuggingFace local models with optional quantization
 - Batch processing for efficiency
 - Caching of phrase embeddings for detection
 
-### LLM Integration
+### 🧠 LLM Integration
 
 - Ollama-compatible endpoint (local or remote)
 - Streaming response handling
 - Temperature, top-k, top-p sampling control
 - Optional CPU-only execution mode
 
-### JSON Repair for LLM Replies
+### 🔧 JSON Repair for LLM Replies
 
 LLMs occasionally return malformed JSON — missing closing braces/brackets, or set-like literals (`{"a", "b"}`) instead of proper strings. The **`TRY_FIX_JSON_LLM_REPLY`** switch in `Config_Global.py` controls whether `ModelOutputAdapter` attempts to auto-repair these issues.
 
@@ -533,13 +533,13 @@ Repairs handled:
 
 Every repair (or skipped repair) is logged via `PrettyWriter` under the `JSON Repair` tag so the operator can audit what was changed.
 
-### Cross-Encoder Models
+### 🔀 Cross-Encoder Models
 
 - Re-ranking document results
 - Paired input scoring
 - Weighted blending with ChromaDB scores
 
-### HF Model Downloading & Caching
+### 🤗 HF Model Downloading & Caching
 
 All HuggingFace model downloads are routed through the **`HFDownloader`** class (`Compliance/HFDownloader.py`). No model loading code contacts HuggingFace Hub directly; every download goes through a consent-based flow that records an auditable metadata trail.
 
@@ -644,7 +644,7 @@ Every download (or cache-hit) writes a `download_meta.json` file under `ModelGov
 
 If the operator changes the model configuration (different model name, different revision, etc.) the config hash will differ, existing metadata will not match, and HFDownloader will prompt for re-consent before downloading the new model.
 
-## Internet Access
+## 🌐 Internet Access
 
 Internet access is configured in `Config_Internet_Env.py`.
 
@@ -661,7 +661,7 @@ Internet access is configured in `Config_Internet_Env.py`.
 | `ARGOS_CHUNK_TYPE` | "SPACY" | ARGOS_CHUNK_TYPE: Select the sentence boundary detection (SBD) backend |
 | `ARGOS_STANZA_DOWNLOAD` | `"0"` | Control stanza network access for Argos Translate. When `"0"`, only pre-installed language packages are used. When `"1"`, stanza may download missing tokenizer models at runtime. |
 
-## Argos Translate
+## 🌍 Argos Translate
 
 RAG‑LCC uses [Argos Translate](https://github.com/argosopentech/argos-translate) to translate banned-word lists into the detected document language so that compliance checks work across languages.
 
@@ -671,13 +671,13 @@ RAG‑LCC uses [Argos Translate](https://github.com/argosopentech/argos-translat
 
 Each Argos package (~100 MB) bundles an OpenNMT translation model and the required stanza tokenizer, so no additional network downloads are needed at runtime when `ARGOS_STANZA_DOWNLOAD="0"`.
 
-## Token Budget
+## 🎫 Token Budget
 
 Token budget calculations are heuristic and may not reflect actual tokenizer behavior or model‑specific limits in all cases.
 
 Every LLM call needs a `max_output_tokens` limit — too large and the model may exceed the hardware context window; too small and the reply is truncated. RAG‑LCC resolves this dynamically via the **`TokenBudget`** singleton (`AI/TokenBudget.py`).
 
-### Configuration (Config_Global.py)
+### ⚙️ Configuration (Config_Global.py)
 
 | Key | Default used in this repository | Purpose |
 | --- | ------- | ------- |
@@ -685,7 +685,7 @@ Every LLM call needs a `max_output_tokens` limit — too large and the model may
 | `TOKEN_BUDGET_RESERVED_OUTPUT` | 2 048 | Maximum tokens reserved unconditionally for the model reply (upper clamp). |
 | `TOKEN_BUDGET_RESERVED_SYSTEM` | 1 024 | Tokens reserved for the system / instruction preamble that wraps every prompt. |
 
-### Per-Model Context Detection
+### 🔍 Per-Model Context Detection
 
 On first access for a given model name, `TokenBudget` queries Ollama `/api/show` and caches the reported `num_ctx`. If Ollama is unreachable the config cap is used as a safe fallback. Because the main inference model and the compliance-check model may differ, each gets its own cached limit.
 
@@ -701,7 +701,7 @@ Ollama /api/show ─► detected num_ctx
                     cached per model
 ```
 
-### Dynamic Budget Formula
+### 🧮 Dynamic Budget Formula
 
 Before every LLM call, `compute_dynamic_max_tokens(prompt, model)` is invoked:
 
@@ -713,27 +713,27 @@ max_output_tokens = clamp(available, 1, RESERVED_OUTPUT)
 
 The resulting `max_output_tokens` is passed to Ollama alongside `num_ctx` (the cached context limit) so Ollama allocates the correct KV-cache rather than its default of 2 048.
 
-### User Overrides (RAGChat only)
+### 🎨 User Overrides (RAGChat only)
 
 Operators can override `max_output_tokens` and `context_size` at chat‑time via the `max_output_tokens!` and `context_size!` commands in the interactive session. A warning is emitted when the override exceeds the computed budget. See `Chatter._resolve_token_params()` for the resolution logic.
 
-## Storage Layer
+## 🗄️ Storage Layer
 
-### ChromaDB Integration
+### 🗃️ ChromaDB Integration
 
 - HNSW indexing for efficient similarity search
 - Cosine similarity metric
 - Configurable neighbor exploration parameters
 - Collection-based namespacing
 
-### Metadata Handling
+### 💾 Metadata Handling
 
 - Type filtering (Chroma compatibility)
 - None value removal
 - Complex type stringification
 - Searchable metadata fields
 
-## Processing Strategies
+## 📦 Processing Strategies
 
 Strategy pattern allows pluggable processing pipelines:
 
@@ -759,13 +759,13 @@ Each strategy implements:
 - Progress tracking
 - Result aggregation
 
-## Exclusion + Incremental Hash Check (Skip Unchanged Files)
+## ⛔ Exclusion + Incremental Hash Check (Skip Unchanged Files)
 
-### Goal
+### 🎯 Goal
 
 Prevent reprocessing of unchanged files and explicitly exclude non-compliant files.
 
-### Components
+### 🧩 Components
 
 - Document hash in Chroma DB metadata will be compared on document extraction
   If same hash, don't process
@@ -777,13 +777,13 @@ Prevent reprocessing of unchanged files and explicitly exclude non-compliant fil
   `USE_EXCLUSIONS` = True
   Files are added to the exclusion list if they are flagged for HUMAN_REVIEW
 
-### See Also
+### 🔗 See Also
 
 For class-level design and relationships, see:
 
 - `Documentation/ClassGraphs/`
 
-## Source Tree
+## 🌳 Source Tree
 
 ```text
 src/
@@ -886,7 +886,7 @@ src/
     └── StrategyType.py
 ```
 
-## Error Handling
+## ⚠️ Error Handling
 
 Critical exceptions are raised on compliance violations and infrastructure failures; see [src/Commons/Exceptions.py](src/Commons/Exceptions.py) for full reference. All custom exceptions inherit from `RAGLCCException`.
 
@@ -932,7 +932,7 @@ Critical exceptions are raised on compliance violations and infrastructure failu
 - Debug-level detailed context in logs
 - Graceful degradation where safe
 
-## Logging Architecture
+## 📝 Logging Architecture
 
 Three-tier logging:
 
@@ -958,7 +958,7 @@ DEBUG_LEVEL = 3  # See above
 
 RAG-LCC does not log raw user queries or LLM responses **unless** DEBUG_LEVEL is set to show the network traffic (100).
 
-## Session Management
+## 🔄 Session Management
 
 `Session` object maintains per-conversation state:
 
@@ -968,17 +968,17 @@ RAG-LCC does not log raw user queries or LLM responses **unless** DEBUG_LEVEL is
 - Chat name (chats can be switched on the fly)
 - Conversation history reference
 
-## Performance Considerations
+## ⚡ Performance Considerations
 
-Optimize memory and throughput via [batch processing](#batch-processing), [caching](#caching), and [quantization](#quantization).
+Optimize memory and throughput via [batch processing](#-batch-processing), [caching](#-caching), and [quantization](#-quantization).
 
-### Batch Processing
+### 📦 Batch Processing
 
 - Documents processed in batches for memory efficiency
 - Embedding batched to minimize model overhead
 - Configurable batch sizes via `BATCH_SIZE` parameters
 
-### Caching
+### 💾 Caching
 
 Caching is used throughout RAG-LCC to improve performance and reduce redundant computation:
 
@@ -989,13 +989,13 @@ Caching is used throughout RAG-LCC to improve performance and reduce redundant c
 
 These caching strategies are intended to reduce redundant computation and may improve performance depending on workload and environment.
 
-### Quantization
+### 📊 Quantization
 
 - Optional INT8 or FP16 model quantization
 - Reduces memory and improves inference speed
 - Configurable via `EMBEDDER_BITS` and `USE_CPU`
 
-## Extension Points
+## 🔌 Extension Points
 
 **New Detection Algorithms**: Take one of the existing algos as reference
 You must implement `return_algo_results` and return a `ComplianceAlgoResult`
@@ -1024,7 +1024,7 @@ class ScorerBase(ABC):
 **Custom Helpers**: Add utilities to `Helpers/`
 **New Document Formats**: Extend `ValidExtensions.py`, `Pipeline/LoadAndClassifyProcessor.py`
 
-## Thread Safety
+## 🧵 Thread Safety
 
 RAG-LCC is intended to run by a **single user**. There is no locking implemented.
 
@@ -1032,7 +1032,7 @@ RAG-LCC is intended to run by a **single user**. There is no locking implemented
 Chroma is thread‑safe, but not process‑safe [Reference](https://cookbook.chromadb.dev/core/system_constraints/)
 - Singleton patterns guard against concurrent instantiation
 
-### Local Development
+### 💻 Local Development
 
 - All models local
 - File-based persistence
