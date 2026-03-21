@@ -3,6 +3,7 @@
 <p align="center">
   <img src="Documentation/pics/AI_Igel.png" alt="RAG-LCC Logo" width="50%" />
 </p>
+<p align="center"><em>Hedgehog created with Copilot AI</em></p>
 
 > ⚠️ **IMPORTANT NOTICE**
 >
