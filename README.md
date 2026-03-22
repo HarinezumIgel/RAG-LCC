@@ -202,87 +202,60 @@ are **not recommendations** for any specific environment or risk profile.
 
 ---
 
-## 🚫 No Support, No SLA, No Maintenance
+## RAG‑LCC — Disclaimer
 
-RAG‑LCC is provided without any obligation to:
+### ⚠️ Experimental Research Framework
 
-- provide support or assistance
-- respond to issues or questions
-- fix defects or vulnerabilities
-- provide updates or patches
-- maintain compatibility
-- meet service‑level or availability targets
+RAG‑LCC is an **experimental research framework** intended solely for **laboratory use, evaluation, and learning**.
+It is **not** production software and must **not** be used in operational, regulated, safety‑critical, or compliance‑critical environments.
 
-There is **no support agreement**, **no SLA**, and **no maintenance commitment**.
+### 🚫 No Support, No Warranty, No SLA
 
----
+This project is provided **as‑is** with **no**:
 
-> ⚠️ **IMPORTANT NOTICE**
->
-> RAG‑LCC is an **experimental research framework** intended solely for laboratory use,
-> learning, and experimentation.
->
-> It is **not production software**, **not a compliance solution**, **not a security
-> product**, and **not a governance or regulatory tool**.
->
-> This project is provided **as‑is**, without warranty, support, maintenance commitment,
-> or service‑level agreement (SLA). No guarantees are made regarding correctness,
-> completeness, security, reliability, or fitness for any purpose.
->
-> All legal, regulatory, operational, and security risks arising from the use of this
-> software are assumed entirely by the operator.
->
-> **Before using this project, review `LEGAL.md` and `SECURITY.md`.**
+- support or assistance
+- issue response or troubleshooting
+- bug fixes, patches, or security updates
+- maintenance or compatibility commitments
+- service‑level objectives or availability guarantees
 
----
+No warranty—express or implied—is provided regarding correctness, completeness, security, reliability, or fitness for any purpose.
 
-## 🔬 Lab Environment Notice
+### 🔐 Legal, Regulatory, and Security Responsibility
 
-**RAG‑LCC is a research tool for laboratory evaluation and experimentation only.**
+All **legal**, **regulatory**, **operational**, and **security** risks arising from the use of this software are assumed entirely by the **operator**.
 
-It has not been designed, audited, certified, or validated for:
+This project is **not** a legal, security, governance, or compliance solution.
+Nothing in the source code, documentation, examples, or logs should be interpreted as legal or security advice.
 
-- production deployment
-- regulated data processing
-- safety‑critical environments
-- compliance‑critical workflows
+For definitions, constraints, and further detail, review:
 
-Operators are solely responsible for determining whether legal review, data‑protection
-assessments (e.g. DPIA), or other regulatory evaluations are required under applicable law.
+- [LEGAL.md](LEGAL.md)
+- [SECURITY.md](SECURITY.md)
 
-For the definition of the term *“compliance”* as used in this project, see
-[`LEGAL.md`](LEGAL.md#definition--compliance-rag-lcc).
-
-Scope: document ingestion, prompt validation, document classification, and LLM output
-validation as configured in `./src/Configuration/Config_*.py`.
-
-Limitations: all detection is probabilistic; false positives and false negatives will
-occur.
-
----
-
-## 🎯 Intended Use
+### 🎯 Intended Use
 
 RAG‑LCC is intended for:
 
 - local experimentation with RAG pipelines
-- research into filter chains and scoring consensus
+- research into filter chains and scoring
 - teaching and learning RAG architectures
 - development and testing of custom detection algorithms
 
-It is **not intended** for end‑users, enterprises, or regulated operational use.
+It is **not** intended for end users, enterprises, or regulated operational deployment.
 
----
+### 📉 Limitations
 
-## ⚠️ Final Disclaimer
+Detection and validation mechanisms in this framework are **probabilistic**.
+False positives and false negatives **will** occur.
 
-RAG‑LCC is a research and experimentation tool only.
+Scope includes:
+*document ingestion, prompt validation, document classification, and LLM output validation as defined in* `./src/Configuration/Config_*.py`.
 
-Nothing in this repository — including source code, documentation, examples, or logs —
-should be interpreted as legal advice, security advice, compliance guidance, or an
-assurance of correctness, safety, or regulatory conformity.
+### ⚠️ Final Notice
 
-Use of this software is entirely at the operator’s own risk.
+Use of RAG‑LCC is entirely **at the operator’s own risk**.
+Nothing in this repository guarantees correctness, safety, regulatory conformity, or suitability for any specific environment or risk profile.
 
 ## 📸 Examples
 
