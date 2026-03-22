@@ -1,0 +1,13 @@
+{
+  "MD033": {
+    "allowed_elements": [
+      "p",
+      "img",
+      "em",
+      "strong",
+      "br",
+      "code",
+      "a"
+    ]
+  }
+}

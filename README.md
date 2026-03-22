@@ -5,62 +5,26 @@
 </p>
 <p align="center"><em>Hedgehog created with Copilot AI</em></p>
 
-> ⚠️ **IMPORTANT NOTICE**
->
-> RAG‑LCC is an **experimental research framework** intended solely for laboratory use,
-> learning, and experimentation.
->
-> It is **not production software**, **not a compliance solution**, **not a security
-> product**, and **not a governance or regulatory tool**.
->
-> This project is provided **as‑is**, without warranty, support, maintenance commitment,
-> or service‑level agreement (SLA). No guarantees are made regarding correctness,
-> completeness, security, reliability, or fitness for any purpose.
->
-> All legal, regulatory, operational, and security risks arising from the use of this
-> software are assumed entirely by the operator.
->
-> **Before using this project, review `LEGAL.md` and `SECURITY.md`.**
+<p align="center">
+  🔬 <strong>Retrieval-Augmented Generation — Load, Chat, Classify</strong>
+</p>
 
----
+<p align="center">
+  An experimental, modular, offline-first research framework for ingesting documents into a local vector store,<br>
+  querying them with LLM-powered chat, and applying configurable detection pipelines<br>
+  to inspect content heuristically — all under operator control.
+</p>
 
-## 🔬 Lab Environment Notice
+<p align="center">
+  <code>RAGLoad</code> · Document Ingestion &nbsp;|&nbsp;
+  <code>RAGChat</code> · Retrieval & Chat &nbsp;|&nbsp;
+  <code>DocClassify</code> · Batch Classification
+</p>
 
-**RAG‑LCC is a research tool for laboratory evaluation and experimentation only.**
-
-It has not been designed, audited, certified, or validated for:
-
-- production deployment
-- regulated data processing
-- safety‑critical environments
-- compliance‑critical workflows
-
-Operators are solely responsible for determining whether legal review, data‑protection
-assessments (e.g. DPIA), or other regulatory evaluations are required under applicable law.
-
-For the definition of the term *“compliance”* as used in this project, see
-[`LEGAL.md`](LEGAL.md#definition--compliance-rag-lcc).
-
-Scope: document ingestion, prompt validation, document classification, and LLM output
-validation as configured in `./src/Configuration/Config_*.py`.
-
-Limitations: all detection is probabilistic; false positives and false negatives will
-occur.
-
----
-
-## 🎯 Intended Use
-
-RAG‑LCC is intended for:
-
-- local experimentation with RAG pipelines
-- research into filter chains and scoring consensus
-- teaching and learning RAG architectures
-- development and testing of custom detection algorithms
-
-It is **not intended** for end‑users, enterprises, or regulated operational use.
-
----
+<p align="center">
+  For the definition of <em>"Compliance"</em> as used in this project, see
+  <a href="LEGAL.md#-definition--compliance-rag-lcc"><code>LEGAL.md</code></a>.
+</p>
 
 ## ✨ High‑Level Features
 
@@ -146,6 +110,46 @@ See `SECURITY.md` for details and limitations.
 
 ---
 
+## 📖 Documentation
+
+- Architecture overview: `ARCHITECTURE.md`
+- Legal and governance notes: `LEGAL.md`
+- Security considerations: `SECURITY.md`
+- Hands‑on examples: `HANDS_ON_TOUR.md`
+
+---
+
+## 📄 Text Extraction
+
+The framework extracts text from common file types and applies Unicode normalization and masking to the extracted text before downstream processing.
+
+## 📎 Microsoft Office document extraction
+
+Text from Office formats (.doc(x), .ppt(x), .xls(x)) is extracted if a local Office installation is available. See [Office Document Extraction](#-office-document-extraction) for configuration options.
+
+> **Note:** Microsoft Office is **not** included with or distributed by RAG‑LCC. Users must obtain and license Microsoft Office independently. The Python bridge library `pywin32` (included in the project's dependency list) provides COM automation access to a locally installed Office suite but does not replace or include Office itself.
+
+---
+
+## 💾 Caching
+
+For details, see [Caching in ARCHITECTURE.md](ARCHITECTURE.md#caching).
+
+---
+
+## 🌐 Translation
+
+Banned-word lists can be translated to the document language for detection using [Argos Translate](https://www.argosopentech.com/) (local, offline neural machine translation).
+For details see [6. Install Argos Translate](#-6-install-argos-translate).
+
+---
+
+## 🔄 Reverse Stemming
+
+Extracted classification keys can be reverse-stemmed optionally (best effort).
+
+---
+
 ## 📜 Model and License Consent
 
 RAG‑LCC does **not** bundle or redistribute:
@@ -213,12 +217,60 @@ There is **no support agreement**, **no SLA**, and **no maintenance commitment**
 
 ---
 
-## 📖 Documentation
+> ⚠️ **IMPORTANT NOTICE**
+>
+> RAG‑LCC is an **experimental research framework** intended solely for laboratory use,
+> learning, and experimentation.
+>
+> It is **not production software**, **not a compliance solution**, **not a security
+> product**, and **not a governance or regulatory tool**.
+>
+> This project is provided **as‑is**, without warranty, support, maintenance commitment,
+> or service‑level agreement (SLA). No guarantees are made regarding correctness,
+> completeness, security, reliability, or fitness for any purpose.
+>
+> All legal, regulatory, operational, and security risks arising from the use of this
+> software are assumed entirely by the operator.
+>
+> **Before using this project, review `LEGAL.md` and `SECURITY.md`.**
 
-- Architecture overview: `ARCHITECTURE.md`
-- Legal and governance notes: `LEGAL.md`
-- Security considerations: `SECURITY.md`
-- Hands‑on examples: `HANDS_ON_TOUR.md`
+---
+
+## 🔬 Lab Environment Notice
+
+**RAG‑LCC is a research tool for laboratory evaluation and experimentation only.**
+
+It has not been designed, audited, certified, or validated for:
+
+- production deployment
+- regulated data processing
+- safety‑critical environments
+- compliance‑critical workflows
+
+Operators are solely responsible for determining whether legal review, data‑protection
+assessments (e.g. DPIA), or other regulatory evaluations are required under applicable law.
+
+For the definition of the term *“compliance”* as used in this project, see
+[`LEGAL.md`](LEGAL.md#definition--compliance-rag-lcc).
+
+Scope: document ingestion, prompt validation, document classification, and LLM output
+validation as configured in `./src/Configuration/Config_*.py`.
+
+Limitations: all detection is probabilistic; false positives and false negatives will
+occur.
+
+---
+
+## 🎯 Intended Use
+
+RAG‑LCC is intended for:
+
+- local experimentation with RAG pipelines
+- research into filter chains and scoring consensus
+- teaching and learning RAG architectures
+- development and testing of custom detection algorithms
+
+It is **not intended** for end‑users, enterprises, or regulated operational use.
 
 ---
 
@@ -231,37 +283,6 @@ should be interpreted as legal advice, security advice, compliance guidance, or 
 assurance of correctness, safety, or regulatory conformity.
 
 Use of this software is entirely at the operator’s own risk.
-
-## 📄 Text Extraction
-
-The framework extracts text from common file types and applies Unicode normalization and masking to the extracted text before downstream processing.
-
-## 📎 Microsoft Office document extraction
-
-Text from Office formats (.doc(x), .ppt(x), .xls(x)) is extracted if a local Office installation is available. See [Office Document Extraction](#-office-document-extraction) for configuration options.
-
-> **Note:** Microsoft Office is **not** included with or distributed by RAG‑LCC. Users must obtain and license Microsoft Office independently. The Python bridge library `pywin32` (included in the project's dependency list) provides COM automation access to a locally installed Office suite but does not replace or include Office itself.
-
----
-
-## 💾 Caching
-
-For details, see [Caching in ARCHITECTURE.md](ARCHITECTURE.md#caching).
-
----
-
-## 🌐 Translation
-
-Banned-word lists can be translated to the document language for detection using [Argos Translate](https://www.argosopentech.com/) (local, offline neural machine translation).
-For details see [6. Install Argos Translate](#-6-install-argos-translate).
-
----
-
-## 🔄 Reverse Stemming
-
-Extracted classification keys can be reverse-stemmed optionally (best effort).
-
----
 
 ## 📸 Examples
 
