@@ -1,7 +1,87 @@
+<!-- markdownlint-disable MD024 -->
 # Changelog
 
 All notable changes to RAG-LCC are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+
+---
+
+## [v0.2.0/1025] — 2026-03-25
+
+### ➕ Added
+
+#### 🌐 Unsupported-Language Handling
+
+- **`UNSUPPORTED_LANGUAGE_ACTION`** config key (`Config_Global.py`) — controls
+  what happens when a document’s detected language is not installed in Argos Translate.
+  Valid values: `FALLBACK_EN` (default — legacy behaviour), `NOT_OK` (reject and
+  write to NOT_OK CSV), `HUMAN_REVIEW` (process with English fallback, flag for
+  human review).
+- **`SharedHelpers.is_language_supported(lang)`** — returns `True`
+  for English or any installed Argos Translate language.
+- **`SharedHelpers.check_language_support(lang, file_path)`** — shared gate
+  that reads the config, logs a warning, and returns the action (`None`,
+  `"NOT_OK"`, or `"HUMAN_REVIEW"`). Used by all three entry points.
+- **`UnsupportedLanguageError`** exception added to `Commons/Exceptions.py`.
+- Gate added to all three entry points:
+  - `ClassifyStrategy._process_extract()` — DocClassify
+  - `ChunksToDBStrategy.docChunksToDBStrategy()` — RAGLoad
+  - `AIHelpers.check_user_prompt_with_filter_chain()` — RAGChat
+- 12 new tests in `test_shared_helpers.py` for `is_language_supported()` and
+  `check_language_support()`.
+
+#### 📂 Classify‑then‑Load Workflow
+
+- **ClassifyCSVReader** (`Helpers/ClassifyCSVReader.py`) — Reads `DocClassify` OK and
+  HUMAN_REVIEW CSV outputs by run stamp, returning a set of allowed file paths for
+  selective ingestion.
+- **RAGLoad CSV integration** — `RAGLoad.py` accepts three new config keys
+  (`LOAD_FROM_CLASSIFY_CSV`, `LOAD_FROM_HUMAN_REVIEW_CSV`, `CLASSIFY_RUN_STAMP`) to
+  filter ingestion to documents classified by a prior `DocClassify` run.
+  CLI flags: `--load-from-classify-csv`, `--load-from-human-review-csv`,
+  `--classify-run-stamp`.
+- When the classify‑then‑load filter is active, exclusion checks (`USE_EXCLUSIONS`) are
+  bypassed because `DocClassify` already evaluated exclusions during its run.
+- **Shared CSV path builder** — `build_csv_path()` in `Helpers/FileUtils.py` replaces
+  duplicated path-construction logic in `CSVWriter` and `ClassifyCSVReader`.
+
+#### 🗂️ Variant Selector for ChromaDB Parameters
+
+- **`_ACTIVE_CHROMA_EMBED_AND_RETRIEVE_PARAMS_CONFIG`** selector in `Config_Global.py`
+  with two preset variants: `THOROUGH` (larger chunks, more HNSW neighbours) and
+  `COMPACT` (smaller chunks, fewer neighbours).
+- **`Helpers.get_chroma_config_slot()`** encapsulates the selector lookup; all consumers
+  (`RAGChat`, `ChunksToDBStrategy`, `ModelsCache`, `ChromaDBHelper`) resolve parameters
+  through dot-notation using the active variant.
+
+#### 📖 Documentation
+
+- Classify‑then‑Load workflow documented in `README.md` and `ARCHITECTURE.md`.
+- **Selector Pattern Overview** section added to `ARCHITECTURE.md` cataloguing all
+  selector + variant dictionary patterns across `Config_Models.py`, `Config_Global.py`,
+  `Config_DocClassify.py`, `Config_Banned.py`, and `Config_RAGChat.py`.
+- `HANDS_ON_TOUR.md` updated for the new variant structure.
+
+#### 🔧 Refactoring — Instance Variable Naming Convention
+
+- Removed `_` prefix from instance variables across the entire `src/` codebase to
+  align with the project's naming convention (`self.cfg`, not `self._cfg`).
+  Private **methods** retain their `_` prefix; `_initialized` / `_reset` (SingletonMixin
+  internals) are also unchanged.
+- **19 source files** updated: `ArgosDownloader`, `Accumulator`, `Exclusions`,
+  `Compliance`, `SharedHelpers`, `ModelOutputAdapter`, `QueryParts`, `ChatContext`,
+  `HFDownloader`, `Globals`, `ReverseStemmer`, `TokenBudget`, `RAGChatImpl`, `Masker`,
+  `CosineScorer`, `KeyBertScorer`, `ValidExtensions`, `RegexScorer`,
+  `CollectionPicker`.
+- **5 test files** updated with corresponding reference changes
+  (`test_argos_downloader`, `test_accumulator`, `test_accumulate_parity`,
+  `test_hfdownloader`, `test_masker`).
+- 25 additional files audited and confirmed as having no instance variables to rename.
+
+#### 🧪 Testing
+
+- 11 tests for `ClassifyCSVReader` (`tests/test_classify_csv_reader.py`).
+- `test_models_cache.py` updated for nested chroma config structure.
 
 ---
 

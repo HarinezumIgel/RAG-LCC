@@ -14,25 +14,25 @@ class Globals(SingletonMixin):
             return
         self._initialized = True
 
-        self._documents: list[dict[str, Any]] = []
-        self._failed_docs: list[dict[str, Any]] = []
-        self._date: datetime = datetime.now()
-        self._logger: logging.Logger | None = None
+        self.documents: list[dict[str, Any]] = []
+        self.failed_docs: list[dict[str, Any]] = []
+        self.date: datetime = datetime.now()
+        self.logger: logging.Logger | None = None
 
     def get_logger(self) -> logging.Logger | None:
-        return self._logger
+        return self.logger
 
     # Document mutators
     def add_document(self, doc: dict[str, Any]) -> None:
-        self._documents.append(doc)
+        self.documents.append(doc)
 
     def add_failed_doc(self, doc: dict[str, Any]) -> None:
-        self._failed_docs.append(doc)
+        self.failed_docs.append(doc)
 
     # Date accessors
     def get_date(self) -> str:
         # Format: YYYYMMDD_HHMMSS — safe for filenames
-        return self._date.strftime("%Y%m%d_%H%M%S")
+        return self.date.strftime("%Y%m%d_%H%M%S")
 
     def set_logger(self, logger: logging.Logger) -> None:
-        self._logger = logger
+        self.logger = logger

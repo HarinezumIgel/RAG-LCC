@@ -18,6 +18,7 @@ from Commons.Exceptions import LLMComplianceCheckError, PromptComplianceError
 from Commons.SingletonMixin import SingletonMixin
 from Compliance.BannedPhraseCollector import BannedPhraseCollector
 from Compliance.Exclusions import Exclusions
+from Compliance.SharedHelpers import SharedHelpers
 from Config.Config import Config
 from Globals.CounterInstance import (FailedCount, HumanReviewCount,
                                      ProcessedCount)
@@ -235,6 +236,23 @@ class ClassifyStrategy(SingletonMixin, ProcessingStrategy):
 
         language: str = self.fileUtils.get_text_language(cleaned_text, "iso-639")
 
+        # --- unsupported-language gate ---
+        file_path: str = doc.get("meta", {}).get("FilePath", "?")
+        lang_action: str | None = SharedHelpers().check_language_support(
+            language, file_path
+        )
+        if lang_action == "NOT_OK":
+            doc.setdefault("meta", {}).update(
+                {
+                    "Status": "NOT_OK",
+                    "Stage": "Language",
+                    "Time": datetime.now().isoformat(),
+                }
+            )
+            self.csvWriter.write_json2csv(doc["meta"], "NOT_OK")
+            self.failedCounter.increment()
+            return
+
         # Preprocess the document.
         self.pretty.write(
             "I",
@@ -285,6 +303,12 @@ class ClassifyStrategy(SingletonMixin, ProcessingStrategy):
             require_keybert=True,
             embedding=embeddings,
         )
+
+        # Merge unsupported-language HUMAN_REVIEW flag
+        human_review_reason: str = ""
+        if lang_action == "HUMAN_REVIEW":
+            human_review = True
+            human_review_reason = f"Unsupported language '{language}'"
 
         # Prepare for keyword similarity calculation.
         #    raw_keywords = [kw for kw, weight in extraction_keywords]
@@ -436,12 +460,21 @@ class ClassifyStrategy(SingletonMixin, ProcessingStrategy):
 
         if human_review:
             self.humanReviewCount.increment()
-            self.csvWriter.write_json2csv(
-                self.bannedPhraseCollector.prepare_for_csv_print(
+            hr_data: list[dict[str, Any]] | dict[str, Any]
+            if phrase_table:
+                hr_data = self.bannedPhraseCollector.prepare_for_csv_print(
                     phrase_table, self.doc["meta"]
-                ),
-                "HUMAN_REVIEW",
-            )
+                )
+            else:
+                hr_data = dict(self.doc["meta"])
+            if human_review_reason:
+                if isinstance(hr_data, dict):
+                    hr_data["Reason"] = human_review_reason
+                    hr_data["Stage"] = "Language"
+                elif hr_data:
+                    hr_data[0]["Reason"] = human_review_reason
+                    hr_data[0]["Stage"] = "Language"
+            self.csvWriter.write_json2csv(hr_data, "HUMAN_REVIEW")
             orig_path = self.doc["meta"]["FilePath"]
             self.pretty.write(
                 "W",

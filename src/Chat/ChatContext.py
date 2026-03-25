@@ -33,7 +33,7 @@ class ChatContext(SingletonMixin):
         self.client: Any = None
         # conversation state
         self.conversation_id: Optional[str] = None
-        self._turn_index: int = 0
+        self.turn_index: int = 0
         self.initalized_collections: List[str] = []
 
         # RAG parameters (defaults, but overridable via session)
@@ -45,7 +45,7 @@ class ChatContext(SingletonMixin):
         Begin or resume a conversation, resetting turn counter on fresh start.
         """
         self.conversation_id = conversation_id or str(uuid.uuid4())
-        self._turn_index = 0
+        self.turn_index = 0
         return self.conversation_id
 
     def _init_chat_collection(self, session: "Session") -> "Collection":
@@ -112,13 +112,13 @@ class ChatContext(SingletonMixin):
             self._start_conversation()
 
         self._prune_chat_context(session)
-        self._turn_index += 1
+        self.turn_index += 1
         self._init_chat_collection(session)
 
         combined = f"USER: {chat_message}\nASSISTANT: {assistant_response}"
         meta = {
             "conversation_id": self.conversation_id,
-            "turn_index": self._turn_index,
+            "turn_index": self.turn_index,
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "chat_name": session.chat_name,
         }
@@ -134,7 +134,7 @@ class ChatContext(SingletonMixin):
             self.pretty.write(
                 "I",
                 "Add chat context",
-                f"Upserted turn {self._turn_index} for chat_name {session.chat_name} to {session.collection_name}_ChatContext",
+                f"Upserted turn {self.turn_index} for chat_name {session.chat_name} to {session.collection_name}_ChatContext",
             )
 
     def _fetch_context_docs(self, session: Session) -> List[LangchainDocument]:

@@ -1,3 +1,4 @@
+<!-- markdownlint-disable MD033 -->
 # RAG-LCC
 
 <p align="center">
@@ -6,13 +7,45 @@
 <p align="center"><em>Hedgehog created with Copilot AI</em></p>
 
 <p align="center">
-  🔬 <strong>Retrieval-Augmented Generation — Load, Chat, Classify</strong>
+  🔬 <strong>Retrieval-Augmented Generation (Local Corpus & Classification)</strong>
 </p>
 
 <p align="center">
-  An experimental, modular, offline-first research framework for ingesting documents into a local vector store,<br>
-  querying them with LLM-powered chat, and applying configurable detection pipelines<br>
-  to inspect content heuristically — all under operator control.
+  <b>RAG‑LCC</b><br>
+  A modular, offline‑first research framework for local document ingestion,
+  hybrid retrieval, and operator‑controlled content inspection.
+  <br><br>
+  Designed for experimentation with Retrieval‑Augmented Generation (RAG) techniques,
+  including Query‑Driven Document Routing, staged retrieval pipelines,
+  and configurable detection heuristics.
+</p>
+
+---
+
+## Overview
+
+**RAG‑LCC** (Local Corpus & Classification) is an experimental research environment focused on:
+
+- **Local and offline‑first operation**
+Local and offline‑capable operation
+After the initial setup phase, the system can operate locally without requiring continuous network access, depending on your configuration and environment.
+
+- **Configurable ingestion and detection pipelines**
+  Apply custom heuristics, filters, and classifiers during document processing.
+
+- **Query‑Driven Document Routing**
+  The system can classify and select relevant documents *based on the user’s prompt*.
+  Then load those documents into a local vector store for downstream retrieval.
+
+- **Hybrid Retrieval Stack**
+  Combine filter algorithms, LLM prompt checking, dense embeddings, rerankers inside a unified chain.
+
+- **Operator‑Visible and Operator‑Controlled**
+  Every step in the pipeline is transparent, adjustable, and intended for iterative experimentation.
+
+This project is intended for **research, prototyping, and educational use**.
+It does **not** claim performance guarantees, production readiness, or novel scientific breakthroughs.
+Instead, it provides a flexible sandbox to explore retrieval strategies and classification workflows in a controlled local environment.
 </p>
 
 <p align="center">
@@ -28,6 +61,7 @@
 
 ## ✨ High‑Level Features
 
+- Finds relevant documents based upon user prompt and optionally loads them into Vector Database
 - Local document ingestion into ChromaDB
 - Retrieval‑Augmented Generation (RAG)
 - Configurable multi‑algorithm filter chains
@@ -60,7 +94,17 @@ Detection results:
 
 ---
 
-## 📋 Human Review and Logs
+## �📂 Classify‑then‑Load Workflow
+
+`RAGLoad` can optionally consume the classification output produced by
+`DocClassify` so that **only documents classified as relevant** are ingested
+into the vector store.
+
+When enabled, `RAGLoad` reads the `OK` log CSV (and, optionally, the
+`HUMAN_REVIEW` log CSV) that `DocClassify` wrote for a given run and
+limits ingestion to the file paths listed therein.
+
+## �📋 Human Review and Logs
 
 Documents flagged by detection pipelines are logged to `.csv` and
 `.xlsx` files for **human review**.
@@ -344,6 +388,8 @@ For an architecture overview refer to the [Architecture Guide](ARCHITECTURE.md).
 
 For details on the extraction and KeyBERT variant configuration, see [Extraction & KeyBERT Variant Configuration in ARCHITECTURE.md](ARCHITECTURE.md#extraction--keybert-variant-configuration).
 
+For a summary of all selector + variant dictionary patterns used across the configuration files, see [Selector Pattern Overview in ARCHITECTURE.md](ARCHITECTURE.md#️-selector-pattern-overview).
+
 ### 📂 Project Structure
 
 ```text
@@ -358,7 +404,7 @@ src/
 ├── Configuration/    Static parameter definitions (Config_*.py)
 ├── Globals/          Shared state (logging, counters, session)
 ├── Gui/              Terminal UI helpers (banner, colors, symbols, informer, collection picker, pretty writer)
-├── Helpers/          General utilities (ChromaDB, CSV, file utils, Office converter, etc.)
+├── Helpers/          General utilities (ChromaDB, CSV, classify-CSV reader, file utils, Office converter, etc.)
 ├── Pipeline/         Orchestration (LoadAndClassifyProcessor)
 ├── Scripts/          Standalone maintenance scripts (Argos package management)
 └── Strategies/       Processing strategies + classification/chunking helpers
@@ -487,6 +533,20 @@ pip install argostranslate
 ```
 
 **Important:** When `ARGOS_STANZA_DOWNLOAD` is `"0"` (default used in this repository), the Argos Translate language packages for the languages expected in your documents must be **pre-installed** before processing. If a document's language is not installed, translation is skipped, a warning is issued, and the compliance pipeline falls back to English-normalized patterns. When `ARGOS_STANZA_DOWNLOAD` is `"1"`, stanza may download missing tokenizer models at runtime, so pre-installation is not strictly required — but a warning is still issued if no matching translation pair is found.
+
+#### Controlling behaviour for unsupported languages
+
+The config key **`UNSUPPORTED_LANGUAGE_ACTION`** (in `Config_Global.py`) determines
+what happens when a document’s detected language is not installed:
+
+| Value           | Behaviour                                                                 |
+|-----------------|---------------------------------------------------------------------------|
+| `FALLBACK_EN`   | *(default)* Process silently with English-only banlists                   |
+| `NOT_OK`        | Reject the document -- write to NOT_OK CSV, skip all further processing   |
+| `HUMAN_REVIEW`  | Process with English fallback banlists but flag for human review          |
+
+For **RAGChat** prompts, both `NOT_OK` and `HUMAN_REVIEW` block the prompt
+(there is no deferred review in a live chat session).
 
 Install language packages using the provided helper script:
 
@@ -799,6 +859,44 @@ See also the hints that are displayed by `DocClassify.py` on completion.
 
 For hands-on examples, see [Change provided example prompt in HANDS_ON_TOUR.md](HANDS_ON_TOUR.md#change-provided-example-prompt).
 
+### 📂 Load classified documents into the vector database
+
+After classifying documents with `DocClassify`, you can feed only the approved files
+into `RAGLoad` by enabling the classify‑then‑load filter. Set
+`LOAD_FROM_CLASSIFY_CSV` to load files from the OK log, optionally add
+`LOAD_FROM_HUMAN_REVIEW_CSV` to also include files that were flagged for human review,
+and provide the `CLASSIFY_RUN_STAMP` that identifies the `DocClassify` run
+(printed at the end of every `DocClassify` execution and visible in the log filenames,
+e.g. `20260325_141005`).
+
+```Windows
+python .\src\Apps\RAGLoad.py --load-from-classify-csv --classify-run-stamp 20260325_141005
+```
+
+To also include documents from the HUMAN_REVIEW log:
+
+```Windows
+python .\src\Apps\RAGLoad.py --load-from-classify-csv --load-from-human-review-csv --classify-run-stamp 20260325_141005
+```
+
+The same settings can be made permanent in `Config_RAGLoad.py`:
+
+```python
+LOAD_FROM_CLASSIFY_CSV = True
+LOAD_FROM_HUMAN_REVIEW_CSV = True   # optional
+CLASSIFY_RUN_STAMP = "20260325_141005"
+```
+
+When the classify‑then‑load filter is active, only file paths present in the selected
+CSV logs are ingested; all other files in `DOC_DIR` are skipped. Exclusion checks
+(`USE_EXCLUSIONS`) are bypassed automatically because `DocClassify` already evaluated
+them during its run.
+
+If the required OK CSV file is not found (e.g. wrong run stamp or missing log),
+`RAGLoad` raises a `ClassifyCSVNotFoundError` and stops immediately.
+A missing HUMAN_REVIEW CSV is non‑fatal — a warning is logged and ingestion
+continues with the OK paths only.
+
 ## 📚 Configuration Reference
 
 ### 📑 Lookup order
@@ -865,13 +963,26 @@ These three settings control the dynamic `max_output_tokens` calculation (see [T
 | `COLLECTION` | `"Test"` | Active ChromaDB collection name. Override with `--collection` on the CLI. |
 
 The chunking parameters are on purpose in `Config_Global.py` so RAGLoad and RAGChat both refer to these settings ([Lookup order](#-lookup-order)) because they must be **identical** for both programs.
+Switching between variants requires dropping and reloading the collection
+(`CHROMA_COLLECTION_KEEP = False`) because HNSW parameters are immutable
+after creation.
 
 ```python
+_ACTIVE_CHROMA_EMBED_AND_RETRIEVE_PARAMS_CONFIG = "THOROUGH"   # selector: "THOROUGH" or "COMPACT"
+
 _CHROMA_EMBED_AND_RETRIEVE_PARAMS = {
-    "CHUNK_SIZE": 256,            # Tokens per chunk
-    "CHUNK_OVERLAP": 32,          # Overlap between consecutive chunks (10-20 % of CHUNK_SIZE)
-    "NEIGHBORS_ON_LOAD": 512,     # HNSW neighbours explored at index time (RAGLoad)
-    "NEIGHBORS_RETRIEVE": 512,    # HNSW neighbours explored at query time (RAGChat)
+    "THOROUGH": {
+        "CHUNK_SIZE": 256,            # Tokens per chunk
+        "CHUNK_OVERLAP": 32,          # Overlap between consecutive chunks (10-20 % of CHUNK_SIZE)
+        "NEIGHBORS_ON_LOAD": 512,     # HNSW neighbours explored at index time (RAGLoad)
+        "NEIGHBORS_RETRIEVE": 512,    # HNSW neighbours explored at query time (RAGChat)
+    },
+    "COMPACT": {
+        "CHUNK_SIZE": 128,
+        "CHUNK_OVERLAP": 16,
+        "NEIGHBORS_ON_LOAD": 64,
+        "NEIGHBORS_RETRIEVE": 64,
+    },
 }
 ```
 
@@ -1103,6 +1214,26 @@ This is the simplest app-specific config:
 | `_CLASSIFICATION_KEYS` | `["Status", "Time", "Stage", ...]` | Columns written to the compliance CSV during ingestion. |
 | `_KEY_BERT.TOP_N_FIRST` | `100` | Keywords from the first KeyBERT pass. |
 | `_KEY_BERT.TOP_N_SECOND` | `60` | Keywords from the second KeyBERT pass. |
+
+#### � Classify‑then‑Load
+
+When enabled, `RAGLoad` reads the classification CSV output produced by a prior `DocClassify` run and limits ingestion to the file paths listed therein. Only documents that `DocClassify` classified as `OK` (and, optionally, those flagged for `HUMAN_REVIEW`) are loaded into the vector store. All other files in `DOC_DIR` are skipped.
+
+| Key | Default used in this repository | Purpose |
+| --- | --- | --- |
+| `LOAD_FROM_CLASSIFY_CSV` | `False` | Enable the classify‑then‑load filter. When `True`, only documents listed in the `DocClassify` OK CSV are ingested. |
+| `LOAD_FROM_HUMAN_REVIEW_CSV` | `False` | Also include documents from the `HUMAN_REVIEW` CSV. Only effective when `LOAD_FROM_CLASSIFY_CSV` is `True`. |
+| `CLASSIFY_RUN_STAMP` | `""` | Date‑time stamp (`YYYYMMDD_HHMMSS`) that identifies the `DocClassify` run whose CSVs should be read. Required when either flag above is `True`. The stamp is part of each CSV filename written by `DocClassify` (e.g. `DocClassify_OK_20260317_111105.csv`). |
+
+CLI example:
+
+```bash
+python src/Apps/RAGLoad.py --load-from-classify-csv --load-from-human-review-csv --classify-run-stamp 20260317_111105
+```
+
+When the classify‑then‑load filter is active, exclusion checks (`USE_EXCLUSIONS`) are bypassed because `DocClassify` already evaluated exclusions during its run.
+
+Classification results are heuristic and probabilistic — false positives and false negatives will occur. The classify‑then‑load filter does not add, verify, or guarantee any legal, regulatory, or compliance status of the ingested documents.
 
 #### 🔄 Incremental Hash Check
 

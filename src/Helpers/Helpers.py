@@ -435,6 +435,18 @@ class Helpers:
             return self.cfg.get_dict(f"_KEY_BERT.{active}")
         return self.cfg.get_dict("_KEY_BERT")
 
+    def get_chroma_config_slot(self) -> str:
+        """
+        Return the dot-notation prefix for the active chroma embed/retrieve variant.
+
+        Reads ``_ACTIVE_CHROMA_EMBED_AND_RETRIEVE_PARAMS_CONFIG`` (e.g. ``"THOROUGH"``) and
+        returns ``"_CHROMA_EMBED_AND_RETRIEVE_PARAMS.THOROUGH"``.
+        """
+        active: str = self.cfg.get_str(
+            "_ACTIVE_CHROMA_EMBED_AND_RETRIEVE_PARAMS_CONFIG"
+        )
+        return f"_CHROMA_EMBED_AND_RETRIEVE_PARAMS.{active}"
+
     def get_compliance_config_slot(self, stage: str) -> str:
         """
         Build config slot for compliance checks based on detection type and friendly name.

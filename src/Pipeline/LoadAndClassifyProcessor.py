@@ -28,6 +28,7 @@ from Globals.Globals import Globals
 from Gui.Colors import BRIGHT_BLUE, CYAN, ORANGE, RESET
 from Gui.PrettyWriter import PrettyWriter
 from Helpers.ChromaDBHelper import ChromaDBHelper
+from Helpers.ClassifyCSVReader import ClassifyCSVReader
 from Helpers.CSVWriter import CSVWriter
 from Helpers.FileUtils import FileUtils
 from Helpers.Helpers import Helpers
@@ -51,6 +52,8 @@ class LoadAndClassifyProcessor(SingletonMixin):
         self,
         strategy: ProcessingStrategy,
         *,
+        classify_run_stamp: str | None = None,
+        include_human_review: bool = False,
         cfg: "Config | None" = None,
         pretty: "PrettyWriter | None" = None,
         helpers: "Helpers | None" = None,
@@ -58,13 +61,23 @@ class LoadAndClassifyProcessor(SingletonMixin):
         if self._initialized:
             return
         self._initialized = True
-        self._strategy: ProcessingStrategy = strategy
+        self.strategy: ProcessingStrategy = strategy
+
+        # Optional allow-set loaded from a DocClassify OK CSV
+        self.allowed_paths: set[str] | None = None
+        if classify_run_stamp:
+            reader = ClassifyCSVReader(
+                classify_run_stamp,
+                includeHumanReview=include_human_review,
+                cfg=cfg,
+            )
+            self.allowed_paths = reader.readOkFilePaths()
 
         # Utilities & counters
-        self._failed_countInstance: FailedCount = FailedCount()
-        self._processed_countInstance: ProcessedCount = ProcessedCount()
-        self._ignored_countInstance: IgnoredCount = IgnoredCount()
-        self._exclusions_countInstance: ExclusionsCount = ExclusionsCount()
+        self.failed_countInstance: FailedCount = FailedCount()
+        self.processed_countInstance: ProcessedCount = ProcessedCount()
+        self.ignored_countInstance: IgnoredCount = IgnoredCount()
+        self.exclusions_countInstance: ExclusionsCount = ExclusionsCount()
         self.exclusions: Exclusions = Exclusions()
         self.pretty: PrettyWriter = pretty or PrettyWriter()
         self.helpers: Helpers = helpers or Helpers()
@@ -170,7 +183,7 @@ class LoadAndClassifyProcessor(SingletonMixin):
                 f"No change in {self.escapedFilePath}. Skip",
                 color=CYAN,
             )
-            self._processed_countInstance.increment()
+            self.processed_countInstance.increment()
             self.csvWriter.write_json2csv(
                 {"FilePath": self.escapedFilePath, "Status": "NO CHANGE IN FILE"},
                 "OK",
@@ -179,13 +192,13 @@ class LoadAndClassifyProcessor(SingletonMixin):
         else:
             return True
 
-    def _make_doc(self) -> dict[str, Any]:
+    def _make_doc(self) -> Dict[str, Any]:
         self.content, _ = self.helpers.safe_decode_to_unicode(
             self.content, True
         )  # Assuming not already UTF-8.
         detected: str = str(detect(self.content))  # type: ignore[reportUnknownArgumentType]
         language: str = detected
-        self.doc = {
+        self.doc: Dict[str, Any] = {
             "meta": {
                 "FileName": self.fileName,
                 "FilePath": self.escapedFilePath,
@@ -209,7 +222,21 @@ class LoadAndClassifyProcessor(SingletonMixin):
             for self.fileName in files:
                 self.filePath: str = os.path.join(root, self.fileName)
                 self.escapedFilePath: str = self.fileUtils.normalize_path(self.filePath)
-                if self.use_exclusions and self.exclusions.contains(
+
+                # When a classify CSV allow-set is active it is the
+                # authoritative source — DocClassify already applied
+                # exclusions, so we skip the exclusion check here.
+                if self.allowed_paths is not None:
+                    normalized = os.path.normpath(self.escapedFilePath)
+                    if normalized not in self.allowed_paths:
+                        self.pretty.write(
+                            "I",
+                            "ClassifyCSV",
+                            f"Skipped (not in classify CSV): {self.escapedFilePath}",
+                        )
+                        self.ignored_countInstance.increment()
+                        continue
+                elif self.use_exclusions and self.exclusions.contains(
                     self.escapedFilePath
                 ):
                     self.pretty.write(
@@ -218,7 +245,7 @@ class LoadAndClassifyProcessor(SingletonMixin):
                         f"Excluding: {self.escapedFilePath}",
                         color=ORANGE,
                     )
-                    self._exclusions_countInstance.increment()
+                    self.exclusions_countInstance.increment()
                     continue
 
                 self.pretty.write(
@@ -237,11 +264,11 @@ class LoadAndClassifyProcessor(SingletonMixin):
                         "Ignored extensions",
                         f"Ignored (invalid ext): {self.escapedFilePath} ({self.ftype})",
                     )
-                    self._ignored_countInstance.increment()
+                    self.ignored_countInstance.increment()
                     continue
 
                 if (
-                    self._strategy.strategy_type == StrategyType.CHUNKS_TO_DB
+                    self.strategy.strategy_type == StrategyType.CHUNKS_TO_DB
                     and self.docChanged() == False
                 ):
                     continue
@@ -338,7 +365,7 @@ class LoadAndClassifyProcessor(SingletonMixin):
                         f"Extraction failed: {self.escapedFilePath}: {e}",
                     )
                     # record a failed doc stub and continue
-                    self._failed_countInstance.increment()
+                    self.failed_countInstance.increment()
                     self.globalsInstance.add_failed_doc(
                         {"FilePath": self.escapedFilePath, "error": str(e)}
                     )
@@ -363,6 +390,6 @@ class LoadAndClassifyProcessor(SingletonMixin):
                 self.doc = self._make_doc()
 
                 # route to chunker or classifier
-                self._strategy.process(self.doc)
+                self.strategy.process(self.doc)
 
-                self._processed_countInstance.increment()
+                self.processed_countInstance.increment()

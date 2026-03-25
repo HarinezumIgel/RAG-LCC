@@ -165,7 +165,7 @@ def _build_hfdownloader(cfg_overrides=None, helpers=None, base_dir=None):
     dl.logger = StubLogger()
     dl.pretty = StubPrettyWriter()
     dl.base_dir = Path(base_dir) if base_dir else Path("ModelGovernance/consents")
-    dl._identity_cache = None
+    dl.identity_cache = None
     dl.hf_hub_offline = os.environ.get("HF_HUB_OFFLINE", "1")
 
     return dl

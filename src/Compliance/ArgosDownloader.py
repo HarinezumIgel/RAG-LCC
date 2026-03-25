@@ -46,24 +46,24 @@ class ArgosDownloader:
         project_root: str,
         languages: List[Tuple[str, str]],
     ) -> None:
-        self._root: str = project_root
-        self._languages: List[Tuple[str, str]] = languages
+        self.root: str = project_root
+        self.languages: List[Tuple[str, str]] = languages
 
-        self._license_dir: str = os.path.join(project_root, self._LICENSE_DIR_REL)
-        self._license_path: str = os.path.join(self._license_dir, "LICENSE.txt")
-        self._license_meta_path: str = os.path.join(
-            self._license_dir, "license_meta.json"
+        self.license_dir: str = os.path.join(project_root, self._LICENSE_DIR_REL)
+        self.license_path: str = os.path.join(self.license_dir, "LICENSE.txt")
+        self.license_meta_path: str = os.path.join(
+            self.license_dir, "license_meta.json"
         )
-        self._consent_dir: str = os.path.join(project_root, self._CONSENT_DIR_REL)
-        self._download_meta_path: str = os.path.join(
-            self._consent_dir, "download_meta.json"
+        self.consent_dir: str = os.path.join(project_root, self._CONSENT_DIR_REL)
+        self.download_meta_path: str = os.path.join(
+            self.consent_dir, "download_meta.json"
         )
 
-        self._shared: SharedHelpers = SharedHelpers()
-        self._helpers: Helpers = Helpers()
-        self._file_utils: FileUtils = FileUtils()
-        self._pretty: PrettyWriter = PrettyWriter()
-        self._logger: logging.Logger = self._helpers.setup_logger("Compliance")
+        self.shared: SharedHelpers = SharedHelpers()
+        self.helpers: Helpers = Helpers()
+        self.file_utils: FileUtils = FileUtils()
+        self.pretty: PrettyWriter = PrettyWriter()
+        self.logger: logging.Logger = self.helpers.setup_logger("Compliance")
 
     # ------------------------------------------------------------------
     # Public API
@@ -71,21 +71,21 @@ class ArgosDownloader:
     def _check_existing_consent(self) -> bool:
         """Return True and emit a green message if consent JSON is valid."""
         if (
-            not os.path.isfile(self._license_path)
-            or not os.path.isfile(self._license_meta_path)
-            or not os.path.isfile(self._download_meta_path)
+            not os.path.isfile(self.license_path)
+            or not os.path.isfile(self.license_meta_path)
+            or not os.path.isfile(self.download_meta_path)
         ):
             return False
-        with open(self._license_path, "r", encoding="utf-8") as fh:
-            license_hash: str = self._shared.compute_text_hash(fh.read())
-        with open(self._license_meta_path, "r", encoding="utf-8") as fh:
+        with open(self.license_path, "r", encoding="utf-8") as fh:
+            license_hash: str = self.shared.compute_text_hash(fh.read())
+        with open(self.license_meta_path, "r", encoding="utf-8") as fh:
             meta: Dict[str, Any] = json.load(fh)
         if (
             meta.get("consent") is True and meta.get("license_hash") == license_hash
         ):  # noqa: E501
-            n = len(self._languages)
-            self._logger.info("Argos Translate consent valid (%d pair(s))", n)
-            self._pretty.write(
+            n = len(self.languages)
+            self.logger.info("Argos Translate consent valid (%d pair(s))", n)
+            self.pretty.write(
                 "O",
                 "Argos License",
                 f"Consent valid for {n} configured language pair(s)",
@@ -116,13 +116,13 @@ class ArgosDownloader:
         license_text = self._fetch_license()
         if license_text is None:
             return False
-        license_hash: str = self._shared.compute_text_hash(license_text)
+        license_hash: str = self.shared.compute_text_hash(license_text)
 
         # --- prompt: accept the license ---
         print(f"{BRIGHT_BLUE}\n{'=' * 70}")
         print("  Argos Translate License Consent")
         print(
-            f"  Language pairs: {', '.join(f'{a}\u2192{b}' for a, b in self._languages)}"
+            f"  Language pairs: {', '.join(f'{a}\u2192{b}' for a, b in self.languages)}"
         )
         print(f"{'=' * 70}{RESET}\n")
 
@@ -137,7 +137,7 @@ class ArgosDownloader:
 
         # --- prompt: proceed with download ---
         print(f"\n{BRIGHT_BLUE}The following will be downloaded:{RESET}")
-        for from_code, to_code in self._languages:
+        for from_code, to_code in self.languages:
             print(
                 f"  Argos package  {from_code} \u2192 {to_code}  (includes bundled stanza tokenizer)"
             )
@@ -147,11 +147,11 @@ class ArgosDownloader:
         if ans != "y":
             self._show_non_consent_msg()
             return False
-        self._logger.info(
-            "User accepted download for %d language pair(s)", len(self._languages)
+        self.logger.info(
+            "User accepted download for %d language pair(s)", len(self.languages)
         )
         # --- persist license + license metadata ---
-        identity = self._shared.capture_acceptance_identity_once()
+        identity = self.shared.capture_acceptance_identity_once()
         now = datetime.now(tz=timezone.utc).replace(tzinfo=None).isoformat() + "Z"
 
         license_meta: Dict[str, Any] = {
@@ -162,35 +162,35 @@ class ArgosDownloader:
             "accepted_at": now,
             "consent": True,
         }
-        os.makedirs(self._license_dir, exist_ok=True)
-        with open(self._license_path, "w", encoding="utf-8") as fh:
+        os.makedirs(self.license_dir, exist_ok=True)
+        with open(self.license_path, "w", encoding="utf-8") as fh:
             fh.write(license_text)
-        with open(self._license_meta_path, "w", encoding="utf-8") as fh:
+        with open(self.license_meta_path, "w", encoding="utf-8") as fh:
             json.dump(license_meta, fh, indent=2, ensure_ascii=False)
 
         # --- persist download consent ---
         download_meta: Dict[str, Any] = {
             "component": "argostranslate",
-            "languages": [list(p) for p in self._languages],
+            "languages": [list(p) for p in self.languages],
             **identity,
             "accepted_at": now,
             "source": "downloaded",
             "consent": True,
         }
-        os.makedirs(self._consent_dir, exist_ok=True)
-        with open(self._download_meta_path, "w", encoding="utf-8") as fh:
+        os.makedirs(self.consent_dir, exist_ok=True)
+        with open(self.download_meta_path, "w", encoding="utf-8") as fh:
             json.dump(download_meta, fh, indent=2, ensure_ascii=False)
 
-        self._pretty.write(
+        self.pretty.write(
             "O",
             "Argos License",
-            f"License consent recorded in {self._license_meta_path}",
+            f"License consent recorded in {self.license_meta_path}",
             color=GREEN,
         )
-        self._pretty.write(
+        self.pretty.write(
             "O",
             "Argos Download",
-            f"Download consent recorded in {self._download_meta_path}",
+            f"Download consent recorded in {self.download_meta_path}",
             color=GREEN,
         )
 
@@ -199,13 +199,13 @@ class ArgosDownloader:
         return True
 
     def _show_non_consent_msg(self) -> None:
-        self._pretty.write(
+        self.pretty.write(
             "W",
             "Argos License",
             'Download declined. Set ARGOS_STANZA_DOWNLOAD="0" to suppress this prompt in the future.',
             color=YELLOW,
         )
-        self._pretty.write(
+        self.pretty.write(
             "W",
             "Argos License",
             "If translation from banned words (Config_Banned.py) to the document's target language is not possible,"
@@ -217,14 +217,14 @@ class ArgosDownloader:
         """Uninstall every installed Argos Translate language package."""
         installed = argostranslate.package.get_installed_packages()
         if not installed:
-            self._pretty.write(
+            self.pretty.write(
                 "I", "Argos", "No packages installed — nothing to remove."
             )
             return
         for pkg in installed:
             print(f"  Removing {pkg.from_code} \u2192 {pkg.to_code} ...")
             argostranslate.package.uninstall(pkg)
-        self._pretty.write(
+        self.pretty.write(
             "O", "Argos", f"Removed {len(installed)} package(s).", color=GREEN
         )
 
@@ -239,7 +239,7 @@ class ArgosDownloader:
         # Minimal safety: block drive roots
         _, tail = os.path.splitdrive(abs_path)
         if len(tail) <= 2:
-            self._pretty.write(
+            self.pretty.write(
                 "E",
                 "Path Guard",
                 f"Refusing to delete root or drive path '{abs_path}'.",
@@ -249,20 +249,20 @@ class ArgosDownloader:
 
         if os.path.isdir(abs_path):
             shutil.rmtree(abs_path)
-            self._pretty.write("O", "Stanza", f"Removed {abs_path}", color=GREEN)
+            self.pretty.write("O", "Stanza", f"Removed {abs_path}", color=GREEN)
         else:
-            self._pretty.write(
+            self.pretty.write(
                 "I", "Stanza", f"Directory not found — skipping ({abs_path})"
             )
 
     def remove_consent(self) -> None:
         """Remove consent metadata via FileUtils path guard."""
-        if os.path.isfile(self._license_meta_path):
-            self._file_utils.delete_file_or_dir(self._license_meta_path)
-        if os.path.isfile(self._license_path):
-            self._file_utils.delete_file_or_dir(self._license_path)
-        if os.path.isfile(self._download_meta_path):
-            self._file_utils.delete_file_or_dir(self._download_meta_path)
+        if os.path.isfile(self.license_meta_path):
+            self.file_utils.delete_file_or_dir(self.license_meta_path)
+        if os.path.isfile(self.license_path):
+            self.file_utils.delete_file_or_dir(self.license_path)
+        if os.path.isfile(self.download_meta_path):
+            self.file_utils.delete_file_or_dir(self.download_meta_path)
 
     def show_status(self) -> None:
         """Print currently installed Argos languages and packages."""
@@ -284,7 +284,7 @@ class ArgosDownloader:
         argostranslate.package.update_package_index()
         available = argostranslate.package.get_available_packages()
 
-        for from_code, to_code in self._languages:
+        for from_code, to_code in self.languages:
             try:
                 pkg = next(
                     p
@@ -294,7 +294,7 @@ class ArgosDownloader:
                 print(f"  Installing {from_code} \u2192 {to_code} ...")
                 argostranslate.package.install_from_path(pkg.download())
             except StopIteration:
-                self._pretty.write(
+                self.pretty.write(
                     "W",
                     "Argos",
                     f"No package found for {from_code} \u2192 {to_code}",
@@ -307,15 +307,15 @@ class ArgosDownloader:
         Returns the license text on success, or None on failure.
         """
         url = self._LICENSE_URL
-        self._logger.info("Fetching Argos license from %s", url)
+        self.logger.info("Fetching Argos license from %s", url)
         try:
             resp = requests.get(url, timeout=15)
             resp.raise_for_status()
             return resp.text
         except Exception as exc:
             msg = f"Failed to fetch Argos license from {url}: {exc}"
-            self._logger.error(msg)
-            self._pretty.write("E", "Argos License", msg, color=RED)
+            self.logger.error(msg)
+            self.pretty.write("E", "Argos License", msg, color=RED)
             return None
 
     def _download_stanza_models(self) -> None:
@@ -330,7 +330,7 @@ class ArgosDownloader:
         try:
             import stanza  # type: ignore[reportMissingImports]
         except ImportError:
-            self._pretty.write(
+            self.pretty.write(
                 "W",
                 "Stanza",
                 "stanza is not installed — skipping model downloads",
@@ -338,13 +338,13 @@ class ArgosDownloader:
             )
             return
 
-        all_codes = sorted({c for pair in self._languages for c in pair})
+        all_codes = sorted({c for pair in self.languages for c in pair})
         for code in all_codes:
             try:
                 print(f"  Downloading stanza model for '{code}' ...")
                 stanza.download(code, processors="tokenize,mwt", logging_level="WARNING")  # type: ignore[reportUnknownMemberType]
             except Exception as exc:
-                self._pretty.write(
+                self.pretty.write(
                     "W",
                     "Stanza",
                     f"Failed to download stanza model for '{code}': {exc}",

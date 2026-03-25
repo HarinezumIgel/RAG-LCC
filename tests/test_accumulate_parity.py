@@ -136,10 +136,10 @@ def _make_accumulator(
     """Build a real Accumulator with stubbed deps (no heavy __init__)."""
     a = Accumulator.__new__(Accumulator)
     a._initialized = True
-    a._raw_results = []
-    a._per_chunk_decisions = []
-    a._per_chunk_filtered = []
-    a._per_chunk_phrase_hits = []
+    a.raw_results = []
+    a.per_chunk_decisions = []
+    a.per_chunk_filtered = []
+    a.per_chunk_phrase_hits = []
     a.cfg = StubConfig(required_depth, required_breadth)
     a.aiHelpers = StubAIHelpers()
     a.helpers = StubHelpers()

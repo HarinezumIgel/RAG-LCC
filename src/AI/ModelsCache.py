@@ -61,9 +61,8 @@ class ModelsCache(SingletonMixin):
 
         # --- config values used for model loading ---
         self.cache_dir: str = self.cfg.get_str("_HF_HUB_CACHE")
-        self.chunk_size: int = self.cfg.get_int(
-            "_CHROMA_EMBED_AND_RETRIEVE_PARAMS.CHUNK_SIZE"
-        )
+        chroma_slot: str = self.helpers.get_chroma_config_slot()
+        self.chunk_size: int = self.cfg.get_int(f"{chroma_slot}.CHUNK_SIZE")
         self.hf_hub_offline: str = os.environ.get("HF_HUB_OFFLINE", "1")
         self.use_cpu: bool = self.cfg.get_bool("USE_CPU")
         self.bits: int = self.cfg.get_int("EMBEDDER_BITS", 32)

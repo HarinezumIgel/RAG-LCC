@@ -66,13 +66,13 @@ class KeyBertScorer(SingletonMixin, ScorerBase):
         self.pharase_cache_matrix: Optional[torch.Tensor] = None
 
         # build cache lazily on first verify()
-        self._ready: bool = False
+        self.ready: bool = False
 
     def _ensure_ready(self) -> None:
         """Lazily load the model and pre-compute caches on first use."""
-        if self._ready:
+        if self.ready:
             return
-        self._ready = True
+        self.ready = True
         self.embedder = self.models_cache.get_hf_embeddings()
         self.device, self.device_type, self.target_dtype, self.device_index = (
             self.models_cache.switch2device()

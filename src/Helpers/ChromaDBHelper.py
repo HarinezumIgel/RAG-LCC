@@ -44,13 +44,13 @@ class ChromaDBHelper:
                 "hnsw:space": "cosine",
                 # More neighbors explored during index construction (balance accuracy vs speed)
                 "hnsw:construction_ef": self.cfg.get_int(
-                    "_CHROMA_EMBED_AND_RETRIEVE_PARAMS.NEIGHBORS_ON_LOAD"
+                    f"{self.helpers.get_chroma_config_slot()}.NEIGHBORS_ON_LOAD"
                 ),
                 # Maximum links per node in HNSW graph (32 is typical)
                 "hnsw:M": 32,
                 # More neighbors explored during search for better recall
                 "hnsw:search_ef": self.cfg.get_int(
-                    "_CHROMA_EMBED_AND_RETRIEVE_PARAMS.NEIGHBORS_RETRIEVE"
+                    f"{self.helpers.get_chroma_config_slot()}.NEIGHBORS_RETRIEVE"
                 ),
             },
         )

@@ -95,10 +95,10 @@ def acc():
 
     a = Accumulator.__new__(Accumulator)
     a._initialized = True
-    a._raw_results = []
-    a._per_chunk_decisions = []
-    a._per_chunk_filtered = []
-    a._per_chunk_phrase_hits = []
+    a.raw_results = []
+    a.per_chunk_decisions = []
+    a.per_chunk_filtered = []
+    a.per_chunk_phrase_hits = []
     a.cfg = StubConfig()
     a.aiHelpers = StubAIHelpers()
     a.helpers = StubHelpers()
@@ -176,5 +176,5 @@ class TestAddResults:
         acc.add_results(results1, "PIPELINE_CHECK")
         acc.add_results(results2, "PIPELINE_CHECK")
 
-        assert len(acc._raw_results) == 2
-        assert len(acc._per_chunk_decisions) == 2
+        assert len(acc.raw_results) == 2
+        assert len(acc.per_chunk_decisions) == 2

@@ -36,7 +36,7 @@ class SharedHelpers(SingletonMixin):
 
         except Exception as exc:
             langs = []
-            self._lang_load_failed = True
+            self.lang_load_failed = True
             pretty = pretty or PrettyWriter()
             pretty.write(
                 "W",
@@ -46,17 +46,17 @@ class SharedHelpers(SingletonMixin):
                 color=ORANGE,
             )
 
-        self._installed_langs: Dict[str, Any] = {
+        self.installed_langs: Dict[str, Any] = {
             getattr(l, "code", "").lower(): l for l in langs
         }
         # compiled regex cache keyed by (pattern_text, flags)
-        self._regex_compile_cache: Dict[Tuple[str, int], re.Pattern[str]] = {}
+        self.regex_compile_cache: Dict[Tuple[str, int], re.Pattern[str]] = {}
         # translation cache keyed by (text, target_lang, source_lang)
-        self._translation_cache: Dict[Tuple[str, str, str], str] = {}
+        self.translation_cache: Dict[Tuple[str, str, str], str] = {}
         # translated banlist cache keyed by (tuple(banlist_en), lang)
-        self._translated_ban_cache: Dict[Tuple[Tuple[str, ...], str], List[str]] = {}
+        self.translated_ban_cache: Dict[Tuple[Tuple[str, ...], str], List[str]] = {}
         # track languages for which a "not installed" warning has been issued
-        self._warned_langs: set[str] = set()
+        self.warned_langs: set[str] = set()
         self.pretty: PrettyWriter = pretty or PrettyWriter()
         self.cfg: Config = cfg or Config()
 
@@ -74,7 +74,7 @@ class SharedHelpers(SingletonMixin):
         code_to_name: dict[str, Any] = self.cfg.get_dict(
             "_ARGOS_DEFINITIONS.LANG_CODE_TO_NAME"
         )
-        self._lang_name_to_code: Dict[str, str] = {
+        self.lang_name_to_code: Dict[str, str] = {
             str(name).lower(): code for code, name in code_to_name.items()
         }
         # Module-level cache so the identity is captured only once per process
@@ -82,7 +82,54 @@ class SharedHelpers(SingletonMixin):
 
     def get_installed_langs(self) -> Dict[str, Any]:
         """Return the map of installed Argos Translate language codes to language objects."""
-        return self._installed_langs
+        return self.installed_langs
+
+    def is_language_supported(self, lang: str) -> bool:
+        """Return *True* if *lang* is English or is installed in Argos Translate.
+
+        Accepts both ISO-639 codes (``"de"``) and NLTK names (``"german"``).
+        English is always treated as supported because the banlists are
+        already in English and no translation is required.
+        """
+        code: str = (lang or "en").lower()
+        code = self.lang_name_to_code.get(code, code)
+        if code.startswith("en"):
+            return True
+        return code in self.installed_langs
+
+    def check_language_support(self, language: str, file_path: str = "?") -> str | None:
+        """Check whether *language* is installed and return the configured action.
+
+        Returns ``None`` when the language is supported or the configured
+        action is ``FALLBACK_EN`` (caller should continue normally).
+        Returns ``"NOT_OK"`` or ``"HUMAN_REVIEW"`` when the caller must
+        act on the unsupported language.  A warning is logged automatically.
+        """
+        if self.is_language_supported(language):
+            return None
+        action: str = self.cfg.get_str(
+            "UNSUPPORTED_LANGUAGE_ACTION", "FALLBACK_EN"
+        ).upper()
+        if action == "NOT_OK":
+            self.pretty.write(
+                "W",
+                "Language",
+                f"Language '{language}' not installed — "
+                f"skipping {file_path} (UNSUPPORTED_LANGUAGE_ACTION=NOT_OK)",
+                color=ORANGE,
+            )
+            return "NOT_OK"
+        if action == "HUMAN_REVIEW":
+            self.pretty.write(
+                "W",
+                "Language",
+                f"Language '{language}' not installed — "
+                f"processing with English fallback, flagging for human review "
+                f"(UNSUPPORTED_LANGUAGE_ACTION=HUMAN_REVIEW)",
+                color=ORANGE,
+            )
+            return "HUMAN_REVIEW"
+        return None
 
     def refresh_installed_languages(self) -> None:
         """Re-scan installed Argos Translate packages and update the language map.
@@ -94,7 +141,7 @@ class SharedHelpers(SingletonMixin):
             langs = translate.get_installed_languages()
         except Exception:
             langs = []
-        self._installed_langs = {getattr(l, "code", "").lower(): l for l in langs}
+        self.installed_langs = {getattr(l, "code", "").lower(): l for l in langs}
         if self.cfg.get_int("DEBUG_LEVEL") >= 1:
             for lang in langs:
                 self.pretty.write(
@@ -159,7 +206,7 @@ class SharedHelpers(SingletonMixin):
         if not text or not target_lang:
             return text
         key = (text, (target_lang or "").lower(), (source_lang or "auto").lower())
-        cached = self._translation_cache.get(key)
+        cached = self.translation_cache.get(key)
         if cached is not None:
             return cached
 
@@ -172,32 +219,32 @@ class SharedHelpers(SingletonMixin):
             except Exception:
                 translated = text
 
-        self._translation_cache[key] = translated
+        self.translation_cache[key] = translated
         return translated
 
     def _get_translation(self, source_code: str, target_code: str) -> Any:
         source_code = (source_code or "auto").lower()
         target_code = (target_code or "").lower()
         # Normalise NLTK names ("german") → ISO codes ("de")
-        source_code = self._lang_name_to_code.get(source_code, source_code)
-        target_code = self._lang_name_to_code.get(target_code, target_code)
+        source_code = self.lang_name_to_code.get(source_code, source_code)
+        target_code = self.lang_name_to_code.get(target_code, target_code)
         if not target_code:
             return None
 
         # --- lazy retry if initial language load failed ---
-        if getattr(self, "_lang_load_failed", False) and not self._installed_langs:
+        if getattr(self, "lang_load_failed", False) and not self.installed_langs:
             try:
                 langs = translate.get_installed_languages()
-                self._installed_langs = {
+                self.installed_langs = {
                     getattr(l, "code", "").lower(): l for l in langs
                 }
-                self._lang_load_failed = False
+                self.lang_load_failed = False
             except Exception:
                 pass
 
         # --- try to find a locally installed translation pair ---
-        src_lang = self._installed_langs.get(source_code)
-        tgt_lang = self._installed_langs.get(target_code)
+        src_lang = self.installed_langs.get(source_code)
+        tgt_lang = self.installed_langs.get(target_code)
         if src_lang and tgt_lang:
             try:
                 translated = src_lang.get_translation(tgt_lang)
@@ -208,7 +255,7 @@ class SharedHelpers(SingletonMixin):
 
         # fallback: try every installed source → target
         if tgt_lang:
-            for src in self._installed_langs.values():
+            for src in self.installed_langs.values():
                 try:
                     translated = src.get_translation(tgt_lang)
                     if translated:
@@ -217,16 +264,16 @@ class SharedHelpers(SingletonMixin):
                     continue
 
         # --- no installed pair found ---
-        if target_code not in self._warned_langs:
-            self._warned_langs.add(target_code)
+        if target_code not in self.warned_langs:
+            self.warned_langs.add(target_code)
             stanza_download = os.environ.get("ARGOS_STANZA_DOWNLOAD", "0").strip()
             if stanza_download != "1":
                 self.pretty.write(
                     "W",
-                    "Translate",
+                    "Translate Banned",
                     f"Language '{target_code}' not installed locally — "
-                    f"translation skipped, using English fallback "
-                    f"(set ARGOS_STANZA_DOWNLOAD=1 to allow network downloads "
+                    f"banned words to target language translation skipped, "
+                    f"using English fallback. Set ARGOS_STANZA_DOWNLOAD=1 to allow network downloads "
                     f"or run src/scripts/ArgosTranslatePackages.py to install languages "
                     f"defined in Config_Global _ARGOS_DEFINITIONS.ARGOS_LANGUAGES)",
                     color=ORANGE,
@@ -234,10 +281,10 @@ class SharedHelpers(SingletonMixin):
             else:
                 self.pretty.write(
                     "W",
-                    "Translate",
+                    "Translate Banned",
                     f"Language '{target_code}' not installed — "
-                    f"translation skipped, using English fallback "
-                    f"(add the language pair to ARGOS_LANGUAGES and reinstall packages)",
+                    f"banned words to target language translation skipped, using English fallback. "
+                    f"(Add the language pair to ARGOS_LANGUAGES and reinstall packages)",
                     color=ORANGE,
                 )
         return None
@@ -249,7 +296,7 @@ class SharedHelpers(SingletonMixin):
         Return a merged banlist.
 
         - If `lang == "en"` returns the translated list lowercased (or the English source lowercased if no translated list provided).
-        - If `lang != "en"` merges `self._banlist_en` with `translated`, lowercasing all words,
+        - If `lang != "en"` merges `self.banlist_en` with `translated`, lowercasing all words,
           preserving order (English first), and removing duplicates.
         """
 
@@ -270,16 +317,16 @@ class SharedHelpers(SingletonMixin):
         self, banlist_en: List[str], language: str, algo: str
     ) -> List[str]:
         lang: str = (language or "en").lower()
-        lang = self._lang_name_to_code.get(lang, lang)
+        lang = self.lang_name_to_code.get(lang, lang)
         banlist_key: tuple[str, ...] = tuple(banlist_en or [])
         cache_key: tuple[tuple[str, ...], str] = (banlist_key, lang)
-        cached: list[str] | None = self._translated_ban_cache.get(cache_key)
+        cached: list[str] | None = self.translated_ban_cache.get(cache_key)
         if cached is not None:
             return cached
 
         if lang.startswith("en"):
             normalized: list[str] = [self.normalize(p) for p in banlist_en]
-            self._translated_ban_cache[cache_key] = normalized
+            self.translated_ban_cache[cache_key] = normalized
             return normalized
 
         translated_phrases: List[str] = []
@@ -294,7 +341,7 @@ class SharedHelpers(SingletonMixin):
             translated_phrases.append(self.normalize(tp))
 
         merged: List[str] = self.merge_banlists(banlist_en, translated_phrases)
-        self._translated_ban_cache[cache_key] = merged
+        self.translated_ban_cache[cache_key] = merged
         return merged
 
     # -------------------------
@@ -305,14 +352,14 @@ class SharedHelpers(SingletonMixin):
         Compile and cache regex Pattern objects keyed by (pattern, flags).
         """
         key: tuple[str, int] = (pattern, flags)
-        cp: re.Pattern[str] | None = self._regex_compile_cache.get(key)
+        cp: re.Pattern[str] | None = self.regex_compile_cache.get(key)
         if cp is not None:
             return cp
         # compile outside lock to avoid holding lock for long operations
         compiled: re.Pattern[str] = re.compile(pattern, flags)
-        existing: re.Pattern[str] | None = self._regex_compile_cache.get(key)
+        existing: re.Pattern[str] | None = self.regex_compile_cache.get(key)
         if existing is None:
-            self._regex_compile_cache[key] = compiled
+            self.regex_compile_cache[key] = compiled
             return compiled
         return existing
 

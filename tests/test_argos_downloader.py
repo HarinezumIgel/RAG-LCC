@@ -92,37 +92,37 @@ def _build(tmp_path, *, write_license=False, write_meta=None):
     """Build an ArgosDownloader with stubs, pointing at tmp_path as project root."""
     dl = object.__new__(ArgosDownloader)
 
-    dl._root = str(tmp_path)
-    dl._languages = list(_LANGS)
+    dl.root = str(tmp_path)
+    dl.languages = list(_LANGS)
 
     license_dir_rel = os.path.join("ModelGovernance", "licenses", "argos_translate")
     consent_dir_rel = os.path.join("ModelGovernance", "consents", "argos_translate")
 
-    dl._license_dir = os.path.join(str(tmp_path), license_dir_rel)
-    dl._license_path = os.path.join(dl._license_dir, "LICENSE.txt")
-    dl._license_meta_path = os.path.join(dl._license_dir, "license_meta.json")
-    dl._consent_dir = os.path.join(str(tmp_path), consent_dir_rel)
-    dl._download_meta_path = os.path.join(dl._consent_dir, "download_meta.json")
+    dl.license_dir = os.path.join(str(tmp_path), license_dir_rel)
+    dl.license_path = os.path.join(dl.license_dir, "LICENSE.txt")
+    dl.license_meta_path = os.path.join(dl.license_dir, "license_meta.json")
+    dl.consent_dir = os.path.join(str(tmp_path), consent_dir_rel)
+    dl.download_meta_path = os.path.join(dl.consent_dir, "download_meta.json")
 
-    dl._shared = StubSharedHelpers()
-    dl._helpers = StubHelpers()
-    dl._file_utils = StubFileUtils()
-    dl._pretty = StubPrettyWriter()
-    dl._logger = StubLogger()
+    dl.shared = StubSharedHelpers()
+    dl.helpers = StubHelpers()
+    dl.file_utils = StubFileUtils()
+    dl.pretty = StubPrettyWriter()
+    dl.logger = StubLogger()
 
     # Set up license file on disk (simulates already-downloaded license)
     if write_license:
-        os.makedirs(dl._license_dir, exist_ok=True)
-        with open(dl._license_path, "w", encoding="utf-8") as f:
+        os.makedirs(dl.license_dir, exist_ok=True)
+        with open(dl.license_path, "w", encoding="utf-8") as f:
             f.write(_LICENSE_TEXT)
 
     # Optionally pre-populate consent metadata
     if write_meta is not None:
-        os.makedirs(dl._license_dir, exist_ok=True)
-        with open(dl._license_meta_path, "w", encoding="utf-8") as f:
+        os.makedirs(dl.license_dir, exist_ok=True)
+        with open(dl.license_meta_path, "w", encoding="utf-8") as f:
             json.dump(write_meta, f)
-        os.makedirs(dl._consent_dir, exist_ok=True)
-        with open(dl._download_meta_path, "w", encoding="utf-8") as f:
+        os.makedirs(dl.consent_dir, exist_ok=True)
+        with open(dl.download_meta_path, "w", encoding="utf-8") as f:
             json.dump(write_meta, f)
 
     return dl
@@ -212,7 +212,7 @@ class TestEnsurePackagesDeclineLicense:
         responses = iter(["", "n"])
         monkeypatch.setattr("builtins.input", lambda _prompt="": next(responses))
         dl.ensure_packages()
-        assert not os.path.isfile(dl._license_meta_path)
+        assert not os.path.isfile(dl.license_meta_path)
 
 
 # ===================================================================
@@ -235,7 +235,7 @@ class TestEnsurePackagesDeclineDownload:
         responses = iter(["", "y", "n"])
         monkeypatch.setattr("builtins.input", lambda _prompt="": next(responses))
         dl.ensure_packages()
-        assert not os.path.isfile(dl._license_meta_path)
+        assert not os.path.isfile(dl.license_meta_path)
 
 
 # ===================================================================
@@ -268,8 +268,8 @@ class TestEnsurePackagesFullAccept:
 
     def test_writes_consent_meta(self, tmp_path, monkeypatch):
         dl, _, _, _ = self._accept_and_install(tmp_path, monkeypatch)
-        assert os.path.isfile(dl._license_meta_path)
-        with open(dl._license_meta_path, "r") as f:
+        assert os.path.isfile(dl.license_meta_path)
+        with open(dl.license_meta_path, "r") as f:
             meta = json.load(f)
         assert meta["consent"] is True
         assert meta["license_hash"] == _license_hash()
@@ -278,8 +278,8 @@ class TestEnsurePackagesFullAccept:
 
     def test_copies_license_to_license_dir(self, tmp_path, monkeypatch):
         dl, _, _, _ = self._accept_and_install(tmp_path, monkeypatch)
-        assert os.path.isfile(dl._license_path)
-        with open(dl._license_path, "r") as f:
+        assert os.path.isfile(dl.license_path)
+        with open(dl.license_path, "r") as f:
             assert f.read() == _LICENSE_TEXT
 
     def test_calls_install(self, tmp_path, monkeypatch):
@@ -288,7 +288,7 @@ class TestEnsurePackagesFullAccept:
 
     def test_meta_contains_identity_keys(self, tmp_path, monkeypatch):
         dl, _, _, _ = self._accept_and_install(tmp_path, monkeypatch)
-        with open(dl._license_meta_path, "r") as f:
+        with open(dl.license_meta_path, "r") as f:
             meta = json.load(f)
         assert meta["host"] == "test-host"
         assert meta["pid"] == 12345
@@ -296,7 +296,7 @@ class TestEnsurePackagesFullAccept:
 
     def test_meta_languages_match_config(self, tmp_path, monkeypatch):
         _dl, _, _, _ = self._accept_and_install(tmp_path, monkeypatch)
-        with open(_dl._download_meta_path, "r") as f:
+        with open(_dl.download_meta_path, "r") as f:
             meta = json.load(f)
         assert meta["languages"] == [["en", "de"], ["en", "fr"]]
 
@@ -323,14 +323,14 @@ class TestRemoveConsent:
 
         dl.remove_consent()
 
-        assert dl._license_meta_path in dl._file_utils.deleted
-        assert dl._license_path in dl._file_utils.deleted
-        assert dl._download_meta_path in dl._file_utils.deleted
+        assert dl.license_meta_path in dl.file_utils.deleted
+        assert dl.license_path in dl.file_utils.deleted
+        assert dl.download_meta_path in dl.file_utils.deleted
 
     def test_noop_when_no_consent_exists(self, tmp_path):
         dl = _build(tmp_path)
         dl.remove_consent()
-        assert dl._file_utils.deleted == []
+        assert dl.file_utils.deleted == []
 
 
 # ===================================================================
@@ -361,7 +361,7 @@ class TestRemoveStanzaModels:
         monkeypatch.setenv("STANZA_RESOURCES_DIR", "C:\\")
         dl = _build(tmp_path)
         dl.remove_stanza_models()
-        assert any("Path Guard" in str(m) for m in dl._pretty.messages)
+        assert any("Path Guard" in str(m) for m in dl.pretty.messages)
 
 
 # ===================================================================
@@ -393,21 +393,21 @@ class TestShowLicensePager:
 class TestComputeTextHash:
     def test_crlf_normalized(self, tmp_path):
         dl = _build(tmp_path)
-        h1 = dl._shared.compute_text_hash("hello\r\nworld")
-        h2 = dl._shared.compute_text_hash("hello\nworld")
+        h1 = dl.shared.compute_text_hash("hello\r\nworld")
+        h2 = dl.shared.compute_text_hash("hello\nworld")
         assert h1 == h2
 
     def test_strips_whitespace(self, tmp_path):
         dl = _build(tmp_path)
-        h1 = dl._shared.compute_text_hash("  hello  ")
-        h2 = dl._shared.compute_text_hash("hello")
+        h1 = dl.shared.compute_text_hash("  hello  ")
+        h2 = dl.shared.compute_text_hash("hello")
         assert h1 == h2
 
     def test_deterministic(self, tmp_path):
         dl = _build(tmp_path)
-        assert dl._shared.compute_text_hash("x") == dl._shared.compute_text_hash("x")
+        assert dl.shared.compute_text_hash("x") == dl.shared.compute_text_hash("x")
 
     def test_matches_manual_sha256(self, tmp_path):
         dl = _build(tmp_path)
         expected = hashlib.sha256("hello".encode("utf-8")).hexdigest()
-        assert dl._shared.compute_text_hash("hello") == expected
+        assert dl.shared.compute_text_hash("hello") == expected

@@ -30,10 +30,10 @@ class RegexScorer(ScorerBase):
         self.algo: str = self.cfg.get_str("_REGEX")
 
         # in-memory cache: lang -> stage -> List[entry]
-        self._compiled_cache: DefaultDict[str, Dict[str, List[Dict[str, Any]]]] = (
+        self.compiled_cache: DefaultDict[str, Dict[str, List[Dict[str, Any]]]] = (
             defaultdict(dict)
         )
-        self._banlist_en: List[str] = self.helpers.get_banned_phrases_config_slot()
+        self.banlist_en: List[str] = self.helpers.get_banned_phrases_config_slot()
 
         # runtime fields set in verify()
         self.soft_score_hard: float = 0.0
@@ -49,12 +49,12 @@ class RegexScorer(ScorerBase):
 
     def _compile_patterns(self, language: str, stage: str) -> List[Dict[str, Any]]:
         lang: str = (language or "en").lower()
-        cached: List[Dict[str, Any]] | None = self._compiled_cache[lang].get(stage)
+        cached: List[Dict[str, Any]] | None = self.compiled_cache[lang].get(stage)
         if cached is not None:
             return cached
 
         banlist: List[str] = self.sharedHelpers.get_banlist_for_language(
-            self._banlist_en, lang, self.algo
+            self.banlist_en, lang, self.algo
         )
         compiled_list: List[Dict[str, Any]] = []
 
@@ -182,7 +182,7 @@ class RegexScorer(ScorerBase):
                 continue
 
         # cache in-memory only
-        self._compiled_cache[lang][stage] = compiled_list
+        self.compiled_cache[lang][stage] = compiled_list
         if self.cfg.get_int("DEBUG_LEVEL") >= 1:
             self.pretty.write(
                 "O",

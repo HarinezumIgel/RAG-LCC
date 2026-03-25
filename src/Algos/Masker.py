@@ -41,16 +41,16 @@ class Masker(SingletonMixin):
             self.pretty.write(
                 "W", "Masker", "No _MASKING_REGEXES found in cfg; no mask rules loaded"
             )
-            self._specs: List[CompiledSpec] = []
+            self.specs: List[CompiledSpec] = []
         else:
             self.pretty.write(
                 "I", "Masker", "Loaded _MASKING_REGEXES from configuration"
             )
-            self._specs = self._normalize_and_compile(regex_definitions)
+            self.specs = self._normalize_and_compile(regex_definitions)
 
         if self.cfg.get_int("DEBUG_LEVEL") >= 4:
             self.pretty.write(
-                "D", "Masker", f"Compiled {len(self._specs)} mask patterns"
+                "D", "Masker", f"Compiled {len(self.specs)} mask patterns"
             )
 
     def mask(self, text: str) -> str:
@@ -64,12 +64,12 @@ class Masker(SingletonMixin):
 
         if self.cfg.get_int("DEBUG_LEVEL") >= 4:
             self.pretty.write(
-                "D", "Masker", f"Masking text with {len(self._specs)} rules"
+                "D", "Masker", f"Masking text with {len(self.specs)} rules"
             )
 
         out: str = text
         matches: int = 0
-        for pattern, mask, name in self._specs:
+        for pattern, mask, name in self.specs:
             before: str = out
             try:
                 out = pattern.sub(mask, out)
@@ -86,7 +86,7 @@ class Masker(SingletonMixin):
         self.pretty.write(
             "I",
             "Masker",
-            f"{matches} of {len(self._specs)} rules produced matches and were replaced",
+            f"{matches} of {len(self.specs)} rules produced matches and were replaced",
         )
         return out
 

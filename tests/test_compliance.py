@@ -230,7 +230,7 @@ def _build_compliance(
     c.friendly_name = "TestApp"
     c.base_dir = "ModelGovernance/licenses"
     c.license_download = connection_mode
-    c._acceptance_identity = None
+    c.acceptance_identity = None
 
     # Flatten _MODELS exactly as __init__ does
     raw = cfg.get_dict("_MODELS", {})

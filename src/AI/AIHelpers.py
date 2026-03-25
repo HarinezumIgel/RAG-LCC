@@ -21,6 +21,7 @@ from Algos.RegexScorer import RegexScorer
 from Commons.Exceptions import (ComplianceViolationError,
                                 LLMComplianceCheckError)
 from Commons.SingletonMixin import SingletonMixin
+from Compliance.SharedHelpers import SharedHelpers
 from Config.Config import Config
 from Gui.Colors import GREEN, RED
 from Gui.PrettyWriter import PrettyWriter
@@ -141,6 +142,20 @@ class AIHelpers(SingletonMixin):
         Returns (human_review_required, phrase_table).
         """
         language: str = self.fileUtils.get_text_language(user_prompt, "ntlk")
+
+        # --- unsupported-language gate ---
+        lang_action: str | None = SharedHelpers().check_language_support(
+            language, "user prompt"
+        )
+        if lang_action in ("NOT_OK", "HUMAN_REVIEW"):
+            self.pretty.write(
+                "E",
+                "CheckPrompt",
+                f"Language '{language}' not installed — "
+                f"prompt rejected (UNSUPPORTED_LANGUAGE_ACTION={lang_action})",
+                color=RED,
+            )
+            return True, []
 
         # embed_documents may return list[list[float]]; convert via TensorHelpers
         embeddings = self.embedder.embed_documents([user_prompt])

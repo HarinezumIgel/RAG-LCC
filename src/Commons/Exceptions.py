@@ -119,6 +119,12 @@ class DataProcessingError(RAGLCCException):
     pass
 
 
+class ClassifyCSVNotFoundError(RAGLCCException):
+    """Raised when a required DocClassify CSV log file is not found."""
+
+    pass
+
+
 class ConfigPathError(RAGLCCException):
     """Raised when a configuration key path cannot be resolved."""
 
@@ -199,5 +205,12 @@ class ArgosConsentMissingError(ComplianceViolationError):
     Raised when ARGOS_STANZA_DOWNLOAD is enabled but the user has not yet
     accepted the Argos Translate license via src/Scripts/ArgosTranslatePackages.py.
     """
+
+    pass
+
+
+class UnsupportedLanguageError(RAGLCCException):
+    """Raised when a document's language is not installed and the configured
+    action is NOT_OK, preventing processing."""
 
     pass

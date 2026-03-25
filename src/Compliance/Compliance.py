@@ -93,15 +93,15 @@ class Compliance(SingletonMixin):
         os.makedirs(self.base_dir, exist_ok=True)
 
         # cached acceptance identity (created/queried once per run)
-        self._acceptance_identity: dict[str, Any] | None = None
+        self.acceptance_identity: dict[str, Any] | None = None
 
     def _get_acceptance_identity(self) -> dict[str, Any]:
         """Return cached acceptance identity, capturing it once per run."""
-        if self._acceptance_identity is None:
-            self._acceptance_identity = (
+        if self.acceptance_identity is None:
+            self.acceptance_identity = (
                 self.sharedHelpers.capture_acceptance_identity_once()
             )
-        return self._acceptance_identity
+        return self.acceptance_identity
 
     # Helper methods for IO, license fetching, and pager display
     # ---------------------------

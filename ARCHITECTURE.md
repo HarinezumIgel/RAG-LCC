@@ -256,6 +256,40 @@ parameters via dot-notation, e.g.
 > nesting) and does not define either selector key.  `AIHelpers.py`
 > detects this automatically and falls back to the flat layout.
 
+### 🗂️ Selector Pattern Overview
+
+Several configuration files use a **selector + variant dictionary** pattern:
+a top-level selector variable chooses the active slot from a nested dictionary
+of named parameter sets. This allows switching between pre-defined
+configurations by changing a single value.
+
+The pattern is used consistently across five config files:
+
+| Config file | Selector variable | Dictionary | Variants (default **bold**) | Purpose |
+| --- | --- | --- | --- | --- |
+| `Config_Models.py` | `_LLM`, `_LLM_CHK`, `_EMBED`, `_CROSS`, `_OLLAMA` | `_MODELS[<impl>][<role>]` | see [Model Implementation Selectors](#-model-implementation-selectors) | Model selection per role |
+| `Config_Global.py` | `_ACTIVE_CHROMA_EMBED_AND_RETRIEVE_PARAMS_CONFIG` | `_CHROMA_EMBED_AND_RETRIEVE_PARAMS` | **`THOROUGH`**, `COMPACT` | Chunk size, overlap, HNSW neighbor counts |
+| `Config_DocClassify.py` | `_ACTIVE_EXTRACTION_CONFIG` | `_EXTRACTION_MODEL_PARAMS` | **`STRICT`**, `BALANCED`, `RECALL` | LLM sampling (temperature, top-k, top-p) |
+| `Config_DocClassify.py` | `_ACTIVE_KEYBERT_CONFIG` | `_KEY_BERT` | **`STRICT`**, `BALANCED`, `RECALL` | KeyBERT two-pass keyword extraction |
+| `Config_Banned.py` | `_DETECTION_CONFIG` | `_BANNED_DETECT` | **`STRICT_DETECT_CONFIG`** | Detection pipeline thresholds per app |
+| `Config_Banned.py` | `_BANNED_CONFIG` | (named dict) | **`_STRICT_BANNED`** | Banned keyword lists |
+| `Config_Banned.py` | `_MASKING_CONFIG` | (named dict) | **`_STRICT_MASKING_REGEXES`** | Masking regex rules |
+| `Config_RAGChat.py` | `CHUNK_SELECT_STRATEGY` | `_STRATEGIES` | `NARROW`, **`MEDIUM`**, `WIDE`, `ULTRA_WIDE` | Retrieval strategy profiles |
+
+At runtime, consumers read the selector once and resolve parameters via
+dot-notation, e.g.
+(switching the chroma variant requires dropping and reloading the collection
+because HNSW parameters are immutable after creation):
+
+```python
+active = cfg.get_str("_ACTIVE_CHROMA_EMBED_AND_RETRIEVE_PARAMS_CONFIG")   # → "THOROUGH"
+cfg.get_int(f"_CHROMA_EMBED_AND_RETRIEVE_PARAMS.{active}.CHUNK_SIZE")     # → 256
+```
+
+Helper methods in `Helpers.py` encapsulate this lookup for frequently used
+selectors (`get_chroma_config_slot`, `get_compliance_config_slot`,
+`_get_keybert_config`).
+
 ## 🛡️ Compliance Chain
 
 ### 📦 Processing Layers
@@ -777,6 +811,49 @@ Prevent reprocessing of unchanged files and explicitly exclude non-compliant fil
   `USE_EXCLUSIONS` = True
   Files are added to the exclusion list if they are flagged for HUMAN_REVIEW
 
+## 📂 Classify‑then‑Load
+
+`RAGLoad` can optionally restrict document ingestion to files that were previously
+classified by `DocClassify`. Instead of loading every file found in `DOC_DIR`,
+`RAGLoad` reads the CSV log files that `DocClassify` produced for a specific run
+and builds an allow‑set of file paths. Only files present in that allow‑set are
+extracted, chunked, and upserted into the vector store; all other files are skipped.
+
+The link between the two applications is the **run stamp** — the `YYYYMMDD_HHMMSS`
+date‑time string that `DocClassify` appends to every CSV it writes (e.g.
+`DocClassify_OK_20260317_111105.csv`). By supplying the same stamp to `RAGLoad`,
+the operator selects exactly which classification run to use as the ingestion filter.
+
+By default only the `OK` CSV is consumed. Setting `LOAD_FROM_HUMAN_REVIEW_CSV` to
+`True` additionally merges in the paths from the `HUMAN_REVIEW` CSV. Duplicate
+paths that appear in both files are detected and logged but counted only once.
+
+When the classify‑then‑load filter is active, **exclusion checks are bypassed**.
+`DocClassify` already evaluated exclusions during its run, so the CSV output
+reflects them. Re‑applying exclusions in `RAGLoad` would be redundant and could
+produce inconsistent results if the exclusion list changed between runs. The CSV
+allow‑set is therefore treated as the sole authority for which files to ingest.
+When no CSV filter is active, the normal `USE_EXCLUSIONS` check applies as before.
+
+If the required OK CSV is not found (wrong run stamp, missing log directory, etc.),
+`ClassifyCSVReader` raises `ClassifyCSVNotFoundError` and execution stops.
+A missing HUMAN_REVIEW CSV is non‑fatal — a warning is logged and ingestion
+continues with the OK paths only.
+
+### Configuration
+
+| Key | Type | Default | Purpose |
+| --- | --- | --- | --- |
+| `LOAD_FROM_CLASSIFY_CSV` | bool | `False` | Enable the classify‑then‑load filter. |
+| `LOAD_FROM_HUMAN_REVIEW_CSV` | bool | `False` | Also include documents flagged for human review. |
+| `CLASSIFY_RUN_STAMP` | string | `""` | Run stamp identifying the `DocClassify` CSVs to read. Required when either flag is `True`. |
+
+Classification results are heuristic and probabilistic — false positives and false
+negatives will occur. The filter does not add, verify, or guarantee any legal,
+regulatory, or compliance status of the ingested documents.
+
+For the full parameter reference, see [📂 Classify‑then‑Load in README.md](README.md#-classifythenload).
+
 ### 🔗 See Also
 
 For class-level design and relationships, see:
@@ -864,6 +941,7 @@ src/
 ├── Helpers/                        General utilities
 │   ├── Accumulator.py
 │   ├── ChromaDBHelper.py
+│   ├── ClassifyCSVReader.py
 │   ├── CSVWriter.py
 │   ├── FileUtils.py
 │   ├── Helpers.py
@@ -917,6 +995,8 @@ Critical exceptions are raised on compliance violations and infrastructure failu
 - `RerankError` – Cross-encoder reranking fails or is not possible
 - `ExclusionsError` – Exclusions file or exclusion logic fails
 - `DocumentsDirError` – Documents directory missing or inaccessible
+- `ClassifyCSVNotFoundError` – Required DocClassify CSV log file not found (e.g. wrong run stamp or missing OK CSV)
+- `UnsupportedLanguageError` – Document language not installed in Argos Translate and `UNSUPPORTED_LANGUAGE_ACTION` is `NOT_OK`
 
 **Network / Downloads**:
 

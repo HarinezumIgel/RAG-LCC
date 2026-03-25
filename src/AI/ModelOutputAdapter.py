@@ -77,7 +77,7 @@ class ModelOutputAdapter:
         self.pretty: PrettyWriter = pretty or PrettyWriter()
         self.cfg: Config = config or Config()
         # Registry of model-specific adapters
-        self._adapters: Dict[str, Callable[[str, bool], ModelOutput]] = {
+        self.adapters: Dict[str, Callable[[str, bool], ModelOutput]] = {
             "mistral": self._adapter_json_llm_adapter(fallback_to_generic=True),
             "llama-guard": self._adapter_guard,
             "promptguard": self._adapter_guard,
@@ -272,7 +272,7 @@ class ModelOutputAdapter:
 
         # Compliance mode → use compliance adapters
         if is_compliance:
-            for key, adapter in self._adapters.items():
+            for key, adapter in self.adapters.items():
                 if key in model_name_l:
                     result = adapter(raw_text, is_streaming)
                     result.raw = original_raw
@@ -282,7 +282,7 @@ class ModelOutputAdapter:
             return result
 
         # Normal LLM mode
-        for key, adapter in self._adapters.items():
+        for key, adapter in self.adapters.items():
             if key in model_name_l:
                 result = adapter(raw_text, is_streaming)
                 result.raw = original_raw

@@ -9,6 +9,21 @@
 _FRIENDLY_NAME = "RAGLoad"
 
 # -----------------------------------------------------------------------------
+# Load only files that were classified as OK by a previous DocClassify run.
+# Pass via --load-from-classify-csv on the command line.
+LOAD_FROM_CLASSIFY_CSV = False
+
+# Also include files from the corresponding HUMAN_REVIEW CSV.
+# Pass via --load-from-human-review-csv on the command line.
+LOAD_FROM_HUMAN_REVIEW_CSV = False
+
+# The run-stamp (YYYYMMDD_HHMMSS) that identifies the DocClassify log set.
+# Required when --load-from-classify-csv is True.
+# Pass via --classify-run-stamp <stamp> on the command line.
+CLASSIFY_RUN_STAMP = ""
+# -----------------------------------------------------------------------------
+
+# -----------------------------------------------------------------------------
 # Process all files even if unchanged. Determined by file hash comparison
 _PROCESS_IF_UNCHANGED = True
 # -----------------------------------------------------------------------------

@@ -24,15 +24,15 @@ Users are responsible for reviewing and complying with all third‑party terms.
 |                                          |                        |                                                                |Samuel Colvin                                    |
 |                                          |                        |                                                                |<s@muelcolvin.com>, Zac                          |
 |                                          |                        |                                                                |Hatfield-Dodds <zac@zhd.dev>                     |
-| anyio                                    | 4.12.1                 | MIT                                                            |Alex Grönholm                                    |
+| anyio                                    | 4.13.0                 | MIT                                                            |Alex Grönholm                                    |
 |                                          |                        |                                                                |<alex.gronholm@nextday.fi>                       |
 | argostranslate                           | 1.11.0                 | MIT License                                                    |Argos Open Technologies, LLC                     |
-| attrs                                    | 25.4.0                 | MIT                                                            |Hynek Schlawack <hs@ox.cx>                       |
+| attrs                                    | 26.1.0                 | MIT                                                            |Hynek Schlawack <hs@ox.cx>                       |
 | bcrypt                                   | 5.0.0                  | Apache Software License                                        |The Python Cryptographic                         |
 |                                          |                        |                                                                |Authority developers                             |
 |                                          |                        |                                                                |<cryptography-dev@python.org>                    |
 | blis                                     | 1.3.3                  | BSD License                                                    |Matthew Honnibal                                 |
-| build                                    | 1.4.0                  | MIT                                                            |Filipe Laíns                                     |
+| build                                    | 1.4.2                  | MIT                                                            |Filipe Laíns                                     |
 |                                          |                        |                                                                |<lains@riseup.net>, Bernát                       |
 |                                          |                        |                                                                |Gábor                                            |
 |                                          |                        |                                                                |<gaborjbernat@gmail.com>,                        |
@@ -43,7 +43,7 @@ Users are responsible for reviewing and complying with all third‑party terms.
 | catalogue                                | 2.0.10                 | MIT License                                                    |Explosion                                        |
 | certifi                                  | 2026.2.25              | Mozilla Public License 2.0 (MPL 2.0)                           |Kenneth Reitz                                    |
 | cffi                                     | 2.0.0                  | MIT                                                            |Armin Rigo, Maciej Fijalkowski                   |
-| chardet                                  | 7.1.0                  | MIT                                                            |Dan Blanchard                                    |
+| chardet                                  | 7.3.0                  | 0BSD                                                           |Dan Blanchard                                    |
 |                                          |                        |                                                                |<dan.blanchard@gmail.com>                        |
 | charset-normalizer                       | 3.4.6                  | MIT                                                            |"Ahmed R. TAHRI"                                 |
 |                                          |                        |                                                                |<tahri.ahmed@proton.me>                          |
@@ -56,7 +56,7 @@ Users are responsible for reviewing and complying with all third‑party terms.
 |                                          |                        |                                                                |<info@drivendata.org>                            |
 | colorama                                 | 0.4.6                  | BSD License                                                    |Jonathan Hartley                                 |
 |                                          |                        |                                                                |<tartley@tartley.com>                            |
-| confection                               | 0.1.5                  | MIT License                                                    |Explosion                                        |
+| confection                               | 1.3.3                  | MIT License                                                    |Explosion                                        |
 | contourpy                                | 1.3.3                  | BSD License                                                    |Ian Thomas                                       |
 |                                          |                        |                                                                |<ianthomas23@gmail.com>                          |
 | cryptography                             | 46.0.5                 | Apache-2.0 OR BSD-3-Clause                                     |The Python Cryptographic                         |
@@ -89,7 +89,7 @@ Users are responsible for reviewing and complying with all third‑party terms.
 | httptools                                | 0.7.1                  | MIT                                                            |Yury Selivanov <yury@magic.io>                   |
 | httpx                                    | 0.28.1                 | BSD License                                                    |Tom Christie                                     |
 |                                          |                        |                                                                |<tom@tomchristie.com>                            |
-| huggingface_hub                          | 1.7.1                  | Apache Software License                                        |Hugging Face, Inc.                               |
+| huggingface_hub                          | 1.7.2                  | Apache Software License                                        |Hugging Face, Inc.                               |
 | idna                                     | 3.11                   | BSD-3-Clause                                                   |Kim Davies                                       |
 |                                          |                        |                                                                |<kim+pypi@gumleaf.org>                           |
 | importlib_metadata                       | 8.7.1                  | Apache-2.0                                                     |"Jason R. Coombs"                                |
@@ -106,7 +106,7 @@ Users are responsible for reviewing and complying with all third‑party terms.
 | json5                                    | 0.13.0                 | Apache Software License                                        |Dirk Pranke                                      |
 |                                          |                        |                                                                |<dpranke@chromium.org>                           |
 | jsonpatch                                | 1.33                   | BSD License                                                    |Stefan Kögl                                      |
-| jsonpointer                              | 3.0.0                  | BSD License                                                    |Stefan Kögl                                      |
+| jsonpointer                              | 3.1.1                  | BSD License                                                    |Stefan Kögl                                      |
 | jsonschema                               | 4.26.0                 | MIT                                                            |Julian Berman                                    |
 |                                          |                        |                                                                |<Julian+jsonschema@GrayVines.com>                |
 | jsonschema-specifications                | 2025.9.1               | MIT                                                            |Julian Berman                                    |
@@ -117,11 +117,11 @@ Users are responsible for reviewing and complying with all third‑party terms.
 |                                          |                        |                                                                |<sccolbert@gmail.com>                            |
 | kubernetes                               | 35.0.0                 | Apache Software License                                        |Kubernetes                                       |
 | langchain-chroma                         | 1.1.0                  | MIT                                                            |UNKNOWN                                          |
-| langchain-core                           | 1.2.19                 | MIT License                                                    |UNKNOWN                                          |
+| langchain-core                           | 1.2.22                 | MIT License                                                    |UNKNOWN                                          |
 | langchain-huggingface                    | 1.2.1                  | MIT License                                                    |UNKNOWN                                          |
 | langchain-text-splitters                 | 1.1.1                  | MIT License                                                    |UNKNOWN                                          |
 | langdetect                               | 1.0.9                  | Apache Software License                                        |Michal Mimino Danilak                            |
-| langsmith                                | 0.7.18                 | MIT                                                            |LangChain                                        |
+| langsmith                                | 0.7.22                 | MIT                                                            |LangChain                                        |
 |                                          |                        |                                                                |<support@langchain.dev>                          |
 | lxml                                     | 6.0.2                  | BSD-3-Clause                                                   |lxml dev team                                    |
 | markdown-it-py                           | 4.0.0                  | MIT License                                                    |Chris Sewell                                     |
@@ -139,10 +139,10 @@ Users are responsible for reviewing and complying with all third‑party terms.
 |                                          |                        |                                                                |<jukka.lehtosalo@iki.fi>                         |
 | networkx                                 | 3.6.1                  | BSD-3-Clause                                                   |Aric Hagberg                                     |
 |                                          |                        |                                                                |<hagberg@lanl.gov>                               |
-| nltk                                     | 3.9.3                  | Apache Software License                                        |NLTK Team                                        |
+| nltk                                     | 3.9.4                  | Apache Software License                                        |NLTK Team                                        |
 | numpy                                    | 2.4.3                  | BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0             |Travis E. Oliphant et al.                        |
 | oauthlib                                 | 3.3.1                  | BSD-3-Clause                                                   |The OAuthlib Community                           |
-| onnxruntime                              | 1.24.3                 | MIT License                                                    |Microsoft Corporation                            |
+| onnxruntime                              | 1.24.4                 | MIT License                                                    |Microsoft Corporation                            |
 | openpyxl                                 | 3.1.5                  | MIT License                                                    |See AUTHORS                                      |
 | opentelemetry-api                        | 1.40.0                 | Apache-2.0                                                     |OpenTelemetry Authors                            |
 |                                          |                        |                                                                |<cncf-opentelemetry-contributors@lists.cncf.io>  |
@@ -179,11 +179,11 @@ Users are responsible for reviewing and complying with all third‑party terms.
 | platformdirs                             | 4.9.4                  | MIT                                                            |UNKNOWN                                          |
 | pluggy                                   | 1.6.0                  | MIT License                                                    |Holger Krekel                                    |
 |                                          |                        |                                                                |<holger@merlinux.eu>                             |
-| preshed                                  | 3.0.12                 | MIT License                                                    |Explosion                                        |
+| preshed                                  | 3.0.13                 | MIT License                                                    |Explosion                                        |
 | prettytable                              | 3.17.0                 | BSD-3-Clause                                                   |Luke Maurits                                     |
 |                                          |                        |                                                                |<luke@maurits.id.au>                             |
 | prompt_toolkit                           | 3.0.52                 | BSD License                                                    |Jonathan Slenders                                |
-| protobuf                                 | 6.33.5                 | 3-Clause BSD License                                           |protobuf@googlegroups.com                        |
+| protobuf                                 | 6.33.6                 | 3-Clause BSD License                                           |protobuf@googlegroups.com                        |
 | pybase64                                 | 1.4.3                  | BSD License                                                    |Matthieu Darbois                                 |
 | pycparser                                | 3.0                    | BSD-3-Clause                                                   |Eli Bendersky                                    |
 |                                          |                        |                                                                |<eliben@gmail.com>                               |
@@ -273,27 +273,27 @@ Users are responsible for reviewing and complying with all third‑party terms.
 |                                          |                        |                                                                |Aarsen                                           |
 |                                          |                        |                                                                |<tom.aarsen@huggingface.co>                      |
 | sentencepiece                            | 0.2.1                  | UNKNOWN                                                        |Taku Kudo <taku@google.com>                      |
-| setuptools                               | 82.0.1                 | MIT                                                            |Python Packaging Authority                       |
+| setuptools                               | 81.0.0                 | MIT                                                            |Python Packaging Authority                       |
 |                                          |                        |                                                                |<distutils-sig@python.org>                       |
 | shellingham                              | 1.5.4                  | ISC License (ISCL)                                             |Tzu-ping Chung                                   |
 | six                                      | 1.17.0                 | MIT License                                                    |Benjamin Peterson                                |
 | smart_open                               | 7.5.1                  | MIT License                                                    |Radim Rehurek                                    |
 |                                          |                        |                                                                |<me@radimrehurek.com>                            |
-| spacy                                    | 3.8.11                 | MIT License                                                    |Explosion                                        |
+| spacy                                    | 3.8.13                 | MIT License                                                    |Explosion                                        |
 | spacy-legacy                             | 3.0.12                 | MIT License                                                    |Explosion                                        |
 | spacy-loggers                            | 1.0.5                  | MIT                                                            |Explosion                                        |
-| srsly                                    | 2.5.2                  | MIT License                                                    |Explosion                                        |
+| srsly                                    | 2.5.3                  | MIT License                                                    |Explosion                                        |
 | stanza                                   | 1.10.1                 | Apache License 2.0                                             |Stanford Natural Language                        |
 |                                          |                        |                                                                |Processing Group                                 |
 | sympy                                    | 1.14.0                 | BSD License                                                    |SymPy development team                           |
 | tenacity                                 | 9.1.4                  | Apache Software License                                        |Julien Danjou                                    |
-| thinc                                    | 8.3.10                 | MIT License                                                    |Explosion                                        |
+| thinc                                    | 8.3.13                 | MIT License                                                    |Explosion                                        |
 | threadpoolctl                            | 3.6.0                  | BSD License                                                    |Thomas Moreau                                    |
 | tokenizers                               | 0.22.2                 | Apache Software License                                        |Nicolas Patry                                    |
 |                                          |                        |                                                                |<patry.nicolas@protonmail.com>,                  |
 |                                          |                        |                                                                |Anthony Moi                                      |
 |                                          |                        |                                                                |<anthony@huggingface.co>                         |
-| torch                                    | 2.10.0                 | BSD-3-Clause                                                   |PyTorch Team                                     |
+| torch                                    | 2.11.0                 | BSD-3-Clause                                                   |PyTorch Team                                     |
 |                                          |                        |                                                                |<packages@pytorch.org>                           |
 | tqdm                                     | 4.67.3                 | MPL-2.0 AND MIT                                                |UNKNOWN                                          |
 | transformers                             | 5.3.0                  | Apache 2.0 License                                             |The Hugging Face team (past                      |
@@ -301,8 +301,6 @@ Users are responsible for reviewing and complying with all third‑party terms.
 |                                          |                        |                                                                |all our contributors                             |
 |                                          |                        |                                                                |(https://github.com/huggingface/transformers/graphs/contributors) |
 | typer                                    | 0.24.1                 | MIT                                                            |=?utf-8?q?Sebasti=C3=A1n_Ram=C3=ADrez?=          |
-|                                          |                        |                                                                |<tiangolo@gmail.com>                             |
-| typer-slim                               | 0.24.0                 | MIT                                                            |=?utf-8?q?Sebasti=C3=A1n_Ram=C3=ADrez?=          |
 |                                          |                        |                                                                |<tiangolo@gmail.com>                             |
 | typing-inspection                        | 0.4.2                  | MIT                                                            |Victorien Plot                                   |
 |                                          |                        |                                                                |<contact@vctrn.dev>                              |
@@ -322,7 +320,7 @@ Users are responsible for reviewing and complying with all third‑party terms.
 |                                          |                        |                                                                |<s@muelcolvin.com>                               |
 | wcwidth                                  | 0.6.0                  | MIT                                                            |Jeff Quast                                       |
 |                                          |                        |                                                                |<contact@jeffquast.com>                          |
-| weasel                                   | 0.4.3                  | MIT License                                                    |Explosion                                        |
+| weasel                                   | 1.0.0                  | MIT License                                                    |Explosion                                        |
 | websocket-client                         | 1.9.0                  | Apache Software License                                        |liris                                            |
 | websockets                               | 16.0                   | BSD-3-Clause                                                   |Aymeric Augustin                                 |
 |                                          |                        |                                                                |<aymeric.augustin@m4x.org>                       |
@@ -398,7 +396,7 @@ Users are responsible for reviewing and complying with all third‑party terms.
 
 ```
 
-### anyio 4.12.1
+### anyio 4.13.0
 **License:** MIT
 **Author:** Alex Grönholm <alex.gronholm@nextday.fi>
 
@@ -414,7 +412,7 @@ Users are responsible for reviewing and complying with all third‑party terms.
 
 ```
 
-### attrs 25.4.0
+### attrs 26.1.0
 **License:** MIT
 **Author:** Hynek Schlawack <hs@ox.cx>
 
@@ -439,7 +437,7 @@ Users are responsible for reviewing and complying with all third‑party terms.
 
 ```
 
-### build 1.4.0
+### build 1.4.2
 **License:** MIT
 **Author:** Filipe Laíns <lains@riseup.net>, Bernát Gábor
             <gaborjbernat@gmail.com>, layday <layday@protonmail.com>,
@@ -473,8 +471,8 @@ Users are responsible for reviewing and complying with all third‑party terms.
 
 ```
 
-### chardet 7.1.0
-**License:** MIT
+### chardet 7.3.0
+**License:** 0BSD
 **Author:** Dan Blanchard <dan.blanchard@gmail.com>
 
 ```text
@@ -522,7 +520,7 @@ Users are responsible for reviewing and complying with all third‑party terms.
 
 ```
 
-### confection 0.1.5
+### confection 1.3.3
 **License:** MIT License
 **Author:** Explosion
 
@@ -700,7 +698,7 @@ Users are responsible for reviewing and complying with all third‑party terms.
 
 ```
 
-### huggingface_hub 1.7.1
+### huggingface_hub 1.7.2
 **License:** Apache Software License
 **Author:** Hugging Face, Inc.
 
@@ -773,7 +771,7 @@ Users are responsible for reviewing and complying with all third‑party terms.
 
 ```
 
-### jsonpointer 3.0.0
+### jsonpointer 3.1.1
 **License:** BSD License
 **Author:** Stefan Kögl
 
@@ -830,7 +828,7 @@ Users are responsible for reviewing and complying with all third‑party terms.
 
 ```
 
-### langchain-core 1.2.19
+### langchain-core 1.2.22
 **License:** MIT License
 **Author:** UNKNOWN
 
@@ -862,7 +860,7 @@ Users are responsible for reviewing and complying with all third‑party terms.
 
 ```
 
-### langsmith 0.7.18
+### langsmith 0.7.22
 **License:** MIT
 **Author:** LangChain <support@langchain.dev>
 
@@ -950,7 +948,7 @@ Users are responsible for reviewing and complying with all third‑party terms.
 
 ```
 
-### nltk 3.9.3
+### nltk 3.9.4
 **License:** Apache Software License
 **Author:** NLTK Team
 
@@ -974,7 +972,7 @@ Users are responsible for reviewing and complying with all third‑party terms.
 
 ```
 
-### onnxruntime 1.24.3
+### onnxruntime 1.24.4
 **License:** MIT License
 **Author:** Microsoft Corporation
 
@@ -1164,7 +1162,7 @@ Users are responsible for reviewing and complying with all third‑party terms.
 
 ```
 
-### preshed 3.0.12
+### preshed 3.0.13
 **License:** MIT License
 **Author:** Explosion
 
@@ -1188,7 +1186,7 @@ Users are responsible for reviewing and complying with all third‑party terms.
 
 ```
 
-### protobuf 6.33.5
+### protobuf 6.33.6
 **License:** 3-Clause BSD License
 **Author:** protobuf@googlegroups.com
 
@@ -1448,7 +1446,7 @@ Users are responsible for reviewing and complying with all third‑party terms.
 
 ```
 
-### setuptools 82.0.1
+### setuptools 81.0.0
 **License:** MIT
 **Author:** Python Packaging Authority <distutils-sig@python.org>
 
@@ -1480,7 +1478,7 @@ Users are responsible for reviewing and complying with all third‑party terms.
 
 ```
 
-### spacy 3.8.11
+### spacy 3.8.13
 **License:** MIT License
 **Author:** Explosion
 
@@ -1504,7 +1502,7 @@ Users are responsible for reviewing and complying with all third‑party terms.
 
 ```
 
-### srsly 2.5.2
+### srsly 2.5.3
 **License:** MIT License
 **Author:** Explosion
 
@@ -1536,7 +1534,7 @@ Users are responsible for reviewing and complying with all third‑party terms.
 
 ```
 
-### thinc 8.3.10
+### thinc 8.3.13
 **License:** MIT License
 **Author:** Explosion
 
@@ -1561,7 +1559,7 @@ Users are responsible for reviewing and complying with all third‑party terms.
 
 ```
 
-### torch 2.10.0
+### torch 2.11.0
 **License:** BSD-3-Clause
 **Author:** PyTorch Team <packages@pytorch.org>
 
@@ -1588,14 +1586,6 @@ Users are responsible for reviewing and complying with all third‑party terms.
 ```
 
 ### typer 0.24.1
-**License:** MIT
-**Author:** =?utf-8?q?Sebasti=C3=A1n_Ram=C3=ADrez?= <tiangolo@gmail.com>
-
-```text
-
-```
-
-### typer-slim 0.24.0
 **License:** MIT
 **Author:** =?utf-8?q?Sebasti=C3=A1n_Ram=C3=ADrez?= <tiangolo@gmail.com>
 
@@ -1676,7 +1666,7 @@ Users are responsible for reviewing and complying with all third‑party terms.
 
 ```
 
-### weasel 0.4.3
+### weasel 1.0.0
 **License:** MIT License
 **Author:** Explosion
 

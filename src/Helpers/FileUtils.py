@@ -404,3 +404,8 @@ class FileUtils:
             else:
                 # Relative file name without extension
                 return "file"
+
+
+def build_csv_path(friendly_name: str, status: str, stamp: str, log_dir: str) -> str:
+    """Build a CSV log-file path: ``{log_dir}/{friendly_name}_{status}_{stamp}.csv``"""
+    return os.path.join(log_dir, f"{friendly_name}_{status}_{stamp}.csv")

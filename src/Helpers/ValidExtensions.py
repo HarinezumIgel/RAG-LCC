@@ -13,7 +13,7 @@ class ValidExtensions:
         """
         self.cfg: Config = Config()
         if extensions is None:
-            self._valid_extensions = [
+            self.valid_extensions = [
                 "pdf",
                 "doc",
                 "docx",
@@ -29,15 +29,15 @@ class ValidExtensions:
                 "tiff",
                 "webp",
             ]
-            self._valid_extensions.extend(self.cfg.get_list("_CONSIDER_AS_TEXT_FILE"))
+            self.valid_extensions.extend(self.cfg.get_list("_CONSIDER_AS_TEXT_FILE"))
             # After extending, if you want unique entries while preserving order:
             seen: set[str] = set()
             unique: list[str] = []
-            for ext in self._valid_extensions:
+            for ext in self.valid_extensions:
                 if ext not in seen:
                     seen.add(ext)
                     unique.append(ext)
-            self._valid_extensions = unique
+            self.valid_extensions = unique
         else:
             self.set(extensions)
 
@@ -49,7 +49,7 @@ class ValidExtensions:
         Parameters:
             extensions (list): A list of extension strings.
         """
-        self._valid_extensions = [ext.lower().lstrip(".") for ext in extensions]
+        self.valid_extensions = [ext.lower().lstrip(".") for ext in extensions]
 
     def get(self) -> list[str]:
         """
@@ -58,7 +58,7 @@ class ValidExtensions:
         Returns:
             list: The current allowed extensions in normalized form.
         """
-        return self._valid_extensions
+        return self.valid_extensions
 
     def check(self, path: str, extensions: str | list[str]) -> bool:
         """
@@ -85,7 +85,7 @@ class ValidExtensions:
 
         # Filter out any provided extensions not present in the allowed list.
         valid_extensions_to_check: list[str] = [
-            ext for ext in normalized_extensions if ext in self._valid_extensions
+            ext for ext in normalized_extensions if ext in self.valid_extensions
         ]
 
         if not valid_extensions_to_check:

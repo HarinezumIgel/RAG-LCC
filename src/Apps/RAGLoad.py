@@ -52,7 +52,21 @@ class RAGLoad:
         self.fileUtils.setDebug()
 
         self.strat: ChunksToDBStrategy = ChunksToDBStrategy()
-        self.proc: LoadAndClassifyProcessor = LoadAndClassifyProcessor(self.strat)
+        load_classify: bool = self.cfg.get_bool("LOAD_FROM_CLASSIFY_CSV", False)
+        include_hr: bool = self.cfg.get_bool("LOAD_FROM_HUMAN_REVIEW_CSV", False)
+        run_stamp: str = self.cfg.get_str("CLASSIFY_RUN_STAMP", "")
+
+        if (load_classify or include_hr) and not run_stamp:
+            raise ValueError(
+                "--classify-run-stamp is required when "
+                "--load-from-classify-csv or --load-from-human-review-csv is set"
+            )
+
+        self.proc: LoadAndClassifyProcessor = LoadAndClassifyProcessor(
+            self.strat,
+            classify_run_stamp=run_stamp if load_classify else None,
+            include_human_review=include_hr,
+        )
 
     def _run(self):
         self.inf.inform()

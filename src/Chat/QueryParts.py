@@ -304,7 +304,7 @@ class QueryParts(SingletonMixin):
         token_alt: str = "|".join(tokens)
 
         # Keep original behavior, including the old "treshold" typo in CMD_RX
-        self._split_regex: re.Pattern[str] = re.compile(
+        self.split_regex: re.Pattern[str] = re.compile(
             rf"(?=\b({token_alt})\b\s*[\?\!\=\-\*])",
             re.IGNORECASE,
         )
@@ -582,7 +582,7 @@ class QueryParts(SingletonMixin):
     # ——— Parsing and applying commands ———
 
     def handle(self, raw: str) -> List[Cmd]:
-        parts = [s.strip() for s in self._split_regex.split(raw) if s.strip()]
+        parts = [s.strip() for s in self.split_regex.split(raw) if s.strip()]
         out: List[Cmd] = []
         for seg in parts:
             m = self.compiled_regex.match(seg)

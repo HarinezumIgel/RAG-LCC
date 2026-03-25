@@ -40,17 +40,17 @@ class RAGChatImpl(SingletonMixin):
         # Cache for stopwords per language.
         self.pretty: PrettyWriter = pretty or PrettyWriter()
         self.cfg: Config = cfg or Config()
-        self._helperInstance: Helpers = helpers or Helpers()
+        self.helperInstance: Helpers = helpers or Helpers()
         self.chromaDBHelper: ChromaDBHelper = ChromaDBHelper()
         self.chatContext: ChatContext = ChatContext()
         self.models_cache: ModelsCache = ModelsCache()
         # Initialize the embeddings using Ollama.
         self.device: Any
         self.device, _, _, _ = self.models_cache.switch2device()
-        self.embed_model_name: str = self._helperInstance.get_model_args("_EMBED")[
+        self.embed_model_name: str = self.helperInstance.get_model_args("_EMBED")[
             "MODEL"
         ]
-        self.cross_encoder_model_name: str = self._helperInstance.get_model_args(
+        self.cross_encoder_model_name: str = self.helperInstance.get_model_args(
             "_CROSS"
         )["MODEL"]
         self.x_encoder: Any = self.models_cache.get_cross_encoder()
@@ -272,7 +272,7 @@ class RAGChatImpl(SingletonMixin):
 
             # Format the context by combining the formatted adjacent chunks.
             context: str = "\n\n".join(
-                self._helperInstance.format_document(doc) for doc in chosen  # type: ignore[reportUnknownMemberType]
+                self.helperInstance.format_document(doc) for doc in chosen  # type: ignore[reportUnknownMemberType]
             )
             if len(chosen) > 0:
                 return context, len(chosen)

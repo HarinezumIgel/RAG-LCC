@@ -36,7 +36,7 @@ class HFDownloader:
 
         self.base_dir: Path = Path("ModelGovernance/consents")
         self.base_dir.mkdir(exist_ok=True)
-        self._identity_cache: dict[str, Any] | None = None
+        self.identity_cache: dict[str, Any] | None = None
         self.hf_hub_offline: str | None = os.environ.get("HF_HUB_OFFLINE", "1")
 
     # -------------------------

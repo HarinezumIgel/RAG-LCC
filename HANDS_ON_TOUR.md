@@ -457,13 +457,24 @@ In the `Regex` section of any pipeline in `Config_Banned.py`, set:
 
 ### 🧩 4. Change chunk size and observe retrieval differences
 
-In `Config_Global.py`, modify the chunking parameters:
+In `Config_Global.py`, change the active variant selector:
+
+The config uses a variant selector — change `_ACTIVE_CHROMA_EMBED_AND_RETRIEVE_PARAMS_CONFIG` from `"THOROUGH"` to `"COMPACT"` to switch to smaller chunks:
 
 ```python
+_ACTIVE_CHROMA_EMBED_AND_RETRIEVE_PARAMS_CONFIG = "COMPACT"   # was "THOROUGH"
+
 _CHROMA_EMBED_AND_RETRIEVE_PARAMS = {
-    "CHUNK_SIZE": 128,       # was 256
-    "CHUNK_OVERLAP": 16,     # was 32
-    ...
+    "THOROUGH": {
+        "CHUNK_SIZE": 256,
+        "CHUNK_OVERLAP": 32,
+        ...
+    },
+    "COMPACT": {
+        "CHUNK_SIZE": 128,
+        "CHUNK_OVERLAP": 16,
+        ...
+    },
 }
 ```
 
@@ -472,7 +483,7 @@ _CHROMA_EMBED_AND_RETRIEVE_PARAMS = {
 - **Re-create the existing collection:** set `CHROMA_COLLECTION_KEEP = False` in `Config_Global.py` (or pass `--chroma_collection_keep False` on the CLI) and run RAGLoad again.
 - **Use a new collection name:** e.g. `--collection Experiment_SmallChunks` so you can compare results side-by-side with the old collection.
 
-Try the opposite too — set `CHUNK_SIZE` to `512` with `CHUNK_OVERLAP` of `64` for longer chunks that preserve more context but may include irrelevant surrounding text.
+You can also add your own variant (e.g. `"LARGE"` with `CHUNK_SIZE: 512`) to experiment with longer chunks that preserve more context but may include irrelevant surrounding text.
 
 ### 🔍 5. Tune HNSW neighbor exploration
 
@@ -480,9 +491,12 @@ The same `_CHROMA_EMBED_AND_RETRIEVE_PARAMS` dict in `Config_Global.py` contains
 
 ```python
 _CHROMA_EMBED_AND_RETRIEVE_PARAMS = {
+    "THOROUGH": {
+        ...
+        "NEIGHBORS_ON_LOAD": 512,    # neighbours explored when building the index (RAGLoad)
+        "NEIGHBORS_RETRIEVE": 512,   # neighbours explored when querying the index (RAGChat)
+    },
     ...
-    "NEIGHBORS_ON_LOAD": 512,    # neighbours explored when building the index (RAGLoad)
-    "NEIGHBORS_RETRIEVE": 512,   # neighbours explored when querying the index (RAGChat)
 }
 ```
 

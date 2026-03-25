@@ -8,9 +8,9 @@ SPDXVersion: SPDX-2.2
 DataLicense: CC0-1.0
 SPDXID: SPDXRef-DOCUMENT
 DocumentName: 3rdPartyLicenses
-DocumentNamespace: http://example.org/spdxdocs/3rdPartyLicenses-20260317114003
+DocumentNamespace: http://example.org/spdxdocs/3rdPartyLicenses-20260325154456
 Creator: pip-licenses
-Created: 03/17/2026 11:40:03.ToUniversalTime().ToString('o')
+Created: 03/25/2026 15:44:56.ToUniversalTime().ToString('o')
 
 #####
 PackageName: Jinja2
@@ -85,7 +85,7 @@ PackageHomePage: https://github.com/annotated-types/annotated-types
 #####
 PackageName: anyio
 SPDXID: SPDXRef-Package-anyio
-PackageVersion: 4.12.1
+PackageVersion: 4.13.0
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: MIT
@@ -105,7 +105,7 @@ PackageHomePage: https://www.argosopentech.com
 #####
 PackageName: attrs
 SPDXID: SPDXRef-Package-attrs
-PackageVersion: 25.4.0
+PackageVersion: 26.1.0
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: MIT
@@ -135,7 +135,7 @@ PackageHomePage: https://github.com/explosion/cython-blis
 #####
 PackageName: build
 SPDXID: SPDXRef-Package-build
-PackageVersion: 1.4.0
+PackageVersion: 1.4.2
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: MIT
@@ -175,11 +175,11 @@ PackageHomePage: https://cffi.readthedocs.io/en/latest/whatsnew.html
 #####
 PackageName: chardet
 SPDXID: SPDXRef-Package-chardet
-PackageVersion: 7.1.0
+PackageVersion: 7.3.0
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
-PackageLicenseConcluded: MIT
-PackageLicenseDeclared: MIT
+PackageLicenseConcluded: 0BSD
+PackageLicenseDeclared: 0BSD
 PackageHomePage: https://github.com/chardet/chardet
 
 #####
@@ -235,7 +235,7 @@ PackageHomePage: https://github.com/tartley/colorama
 #####
 PackageName: confection
 SPDXID: SPDXRef-Package-confection
-PackageVersion: 0.1.5
+PackageVersion: 1.3.3
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: MIT License
@@ -455,7 +455,7 @@ PackageHomePage: https://github.com/encode/httpx
 #####
 PackageName: huggingface_hub
 SPDXID: SPDXRef-Package-huggingface-hub
-PackageVersion: 1.7.1
+PackageVersion: 1.7.2
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: Apache Software License
@@ -545,7 +545,7 @@ PackageHomePage: https://github.com/stefankoegl/python-json-patch
 #####
 PackageName: jsonpointer
 SPDXID: SPDXRef-Package-jsonpointer
-PackageVersion: 3.0.0
+PackageVersion: 3.1.1
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: BSD License
@@ -615,7 +615,7 @@ PackageHomePage: https://docs.langchain.com/oss/python/integrations/providers/ch
 #####
 PackageName: langchain-core
 SPDXID: SPDXRef-Package-langchain-core
-PackageVersion: 1.2.19
+PackageVersion: 1.2.22
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: MIT License
@@ -655,7 +655,7 @@ PackageHomePage: https://github.com/Mimino666/langdetect
 #####
 PackageName: langsmith
 SPDXID: SPDXRef-Package-langsmith
-PackageVersion: 0.7.18
+PackageVersion: 0.7.22
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: MIT
@@ -765,7 +765,7 @@ PackageHomePage: https://networkx.org/
 #####
 PackageName: nltk
 SPDXID: SPDXRef-Package-nltk
-PackageVersion: 3.9.3
+PackageVersion: 3.9.4
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: Apache Software License
@@ -795,7 +795,7 @@ PackageHomePage: https://github.com/oauthlib/oauthlib
 #####
 PackageName: onnxruntime
 SPDXID: SPDXRef-Package-onnxruntime
-PackageVersion: 1.24.3
+PackageVersion: 1.24.4
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: MIT License
@@ -1025,7 +1025,7 @@ PackageHomePage: UNKNOWN
 #####
 PackageName: preshed
 SPDXID: SPDXRef-Package-preshed
-PackageVersion: 3.0.12
+PackageVersion: 3.0.13
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: MIT License
@@ -1055,7 +1055,7 @@ PackageHomePage: https://github.com/prompt-toolkit/python-prompt-toolkit
 #####
 PackageName: protobuf
 SPDXID: SPDXRef-Package-protobuf
-PackageVersion: 6.33.5
+PackageVersion: 6.33.6
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: 3-Clause BSD License
@@ -1355,7 +1355,7 @@ PackageHomePage: https://github.com/google/sentencepiece
 #####
 PackageName: setuptools
 SPDXID: SPDXRef-Package-setuptools
-PackageVersion: 82.0.1
+PackageVersion: 81.0.0
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: MIT
@@ -1395,7 +1395,7 @@ PackageHomePage: https://github.com/piskvorky/smart_open
 #####
 PackageName: spacy
 SPDXID: SPDXRef-Package-spacy
-PackageVersion: 3.8.11
+PackageVersion: 3.8.13
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: MIT License
@@ -1425,7 +1425,7 @@ PackageHomePage: https://github.com/explosion/spacy-loggers
 #####
 PackageName: srsly
 SPDXID: SPDXRef-Package-srsly
-PackageVersion: 2.5.2
+PackageVersion: 2.5.3
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: MIT License
@@ -1465,7 +1465,7 @@ PackageHomePage: https://github.com/jd/tenacity
 #####
 PackageName: thinc
 SPDXID: SPDXRef-Package-thinc
-PackageVersion: 8.3.10
+PackageVersion: 8.3.13
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: MIT License
@@ -1495,7 +1495,7 @@ PackageHomePage: https://github.com/huggingface/tokenizers
 #####
 PackageName: torch
 SPDXID: SPDXRef-Package-torch
-PackageVersion: 2.10.0
+PackageVersion: 2.11.0
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: BSD-3-Clause
@@ -1526,16 +1526,6 @@ PackageHomePage: https://github.com/huggingface/transformers
 PackageName: typer
 SPDXID: SPDXRef-Package-typer
 PackageVersion: 0.24.1
-PackageDownloadLocation: NOASSERTION
-FilesAnalyzed: false
-PackageLicenseConcluded: MIT
-PackageLicenseDeclared: MIT
-PackageHomePage: https://github.com/fastapi/typer
-
-#####
-PackageName: typer-slim
-SPDXID: SPDXRef-Package-typer-slim
-PackageVersion: 0.24.0
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: MIT
@@ -1635,7 +1625,7 @@ PackageHomePage: https://github.com/jquast/wcwidth
 #####
 PackageName: weasel
 SPDXID: SPDXRef-Package-weasel
-PackageVersion: 0.4.3
+PackageVersion: 1.0.0
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: MIT License

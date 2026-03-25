@@ -178,3 +178,79 @@ class TestContainment:
 
     def test_empty(self):
         assert SharedHelpers.containment([], ["a"]) == 0.0
+
+
+# ---------------------------------------------------------------------------
+# is_language_supported
+# ---------------------------------------------------------------------------
+
+
+class TestIsLanguageSupported:
+    def test_english_always_supported(self, sh):
+        assert sh.is_language_supported("en") is True
+        assert sh.is_language_supported("english") is True
+
+    def test_iso_code_in_installed_langs(self, sh):
+        # Simulate having "de" installed
+        sh.installed_langs["de"] = object()
+        assert sh.is_language_supported("de") is True
+
+    def test_nltk_name_resolved_to_iso(self, sh):
+        # "german" → "de" via lang_name_to_code
+        sh.lang_name_to_code["german"] = "de"
+        sh.installed_langs["de"] = object()
+        assert sh.is_language_supported("german") is True
+
+    def test_not_installed_returns_false(self, sh):
+        assert sh.is_language_supported("ja") is False
+
+    def test_empty_string_treated_as_english(self, sh):
+        assert sh.is_language_supported("") is True
+
+    def test_none_treated_as_english(self, sh):
+        assert sh.is_language_supported(None) is True  # type: ignore[arg-type]
+
+
+# ---------------------------------------------------------------------------
+# check_language_support
+# ---------------------------------------------------------------------------
+
+
+class TestCheckLanguageSupport:
+    """Tests for the extracted check_language_support gate."""
+
+    def test_supported_language_returns_none(self, sh):
+        assert sh.check_language_support("en") is None
+
+    def test_unsupported_defaults_to_fallback_en(self, sh):
+        # StubConfig has no UNSUPPORTED_LANGUAGE_ACTION → default FALLBACK_EN
+        assert sh.check_language_support("ja") is None
+
+    def test_unsupported_not_ok(self, sh):
+        sh.cfg = _cfg_with_action("NOT_OK")
+        assert sh.check_language_support("ja", "/doc.pdf") == "NOT_OK"
+
+    def test_unsupported_human_review(self, sh):
+        sh.cfg = _cfg_with_action("HUMAN_REVIEW")
+        assert sh.check_language_support("ja") == "HUMAN_REVIEW"
+
+    def test_unsupported_fallback_en_explicit(self, sh):
+        sh.cfg = _cfg_with_action("FALLBACK_EN")
+        assert sh.check_language_support("ja") is None
+
+    def test_installed_lang_always_none_regardless_of_action(self, sh):
+        sh.installed_langs["de"] = object()
+        sh.cfg = _cfg_with_action("NOT_OK")
+        assert sh.check_language_support("de") is None
+
+
+def _cfg_with_action(action: str):
+    """Return a StubConfig that returns *action* for UNSUPPORTED_LANGUAGE_ACTION."""
+
+    class _Cfg(StubConfig):
+        def get(self, key, default=None):
+            if key == "UNSUPPORTED_LANGUAGE_ACTION":
+                return action
+            return super().get(key, default)
+
+    return _Cfg()

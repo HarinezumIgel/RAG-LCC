@@ -9,6 +9,7 @@ from Commons.SingletonMixin import SingletonMixin
 from Config.Config import Config
 from Globals.Globals import Globals
 from Gui.PrettyWriter import PrettyWriter
+from Helpers.FileUtils import build_csv_path
 from Helpers.Helpers import Helpers
 
 
@@ -59,8 +60,7 @@ class CSVWriter(SingletonMixin):
 
     def _csv_path_for(self, _FRIENDLY_NAME: str, status: str, log_dir: str) -> str:
         date_str: str = self.globals.get_date()
-        csv_name: str = f"{_FRIENDLY_NAME}_{status}"
-        return os.path.join(log_dir, f"{csv_name}_{date_str}.csv")
+        return build_csv_path(_FRIENDLY_NAME, status, date_str, log_dir)
 
     # ---------------------------
     # Writer lifecycle

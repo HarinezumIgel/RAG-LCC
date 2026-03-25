@@ -15,6 +15,7 @@ from AI.ModelsCache import ModelsCache
 from Commons.SingletonMixin import SingletonMixin
 from Compliance.BannedPhraseCollector import BannedPhraseCollector
 from Compliance.Exclusions import Exclusions
+from Compliance.SharedHelpers import SharedHelpers
 from Config.Config import Config
 from Globals.CounterInstance import HumanReviewCount, ProcessedCount
 from Globals.Globals import Globals
@@ -70,12 +71,9 @@ class ChunksToDBStrategy(SingletonMixin):
 
         # splitter settings
         self.separators: list[Any] = self.cfg.get_list("_SEPARATORS")
-        self.chunk_size: int = self.cfg.get_int(
-            "_CHROMA_EMBED_AND_RETRIEVE_PARAMS.CHUNK_SIZE"
-        )
-        self.overlap: int = self.cfg.get_int(
-            "_CHROMA_EMBED_AND_RETRIEVE_PARAMS.CHUNK_OVERLAP", 0
-        )
+        chroma_slot: str = self.helpers.get_chroma_config_slot()
+        self.chunk_size: int = self.cfg.get_int(f"{chroma_slot}.CHUNK_SIZE")
+        self.overlap: int = self.cfg.get_int(f"{chroma_slot}.CHUNK_OVERLAP", 0)
         self.use_exclusions: bool = self.cfg.get_bool("USE_EXCLUSIONS")
 
         # embeddings model
@@ -148,6 +146,26 @@ class ChunksToDBStrategy(SingletonMixin):
         # 2) Refresh in-memory doc
         self._make_doc()
 
+        # --- unsupported-language gate ---
+        lang: str = self.language or "en"
+        lang_action: str | None = SharedHelpers().check_language_support(
+            lang, self.escapedFilePath or "?"
+        )
+        if lang_action == "NOT_OK":
+            assert self.doc is not None
+            meta_ref: dict[str, Any] = self.doc.get("meta", {})
+            meta_ref.update(
+                {"Status": "NOT_OK", "Stage": "Language", "Time": datetime.now()}
+            )
+            self.csvWriter.write_json2csv(meta_ref, "NOT_OK")
+            return
+        if lang_action == "HUMAN_REVIEW":
+            human_review = True
+        lang_human_review: bool = human_review
+        human_review_reason: str = (
+            f"Unsupported language '{lang}'" if lang_action == "HUMAN_REVIEW" else ""
+        )
+
         # 3) Prepare chunks
         doc_chunks: list[langchainDoc] = self._prepare_chunks()
         self.pretty.write(
@@ -190,6 +208,7 @@ class ChunksToDBStrategy(SingletonMixin):
             texts_trunc,
             compliance_texts=texts,
         )
+        human_review = human_review or lang_human_review
 
         # 7) Upsert safe chunks
         self._upsert_chunks(
@@ -198,7 +217,12 @@ class ChunksToDBStrategy(SingletonMixin):
 
         # 8) Finalize and write CSVs
         self._finalize(
-            skipped, len(kept_ids), phrase_table, human_review, self.wordCount
+            skipped,
+            len(kept_ids),
+            phrase_table,
+            human_review,
+            self.wordCount,
+            human_review_reason=human_review_reason,
         )
 
     # --- Helpers ---
@@ -218,7 +242,7 @@ class ChunksToDBStrategy(SingletonMixin):
             False,
             is_separator_regex=False,
             length_function=self.fileUtils.count_words,
-            chunk_size=self.cfg.get("_CHROMA_EMBED_AND_RETRIEVE_PARAMS.CHUNK_SIZE"),
+            chunk_size=self.chunk_size,
             chunk_overlap=self.overlap,
         )
         assert self.doc is not None, "doc must be set"
@@ -344,6 +368,7 @@ class ChunksToDBStrategy(SingletonMixin):
         phrase_table: List[dict[str, Any]],
         human_review: bool,
         word_count: int = 0,
+        human_review_reason: str = "",
     ):
 
         if skipped == inserted or inserted == 0:
@@ -380,11 +405,20 @@ class ChunksToDBStrategy(SingletonMixin):
 
         if human_review:
             self.humanReviewCount.increment()
-            self.csvWriter.write_json2csv(
-                self.bannedPhraseCollector.prepare_for_csv_print(
+            hr_data: list[dict[str, Any]] | dict[str, Any]
+            if phrase_table:
+                hr_data = self.bannedPhraseCollector.prepare_for_csv_print(
                     phrase_table, meta_ref
-                ),
-                "HUMAN_REVIEW",
-            )
+                )
+            else:
+                hr_data = dict(meta_ref)
+            if human_review_reason:
+                if isinstance(hr_data, dict):
+                    hr_data["Reason"] = human_review_reason
+                    hr_data["Stage"] = "Language"
+                elif hr_data:
+                    hr_data[0]["Reason"] = human_review_reason
+                    hr_data[0]["Stage"] = "Language"
+            self.csvWriter.write_json2csv(hr_data, "HUMAN_REVIEW")
             if self.use_exclusions:
                 self.exclusions.add(self.escapedFilePath or "")

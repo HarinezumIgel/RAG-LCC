@@ -53,13 +53,13 @@ class CosineScorer(SingletonMixin, ScorerBase):
         # Heavy model loading is deferred until first verify() call
         # so that AIHelpers.__init__ (which instantiates this scorer)
         # does NOT trigger a download before HFDownloader has run.
-        self._ready: bool = False
+        self.ready: bool = False
 
     def _ensure_ready(self) -> None:
         """Lazily load the model and pre-compute caches on first use."""
-        if self._ready:
+        if self.ready:
             return
-        self._ready = True
+        self.ready = True
         self.device, _, _, _ = self.models_cache.switch2device()
         self.build_cosine_cache()
 

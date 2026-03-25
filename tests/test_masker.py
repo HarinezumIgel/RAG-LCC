@@ -64,7 +64,7 @@ def _make_masker(specs, apply_masking=True):
     m.pretty = StubPrettyWriter()
     m.apply_masking = apply_masking
     # _specs is a list of (compiled_pattern, replacement_string, rule_name)
-    m._specs = specs
+    m.specs = specs
     return m
 
 

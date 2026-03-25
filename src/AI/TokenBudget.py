@@ -49,11 +49,11 @@ class TokenBudget(SingletonMixin):
         self.reserved_system: int = self.cfg.get_int("TOKEN_BUDGET_RESERVED_SYSTEM")
 
         # Per-model cache: model_name -> effective context limit
-        self._cache: dict[str, int] = {}
+        self.cache: dict[str, int] = {}
 
         # Eagerly warm cache for the main inference model
-        self._main_model: str = self.helpers.get_model_args("_LLM")["MODEL"]
-        self._load_context_limit(self._main_model)
+        self.main_model: str = self.helpers.get_model_args("_LLM")["MODEL"]
+        self._load_context_limit(self.main_model)
 
     # -------------------------------------------------------------------------
     # Private helpers
@@ -65,8 +65,8 @@ class TokenBudget(SingletonMixin):
         Ollama and caching the result on first call.  Subsequent calls are
         served from the in-memory cache.
         """
-        if model_name in self._cache:
-            return self._cache[model_name]
+        if model_name in self.cache:
+            return self.cache[model_name]
 
         detected: int | None = self.llmCaller.get_model_context_limit(model_name)
 
@@ -97,7 +97,7 @@ class TokenBudget(SingletonMixin):
                 color=GREEN,
             )
 
-        self._cache[model_name] = limit
+        self.cache[model_name] = limit
         return limit
 
     # -------------------------------------------------------------------------
@@ -115,7 +115,7 @@ class TokenBudget(SingletonMixin):
         Use this to supply ``num_ctx`` to Ollama so it allocates the full KV-
         cache rather than the Ollama default of 2048.
         """
-        return self._load_context_limit(model_name or self._main_model)
+        return self._load_context_limit(model_name or self.main_model)
 
     def count_tokens_approx(self, text: str) -> int:
         """
@@ -146,7 +146,7 @@ class TokenBudget(SingletonMixin):
         Returns the number of output tokens the model may generate, clamped
         between 1 and RESERVED_OUTPUT.
         """
-        resolved_model: str = model_name or self._main_model
+        resolved_model: str = model_name or self.main_model
         context_limit: int = self._load_context_limit(resolved_model)
         prompt_tokens: int = self.count_tokens_approx(prompt)
         available: int = context_limit - self.reserved_system - prompt_tokens

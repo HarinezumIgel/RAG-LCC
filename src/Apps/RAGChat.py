@@ -80,9 +80,8 @@ class RAGChat:
         # load parameters once
         self.cp: CommandProcessor = CommandProcessor()
 
-        self.chunk_size: int = self.cfg.get_int(
-            "_CHROMA_EMBED_AND_RETRIEVE_PARAMS.CHUNK_SIZE"
-        )
+        chroma_slot: str = self.helpers.get_chroma_config_slot()
+        self.chunk_size: int = self.cfg.get_int(f"{chroma_slot}.CHUNK_SIZE")
         # LLM compliance parameters
         compliance_config_slot: str = self.helpers.get_compliance_config_slot(
             "PROMPT_CHECK"

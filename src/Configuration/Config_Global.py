@@ -8,7 +8,7 @@
 
 import os
 
-_VERSION = "v0.1.0/1025 03/17/2025"
+_VERSION = "v0.1.1/1035 03/25/2025"
 
 # -----------------------------------------------------------------------------
 #    Adjust this hash when you changed Config_Models.py
@@ -81,12 +81,22 @@ TOKEN_BUDGET_RESERVED_SYSTEM = 1024
 OLLAMA_STREAMING_REQ = False
 
 # -----------------------------------------------------------------------------
+# Unsupported-language handling
+# -----------------------------------------------------------------------------
+# What to do when a document's detected language is not installed in
+# Argos Translate (i.e. banlists cannot be translated).
+#   "NOT_OK"       – reject the document; write to NOT_OK CSV, skip processing
+#   "HUMAN_REVIEW" – process with English-fallback banlists, flag for human review
+#   "FALLBACK_EN"  – process silently with English-fallback banlists (legacy default)
+UNSUPPORTED_LANGUAGE_ACTION = "FALLBACK_EN"
+
+# -----------------------------------------------------------------------------
 # ChromaDB collection handling on startup
 # -----------------------------------------------------------------------------
 #   RAGLoad only, variable is here so it can be passed as CLI argument
 #   True  = preserve existing
 #   False = wipe and recreate on each run
-CHROMA_COLLECTION_KEEP = True
+CHROMA_COLLECTION_KEEP = False
 
 # -----------------------------------------------------------------------------
 # Tesseract for text extraction
@@ -145,24 +155,39 @@ COLLECTION = "Test"
 # -----------------------------------------------------------------------------
 # These settings should be the *same* for RAGChat.py and RAGLoad.py
 # Placing them into the global config file ensures this
+# Switching variants requires dropping and reloading the collection
+# (CHROMA_COLLECTION_KEEP = False) because HNSW parameters are immutable
+# after creation.
 # -----------------------------------------------------------------------------
 
-_CHROMA_EMBED_AND_RETRIEVE_PARAMS = {
-    "CHUNK_SIZE": 256,  # Number of tokens per chunk
-    "CHUNK_OVERLAP": 32,  # How many units from the end of one chunk are carried over to the next
-    # Don't make this too big. Lower overlap 10 %, Higher overlap 20-30% of CHUNK_SIZE
-    "NEIGHBORS_ON_LOAD": 512,  # Explore more neighbours at load time. Affects Load.py
-    "NEIGHBORS_RETRIEVE": 512,  # Explore more neighbours at query (chat) time.
-}
 
-# Alternate settings. See HANDS_ON_TOUR.md for details.
-# _CHROMA_EMBED_AND_RETRIEVE_PARAMS = {
-#     "CHUNK_SIZE": 128,       # was 256
-#     "CHUNK_OVERLAP": 16,     # was 32e next
-#     # Don't make this too big. Lower overlap 10 %, Higher overlap 20-30% of CHUNK_SIZE
-#     "NEIGHBORS_ON_LOAD": 64,  # Explore more neighbours at load time. Affects Load.py
-#     "NEIGHBORS_RETRIEVE": 64,  # Explore more neighbours at query (chat) time.
-# }
+_ACTIVE_CHROMA_EMBED_AND_RETRIEVE_PARAMS_CONFIG = "THOROUGH"
+
+_CHROMA_EMBED_AND_RETRIEVE_PARAMS: dict[str, dict[str, float | int]] = {
+    # ==========================
+    # Variant: THOROUGH
+    # ==========================
+    # Larger chunks and more HNSW neighbours — favors recall and context
+    # at the cost of index build time and query latency.
+    "THOROUGH": {
+        "CHUNK_SIZE": 256,  # Number of tokens per chunk
+        "CHUNK_OVERLAP": 32,  # How many units from the end of one chunk are carried over to the next
+        # Don't make this too big. Lower overlap 10 %, Higher overlap 20-30% of CHUNK_SIZE
+        "NEIGHBORS_ON_LOAD": 512,  # Explore more neighbours at load time. Affects Load.py
+        "NEIGHBORS_RETRIEVE": 512,  # Explore more neighbours at query (chat) time.
+    },
+    # ==========================
+    # Variant: COMPACT
+    # ==========================
+    # Smaller chunks and fewer neighbours — favors precision and speed.
+    "COMPACT": {
+        "CHUNK_SIZE": 128,  # was 256
+        "CHUNK_OVERLAP": 16,  # was 32
+        # Don't make this too big. Lower overlap 10 %, Higher overlap 20-30% of CHUNK_SIZE
+        "NEIGHBORS_ON_LOAD": 64,  # Explore more neighbours at load time. Affects Load.py
+        "NEIGHBORS_RETRIEVE": 64,  # Explore more neighbours at query (chat) time.
+    },
+}
 
 # -----------------------------------------------------------------------------
 # Fix broken LLM JSON outputs

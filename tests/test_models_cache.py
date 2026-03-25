@@ -35,7 +35,8 @@ class StubConfig:
             return self._overrides[key]
         mapping = {
             "_HF_HUB_CACHE": "fake_cache_dir",
-            "_CHROMA_EMBED_AND_RETRIEVE_PARAMS.CHUNK_SIZE": 512,
+            "_ACTIVE_CHROMA_EMBED_AND_RETRIEVE_PARAMS_CONFIG": "THOROUGH",
+            "_CHROMA_EMBED_AND_RETRIEVE_PARAMS.THOROUGH.CHUNK_SIZE": 512,
             "USE_CPU": True,
             "EMBEDDER_BITS": 32,
             "_MODELS": {
@@ -122,6 +123,9 @@ class StubHelpers:
     def bit_to_dtype(self, bits=32):
         dtype_map = {32: torch.float32, 16: torch.float16, 8: torch.qint8}
         return dtype_map.get(bits, self._dtype)
+
+    def get_chroma_config_slot(self) -> str:
+        return "_CHROMA_EMBED_AND_RETRIEVE_PARAMS.THOROUGH"
 
 
 # ---------------------------------------------------------------------------
@@ -224,7 +228,8 @@ def _build_models_cache(cfg_overrides=None, helpers=None, pretty=None):
     mc.sentence_transformer_cache = []
 
     mc.cache_dir = mc.cfg.get_str("_HF_HUB_CACHE")
-    mc.chunk_size = mc.cfg.get_int("_CHROMA_EMBED_AND_RETRIEVE_PARAMS.CHUNK_SIZE")
+    chroma_slot: str = mc.helpers.get_chroma_config_slot()
+    mc.chunk_size = mc.cfg.get_int(f"{chroma_slot}.CHUNK_SIZE")
     mc.hf_hub_offline = "1"
     mc.use_cpu = mc.cfg.get_bool("USE_CPU")
     mc.bits = mc.cfg.get_int("EMBEDDER_BITS", 32)

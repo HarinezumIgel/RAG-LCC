@@ -31,15 +31,15 @@ class Exclusions(SingletonMixin):
         self.collection: str = self.cfg.get_str("COLLECTION", "")
 
         # lines preserves file order (comments and entries). Each element is the original line string.
-        self._lines: List[str] = []
+        self.lines: List[str] = []
         # seen set stores normalized paths that have already been kept (first-seen)
-        self._seen: Set[str] = set()
+        self.seen: Set[str] = set()
 
         # header date used for filename and for appended headers
-        self._header_date = self.globals.get_date()
+        self.header_date = self.globals.get_date()
 
         # counter: how many times contains() returned True
-        self._applied_counter: int = 0
+        self.applied_counter: int = 0
 
         self.filepath: str = self._build_filepath()
         os.makedirs(os.path.dirname(self.filepath), exist_ok=True)
@@ -59,12 +59,12 @@ class Exclusions(SingletonMixin):
         if not norm:
             return False
 
-        if norm in self._seen:
+        if norm in self.seen:
             return False
         # append original normalized representation (use normalized form for storage)
         line = norm
-        self._lines.append(line)
-        self._seen.add(norm)
+        self.lines.append(line)
+        self.seen.add(norm)
         self._flush_to_disk()
         self.pretty.write(
             "W",
@@ -82,14 +82,14 @@ class Exclusions(SingletonMixin):
         if not norm:
             return False
 
-        if norm not in self._seen:
+        if norm not in self.seen:
             return False
 
         # Rebuild lines preserving comments and other entries, dropping any line that normalizes to norm
         new_lines: List[str] = []
         new_seen: Set[str] = set()
         removed = False
-        for ln in self._lines:
+        for ln in self.lines:
             if ln.startswith("#"):
                 new_lines.append(ln)
                 continue
@@ -102,8 +102,8 @@ class Exclusions(SingletonMixin):
                 new_seen.add(ln_norm)
                 new_lines.append(ln)
         if removed:
-            self._lines = new_lines
-            self._seen = new_seen
+            self.lines = new_lines
+            self.seen = new_seen
             self._flush_to_disk()
         return removed
 
@@ -116,10 +116,10 @@ class Exclusions(SingletonMixin):
         if not norm:
             return False
 
-        found: bool = norm in self._seen
+        found: bool = norm in self.seen
         if found:
             # increment applied counter for each successful contains check
-            self._applied_counter += 1
+            self.applied_counter += 1
         return found
 
     # -------------------------
@@ -135,7 +135,7 @@ class Exclusions(SingletonMixin):
         """
         Return how many times contains() returned True since this instance was created.
         """
-        return int(self._applied_counter)
+        return int(self.applied_counter)
 
     # -------------------------
     # Internal helpers
@@ -192,13 +192,13 @@ class Exclusions(SingletonMixin):
         contains only the first occurrence of each path).
         If file does not exist, create it with an initial header line.
         """
-        self._lines.clear()
-        self._seen.clear()
+        self.lines.clear()
+        self.seen.clear()
 
         if not os.path.exists(self.filepath):
             # create initial header and persist
-            header_line = f"# Date: {self._header_date}"
-            self._lines.append(header_line)
+            header_line = f"# Date: {self.header_date}"
+            self.lines.append(header_line)
             self._flush_to_disk()
             return
 
@@ -210,14 +210,14 @@ class Exclusions(SingletonMixin):
                         continue
                     if line.startswith("#"):
                         # keep header/comment lines as-is
-                        self._lines.append(line)
+                        self.lines.append(line)
                         # try to parse header date if present (optional)
                         parts = line.lstrip("#").strip().split()
                         if "Date:" in parts:
                             try:
                                 idx = parts.index("Date:")
                                 date_val = parts[idx + 1]
-                                self._header_date = date_val
+                                self.header_date = date_val
                             except Exception:
                                 pass
                         continue
@@ -225,18 +225,18 @@ class Exclusions(SingletonMixin):
                     norm = self._normalize(line)
                     if not norm:
                         continue
-                    if norm in self._seen:
+                    if norm in self.seen:
                         # duplicate later occurrence -> skip (do not append to _lines)
                         continue
                     # keep first-seen occurrence
-                    self._seen.add(norm)
+                    self.seen.add(norm)
                     # store the normalized form as the canonical stored line
-                    self._lines.append(norm)
+                    self.lines.append(norm)
         except Exception:
             # on read error, initialize file
-            header_line = f"# Date: {self._header_date}"
-            self._lines = [header_line]
-            self._seen.clear()
+            header_line = f"# Date: {self.header_date}"
+            self.lines = [header_line]
+            self.seen.clear()
             self._flush_to_disk()
 
     def _flush_to_disk(self) -> None:
@@ -246,7 +246,7 @@ class Exclusions(SingletonMixin):
         tmp_path: str = self.filepath + ".tmp"
         try:
             with open(tmp_path, "w", encoding="utf-8") as f:
-                for ln in self._lines:
+                for ln in self.lines:
                     f.write(ln + "\n")
             os.replace(tmp_path, self.filepath)
         finally:

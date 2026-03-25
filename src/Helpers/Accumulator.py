@@ -46,16 +46,16 @@ class Accumulator(SingletonMixin):
         self._initialized = True
 
         # Raw rows from all chunks (unfiltered)
-        self._raw_results: List[InternalResult] = []
+        self.raw_results: List[InternalResult] = []
 
         # Per-chunk boolean decisions (did this chunk require human review)
-        self._per_chunk_decisions: List[bool] = []
+        self.per_chunk_decisions: List[bool] = []
 
         # Per-chunk lists of rows that passed per-algo thresholds
-        self._per_chunk_filtered: List[List[InternalResult]] = []
+        self.per_chunk_filtered: List[List[InternalResult]] = []
 
         # Per-chunk phrase hits mapping phrase -> set(algo names) (counts algos with any score)
-        self._per_chunk_phrase_hits: List[Dict[str, Set[str]]] = []
+        self.per_chunk_phrase_hits: List[Dict[str, Set[str]]] = []
 
         self.cfg: Config = cfg or Config()
         from AI.AIHelpers import AIHelpers as _AIHelpers
@@ -78,10 +78,10 @@ class Accumulator(SingletonMixin):
         Returns (human_review_required, filtered_results).
         """
         if not results:
-            self._raw_results.extend([])
-            self._per_chunk_decisions.append(False)
-            self._per_chunk_filtered.append([])
-            self._per_chunk_phrase_hits.append({})
+            self.raw_results.extend([])
+            self.per_chunk_decisions.append(False)
+            self.per_chunk_filtered.append([])
+            self.per_chunk_phrase_hits.append({})
             return False, []
 
         human_review, filtered, breadth_hits = self._evaluate_human_review(
@@ -90,12 +90,12 @@ class Accumulator(SingletonMixin):
 
         # Wrap all results into InternalResult
         tmp = [InternalResult.from_base(r) for r in results]
-        self._raw_results.extend(tmp)
+        self.raw_results.extend(tmp)
 
         tmp = [InternalResult.from_base(r) for r in filtered]
-        self._per_chunk_filtered.append(tmp)
-        self._per_chunk_decisions.append(bool(human_review))
-        self._per_chunk_phrase_hits.append(breadth_hits)
+        self.per_chunk_filtered.append(tmp)
+        self.per_chunk_decisions.append(bool(human_review))
+        self.per_chunk_phrase_hits.append(breadth_hits)
 
         return bool(human_review), filtered
 
@@ -166,7 +166,7 @@ class Accumulator(SingletonMixin):
         self.pretty.write("D", "KeyWrdChk Debug", "Showing ALL raw hits (debug >= 4)")
         header: str = f"{'Phrase':<24} {'Algo':<18} {'Score':<10} {'Threshold':<10}"
         self.pretty.write("D", "KeyWrdChk Debug", header)
-        for r in self._raw_results:
+        for r in self.raw_results:
             algo_display: str = self.helpers.get_label_alias(r.algo) if r.algo else ""
             row: str = (
                 f"{r.phrase:<24} {algo_display:<18} {r.score:<10.4f} {r.threshold:<10.4f}"
@@ -241,10 +241,10 @@ class Accumulator(SingletonMixin):
         y: List[ResultsForPrint] = self._decompose_score_str(phrase_table)
 
         # Cleanup internal buffers so accumulator can be reused
-        self._raw_results.clear()
-        self._per_chunk_decisions.clear()
-        self._per_chunk_filtered.clear()
-        self._per_chunk_phrase_hits.clear()
+        self.raw_results.clear()
+        self.per_chunk_decisions.clear()
+        self.per_chunk_filtered.clear()
+        self.per_chunk_phrase_hits.clear()
 
         return (breadth_trigger or depth_trigger), y
 
@@ -257,11 +257,11 @@ class Accumulator(SingletonMixin):
         Returns (threshold_passed_rows, merged_phrase_hits).
         """
         threshold_passed_rows: List[InternalResult] = []
-        for chunk in self._per_chunk_filtered:
+        for chunk in self.per_chunk_filtered:
             threshold_passed_rows.extend(chunk)
 
         merged_phrase_hits: Dict[str, Set[str]] = defaultdict(set)
-        for chunk_hits in self._per_chunk_phrase_hits:
+        for chunk_hits in self.per_chunk_phrase_hits:
             for phrase, algos in chunk_hits.items():
                 merged_phrase_hits[phrase].update(algos)
 
@@ -599,7 +599,7 @@ class Accumulator(SingletonMixin):
         compliance_config_slot: str = self.helpers.get_compliance_config_slot(stage)
         raw: Any = self.cfg.get(f"{compliance_config_slot}.PIPELINE.ALGOS_TO_PROCESS")
         algos_to_process: OrderedDict[str, bool] = self.helpers.make_ordered_dict(raw)
-        for r in self._raw_results:
+        for r in self.raw_results:
             if r.algo is None:
                 continue
             if r.score is not None:
