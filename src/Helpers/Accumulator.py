@@ -363,6 +363,7 @@ class Accumulator(SingletonMixin):
         """
         rows: List[ResultsForPrint] = []
         for phrase, algo_map in phrase_table.items():
+            phrase_algos_matched: Optional[str] = algo_map.get("algos_matched")
             for algo, data in algo_map.items():
                 if algo == "meta":
                     continue
@@ -391,6 +392,7 @@ class Accumulator(SingletonMixin):
                         threshold=threshold,
                         detail=data.detail,
                         matched_algos_count=data.matched_algos_count,
+                        algos_matched=phrase_algos_matched,
                     )
                 )
         return rows

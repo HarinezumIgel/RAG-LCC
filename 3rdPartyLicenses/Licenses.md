@@ -89,7 +89,7 @@ Users are responsible for reviewing and complying with all third‑party terms.
 | httptools                                | 0.7.1                  | MIT                                                            |Yury Selivanov <yury@magic.io>                   |
 | httpx                                    | 0.28.1                 | BSD License                                                    |Tom Christie                                     |
 |                                          |                        |                                                                |<tom@tomchristie.com>                            |
-| huggingface_hub                          | 1.7.2                  | Apache Software License                                        |Hugging Face, Inc.                               |
+| huggingface_hub                          | 1.8.0                  | Apache Software License                                        |Hugging Face, Inc.                               |
 | idna                                     | 3.11                   | BSD-3-Clause                                                   |Kim Davies                                       |
 |                                          |                        |                                                                |<kim+pypi@gumleaf.org>                           |
 | importlib_metadata                       | 8.7.1                  | Apache-2.0                                                     |"Jason R. Coombs"                                |
@@ -257,7 +257,8 @@ Users are responsible for reviewing and complying with all third‑party terms.
 |                                          |                        |                                                                |<Julian+referencing@GrayVines.com>               |
 | regex                                    | 2026.2.28              | Apache-2.0 AND CNRI-Python                                     |Matthew Barnett                                  |
 |                                          |                        |                                                                |<regex@mrabarnett.plus.com>                      |
-| requests                                 | 2.32.5                 | Apache Software License                                        |Kenneth Reitz                                    |
+| requests                                 | 2.33.0                 | Apache Software License                                        |Kenneth Reitz                                    |
+|                                          |                        |                                                                |<me@kennethreitz.org>                            |
 | requests-oauthlib                        | 2.0.0                  | BSD License                                                    |Kenneth Reitz                                    |
 | requests-toolbelt                        | 1.0.0                  | Apache Software License                                        |Ian Cordasco, Cory Benfield                      |
 | rich                                     | 14.3.3                 | MIT License                                                    |Will McGugan                                     |
@@ -698,7 +699,7 @@ Users are responsible for reviewing and complying with all third‑party terms.
 
 ```
 
-### huggingface_hub 1.7.2
+### huggingface_hub 1.8.0
 **License:** Apache Software License
 **Author:** Hugging Face, Inc.
 
@@ -1357,9 +1358,9 @@ Users are responsible for reviewing and complying with all third‑party terms.
 
 ```
 
-### requests 2.32.5
+### requests 2.33.0
 **License:** Apache Software License
-**Author:** Kenneth Reitz
+**Author:** Kenneth Reitz <me@kennethreitz.org>
 
 ```text
 

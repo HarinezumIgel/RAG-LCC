@@ -815,18 +815,13 @@ Prevent reprocessing of unchanged files and explicitly exclude non-compliant fil
 
 `RAGLoad` can optionally restrict document ingestion to files that were previously
 classified by `DocClassify`. Instead of loading every file found in `DOC_DIR`,
-`RAGLoad` reads the CSV log files that `DocClassify` produced for a specific run
-and builds an allow‑set of file paths. Only files present in that allow‑set are
-extracted, chunked, and upserted into the vector store; all other files are skipped.
+`RAGLoad` reads the classification CSV that `DocClassify` produced and builds an
+allow‑set of file paths. Only files present in that allow‑set are extracted,
+chunked, and upserted into the vector store; all other files are skipped.
 
-The link between the two applications is the **run stamp** — the `YYYYMMDD_HHMMSS`
-date‑time string that `DocClassify` appends to every CSV it writes (e.g.
-`DocClassify_OK_20260317_111105.csv`). By supplying the same stamp to `RAGLoad`,
-the operator selects exactly which classification run to use as the ingestion filter.
-
-By default only the `OK` CSV is consumed. Setting `LOAD_FROM_HUMAN_REVIEW_CSV` to
-`True` additionally merges in the paths from the `HUMAN_REVIEW` CSV. Duplicate
-paths that appear in both files are detected and logged but counted only once.
+The operator points `RAGLoad` at the CSV by setting `LOAD_FROM_CLASSIFY_CSV` to
+the filename (resolved relative to the `logs/` directory) or an absolute path.
+For example: `--load-from-classify-csv DocClassify_OK_20260317_111105.csv`.
 
 When the classify‑then‑load filter is active, **exclusion checks are bypassed**.
 `DocClassify` already evaluated exclusions during its run, so the CSV output
@@ -835,18 +830,15 @@ produce inconsistent results if the exclusion list changed between runs. The CSV
 allow‑set is therefore treated as the sole authority for which files to ingest.
 When no CSV filter is active, the normal `USE_EXCLUSIONS` check applies as before.
 
-If the required OK CSV is not found (wrong run stamp, missing log directory, etc.),
-`ClassifyCSVReader` raises `ClassifyCSVNotFoundError` and execution stops.
-A missing HUMAN_REVIEW CSV is non‑fatal — a warning is logged and ingestion
-continues with the OK paths only.
+If the CSV file is not found, `ClassifyCSVReader` raises
+`ClassifyCSVNotFoundError` and execution stops.
 
 ### Configuration
 
 | Key | Type | Default | Purpose |
 | --- | --- | --- | --- |
-| `LOAD_FROM_CLASSIFY_CSV` | bool | `False` | Enable the classify‑then‑load filter. |
-| `LOAD_FROM_HUMAN_REVIEW_CSV` | bool | `False` | Also include documents flagged for human review. |
-| `CLASSIFY_RUN_STAMP` | string | `""` | Run stamp identifying the `DocClassify` CSVs to read. Required when either flag is `True`. |
+| `LOAD_FROM_CLASSIFY_CSV` | string | `""` | Path to a `DocClassify` CSV. Accepts a filename (resolved from `logs/`) or an absolute path. When non-empty, only listed files are ingested. |
+| `CLASSIFY_CSV_QUERY` | string | `""` | Optional SQL WHERE clause. When non-empty the CSV rows are loaded into an in-memory SQLite table and only rows satisfying the expression are included in the allow-set. Standard SQLite syntax is supported (`LIKE`, `AND`, `OR`, `NOT LIKE`, `=`, `!=`, `IN`, etc.). Example: `"Mammal LIKE '%Yes%'"`. |
 
 Classification results are heuristic and probabilistic — false positives and false
 negatives will occur. The filter does not add, verify, or guarantee any legal,

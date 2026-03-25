@@ -102,8 +102,8 @@ class SharedHelpers(SingletonMixin):
 
         Returns ``None`` when the language is supported or the configured
         action is ``FALLBACK_EN`` (caller should continue normally).
-        Returns ``"NOT_OK"`` or ``"HUMAN_REVIEW"`` when the caller must
-        act on the unsupported language.  A warning is logged automatically.
+        Returns ``"NOT_OK"`` when the caller must reject the document.
+        A warning is logged automatically.
         """
         if self.is_language_supported(language):
             return None
@@ -119,16 +119,6 @@ class SharedHelpers(SingletonMixin):
                 color=ORANGE,
             )
             return "NOT_OK"
-        if action == "HUMAN_REVIEW":
-            self.pretty.write(
-                "W",
-                "Language",
-                f"Language '{language}' not installed — "
-                f"processing with English fallback, flagging for human review "
-                f"(UNSUPPORTED_LANGUAGE_ACTION=HUMAN_REVIEW)",
-                color=ORANGE,
-            )
-            return "HUMAN_REVIEW"
         return None
 
     def refresh_installed_languages(self) -> None:

@@ -230,9 +230,9 @@ class TestCheckLanguageSupport:
         sh.cfg = _cfg_with_action("NOT_OK")
         assert sh.check_language_support("ja", "/doc.pdf") == "NOT_OK"
 
-    def test_unsupported_human_review(self, sh):
+    def test_unsupported_human_review_treated_as_fallback(self, sh):
         sh.cfg = _cfg_with_action("HUMAN_REVIEW")
-        assert sh.check_language_support("ja") == "HUMAN_REVIEW"
+        assert sh.check_language_support("ja") is None
 
     def test_unsupported_fallback_en_explicit(self, sh):
         sh.cfg = _cfg_with_action("FALLBACK_EN")

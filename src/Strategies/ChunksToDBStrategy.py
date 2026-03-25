@@ -159,12 +159,6 @@ class ChunksToDBStrategy(SingletonMixin):
             )
             self.csvWriter.write_json2csv(meta_ref, "NOT_OK")
             return
-        if lang_action == "HUMAN_REVIEW":
-            human_review = True
-        lang_human_review: bool = human_review
-        human_review_reason: str = (
-            f"Unsupported language '{lang}'" if lang_action == "HUMAN_REVIEW" else ""
-        )
 
         # 3) Prepare chunks
         doc_chunks: list[langchainDoc] = self._prepare_chunks()
@@ -208,7 +202,6 @@ class ChunksToDBStrategy(SingletonMixin):
             texts_trunc,
             compliance_texts=texts,
         )
-        human_review = human_review or lang_human_review
 
         # 7) Upsert safe chunks
         self._upsert_chunks(
@@ -222,7 +215,6 @@ class ChunksToDBStrategy(SingletonMixin):
             phrase_table,
             human_review,
             self.wordCount,
-            human_review_reason=human_review_reason,
         )
 
     # --- Helpers ---
@@ -368,7 +360,6 @@ class ChunksToDBStrategy(SingletonMixin):
         phrase_table: List[dict[str, Any]],
         human_review: bool,
         word_count: int = 0,
-        human_review_reason: str = "",
     ):
 
         if skipped == inserted or inserted == 0:
@@ -405,6 +396,7 @@ class ChunksToDBStrategy(SingletonMixin):
 
         if human_review:
             self.humanReviewCount.increment()
+            meta_ref["Status"] = "NOT_OK"
             hr_data: list[dict[str, Any]] | dict[str, Any]
             if phrase_table:
                 hr_data = self.bannedPhraseCollector.prepare_for_csv_print(
@@ -412,13 +404,6 @@ class ChunksToDBStrategy(SingletonMixin):
                 )
             else:
                 hr_data = dict(meta_ref)
-            if human_review_reason:
-                if isinstance(hr_data, dict):
-                    hr_data["Reason"] = human_review_reason
-                    hr_data["Stage"] = "Language"
-                elif hr_data:
-                    hr_data[0]["Reason"] = human_review_reason
-                    hr_data[0]["Stage"] = "Language"
             self.csvWriter.write_json2csv(hr_data, "HUMAN_REVIEW")
             if self.use_exclusions:
                 self.exclusions.add(self.escapedFilePath or "")

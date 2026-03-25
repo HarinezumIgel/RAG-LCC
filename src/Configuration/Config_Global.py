@@ -86,9 +86,8 @@ OLLAMA_STREAMING_REQ = False
 # What to do when a document's detected language is not installed in
 # Argos Translate (i.e. banlists cannot be translated).
 #   "NOT_OK"       – reject the document; write to NOT_OK CSV, skip processing
-#   "HUMAN_REVIEW" – process with English-fallback banlists, flag for human review
 #   "FALLBACK_EN"  – process silently with English-fallback banlists (legacy default)
-UNSUPPORTED_LANGUAGE_ACTION = "FALLBACK_EN"
+UNSUPPORTED_LANGUAGE_ACTION = "NOT_OK"
 
 # -----------------------------------------------------------------------------
 # ChromaDB collection handling on startup

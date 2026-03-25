@@ -9,18 +9,23 @@
 _FRIENDLY_NAME = "RAGLoad"
 
 # -----------------------------------------------------------------------------
-# Load only files that were classified as OK by a previous DocClassify run.
+# Path to a DocClassify CSV to use as an ingestion filter.
+# When non-empty, only file paths listed in this CSV are loaded.
+# Accepts a filename (resolved relative to _LOG_DIRECTORY) or an absolute path.
+# Example: "DocClassify_OK_20260325_141005.csv"
 # Pass via --load-from-classify-csv on the command line.
-LOAD_FROM_CLASSIFY_CSV = False
+LOAD_FROM_CLASSIFY_CSV = ""
 
-# Also include files from the corresponding HUMAN_REVIEW CSV.
-# Pass via --load-from-human-review-csv on the command line.
-LOAD_FROM_HUMAN_REVIEW_CSV = False
-
-# The run-stamp (YYYYMMDD_HHMMSS) that identifies the DocClassify log set.
-# Required when --load-from-classify-csv is True.
-# Pass via --classify-run-stamp <stamp> on the command line.
-CLASSIFY_RUN_STAMP = ""
+# Optional SQL WHERE clause applied when loading the classify CSV.
+# The CSV is loaded into an in-memory SQLite table; only rows that
+# satisfy the WHERE expression are included.  Standard SQLite syntax
+# is supported: LIKE, AND, OR, NOT, =, !=, IN, GLOB, etc.
+# Column names with spaces or special characters must be quoted: [Col Name].
+# Example: "Mammal LIKE '%Yes%'"
+#          "Mammal LIKE '%Yes%' AND Language = 'English'"
+#          "Classification LIKE '%Science%' AND Mammal NOT LIKE '%Dont know%'"
+# Pass via --classify-csv-query on the command line.
+CLASSIFY_CSV_QUERY = ""
 # -----------------------------------------------------------------------------
 
 # -----------------------------------------------------------------------------

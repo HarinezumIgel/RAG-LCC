@@ -135,7 +135,6 @@ class BannedPhraseCollector:
 
             # Merge per-phrase metadata if available (only keys present in _KEYS_FOR_HUMAN_REVIEW_CSV)
             self._add_meta_keys(row, meta)
-            row = self._normalize_row(row)
             row = self.helpers.replace_keys_with_aliases(row)
             results.append(row)
         return results

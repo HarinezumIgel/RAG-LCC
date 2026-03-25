@@ -147,7 +147,7 @@ class AIHelpers(SingletonMixin):
         lang_action: str | None = SharedHelpers().check_language_support(
             language, "user prompt"
         )
-        if lang_action in ("NOT_OK", "HUMAN_REVIEW"):
+        if lang_action == "NOT_OK":
             self.pretty.write(
                 "E",
                 "CheckPrompt",

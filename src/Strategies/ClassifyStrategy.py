@@ -304,12 +304,6 @@ class ClassifyStrategy(SingletonMixin, ProcessingStrategy):
             embedding=embeddings,
         )
 
-        # Merge unsupported-language HUMAN_REVIEW flag
-        human_review_reason: str = ""
-        if lang_action == "HUMAN_REVIEW":
-            human_review = True
-            human_review_reason = f"Unsupported language '{language}'"
-
         # Prepare for keyword similarity calculation.
         #    raw_keywords = [kw for kw, weight in extraction_keywords]
         #    query_vector = keyword_embeddings[0].unsqueeze(0)
@@ -460,6 +454,7 @@ class ClassifyStrategy(SingletonMixin, ProcessingStrategy):
 
         if human_review:
             self.humanReviewCount.increment()
+            self.doc["meta"]["Status"] = "NOT_OK"
             hr_data: list[dict[str, Any]] | dict[str, Any]
             if phrase_table:
                 hr_data = self.bannedPhraseCollector.prepare_for_csv_print(
@@ -467,13 +462,6 @@ class ClassifyStrategy(SingletonMixin, ProcessingStrategy):
                 )
             else:
                 hr_data = dict(self.doc["meta"])
-            if human_review_reason:
-                if isinstance(hr_data, dict):
-                    hr_data["Reason"] = human_review_reason
-                    hr_data["Stage"] = "Language"
-                elif hr_data:
-                    hr_data[0]["Reason"] = human_review_reason
-                    hr_data[0]["Stage"] = "Language"
             self.csvWriter.write_json2csv(hr_data, "HUMAN_REVIEW")
             orig_path = self.doc["meta"]["FilePath"]
             self.pretty.write(

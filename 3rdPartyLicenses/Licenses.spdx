@@ -8,9 +8,9 @@ SPDXVersion: SPDX-2.2
 DataLicense: CC0-1.0
 SPDXID: SPDXRef-DOCUMENT
 DocumentName: 3rdPartyLicenses
-DocumentNamespace: http://example.org/spdxdocs/3rdPartyLicenses-20260325154456
+DocumentNamespace: http://example.org/spdxdocs/3rdPartyLicenses-20260325193143
 Creator: pip-licenses
-Created: 03/25/2026 15:44:56.ToUniversalTime().ToString('o')
+Created: 03/25/2026 19:31:43.ToUniversalTime().ToString('o')
 
 #####
 PackageName: Jinja2
@@ -455,7 +455,7 @@ PackageHomePage: https://github.com/encode/httpx
 #####
 PackageName: huggingface_hub
 SPDXID: SPDXRef-Package-huggingface-hub
-PackageVersion: 1.7.2
+PackageVersion: 1.8.0
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: Apache Software License
@@ -1245,12 +1245,12 @@ PackageHomePage: https://github.com/mrabarnett/mrab-regex
 #####
 PackageName: requests
 SPDXID: SPDXRef-Package-requests
-PackageVersion: 2.32.5
+PackageVersion: 2.33.0
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: Apache Software License
 PackageLicenseDeclared: Apache Software License
-PackageHomePage: https://requests.readthedocs.io
+PackageHomePage: https://github.com/psf/requests
 
 #####
 PackageName: requests-oauthlib

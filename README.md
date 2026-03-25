@@ -61,7 +61,7 @@ Instead, it provides a flexible sandbox to explore retrieval strategies and clas
 
 ## ✨ High‑Level Features
 
-- Finds relevant documents based upon user prompt and optionally loads them into Vector Database
+- Classify‑then‑Load Workflow — optionally filter `DocClassify` results with SQL WHERE queries before ingestion
 - Local document ingestion into ChromaDB
 - Retrieval‑Augmented Generation (RAG)
 - Configurable multi‑algorithm filter chains
@@ -94,15 +94,18 @@ Detection results:
 
 ---
 
-## �📂 Classify‑then‑Load Workflow
+## 📂 Classify‑then‑Load Workflow
 
 `RAGLoad` can optionally consume the classification output produced by
 `DocClassify` so that **only documents classified as relevant** are ingested
 into the vector store.
 
-When enabled, `RAGLoad` reads the `OK` log CSV (and, optionally, the
-`HUMAN_REVIEW` log CSV) that `DocClassify` wrote for a given run and
-limits ingestion to the file paths listed therein.
+When a classify CSV path is provided, `RAGLoad` reads the classification
+CSV that `DocClassify` wrote and limits ingestion to the file paths
+listed therein. An optional SQL WHERE clause (`CLASSIFY_CSV_QUERY`) can
+further narrow the allow‑set by filtering the CSV rows through an
+in‑memory SQLite table — for example, ingesting only documents where
+`Animal LIKE '%cat%'` or `Mammal LIKE '%Yes%' AND Language = 'English'`.
 
 ## �📋 Human Review and Logs
 
@@ -367,7 +370,14 @@ And here two prompts were the first was caught by the filter chain algos and the
 
 ![Animal classification](Documentation/pics/DocClassify_CSV_Output.jpg)
 
-### 🔧 Filter chain configuration state
+### � Classify‑then‑Load
+
+The classify‑then‑load workflow chains `DocClassify` and `RAGLoad`: first classify your corpus, then feed only the matching rows into `RAGLoad` using `--load-from-classify-csv` and `--classify-csv-query`. The query accepts a SQL WHERE clause (SQLite syntax) to filter the classification CSV before ingestion.
+
+![Classify‑then‑Load workflow](Documentation/pics/Classify_then_Load_Workflow.jpg)
+The bottom of the image shows the files matched the SQLite query.
+
+### �🔧 Filter chain configuration state
 
 A summary of the enabled check algorithms is shown at startup:
 ![Filter chain algos enabled](Documentation/pics/FilterChainConfiguration.jpg)
@@ -543,10 +553,6 @@ what happens when a document’s detected language is not installed:
 |-----------------|---------------------------------------------------------------------------|
 | `FALLBACK_EN`   | *(default)* Process silently with English-only banlists                   |
 | `NOT_OK`        | Reject the document -- write to NOT_OK CSV, skip all further processing   |
-| `HUMAN_REVIEW`  | Process with English fallback banlists but flag for human review          |
-
-For **RAGChat** prompts, both `NOT_OK` and `HUMAN_REVIEW` block the prompt
-(there is no deferred review in a live chat session).
 
 Install language packages using the provided helper script:
 
@@ -862,40 +868,42 @@ For hands-on examples, see [Change provided example prompt in HANDS_ON_TOUR.md](
 ### 📂 Load classified documents into the vector database
 
 After classifying documents with `DocClassify`, you can feed only the approved files
-into `RAGLoad` by enabling the classify‑then‑load filter. Set
-`LOAD_FROM_CLASSIFY_CSV` to load files from the OK log, optionally add
-`LOAD_FROM_HUMAN_REVIEW_CSV` to also include files that were flagged for human review,
-and provide the `CLASSIFY_RUN_STAMP` that identifies the `DocClassify` run
-(printed at the end of every `DocClassify` execution and visible in the log filenames,
-e.g. `20260325_141005`).
+into `RAGLoad` by pointing it at a classification CSV. Pass
+`--load-from-classify-csv` with the CSV filename (resolved relative to the `logs/`
+directory) or an absolute path:
 
 ```Windows
-python .\src\Apps\RAGLoad.py --load-from-classify-csv --classify-run-stamp 20260325_141005
+python .\src\Apps\RAGLoad.py --load-from-classify-csv DocClassify_OK_20260325_141005.csv
 ```
 
-To also include documents from the HUMAN_REVIEW log:
+To further narrow ingestion to only rows whose classification columns match a
+condition, add `--classify-csv-query` with a SQL WHERE clause. The CSV is loaded
+into an in-memory SQLite table, so standard SQLite syntax is supported (`LIKE`,
+`AND`, `OR`, `NOT LIKE`, `=`, `!=`, `IN`, etc.):
 
 ```Windows
-python .\src\Apps\RAGLoad.py --load-from-classify-csv --load-from-human-review-csv --classify-run-stamp 20260325_141005
+python .\src\Apps\RAGLoad.py --load-from-classify-csv DocClassify_OK_20260325_141005.csv --classify-csv-query "Mammal LIKE '%%Yes%%'"
+```
+
+```Windows
+python .\src\Apps\RAGLoad.py --load-from-classify-csv DocClassify_OK_20260325_141005.csv --classify-csv-query "Mammal LIKE '%%Yes%%' AND Language = 'English'"
 ```
 
 The same settings can be made permanent in `Config_RAGLoad.py`:
 
 ```python
-LOAD_FROM_CLASSIFY_CSV = True
-LOAD_FROM_HUMAN_REVIEW_CSV = True   # optional
-CLASSIFY_RUN_STAMP = "20260325_141005"
+LOAD_FROM_CLASSIFY_CSV = "DocClassify_OK_20260325_141005.csv"
+CLASSIFY_CSV_QUERY = "Mammal LIKE '%Yes%'"  # optional
 ```
 
-When the classify‑then‑load filter is active, only file paths present in the selected
-CSV logs are ingested; all other files in `DOC_DIR` are skipped. Exclusion checks
-(`USE_EXCLUSIONS`) are bypassed automatically because `DocClassify` already evaluated
-them during its run.
+When the classify‑then‑load filter is active, only file paths present in the CSV
+are ingested; all other files in `DOC_DIR` are skipped. When a
+`CLASSIFY_CSV_QUERY` is set, rows that do not satisfy the SQL condition are excluded
+before the allow-set is built. Exclusion checks (`USE_EXCLUSIONS`) are bypassed
+automatically because `DocClassify` already evaluated them during its run.
 
-If the required OK CSV file is not found (e.g. wrong run stamp or missing log),
-`RAGLoad` raises a `ClassifyCSVNotFoundError` and stops immediately.
-A missing HUMAN_REVIEW CSV is non‑fatal — a warning is logged and ingestion
-continues with the OK paths only.
+If the CSV file is not found, `RAGLoad` raises a `ClassifyCSVNotFoundError` and
+stops immediately.
 
 ## 📚 Configuration Reference
 
@@ -1215,20 +1223,25 @@ This is the simplest app-specific config:
 | `_KEY_BERT.TOP_N_FIRST` | `100` | Keywords from the first KeyBERT pass. |
 | `_KEY_BERT.TOP_N_SECOND` | `60` | Keywords from the second KeyBERT pass. |
 
-#### � Classify‑then‑Load
+#### 🔍 Classify‑then‑Load
 
-When enabled, `RAGLoad` reads the classification CSV output produced by a prior `DocClassify` run and limits ingestion to the file paths listed therein. Only documents that `DocClassify` classified as `OK` (and, optionally, those flagged for `HUMAN_REVIEW`) are loaded into the vector store. All other files in `DOC_DIR` are skipped.
+When a classify CSV path is provided, `RAGLoad` reads the classification CSV produced by a prior `DocClassify` run and limits ingestion to the file paths listed therein. All other files in `DOC_DIR` are skipped.
 
 | Key | Default used in this repository | Purpose |
 | --- | --- | --- |
-| `LOAD_FROM_CLASSIFY_CSV` | `False` | Enable the classify‑then‑load filter. When `True`, only documents listed in the `DocClassify` OK CSV are ingested. |
-| `LOAD_FROM_HUMAN_REVIEW_CSV` | `False` | Also include documents from the `HUMAN_REVIEW` CSV. Only effective when `LOAD_FROM_CLASSIFY_CSV` is `True`. |
-| `CLASSIFY_RUN_STAMP` | `""` | Date‑time stamp (`YYYYMMDD_HHMMSS`) that identifies the `DocClassify` run whose CSVs should be read. Required when either flag above is `True`. The stamp is part of each CSV filename written by `DocClassify` (e.g. `DocClassify_OK_20260317_111105.csv`). |
+| `LOAD_FROM_CLASSIFY_CSV` | `""` | Path to a `DocClassify` CSV. Accepts a filename (resolved relative to the `logs/` directory) or an absolute path. When non-empty, only documents listed in the CSV are ingested. |
+| `CLASSIFY_CSV_QUERY` | `""` | Optional SQL WHERE clause applied to the loaded CSV rows. The CSV is loaded into an in-memory SQLite table; only rows satisfying the expression are included. Supports `LIKE`, `AND`, `OR`, `NOT LIKE`, `=`, `!=`, `IN`, etc. Example: `"Mammal LIKE '%Yes%' AND Language = 'English'"`. |
 
 CLI example:
 
 ```bash
-python src/Apps/RAGLoad.py --load-from-classify-csv --load-from-human-review-csv --classify-run-stamp 20260317_111105
+python src/Apps/RAGLoad.py --load-from-classify-csv DocClassify_OK_20260317_111105.csv
+```
+
+With a query filter:
+
+```bash
+python src/Apps/RAGLoad.py --load-from-classify-csv DocClassify_OK_20260317_111105.csv --classify-csv-query "Mammal LIKE '%Yes%'"
 ```
 
 When the classify‑then‑load filter is active, exclusion checks (`USE_EXCLUSIONS`) are bypassed because `DocClassify` already evaluated exclusions during its run.

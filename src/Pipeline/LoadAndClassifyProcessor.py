@@ -28,7 +28,6 @@ from Globals.Globals import Globals
 from Gui.Colors import BRIGHT_BLUE, CYAN, ORANGE, RESET
 from Gui.PrettyWriter import PrettyWriter
 from Helpers.ChromaDBHelper import ChromaDBHelper
-from Helpers.ClassifyCSVReader import ClassifyCSVReader
 from Helpers.CSVWriter import CSVWriter
 from Helpers.FileUtils import FileUtils
 from Helpers.Helpers import Helpers
@@ -52,8 +51,7 @@ class LoadAndClassifyProcessor(SingletonMixin):
         self,
         strategy: ProcessingStrategy,
         *,
-        classify_run_stamp: str | None = None,
-        include_human_review: bool = False,
+        allowed_paths: set[str] | None = None,
         cfg: "Config | None" = None,
         pretty: "PrettyWriter | None" = None,
         helpers: "Helpers | None" = None,
@@ -63,15 +61,8 @@ class LoadAndClassifyProcessor(SingletonMixin):
         self._initialized = True
         self.strategy: ProcessingStrategy = strategy
 
-        # Optional allow-set loaded from a DocClassify OK CSV
-        self.allowed_paths: set[str] | None = None
-        if classify_run_stamp:
-            reader = ClassifyCSVReader(
-                classify_run_stamp,
-                includeHumanReview=include_human_review,
-                cfg=cfg,
-            )
-            self.allowed_paths = reader.readOkFilePaths()
+        # Optional allow-set loaded from a DocClassify CSV
+        self.allowed_paths: set[str] | None = allowed_paths
 
         # Utilities & counters
         self.failed_countInstance: FailedCount = FailedCount()

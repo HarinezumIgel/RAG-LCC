@@ -292,6 +292,43 @@ press enter again to exit.
 
 ---
 
+## 📂 Classify‑then‑Load: filter RAGLoad with a DocClassify CSV
+
+This demonstrates the classify‑then‑load workflow: first classify your documents with `DocClassify`, then feed only the matching rows into `RAGLoad` using the `--load-from-classify-csv` and `--classify-csv-query` flags.
+
+### Step 1 — Classify your documents
+
+```Windows
+python .\src\Apps\DocClassify.py --doc-dir TestDocs --collection AnimalDocs
+```
+
+When finished, note the OK CSV filename printed at the end, e.g. `DocClassify_OK_20260325_182503.csv`.
+Open it — you will see columns such as `Animal`, `Mammal`, `Language`, etc. for every processed file.
+
+### Step 2 — Load only the animal‑related documents
+
+Use the CSV from Step 1 as input for `RAGLoad`. The `--classify-csv-query` flag accepts a SQL WHERE clause (SQLite syntax) to filter the rows.
+
+Load only documents where the `Animal` column mentions "cat":
+
+```Windows
+python .\src\Apps\RAGLoad.py --doc-dir TestDocs --collection AnimalDocs --load-from-classify-csv DocClassify_OK_20260325_182503.csv --classify-csv-query "Animal LIKE '%cat%'"
+```
+
+Only files whose classification row matches the query are ingested; all other files are skipped.
+
+You can combine multiple conditions:
+
+```Windows
+python .\src\Apps\RAGLoad.py --doc-dir TestDocs --collection AnimalDocs --load-from-classify-csv DocClassify_OK_20260325_182503.csv --classify-csv-query "Mammal LIKE '%Yes%' AND Language = 'English'"
+```
+
+> **Note:** When the classify CSV filter is active, exclusion checks are bypassed —
+> `DocClassify` already evaluated exclusions during its run, so the CSV is the sole
+> authority for which files to ingest.
+
+---
+
 ## 🏷️ Classify the documentation
 
 This demonstrates `DocClassify.py`.

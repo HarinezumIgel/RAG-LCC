@@ -6,7 +6,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
-## [v0.2.0/1025] — 2026-03-25
+## [v0.1.1/1035] — 2026-03-25
+
+### 🐛 Fixed
+
+- **Empty "Algos Matched" CSV column** — `ResultsForPrint` dataclass in
+  `ComplianceAlgoResult.py` was missing an `algos_matched` field. The phrase-level
+  algorithm-match string was discarded in `Accumulator._decompose_score_str()` and
+  never reached `prepare_for_csv_print()`. Added `algos_matched: Optional[str] = None`
+  to `ResultsForPrint` and populated it from the phrase-level map.
+- **HUMAN_REVIEW CSV Status was "OK" instead of "NOT_OK"** —
+  `ChunksToDBStrategy` and `ClassifyStrategy` set `Status` to `"OK"` before the
+  human-review branch and never updated it. Added explicit
+  `Status = "NOT_OK"` assignment before writing the HUMAN_REVIEW CSV in both
+  strategies.
+
+### 🔧 Improved
+
+- **Column-aligned ClassifyCSVReader debug output** — the `Selected paths` debug
+  lines now left-justify each column (file path and query-referenced CSV columns)
+  to the widest value, so the `|` separators align across rows.
+
+### 📖 Documentation
+
+- `HANDS_ON_TOUR.md` — added **📂 Classify‑then‑Load** walkthrough section with
+  Step 1 (DocClassify) and Step 2 (RAGLoad with `--classify-csv-query` examples).
+- `README.md` — added **📂 Classify‑then‑Load** subsection under Examples with
+  workflow diagram; updated the Classify‑then‑Load overview to mention SQLite query
+  filtering; updated the High-Level Features bullet to surface SQL WHERE capability.
 
 ### ➕ Added
 
@@ -15,13 +42,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **`UNSUPPORTED_LANGUAGE_ACTION`** config key (`Config_Global.py`) — controls
   what happens when a document’s detected language is not installed in Argos Translate.
   Valid values: `FALLBACK_EN` (default — legacy behaviour), `NOT_OK` (reject and
-  write to NOT_OK CSV), `HUMAN_REVIEW` (process with English fallback, flag for
-  human review).
+  write to NOT_OK CSV).
 - **`SharedHelpers.is_language_supported(lang)`** — returns `True`
   for English or any installed Argos Translate language.
 - **`SharedHelpers.check_language_support(lang, file_path)`** — shared gate
-  that reads the config, logs a warning, and returns the action (`None`,
-  `"NOT_OK"`, or `"HUMAN_REVIEW"`). Used by all three entry points.
+  that reads the config, logs a warning, and returns the action (`None`
+  or `"NOT_OK"`). Used by all three entry points.
 - **`UnsupportedLanguageError`** exception added to `Commons/Exceptions.py`.
 - Gate added to all three entry points:
   - `ClassifyStrategy._process_extract()` — DocClassify
@@ -32,18 +58,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 #### 📂 Classify‑then‑Load Workflow
 
-- **ClassifyCSVReader** (`Helpers/ClassifyCSVReader.py`) — Reads `DocClassify` OK and
-  HUMAN_REVIEW CSV outputs by run stamp, returning a set of allowed file paths for
-  selective ingestion.
-- **RAGLoad CSV integration** — `RAGLoad.py` accepts three new config keys
-  (`LOAD_FROM_CLASSIFY_CSV`, `LOAD_FROM_HUMAN_REVIEW_CSV`, `CLASSIFY_RUN_STAMP`) to
-  filter ingestion to documents classified by a prior `DocClassify` run.
-  CLI flags: `--load-from-classify-csv`, `--load-from-human-review-csv`,
-  `--classify-run-stamp`.
+- **ClassifyCSVReader** (`Helpers/ClassifyCSVReader.py`) — Reads a `DocClassify` CSV
+  and returns a set of allowed file paths for selective ingestion. Accepts a CSV
+  filename (resolved relative to `logs/`) or an absolute path.
+- **RAGLoad CSV integration** — `RAGLoad.py` accepts two config keys
+  (`LOAD_FROM_CLASSIFY_CSV`, `CLASSIFY_CSV_QUERY`) to filter ingestion to documents
+  classified by a prior `DocClassify` run.
+  CLI flags: `--load-from-classify-csv <path>`, `--classify-csv-query <where>`.
+- **`CLASSIFY_CSV_QUERY`** — optional SQL WHERE clause applied to the CSV rows via an
+  in-memory `sqlite3` table. Supports standard SQLite syntax (`LIKE`, `AND`, `OR`,
+  `NOT LIKE`, `=`, `!=`, `IN`, etc.).
+  Example: `--classify-csv-query "Mammal LIKE '%Yes%' AND Language = 'English'"`.
 - When the classify‑then‑load filter is active, exclusion checks (`USE_EXCLUSIONS`) are
   bypassed because `DocClassify` already evaluated exclusions during its run.
-- **Shared CSV path builder** — `build_csv_path()` in `Helpers/FileUtils.py` replaces
-  duplicated path-construction logic in `CSVWriter` and `ClassifyCSVReader`.
 
 #### 🗂️ Variant Selector for ChromaDB Parameters
 
@@ -80,7 +107,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 #### 🧪 Testing
 
-- 11 tests for `ClassifyCSVReader` (`tests/test_classify_csv_reader.py`).
+- 19 tests for `ClassifyCSVReader` (`tests/test_classify_csv_reader.py`), including
+  8 tests for the `CLASSIFY_CSV_QUERY` sqlite3 filtering.
 - `test_models_cache.py` updated for nested chroma config structure.
 
 ---

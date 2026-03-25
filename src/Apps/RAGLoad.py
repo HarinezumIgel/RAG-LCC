@@ -26,6 +26,7 @@ from Gui.Colors import ORANGE as ORANGE  # re-exported
 from Gui.Colors import RED as RED
 from Gui.Informer import Informer
 from Gui.PrettyWriter import PrettyWriter
+from Helpers.ClassifyCSVReader import ClassifyCSVReader
 from Helpers.FileUtils import FileUtils
 from Helpers.Helpers import Helpers
 from Pipeline.LoadAndClassifyProcessor import LoadAndClassifyProcessor
@@ -52,20 +53,17 @@ class RAGLoad:
         self.fileUtils.setDebug()
 
         self.strat: ChunksToDBStrategy = ChunksToDBStrategy()
-        load_classify: bool = self.cfg.get_bool("LOAD_FROM_CLASSIFY_CSV", False)
-        include_hr: bool = self.cfg.get_bool("LOAD_FROM_HUMAN_REVIEW_CSV", False)
-        run_stamp: str = self.cfg.get_str("CLASSIFY_RUN_STAMP", "")
 
-        if (load_classify or include_hr) and not run_stamp:
-            raise ValueError(
-                "--classify-run-stamp is required when "
-                "--load-from-classify-csv or --load-from-human-review-csv is set"
-            )
+        allowedPaths: set[str] | None = None
+        classifyCsv: str = self.cfg.get_str("LOAD_FROM_CLASSIFY_CSV", "")
+        if classifyCsv:
+            csvQuery: str = self.cfg.get_str("CLASSIFY_CSV_QUERY", "")
+            reader = ClassifyCSVReader(classifyCsv, query=csvQuery)
+            allowedPaths = reader.readFilePaths()
 
         self.proc: LoadAndClassifyProcessor = LoadAndClassifyProcessor(
             self.strat,
-            classify_run_stamp=run_stamp if load_classify else None,
-            include_human_review=include_hr,
+            allowed_paths=allowedPaths,
         )
 
     def _run(self):

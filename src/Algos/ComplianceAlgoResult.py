@@ -45,6 +45,7 @@ class ResultsForPrint:
     threshold: Optional[float]
     detail: Optional[str]
     matched_algos_count: Optional[int]
+    algos_matched: Optional[str] = None
 
 
 @dataclass
