@@ -5,7 +5,7 @@ from typing import Set
 
 from Commons.Exceptions import ClassifyCSVNotFoundError
 from Config.Config import Config
-from Gui.Colors import RED
+from Gui.Colors import CYAN, GREEN, RED
 from Gui.PrettyWriter import PrettyWriter
 
 
@@ -60,6 +60,20 @@ class ClassifyCSVReader:
                 msg,
                 color=RED,
             )
+            raise ClassifyCSVNotFoundError(msg)
+
+        ext = os.path.splitext(self.csvPath)[1].lower()
+        if ext != ".csv":
+            csvAlt = os.path.splitext(self.csvPath)[0] + ".csv"
+            hint = (
+                f" A matching .csv exists — use that instead: {os.path.basename(csvAlt)}"
+                if os.path.isfile(csvAlt)
+                else ""
+            )
+            msg = (
+                f"Expected a .csv file but got '{ext}': {self.csvPath}.{hint}"
+            )
+            self.pretty.write("E", "ClassifyCSVReader", msg, color=RED)
             raise ClassifyCSVNotFoundError(msg)
 
         rows: list[dict[str, str]] = []
@@ -130,14 +144,14 @@ class ClassifyCSVReader:
             conn.close()
 
         paths: Set[str] = set()
-        debugRows: list[tuple[str, ...]] = []
+        infoRows: list[tuple[str, ...]] = []
         for matchedRow in matched:
             fp = (matchedRow[0] or "").strip()
             if fp:
                 normed = os.path.normpath(fp)
                 paths.add(normed)
                 if debugLevel >= 3:
-                    debugRows.append((normed,) + matchedRow[1:])
+                    infoRows.append((normed,) + matchedRow[1:])
 
         skipped = totalRows - len(matched)
         self.pretty.write(
@@ -151,19 +165,27 @@ class ClassifyCSVReader:
                 "ClassifyCSVReader",
                 f"Query filtered out {skipped} row(s) from {self.csvPath}",
             )
-
-        if debugLevel >= 3 and debugRows:
-            colHeader = ", ".join(queryCols) if queryCols else "(no extra columns)"
+        if len(matched) != 0:
             self.pretty.write(
-                "D",
+                "I",
                 "ClassifyCSVReader",
-                f"Selected paths [FilePath | {colHeader}]:",
+                f"Query found {len(matched)} row(s) from {self.csvPath}",
             )
-            sortedRows = sorted(debugRows)
-            colWidths = [0] * len(sortedRows[0])
+        if infoRows:
+            sortedRows = sorted(infoRows)
+            colNames = ["FilePath"] + queryCols
+            colWidths = [len(c) for c in colNames]
             for dr in sortedRows:
                 for i, val in enumerate(dr):
                     colWidths[i] = max(colWidths[i], len(str(val)))
+            headerLine = f"  {colNames[0].ljust(colWidths[0])}"
+            if queryCols:
+                headerExtras = " | ".join(
+                    colNames[j + 1].ljust(colWidths[j + 1])
+                    for j in range(len(queryCols))
+                )
+                headerLine += f"  |  {headerExtras}"
+            self.pretty.write("I", "ClassifyCSVReader", headerLine, color=GREEN)
             for dr in sortedRows:
                 line = f"  {str(dr[0]).ljust(colWidths[0])}"
                 if queryCols:
@@ -172,6 +194,6 @@ class ClassifyCSVReader:
                         for j in range(len(queryCols))
                     )
                     line += f"  |  {extras}"
-                self.pretty.write("D", "ClassifyCSVReader", line)
+                self.pretty.write("I", "ClassifyCSVReader", line, color=CYAN)
 
         return paths

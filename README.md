@@ -1,5 +1,5 @@
 <!-- markdownlint-disable MD033 -->
-# RAG-LCC
+# Local Corpus & Classification (RAG-LCC)
 
 <p align="center">
   <img src="Documentation/pics/AI_Igel.png" alt="RAG-LCC Logo" width="50%" />
