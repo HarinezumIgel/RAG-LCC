@@ -8,7 +8,7 @@
 
 import os
 
-_VERSION = "v0.1.1/1035 03/25/2025"
+_VERSION = "v0.1.3/1045 03/25/2025"
 
 # -----------------------------------------------------------------------------
 #    Adjust this hash when you changed Config_Models.py
@@ -217,7 +217,21 @@ _CUSTOM_NLTK_DATA_DIRECTORY = (
 # Argos Translate definitions
 # Groups language-code mapping and translation pairs in one slot.
 # =============================================================================
-_ARGOS_DEFINITIONS: dict[str, dict[str, str] | list[tuple[str, str]]] = {
+_ARGOS_DEFINITIONS: dict[str, float | dict[str, str] | list[tuple[str, str]]] = {
+    # -----------------------------------------------------------------
+    # Minimum text length (characters) required to attempt language detection.
+    # Texts shorter than this skip detection and fall back to 'en'.
+    # Single words give langdetect too little signal and produce 100 % confident
+    # but wrong results (e.g. "igel" → Danish instead of German).
+    # -----------------------------------------------------------------
+    "LANG_DETECT_MIN_CHARS": 20,
+    # -----------------------------------------------------------------
+    # Minimum langdetect confidence to trust the top detected language.
+    # If the top result is below this threshold, language falls back to 'en'.
+    # Prevents short queries (e.g. "tell me about llama") from being
+    # misclassified as a non-English language and triggering translation warnings.
+    # -----------------------------------------------------------------
+    "LANG_DETECT_MIN_CONFIDENCE": 0.90,
     # -----------------------------------------------------------------
     # Language code ↔ name mapping (single source of truth)
     # ISO-639-1 code → NLTK / human-readable name.

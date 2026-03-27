@@ -107,7 +107,7 @@ further narrow the allow‑set by filtering the CSV rows through an
 in‑memory SQLite table — for example, ingesting only documents where
 `Animal LIKE '%cat%'` or `Mammal LIKE '%Yes%' AND Language = 'English'`.
 
-## �📋 Human Review and Logs
+## 📋 Human Review and Logs
 
 Documents flagged by detection pipelines are logged to `.csv` and
 `.xlsx` files for **human review**.
@@ -967,7 +967,7 @@ These three settings control the dynamic `max_output_tokens` calculation (see [T
 
 | Key | Default used in this repository | Purpose |
 | --- | --- | --- |
-| `CHROMA_COLLECTION_KEEP` | `True` | `True` = preserve existing collection on startup. `False` = wipe and recreate. Applies to `RAGLoad.py` **only** |
+| `CHROMA_COLLECTION_KEEP` | `False` | `True` = preserve existing collection on startup. `False` = wipe and recreate. Applies to `RAGLoad.py` **only** |
 | `COLLECTION` | `"Test"` | Active ChromaDB collection name. Override with `--collection` on the CLI. |
 
 The chunking parameters are on purpose in `Config_Global.py` so RAGLoad and RAGChat both refer to these settings ([Lookup order](#-lookup-order)) because they must be **identical** for both programs.
@@ -1493,10 +1493,12 @@ Run with `--help` to see all overridable parameters.
 ## 🌍 Translation configuration (Argos)
 
 All Argos Translate settings live in a single `_ARGOS_DEFINITIONS` slot inside
-`Config_Global.py`. It contains two keys:
+`Config_Global.py`. It contains three keys:
 
 | Key | Type | Purpose |
 | --- | --- | --- |
+| `LANG_DETECT_MIN_CHARS` | `int` | Minimum number of characters a text must contain before language detection is attempted. Texts shorter than this threshold skip detection and fall back to `"en"`. Prevents single words or very short strings from being misclassified (e.g. `"igel"` detected as Danish instead of German). Default: `20`. |
+| `LANG_DETECT_MIN_CONFIDENCE` | `float` | Minimum `langdetect` probability (0–1) required to trust the top-detected language. When the confidence is below this value the language falls back to `"en"`. Prevents short queries (e.g. *"tell me about llama"*) from being misclassified as a non-English language and triggering spurious translation warnings. Default: `0.90`. |
 | `LANG_CODE_TO_NAME` | `dict` | Maps ISO-639-1 codes (e.g. `"de"`) to NLTK / human-readable names (e.g. `"german"`). Used for language detection, stopword lookup, and the reverse mapping (name → code) in `SharedHelpers`. |
 | `ARGOS_LANGUAGES` | `list[tuple]` | Translation pairs `(from_code, to_code)` that the install script and startup consent check use to download and verify Argos Translate packages. Only uncommented pairs are active. |
 

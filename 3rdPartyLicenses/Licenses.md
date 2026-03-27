@@ -43,7 +43,7 @@ Users are responsible for reviewing and complying with all third‑party terms.
 | catalogue                                | 2.0.10                 | MIT License                                                    |Explosion                                        |
 | certifi                                  | 2026.2.25              | Mozilla Public License 2.0 (MPL 2.0)                           |Kenneth Reitz                                    |
 | cffi                                     | 2.0.0                  | MIT                                                            |Armin Rigo, Maciej Fijalkowski                   |
-| chardet                                  | 7.3.0                  | 0BSD                                                           |Dan Blanchard                                    |
+| chardet                                  | 7.4.0.post1            | 0BSD                                                           |Dan Blanchard                                    |
 |                                          |                        |                                                                |<dan.blanchard@gmail.com>                        |
 | charset-normalizer                       | 3.4.6                  | MIT                                                            |"Ahmed R. TAHRI"                                 |
 |                                          |                        |                                                                |<tahri.ahmed@proton.me>                          |
@@ -59,7 +59,7 @@ Users are responsible for reviewing and complying with all third‑party terms.
 | confection                               | 1.3.3                  | MIT License                                                    |Explosion                                        |
 | contourpy                                | 1.3.3                  | BSD License                                                    |Ian Thomas                                       |
 |                                          |                        |                                                                |<ianthomas23@gmail.com>                          |
-| cryptography                             | 46.0.5                 | Apache-2.0 OR BSD-3-Clause                                     |The Python Cryptographic                         |
+| cryptography                             | 46.0.6                 | Apache-2.0 OR BSD-3-Clause                                     |The Python Cryptographic                         |
 |                                          |                        |                                                                |Authority and individual                         |
 |                                          |                        |                                                                |contributors                                     |
 |                                          |                        |                                                                |<cryptography-dev@python.org>                    |
@@ -77,7 +77,7 @@ Users are responsible for reviewing and complying with all third‑party terms.
 | flatbuffers                              | 25.12.19               | Apache Software License                                        |Derek Bailey                                     |
 | fonttools                                | 4.62.1                 | MIT                                                            |Just van Rossum                                  |
 | fsspec                                   | 2026.2.0               | BSD-3-Clause                                                   |UNKNOWN                                          |
-| googleapis-common-protos                 | 1.73.0                 | Apache Software License                                        |Google LLC                                       |
+| googleapis-common-protos                 | 1.73.1                 | Apache Software License                                        |Google LLC                                       |
 |                                          |                        |                                                                |<googleapis-packages@google.com>                 |
 | grpcio                                   | 1.78.0                 | Apache-2.0                                                     |The gRPC Authors                                 |
 |                                          |                        |                                                                |<grpc-io@googlegroups.com>                       |
@@ -297,7 +297,7 @@ Users are responsible for reviewing and complying with all third‑party terms.
 | torch                                    | 2.11.0                 | BSD-3-Clause                                                   |PyTorch Team                                     |
 |                                          |                        |                                                                |<packages@pytorch.org>                           |
 | tqdm                                     | 4.67.3                 | MPL-2.0 AND MIT                                                |UNKNOWN                                          |
-| transformers                             | 5.3.0                  | Apache 2.0 License                                             |The Hugging Face team (past                      |
+| transformers                             | 5.4.0                  | Apache 2.0 License                                             |The Hugging Face team (past                      |
 |                                          |                        |                                                                |and future) with the help of                     |
 |                                          |                        |                                                                |all our contributors                             |
 |                                          |                        |                                                                |(https://github.com/huggingface/transformers/graphs/contributors) |
@@ -472,7 +472,7 @@ Users are responsible for reviewing and complying with all third‑party terms.
 
 ```
 
-### chardet 7.3.0
+### chardet 7.4.0.post1
 **License:** 0BSD
 **Author:** Dan Blanchard <dan.blanchard@gmail.com>
 
@@ -537,7 +537,7 @@ Users are responsible for reviewing and complying with all third‑party terms.
 
 ```
 
-### cryptography 46.0.5
+### cryptography 46.0.6
 **License:** Apache-2.0 OR BSD-3-Clause
 **Author:** The Python Cryptographic Authority and individual
             contributors <cryptography-dev@python.org>
@@ -635,7 +635,7 @@ Users are responsible for reviewing and complying with all third‑party terms.
 
 ```
 
-### googleapis-common-protos 1.73.0
+### googleapis-common-protos 1.73.1
 **License:** Apache Software License
 **Author:** Google LLC <googleapis-packages@google.com>
 
@@ -1576,7 +1576,7 @@ Users are responsible for reviewing and complying with all third‑party terms.
 
 ```
 
-### transformers 5.3.0
+### transformers 5.4.0
 **License:** Apache 2.0 License
 **Author:** The Hugging Face team (past and future) with the help of all
             our contributors

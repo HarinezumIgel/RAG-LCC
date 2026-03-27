@@ -112,11 +112,11 @@ class BannedPhraseCollector:
 
                     # Keep the original PASS/FAIL logic (unchanged)
                     row[algo] = (
-                        "FAIL"
+                        "DEPTH"
                         if (
                             best_thresh is not None and best_score >= float(best_thresh)
                         )
-                        else "FAIL_ALGOS_PER_PHRASE"
+                        else "BREADTH"
                     )
 
                     if max_score_overall is None or best_score > max_score_overall:

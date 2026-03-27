@@ -29,7 +29,6 @@ _HISTORY_DIRECTORY = r"history"  # Where to store chat histories and metadata
 # Keys to extract
 _CLASSIFICATION_KEYS = []
 
-
 _DEFAULT_CHAT_NAME = "MyFirstChat"  # Fallback user identifier
 
 # -----------------------------------------------------------------------------

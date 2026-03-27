@@ -13,7 +13,6 @@ from typing import Any, ClassVar
 import json5
 import nltk  # type: ignore[reportMissingTypeStubs]
 from langdetect import DetectorFactory  # type: ignore[reportMissingTypeStubs]
-from langdetect import detect  # type: ignore[reportUnknownVariableType]
 from langdetect import detect_langs  # type: ignore[reportUnknownVariableType]
 from nltk.corpus import stopwords  # type: ignore[reportMissingTypeStubs]
 
@@ -152,7 +151,30 @@ class FileUtils:
                 misclassifying e.g. short German text as Dutch when only
                 ``de`` is installed.
         """
-        lang: str = detect(text)  # type: ignore[reportUnknownVariableType]
+        # Use detect_langs for a single call; fall back to 'en' when the top
+        # result is below the confidence threshold (common for short queries).
+        min_conf: float = self.cfg.get_float(
+            "_ARGOS_DEFINITIONS.LANG_DETECT_MIN_CONFIDENCE"
+        )
+        min_chars: int = self.cfg.get_int("_ARGOS_DEFINITIONS.LANG_DETECT_MIN_CHARS")
+        det: list[Any] = []
+        fell_back: bool = False
+        too_short: bool = False
+        if len(text.strip()) < min_chars:
+            lang: str = "en"
+            fell_back = True
+            too_short = True
+        else:
+            try:
+                det = detect_langs(text)  # type: ignore[reportUnknownVariableType]
+                if det[0].prob >= min_conf:  # type: ignore[reportUnknownMemberType]
+                    lang = det[0].lang  # type: ignore[reportUnknownMemberType]
+                else:
+                    lang = "en"
+                    fell_back = True
+            except Exception:
+                lang = "en"
+                fell_back = True
 
         # Auto-detect installed codes once from the SharedHelpers singleton.
         if installed_codes is None:
@@ -169,10 +191,9 @@ class FileUtils:
 
         if installed_codes and lang not in installed_codes:
             try:
-                candidates = detect_langs(text)  # type: ignore[reportUnknownVariableType]
-                if len(candidates) >= 2:
-                    top_prob: float = candidates[0].prob  # type: ignore[reportUnknownMemberType]
-                    for alt in candidates[1:]:
+                if len(det) >= 2:
+                    top_prob: float = det[0].prob  # type: ignore[reportUnknownMemberType]
+                    for alt in det[1:]:
                         if alt.lang in installed_codes and alt.prob >= top_prob * 0.5:  # type: ignore[reportUnknownMemberType]
                             lang = alt.lang  # type: ignore[reportUnknownMemberType]
                             break
@@ -184,7 +205,28 @@ class FileUtils:
             "_ARGOS_DEFINITIONS.LANG_CODE_TO_NAME"
         )
         friendly: str = lang_map_log.get(lang, lang).capitalize()  # type: ignore[reportUnknownMemberType, reportUnknownArgumentType]
-        self.pretty.write("I", "LangDetect", f"Detected language: {friendly} ({lang})")
+        conf: float = det[0].prob if det else 0.0  # type: ignore[reportUnknownMemberType]
+        if fell_back:
+            if too_short:
+                self.pretty.write(
+                    "W",
+                    "LangDetect",
+                    f"Text too short for reliable detection ({len(text.strip())} chars < {min_chars}) — falling back to English",
+                )
+            else:
+                raw_lang: str = str(det[0].lang) if det else "?"  # type: ignore[reportUnknownMemberType]
+                raw_friendly: str = lang_map_log.get(raw_lang, raw_lang).capitalize()
+                self.pretty.write(
+                    "W",
+                    "LangDetect",
+                    f"Detected language: {raw_friendly} ({raw_lang}) — confidence: {conf:.0%} below threshold {min_conf:.0%} — falling back to English",
+                )
+        else:
+            self.pretty.write(
+                "I",
+                "LangDetect",
+                f"Detected language: {friendly} ({lang}) — confidence: {conf:.0%} (threshold: {min_conf:.0%})",
+            )
 
         if output == "iso-639":
             return lang  # type: ignore[reportUnknownVariableType]

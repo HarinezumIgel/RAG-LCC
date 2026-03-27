@@ -6,6 +6,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [v0.1.3/1045] — 2026-03-25
+
+### ➕ Added
+
+#### 🌐 Language Detection Robustness
+
+- **`LANG_DETECT_MIN_CHARS`** (`_ARGOS_DEFINITIONS` in `Config_Global.py`) — minimum
+  number of characters a text must contain before language detection is attempted.
+  Texts shorter than this threshold skip `langdetect` entirely and fall back to `"en"`.
+  Prevents single-word inputs (e.g. `"igel"`) from producing high-confidence but
+  incorrect language guesses (e.g. Danish instead of German). Default: `20`.
+- **`LANG_DETECT_MIN_CONFIDENCE`** (`_ARGOS_DEFINITIONS` in `Config_Global.py`) —
+  minimum `langdetect` probability required to accept the top-ranked language.
+  If the top result falls below this threshold the detected language is discarded and
+  `"en"` is used as fallback. Prevents short, ambiguous queries (e.g.
+  `"tell me about llama"`) from being misclassified as a non-English language and
+  incorrectly triggering translation warnings. Default: `0.90`.
+- Both thresholds are consumed by `FileUtils.detect_language()` via
+  `cfg.get_float` / `cfg.get_int` lookups and apply uniformly across all three
+  entry points (RAGLoad, RAGChat, DocClassify).
+- COLLECTION_KEEP default is now False
+- `HUMAN_REVIEW` log file output fixed. Shows now `DEPTH`and `BREADTH` trigger indication.
+
+---
+
 ## [v0.1.1/1035] — 2026-03-25
 
 ### 🐛 Fixed

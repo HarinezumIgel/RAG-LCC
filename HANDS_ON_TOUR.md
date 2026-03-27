@@ -299,7 +299,7 @@ This demonstrates the classify‑then‑load workflow: first classify your docum
 ### Step 1 — Classify your documents
 
 ```Windows
-python .\src\Apps\DocClassify.py --doc-dir TestDocs --collection AnimalDocs
+python .\src\Apps\DocClassify.py --doc-dir TestDocs
 ```
 
 When finished, note the OK CSV filename printed at the end, e.g. `DocClassify_OK_20260325_182503.csv`.

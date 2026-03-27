@@ -701,6 +701,8 @@ RAG‑LCC uses [Argos Translate](https://github.com/argosopentech/argos-translat
 
 - **Environment variables** — `ARGOS_MODEL_PROVIDER` and `ARGOS_STANZA_DOWNLOAD` (see table above) control provider selection and network access.
 - **Language pairs & code mapping** — configured via the `_ARGOS_DEFINITIONS` slot in `Config_Global.py`. See [Translation configuration (Argos)](README.md#translation-configuration-argos) in the README for the full reference, available pairs, and install/remove commands.
+- **Language-detection minimum length** — `_ARGOS_DEFINITIONS.LANG_DETECT_MIN_CHARS` (default `20`) sets the minimum character count a text must have before language detection is attempted; shorter texts skip detection and fall back to English, preventing single words from being misclassified.
+- **Language-detection confidence** — `_ARGOS_DEFINITIONS.LANG_DETECT_MIN_CONFIDENCE` (default `0.90`) sets the minimum `langdetect` probability required to accept a detected language; lower-confidence results fall back to English, avoiding spurious translation warnings for short queries.
 - **Package management** — `python src/Scripts/ArgosTranslatePackages.py install | remove | status`
 
 Each Argos package (~100 MB) bundles an OpenNMT translation model and the required stanza tokenizer, so no additional network downloads are needed at runtime when `ARGOS_STANZA_DOWNLOAD="0"`.

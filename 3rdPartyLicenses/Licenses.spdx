@@ -8,9 +8,9 @@ SPDXVersion: SPDX-2.2
 DataLicense: CC0-1.0
 SPDXID: SPDXRef-DOCUMENT
 DocumentName: 3rdPartyLicenses
-DocumentNamespace: http://example.org/spdxdocs/3rdPartyLicenses-20260325193143
+DocumentNamespace: http://example.org/spdxdocs/3rdPartyLicenses-20260327145046
 Creator: pip-licenses
-Created: 03/25/2026 19:31:43.ToUniversalTime().ToString('o')
+Created: 03/27/2026 14:50:46.ToUniversalTime().ToString('o')
 
 #####
 PackageName: Jinja2
@@ -175,7 +175,7 @@ PackageHomePage: https://cffi.readthedocs.io/en/latest/whatsnew.html
 #####
 PackageName: chardet
 SPDXID: SPDXRef-Package-chardet
-PackageVersion: 7.3.0
+PackageVersion: 7.4.0.post1
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: 0BSD
@@ -255,7 +255,7 @@ PackageHomePage: https://github.com/contourpy/contourpy
 #####
 PackageName: cryptography
 SPDXID: SPDXRef-Package-cryptography
-PackageVersion: 46.0.5
+PackageVersion: 46.0.6
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: Apache-2.0 OR BSD-3-Clause
@@ -375,7 +375,7 @@ PackageHomePage: https://github.com/fsspec/filesystem_spec
 #####
 PackageName: googleapis-common-protos
 SPDXID: SPDXRef-Package-googleapis-common-protos
-PackageVersion: 1.73.0
+PackageVersion: 1.73.1
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: Apache Software License
@@ -1515,7 +1515,7 @@ PackageHomePage: https://tqdm.github.io
 #####
 PackageName: transformers
 SPDXID: SPDXRef-Package-transformers
-PackageVersion: 5.3.0
+PackageVersion: 5.4.0
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: Apache 2.0 License

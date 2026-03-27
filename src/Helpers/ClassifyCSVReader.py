@@ -70,9 +70,7 @@ class ClassifyCSVReader:
                 if os.path.isfile(csvAlt)
                 else ""
             )
-            msg = (
-                f"Expected a .csv file but got '{ext}': {self.csvPath}.{hint}"
-            )
+            msg = f"Expected a .csv file but got '{ext}': {self.csvPath}.{hint}"
             self.pretty.write("E", "ClassifyCSVReader", msg, color=RED)
             raise ClassifyCSVNotFoundError(msg)
 
