@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
-## [v0.1.3/1045] — 2026-03-25
+## [v0.1.3/1045] — 2026-03-27
 
 ### ➕ Added
 
@@ -28,6 +28,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   entry points (RAGLoad, RAGChat, DocClassify).
 - COLLECTION_KEEP default is now False
 - `HUMAN_REVIEW` log file output fixed. Shows now `DEPTH`and `BREADTH` trigger indication.
+
+### 🐛 Fixed
+
+- `COLLECTION_KEEP` default is now `False`
 
 ---
 
