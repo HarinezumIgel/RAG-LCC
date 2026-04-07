@@ -34,10 +34,11 @@ Limitations: Detection is probabilistic; false positives and false negatives wil
 
 RAG-LCC follows a modular, configuration-driven architecture intended for laboratory and research use. The system provides a tunable pipeline for experimenting with LLM parameters, detection algorithm combinations, and keyword-based filter chains.
 
-Three applications share the same core infrastructure:
+Four applications share the same core infrastructure:
 
 - **RAGLoad** — ingests documents into a ChromaDB vector store; applies text masking and optional compliance checks during ingestion.
 - **RAGChat** — retrieves relevant chunks from the store and answers queries via an LLM; applies compliance checks to both the prompt and the LLM response.
+- **RAGChatService** — exposes the same RAG pipeline as RAGChat over an OpenAI-compatible REST API; entry point is a network listener instead of the terminal GUI.
 - **DocClassify** — classifies documents in a directory using keyword extraction, stemming, and optional LLM-assisted label generation; writes results to CSV.
 
 ## 🎯 Core Design Principles
@@ -93,81 +94,23 @@ The following diagrams illustrate the intended data flow for experimentation; ac
 
 ### 📥 RAGLoad Pipeline
 
-```text
-Document Input
-    ↓
-[Format Detection & Conversion]
-    ↓
-[Text Extraction]
-    ↓
-[Unicode Normalization]
-    ↓
-[Text Masking] ← Character replacement for sensitive patterns
-    ↓
-[Compliance Checks] ← Algos first, then Prompt Check if Algos don't fire
-    ↓
-[Chunking with Overlap]
-    ↓
-[Metadata Extraction]
-    ↓
-[Embedding Generation]
-    ↓
-[ChromaDB Storage]
-```
+![RAGLoad Pipeline](Documentation/FlowCharts/RAGLoad.png)
 
-### 💬 RAGChat Pipeline
+### 💬 RAGChat / RAGChatService Pipeline
 
-```text
-User Query (Prompt)
-    ↓
-[Compliance Checks on Prompt] ← Algos first, then Prompt Check if Algos don't fire
-    ↓
-[Query Parsing & Preprocessing]
-    ↓
-[Embedding Generation]
-    ↓
-[Vector Similarity Search on Masked Documents] ← Works with pre-masked content
-    ↓
-[Document Retrieval (top-k)]
-    ↓
-[Cross-Encoder Re-ranking]
-    ↓
-[LLM Prompt Construction]
-    ↓
-[Streaming LLM Response Generation]
-    ↓
-[Compliance Checks on Response] ← Algos applied to LLM output for redaction
-    ↓
-[Conversation Memory Storage]
-    ↓
-[User Output]
-```
+`RAGChatService` follows the same pipeline as `RAGChat`. The difference is the entry point: `RAGChat` uses an interactive terminal GUI, while `RAGChatService` accepts requests through an OpenAI-compatible HTTP listener and dispatches them to worker threads.
+
+#### RAGChat
+
+![RAGChat Pipeline](Documentation/FlowCharts/RAGChat.png)
+
+#### RAGChatService
+
+![RAGChatService Pipeline](Documentation/FlowCharts/RAGChatService.png)
 
 ### 🏷️ DocClassify Pipeline
 
-```text
-Batch of Documents
-    ↓
-[Format Detection & Text Extraction]
-    ↓
-[Unicode Normalization]
-    ↓
-[Text Masking] ← All downstream processing works on masked content
-    ↓
-[Algos processing per Document (on Masked Content)]
-    ↓
-[Threshold Application per Algorithm]
-    ↓
-[Consensus Scoring]
-    ↓
-[Final Classification Decision]
-    ↓
-[Result Aggregation with Algorithm Details]
-    ↓
-[Reverse Stemming] ← Optional: restore stemmed keywords to original forms (REVERSE_STEMMING=True)
-    ↓
-[CSV Output]
-```
+![DocClassify Pipeline](Documentation/FlowCharts/DocClassify.png)
 
 ## ⚙️ Configuration System
 
@@ -196,20 +139,22 @@ Parameters are accessible via `Config().get(key_path)` using dot notation.
 | Models | `Config_Models.py` | Embedding, cross-encoder, LLM |
 | RAGLoad | `Config_RAGLoad.py` | Chunking, batch sizes |
 | RAGChat | `Config_RAGChat.py` | Retrieval thresholds, re-ranking |
+| RAGChatService | `Config_RAGChatService.py` | HTTP listener, API key, thread pool, CLI-like algo results toggle (re-exports `Config_RAGChat.py`) |
 | DocClassify | `Config_DocClassify.py` | Classification settings, `REVERSE_STEMMING` |
 | Compliance | `Config_Banned.py` | Keyword/phrase lists, detection thresholds |
 | Network | `Config_Internet_Env.py` | Network connection, network trace |
 
 ### 🔩 Model Implementation Selectors
 
-`Config_Models.py` uses a two-level lookup to resolve model configurations. Five top-level variables select which *implementation* (impl) to use for each model *role*:
+`Config_Models.py` uses a two-level lookup to resolve model configurations. Six top-level variables select which *implementation* (impl) to use for each model *role*:
 
 ```python
-_LLM_CHK = "llama_guard"   # llama_guard, llama, mistral
-_LLM     = "mistral"       # mistral, llama
-_EMBED   = "snowflake"     # snowflake
-_CROSS   = "mmarco"        # mmarco
-_OLLAMA  = "ollama"        # ollama
+_LLM_CHK   = "llama_guard"   # llama_guard, llama, mistral
+_LLM       = "mistral"       # mistral, llama
+_EMBED     = "snowflake"     # snowflake
+_CROSS     = "mmarco"        # mmarco
+_OLLAMA    = "ollama"        # ollama
+_OPENWEBUI = "openwebui"     # openwebui
 ```
 
 At runtime the framework resolves a role via `_MODELS[<impl>][<role>]`. For example, with `_LLM = "mistral"` the LLM configuration is read from `_MODELS["mistral"]["_LLM"]`.
@@ -267,7 +212,7 @@ The pattern is used consistently across five config files:
 
 | Config file | Selector variable | Dictionary | Variants (default **bold**) | Purpose |
 | --- | --- | --- | --- | --- |
-| `Config_Models.py` | `_LLM`, `_LLM_CHK`, `_EMBED`, `_CROSS`, `_OLLAMA` | `_MODELS[<impl>][<role>]` | see [Model Implementation Selectors](#-model-implementation-selectors) | Model selection per role |
+| `Config_Models.py` | `_LLM`, `_LLM_CHK`, `_EMBED`, `_CROSS`, `_OLLAMA`, `_OPENWEBUI` | `_MODELS[<impl>][<role>]` | see [Model Implementation Selectors](#-model-implementation-selectors) | Model selection per role |
 | `Config_Global.py` | `_ACTIVE_CHROMA_EMBED_AND_RETRIEVE_PARAMS_CONFIG` | `_CHROMA_EMBED_AND_RETRIEVE_PARAMS` | **`THOROUGH`**, `COMPACT` | Chunk size, overlap, HNSW neighbor counts |
 | `Config_DocClassify.py` | `_ACTIVE_EXTRACTION_CONFIG` | `_EXTRACTION_MODEL_PARAMS` | **`STRICT`**, `BALANCED`, `RECALL` | LLM sampling (temperature, top-k, top-p) |
 | `Config_DocClassify.py` | `_ACTIVE_KEYBERT_CONFIG` | `_KEY_BERT` | **`STRICT`**, `BALANCED`, `RECALL` | KeyBERT two-pass keyword extraction |
@@ -881,7 +826,11 @@ src/
 ├── Apps/                           Application entry points
 │   ├── DocClassify.py
 │   ├── RAGChat.py
+│   ├── RAGChatService.py
 │   └── RAGLoad.py
+│
+├── Api/                            OpenAI-compatible REST API handler
+│   └── ChatCompletionHandler.py
 │
 ├── Chat/                           Conversation and query handling
 │   ├── ChatContext.py
@@ -915,6 +864,7 @@ src/
 │   ├── Config_Internet_Env.py
 │   ├── Config_Models.py
 │   ├── Config_RAGChat.py
+│   ├── Config_RAGChatService.py
 │   └── Config_RAGLoad.py
 │
 ├── Globals/                        Shared state
@@ -1012,25 +962,9 @@ Three-tier logging:
 
 1. **User-Facing** - `PrettyWriter` with colored output
 2. **Operational** - Standard Python logging module
-3. **Debug** - Conditional DEBUG_LEVEL output
+3. **Debug** - Conditional `DEBUG_LEVEL` output (see [Debug Levels in README.md](README.md#-debug-levels) for the full level table)
 
-```Python
-_ALLOWED_DEBUG_LEVELS = {
-    "None": 0,
-    "Basic": 1,
-    "Standard": 3,
-    "Alogs": 4,
-    "Components": 50,  # argostranslate, transformers
-    "Chat Prompt": 60,
-    "Extracted Content": 70,
-    "Ollama response": 80,
-    "Streaming request output": 100,
-}
-
-DEBUG_LEVEL = 3  # See above
-```
-
-RAG-LCC does not log raw user queries or LLM responses **unless** DEBUG_LEVEL is set to show the network traffic (100).
+RAG-LCC does not log raw user queries or LLM responses **unless** `DEBUG_LEVEL` is set to show the network traffic (100).
 
 ## 🔄 Session Management
 

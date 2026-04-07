@@ -57,6 +57,10 @@ class Accumulator(SingletonMixin):
         # Per-chunk phrase hits mapping phrase -> set(algo names) (counts algos with any score)
         self.per_chunk_phrase_hits: List[Dict[str, Set[str]]] = []
 
+        # Snapshot of last show_accumulated() results for MD formatting (RAGChatService)
+        self.last_phrase_table_for_md: List[ResultsForPrint] = []
+        self.last_ensemble_data: Dict[str, Any] = {}
+
         self.cfg: Config = cfg or Config()
         from AI.AIHelpers import AIHelpers as _AIHelpers
 
@@ -239,6 +243,17 @@ class Accumulator(SingletonMixin):
         )
 
         y: List[ResultsForPrint] = self._decompose_score_str(phrase_table)
+
+        # Snapshot for MD formatting (consumed by RAGChatService)
+        self.last_phrase_table_for_md = list(y)
+        self.last_ensemble_data = {
+            "depth_trigger": depth_trigger,
+            "breadth_trigger": breadth_trigger,
+            "effective_depth": effective_depth_pass_hits,
+            "required_depth": required_depth,
+            "effective_breadth": effective_breadth_score_hits,
+            "required_breadth": required_breadth,
+        }
 
         # Cleanup internal buffers so accumulator can be reused
         self.raw_results.clear()
@@ -582,6 +597,135 @@ class Accumulator(SingletonMixin):
         self.pretty.write(
             breadth_icon, "KeyWrdChk Breadth", breadth_msg, color=breadth_color
         )
+
+    # ----------------- helper 5 (MD formatting) -----------------
+
+    # Emoji colour indicators mirroring the CLI ANSI palette (OpenWebUI-safe)
+    _MD_RED: str = "🔴"  # BRIGHT_RED  – score above threshold / trigger fired
+    _MD_GREEN: str = "🟢"  # GREEN       – no score or count below required
+    _MD_BLUE: str = "🔵"  # BRIGHT_BLUE – score below threshold (failing *)
+    _MD_CYAN: str = "⚪"  # CYAN        – algo disabled
+
+    def _md_count(self, count: int, required: int) -> str:
+        """Emoji-prefixed count/required for the depth/breadth column."""
+        icon = self._MD_RED if count >= required else self._MD_GREEN
+        return f"{icon} {count}/{required}"
+
+    def format_results_as_md(self, stage_label: str = "") -> str:
+        """Format the last ensemble check results as Markdown (OpenWebUI).
+
+        Mirrors the CLI output of ``_show_results`` and
+        ``_print_ensemble_messages`` using emoji colour indicators that
+        match the ANSI palette of the terminal version.
+        """
+        if not self.last_ensemble_data:
+            return ""
+
+        s = self.last_ensemble_data
+        depth_trigger: bool = s["depth_trigger"]
+        breadth_trigger: bool = s["breadth_trigger"]
+        effective_depth: int = s["effective_depth"]
+        required_depth: int = s["required_depth"]
+        effective_breadth: int = s["effective_breadth"]
+        required_breadth: int = s["required_breadth"]
+
+        lines: list[str] = []
+        if stage_label:
+            lines.append(f"**{stage_label}**\n")
+
+        # Results table (only when phrases were detected)
+        if self.last_phrase_table_for_md:
+            by_phrase: Dict[str, List[ResultsForPrint]] = defaultdict(list)
+            algo_order: list[str] = []
+            for r in self.last_phrase_table_for_md:
+                by_phrase[r.phrase].append(r)
+                if r.algo and r.algo not in algo_order:
+                    algo_order.append(r.algo)
+
+            # Resolve algo display names
+            algo_headers: list[str] = [
+                self.helpers.get_label_alias(a) for a in algo_order
+            ]
+
+            # Header
+            lines.append("| Phrase | dpt/brth | " + " | ".join(algo_headers) + " |")
+            lines.append(
+                "|--------|----------|"
+                + "|".join("--------" for _ in algo_headers)
+                + "|"
+            )
+
+            # Rows
+            for phrase in sorted(by_phrase, key=str.lower):
+                entries = by_phrase[phrase]
+                # Build emoji-coloured dpt/brth from first entry's algos_matched
+                raw_meta = entries[0].algos_matched or ""
+                try:
+                    tokens = [t for t in raw_meta.split() if t]
+                    d_parts = (
+                        tokens[0].split("/")
+                        if len(tokens) >= 1 and "/" in tokens[0]
+                        else None
+                    )
+                    b_parts = (
+                        tokens[1].split("/")
+                        if len(tokens) >= 2 and "/" in tokens[1]
+                        else None
+                    )
+                except Exception:
+                    d_parts = b_parts = None
+
+                if d_parts and b_parts:
+                    meta_cell = (
+                        self._md_count(int(d_parts[0]), int(d_parts[1]))
+                        + "  "
+                        + self._md_count(int(b_parts[0]), int(b_parts[1]))
+                    )
+                else:
+                    meta_cell = raw_meta
+
+                score_by_algo: Dict[str, str] = {}
+                for e in entries:
+                    if not e.algo:
+                        continue
+                    alias = self.helpers.get_label_alias(e.algo)
+                    if e.score_str == "Disabled":
+                        score_by_algo[alias] = f"{self._MD_CYAN} Disabled"
+                    elif (
+                        e.score is not None
+                        and e.threshold is not None
+                        and e.score < e.threshold
+                    ):
+                        # Failing: below threshold (blue, prefixed with *)
+                        score_by_algo[alias] = f"{self._MD_BLUE} \\*{e.score_str}"
+                    elif e.score_str == "-/-":
+                        score_by_algo[alias] = f"{self._MD_GREEN} -/-"
+                    else:
+                        # Passed threshold (red = dangerous hit)
+                        score_by_algo[alias] = f"{self._MD_RED} {e.score_str}"
+                cells = [
+                    score_by_algo.get(h, f"{self._MD_GREEN} -/-") for h in algo_headers
+                ]
+                lines.append(f"| {phrase} | {meta_cell} | " + " | ".join(cells) + " |")
+            lines.append("")
+
+        # Ensemble summary (as a small table so columns align in proportional fonts)
+        depth_icon = "⚠️" if depth_trigger else "✅"
+        breadth_icon = "⚠️" if breadth_trigger else "✅"
+        depth_dot = self._MD_RED if depth_trigger else self._MD_GREEN
+        breadth_dot = self._MD_RED if breadth_trigger else self._MD_GREEN
+        lines.append("| | | |")
+        lines.append("|---|---|---|")
+        lines.append(
+            f"| {depth_icon} **Depth** | {depth_dot} "
+            f"{effective_depth} algos passed threshold | vs. required {required_depth} |"
+        )
+        lines.append(
+            f"| {breadth_icon} **Breadth** | {breadth_dot} "
+            f"{effective_breadth} algos had a score | vs. required {required_breadth} |"
+        )
+
+        return "\n".join(lines)
 
     def _consolidate_to_one_row(
         self,

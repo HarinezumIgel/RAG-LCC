@@ -40,6 +40,7 @@ class TokenBudget(SingletonMixin):
 
         self.cfg: Config = cfg or Config()
         self.pretty: PrettyWriter = pretty or PrettyWriter()
+
         self.llmCaller: LLMCaller = llm_caller or LLMCaller()
         self.helpers: Helpers = Helpers()
 

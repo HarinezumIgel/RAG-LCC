@@ -3,6 +3,7 @@ chardet
 charset_normalizer
 chromadb
 colorama
+fastapi
 html2text
 huggingface_hub
 InquirerPy
@@ -21,6 +22,7 @@ pandas
 pdf2image
 pdfminer.six
 Pillow
+pydantic
 pyreadline3
 pytesseract
 pytest
@@ -34,5 +36,6 @@ sentencepiece>=0.2.1
 stanza
 torch
 transformers
+uvicorn
 wcwidth
 xlsxwriter

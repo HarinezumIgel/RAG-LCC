@@ -8,6 +8,7 @@ import requests
 from Config.Config import Config
 from Gui.Colors import ORANGE
 from Gui.PrettyWriter import PrettyWriter
+from Helpers.Helpers import Helpers
 
 
 class LLMCaller:
@@ -22,6 +23,7 @@ class LLMCaller:
     def __init__(self) -> None:
         self.cfg: Config = Config()
         self.pretty: PrettyWriter = PrettyWriter()
+        self.helpers: Helpers = Helpers()
         from AI.AIHelpers import AIHelpers
 
         self.aiHelpers: AIHelpers = AIHelpers()
@@ -32,17 +34,20 @@ class LLMCaller:
         """
         Redact sensitive keys from a dict for logging/debugging.
         """
-        s: str = json.dumps(obj, default=str)
-        for k in keys:
-            s = s.replace(k, "<REDACTED>")
-        return s
+        if isinstance(obj, dict):
+            redacted = {
+                ("<REDACTED>" if k in keys else k): ("<REDACTED>" if k in keys else v)
+                for k, v in obj.items()
+            }
+            return json.dumps(redacted, default=str)
+        return json.dumps(obj, default=str)
 
     def make_on_chunk(
-        self, temperature: float, max_output_tokens: int, top_k: float, top_p: float
+        self, ollama_options: dict[str, Any]
     ) -> Callable[[Dict[str, str]], None]:
         """
         Create a callback that receives each parsed chunk and has access
-        to the dynamic request parameters (temperature, max_output_tokens, top_k, top_p).
+        to the Ollama options dict (temperature, num_predict, top_k, top_p, etc.).
         This factory allows binding request parameters into the callback closure.
         """
 
@@ -51,7 +56,7 @@ class LLMCaller:
             _content = chunk.get("response", "")
             _raw = chunk.get("raw", "")
             # Reference parameters in closure to prevent Python optimization
-            _ = (temperature, max_output_tokens, top_k, top_p)
+            _ = ollama_options
             # Users can override with custom callback
 
         return _on_chunk
@@ -134,25 +139,30 @@ class LLMCaller:
         self,
         model: str,
         prompt: str,
-        temperature: float,
-        top_k: float,
-        top_p: float,
-        max_output_tokens: int,
+        ollama_options: dict[str, Any],
+        *,
         answer_is_json: bool = True,
-        use_ollama_gpu: bool = True,
         template_name: str | None = None,
-        stream_url: Optional[str] = None,
         on_chunk: Optional[Callable[[Dict[str, str]], None]] = None,
         timeout: Optional[float] = None,
         streaming: bool | None = None,
         stage: str = "",
-        context_size: int | None = None,
+        top_level_params: dict[str, Any] | None = None,
     ) -> Dict[str, str]:
 
         timeout = timeout or self.cfg.get_int("REQUEST_TIMEOUT")
-        base_url: str = stream_url or self.cfg.get_str("_OLLAMA_BASE_URL")
-        streaming = streaming or self.cfg.get_bool("OLLAMA_STREAMING_REQ")
+        base_url: str = self.helpers.get_model_args("_OLLAMA").get("BASE_URL", "")
+        streaming = streaming or self.helpers.get_model_args("_OLLAMA").get(
+            "STREAMING_REQ", False
+        )
         headers: dict[str, str] = {"Content-Type": "application/json"}
+
+        # Extract token-budget inputs from the options dict; _resolve_token_budget
+        # will rewrite them with authoritative values.
+        max_output_tokens: int = int(ollama_options.pop("num_predict", 0))
+        context_size: int | None = ollama_options.pop("num_ctx", None)
+        if context_size is not None:
+            context_size = int(context_size)
 
         # Authoritative token-budget & context-size resolution
         max_output_tokens, resolved_ctx = self._resolve_token_budget(
@@ -162,21 +172,15 @@ class LLMCaller:
             context_size,
         )
 
-        # Build request payload with sampling parameters
+        # Write resolved values back into options.
         # Ollama expects sampling knobs inside "options", not at top level.
         # num_predict = output tokens; num_ctx = KV-cache / context window size.
         # Without num_ctx Ollama defaults to 2048 regardless of model capacity.
-        options: dict[str, Any] = {
-            "num_predict": max_output_tokens,
-            "num_ctx": resolved_ctx,
-            "temperature": temperature,
-            "top_k": top_k,
-            "top_p": top_p,
-        }
+        # All other keys (temperature, top_k, top_p, seed, mirostat, …) pass through.
+        ollama_options["num_predict"] = max_output_tokens
+        ollama_options["num_ctx"] = resolved_ctx
 
-        # Force CPU mode if requested (overrides Modelfile defaults)
-        if use_ollama_gpu is False:
-            options["num_gpu"] = 0
+        options: dict[str, Any] = ollama_options
 
         payload: dict[str, Any] = {
             "model": model,
@@ -184,6 +188,10 @@ class LLMCaller:
             "stream": streaming,
             "options": options,
         }
+
+        # Merge top-level Ollama params forwarded from API clients (think, keep_alive, format)
+        if top_level_params:
+            payload.update(top_level_params)
 
         thinking_acc: str = ""
         content_acc: str = ""
@@ -199,7 +207,7 @@ class LLMCaller:
             self.pretty.write(
                 "I",
                 "Call LLM",
-                f"max_output_tokens: {max_output_tokens} num_ctx: {resolved_ctx} temperature: {temperature} top_k_ {top_k} top_p_ {top_p} use_ollama_gpu: {use_ollama_gpu} streaming: {streaming}",
+                f"options: {options} streaming: {streaming}",
             )
 
             start: float = time.perf_counter()
@@ -351,7 +359,7 @@ class LLMCaller:
         (e.g. "llama.context_length" for Mistral/LLaMA families).
         Returns None on any error so callers can fall back gracefully.
         """
-        base_url: str = self.cfg.get_str("_OLLAMA_BASE_URL")
+        base_url: str = self.cfg.get_str("_MODELS.ollama._OLLAMA.BASE_URL")
         show_url: str = base_url.replace("/api/generate", "/api/show")
         try:
             resp = requests.post(

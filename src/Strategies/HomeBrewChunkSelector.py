@@ -11,8 +11,8 @@ from Gui.Symbols import Symbols
 
 
 class ChunkSelector(ABC):
-    def __init__(self) -> None:
-        self.session: Session = Session()
+    def __init__(self, session: Session) -> None:
+        self.session: Session = session
         self.threshold: float = self.session.chroma_threshold or 0.0
         self.per_file_limit: int = self.session.per_file_limit or 10
         self.pretty: Any = self.session.pretty
@@ -232,17 +232,17 @@ class NarrowSelector(ChunkSelector):
 
 
 class ChunkSelectionService:
-    def __init__(self) -> None:
-        self.session: Session = Session()
+    def __init__(self, session: Session) -> None:
+        self.session: Session = session
 
     def get_selector(self) -> ChunkSelector:
         strat: str = (self.session.strategy or "medium").lower()
         if strat == "wide" or strat == "ultra_wide":
-            return WideUltraWideSelector()
+            return WideUltraWideSelector(self.session)
         if strat == "medium":
-            return MediumSelector()
+            return MediumSelector(self.session)
         if strat == "narrow":
-            return NarrowSelector()
+            return NarrowSelector(self.session)
         raise ValueError(f"Unknown strategy {self.session.strategy}")
 
     def select_chunks(self, chunks: list[Any]) -> list[Any]:

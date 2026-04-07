@@ -92,3 +92,19 @@ os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
 
 # TOKENIZERS_PARALLELISM: Prevent tokenizer warnings about parallelism
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+
+# ============================================================================
+# OpenWebUI Chat Service Endpoint
+# ============================================================================
+
+# SERVE_OPENWEBUI_CHAT: Enable the OpenAI-compatible REST API that allows
+# OpenWebUI (or any OpenAI-compatible client) to connect to RAG-LCC as a
+# custom model backend via POST /v1/chat/completions.
+# Chroma collections are exposed as selectable models via GET /v1/models.
+#
+# "0" = disabled (default) — RAGChatService.py will refuse to start
+# "1" = enabled — start RAGChatService.py with uvicorn on the configured port
+#
+# Launch command (from project root):
+#   .venv\Scripts\python.exe src/Apps/RAGChatService.py
+os.environ["SERVE_OPENWEBUI_CHAT"] = "0"

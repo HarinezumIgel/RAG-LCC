@@ -5,6 +5,7 @@ Module: argostranslate
 Module: chardet
 Module: chromadb
 Module: python-docx
+Module: fastapi
 Module: html2text
 Module: huggingface_hub
 Module: json5
@@ -22,6 +23,7 @@ Module: pandas
 Module: pdf2image
 Module: pdfminer.six
 Module: python-pptx
+Module: pydantic
 Module: pyreadline3
 Module: pytesseract
 Module: rich
@@ -29,6 +31,7 @@ Module: sentence_transformers
 Module: stanza
 Module: torch
 Module: transformers
+Module: uvicorn
 Module: pywin32
 Module: xlsxwriter
 Module: pytest

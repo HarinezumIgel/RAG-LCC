@@ -85,6 +85,7 @@ def test_run_ensemble_checks_smoke(monkeypatch):
                 "TOP_N_FIRST": 2,
                 "TOP_N_SECOND": 2,
             },
+            "_OLLAMA": "test-impl",
             "_MODELS": {
                 "test-impl": {
                     "_EMBED": {
@@ -92,7 +93,15 @@ def test_run_ensemble_checks_smoke(monkeypatch):
                         "REVISION": None,
                         "FRIENDLY_NAME": "test",
                         "SOURCE": "local",
-                    }
+                    },
+                    "_OLLAMA": {
+                        "MODEL": "test-ollama",
+                        "REVISION": None,
+                        "FRIENDLY_NAME": "test-ollama",
+                        "SOURCE": "local",
+                        "STREAMING_REQ": False,
+                        "BASE_URL": "http://localhost:11434",
+                    },
                 }
             },
         }

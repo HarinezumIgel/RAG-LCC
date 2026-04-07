@@ -1,24 +1,22 @@
 # Local module imports
 from typing import Any, Optional
 
-from AI.AIHelpers import AIHelpers
-from Commons.SingletonMixin import SingletonMixin
 from Config.Config import Config
 from Gui.PrettyWriter import PrettyWriter
 
 
-class Session(SingletonMixin):
+class Session:
+    """Per-request mutable state for the RAG pipeline.
+
+    This is intentionally *not* a singleton.  The CLI path creates one
+    instance and reuses it across the interactive loop; the service path
+    creates a fresh instance for every incoming API request so that
+    concurrent requests cannot clobber each other's parameters.
+    """
 
     def __init__(self) -> None:
-        # Only initialize once
-        if self._initialized:
-            return
-        self._initialized = True
-
-        # your original setup—runs only on the very first Session() call
         self.cfg: Config = Config()
         self.pretty: PrettyWriter = PrettyWriter()
-        self.aiHelpers: AIHelpers = AIHelpers()
 
         self.file_name: Optional[str | None] = None
         self.file_path: Optional[str | None] = None
@@ -47,6 +45,10 @@ class Session(SingletonMixin):
         self.base_kwargs: dict[str, Any] | None = None
         self.collection_name: str | None = None
         self.debug_level: int | None = None
+        # Extra Ollama options forwarded from API clients (e.g. OpenWebUI advanced params)
+        self.extraOllamaOptions: dict[str, Any] | None = None
+        # Top-level Ollama payload params forwarded from API clients (think, keep_alive, format)
+        self.ollamaTopLevelParams: dict[str, Any] | None = None
 
     def export_session_state_as_cell(self, max_items_per_line: int = 6) -> str:
         """
@@ -78,6 +80,8 @@ class Session(SingletonMixin):
             "base_kwargs",
             "collection_name",
             "debug",
+            "extraOllamaOptions",
+            "ollamaTopLevelParams",
         ]
 
         # Build "key=value" pairs

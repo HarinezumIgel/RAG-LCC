@@ -8,6 +8,7 @@ This project builds on excellent open-source software and pre-trained models. RA
 
 - **ChromaDB** – Vector database for embedding storage and retrieval
 - **Ollama** – Local LLM inference engine
+- **OpenWebUI** – Web-based chat interface for LLM interaction (used as an optional frontend for `RAGChatService`)
 - **HuggingFace Transformers** – Pre-trained NLP models and sentence transformers
 - **NLTK** – Natural Language Toolkit for tokenization and stemming
 - **PyTorch** – Deep learning framework
@@ -29,6 +30,7 @@ Model downloads and licensing are user-controlled; see the setup instructions in
 ### 📎 External Applications
 
 - **Microsoft Office** – Optional. Required only for extracting text from Office formats (.doc(x), .ppt(x), .xls(x)) via COM automation. Microsoft Office is **not** included with or distributed by RAG‑LCC; users must obtain and license it independently.
+- **OpenWebUI** – Optional. A self-hosted web UI for interacting with LLMs. When used with `RAGChatService`, it connects to the OpenAI-compatible REST API exposed by RAG‑LCC. OpenWebUI is **not** included with or distributed by RAG‑LCC; users must obtain and deploy it independently. OpenWebUI is licensed under a [modified BSD 3-Clause license with a branding-preservation clause](https://github.com/open-webui/open-webui/blob/main/LICENSE); see also [LICENSE_HISTORY](https://github.com/open-webui/open-webui/blob/main/LICENSE_HISTORY) for prior contributions.
 
 ## ⚖️ License
 

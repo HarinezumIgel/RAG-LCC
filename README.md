@@ -35,10 +35,13 @@ After the initial setup phase, the system can operate locally without requiring 
 
 - **Query‑Driven Document Routing**
   The system can classify and select relevant documents *based on the user’s prompt*.
-  Then load those documents into a local vector store for downstream retrieval.
+  Then selectively load (SQLLite query) those documents into a local vector store for downstream retrieval.
 
 - **Hybrid Retrieval Stack**
   Combine filter algorithms, LLM prompt checking, dense embeddings, rerankers inside a unified chain.
+
+- **OpenWebUI Integration**
+  `RAGChatService.py` exposes the RAG pipeline through an OpenAI‑compatible REST API, allowing [OpenWebUI](https://github.com/open-webui/open-webui) to use RAG‑LCC as a retrieval backend.
 
 - **Operator‑Visible and Operator‑Controlled**
   Every step in the pipeline is transparent, adjustable, and intended for iterative experimentation.
@@ -49,9 +52,10 @@ Instead, it provides a flexible sandbox to explore retrieval strategies and clas
 </p>
 
 <p align="center">
-  <code>RAGLoad</code> · Document Ingestion &nbsp;|&nbsp;
-  <code>RAGChat</code> · Retrieval & Chat &nbsp;|&nbsp;
-  <code>DocClassify</code> · Batch Classification
+  📥 <code>RAGLoad</code> · Document Ingestion &nbsp;|&nbsp;
+  💬 <code>RAGChat</code> · Retrieval & Chat &nbsp;|&nbsp;
+  🌐 <code>RAGChatService</code> · OpenWebUI REST API &nbsp;|&nbsp;
+  🏷️ <code>DocClassify</code> · Batch Classification
 </p>
 
 <p align="center">
@@ -127,6 +131,7 @@ RAG‑LCC is designed to run **locally**.
 - Internet access is **disabled by default**
 - Network access must be explicitly enabled by the operator
 - No telemetry is collected
+- `RAGChatService.py` will start a network listener to serve RAG Queries (see [Internet Access](#-internet-access))
 
 Actual behavior depends on configuration, environment, and third‑party components.
 
@@ -377,7 +382,26 @@ The classify‑then‑load workflow chains `DocClassify` and `RAGLoad`: first cl
 ![Classify‑then‑Load workflow](Documentation/pics/Classify_then_Load_Workflow.jpg)
 The bottom of the image shows the files matched the SQLite query.
 
-### �🔧 Filter chain configuration state
+### 🌐 RAGChatService
+
+`RAGChatService` serves the same RAG pipeline as `RAGChat` over an OpenAI-compatible REST API (`POST /v1/chat/completions`), allowing [OpenWebUI](https://github.com/open-webui/open-webui) (or any OpenAI-compatible client) to chat with your local document collections. Chroma DB collections loaded by `RAGLoad` appear as selectable models in the OpenWebUI model dropdown.
+
+![OpenWebUI chatting with AnimalDocs via RAGChatService](Documentation/pics/OpenWebUIAnimalDocsFromRAG-LCC.jpg)
+
+Additional parameters such as the retrieval strategy can be passed to RAG‑LCC through the OpenWebUI **Controls** sidebar as custom parameters (e.g. `CHUNK_SELECT_STRATEGY`, `chroma_k_value`, `threshold`). This lets you tune retrieval behaviour per query without restarting the service.
+
+![Custom parameters in OpenWebUI Controls sidebar](Documentation/pics/CustomParameter.jpg)
+
+> **Tip — switching collections in OpenWebUI:**
+> OpenWebUI routes every message to whichever model (= collection) is selected in the dropdown. It does **not** parse previous answers to determine the target collection.
+>
+> - Switch back to the correct collection in the dropdown before reissuing a query
+> - Use separate chat sessions per collection — OpenWebUI remembers the model per chat
+> - Use the **New Chat** button when switching collections
+
+For configuration details, see [Config_RAGChatService.py — HTTP Listener for OpenWebUI](#-config_ragchatservicepy--http-listener-for-openwebui) and [Connecting OpenWebUI to RAGChatService](#-connecting-openwebui-to-ragchatservice).
+
+### 🔧 Filter chain configuration state
 
 A summary of the enabled check algorithms is shown at startup:
 ![Filter chain algos enabled](Documentation/pics/FilterChainConfiguration.jpg)
@@ -406,7 +430,8 @@ For a summary of all selector + variant dictionary patterns used across the conf
 src/
 ├── AI/               AI model interaction (LLM calling, model cache, token budget)
 ├── Algos/            Detection algorithms (Regex, Jaccard, Cosine, KeyBERT, BM25, Levenshtein, Masker, etc.)
-├── Apps/             Application entry points (RAGLoad, RAGChat, DocClassify)
+├── Api/              OpenAI-compatible REST API handler (RAGChatService)
+├── Apps/             Application entry points (RAGLoad, RAGChat, RAGChatService, DocClassify)
 ├── Chat/             Conversation and query handling
 ├── Commons/          Shared infrastructure (exceptions, network tracer, singleton, startup)
 ├── Compliance/       License management, exclusions, banned-phrase collection
@@ -515,7 +540,7 @@ still bound by the model owner's license terms**.
 
 ## ✅ Required: model license consent
 
-RAG-LCC does not download LLMs. On startup `RAGLoad.py`, `RAGChat.py` and `DocClassify.py` check whether the licenses belonging to the models used in `./Configuration/Config_Models.py` have been accepted.
+RAG-LCC does not download LLMs. On startup `RAGLoad.py`, `RAGChat.py`, `RAGChatService.py` and `DocClassify.py` check whether the licenses belonging to the models used in `./Configuration/Config_Models.py` have been accepted.
 RAG-LCC asks you whether it may temporarily allow internet access to fetch the licenses. Then you are guided through the license consent loop. The fetched licenses and operator consent are stored in `./ModelGovernance/licenses`. Operators can monitor network activity using the built-in [Socket-Level Network Tracing](#-socket-level-network-tracing).
 
 Hugging Face models (embedder and cross-encoder) follow a separate consent-based download flow. See [Hugging Face Models (Embedder + Cross-Encoder)](#-hugging-face-models-embedder--cross-encoder) for details on when and how these models are downloaded.
@@ -530,7 +555,29 @@ ollama pull llama3.1:8b
 ollama pull llama-guard3:8b
 ```
 
-### 🌍 6. Install Argos Translate
+### � 6. Install Open WebUI (Optional)
+
+If you want to use the `RAGChatService.py` REST API through a browser-based chat interface, install [Open WebUI](https://docs.openwebui.com/).
+The simplest method is the Python pip install:
+
+```shell
+pip install open-webui
+```
+
+Then start it with:
+
+```shell
+open-webui serve
+```
+
+Open WebUI will be available at <http://localhost:8080>.
+Point its **OpenAI API** connection to the `RAGChatService` endpoint (default `http://localhost:11440/v1`).
+
+- Documentation: <https://docs.openwebui.com/>
+- GitHub: <https://github.com/open-webui/open-webui>
+- License: **Open WebUI License** — see <https://github.com/open-webui/open-webui/blob/main/LICENSE> (includes a branding-preservation clause; prior contributions retain their original licenses — see `LICENSE_HISTORY`).
+
+### 🌍 7. Install Argos Translate
 
 RAG-LCC supports optional local translation of banned phrases from English to the detected document language using Argos Translate.
 
@@ -594,7 +641,7 @@ os.environ["ARGOS_CHUNK_TYPE"] = "SPACY"
 
 > **Note:** You may see the warning `Language en package default expects mwt, which has been added` during translation. This is a harmless informational message from **Stanza** (the NLP tokenizer used internally by Argos Translate). It means the English language model expects a Multi-Word Token (MWT) processor and Stanza added it automatically. No action is required.
 
-### 📝 7. NLTK Stopwords (Text Preprocessing)
+### 📝 8. NLTK Stopwords (Text Preprocessing)
 
 Install NLTK:
 NLTK license is here: <https://raw.githubusercontent.com/nltk/nltk/refs/heads/develop/LICENSE.txt>
@@ -621,7 +668,7 @@ _CUSTOM_NLTK_DATA_DIRECTORY = (
 )
 ```
 
-### 👁️ 8. Installing OCR Support (Tesseract)
+### 👁️ 9. Installing OCR Support (Tesseract)
 
 RAG‑LCC uses [Tesseract OCR](https://github.com/tesseract-ocr/tesseract) ([Apache-2.0 License](https://github.com/tesseract-ocr/tesseract/blob/main/LICENSE)) to extract text from non plain text files. The Python wrapper [pytesseract](https://github.com/madmaze/pytesseract) is also licensed under [Apache-2.0](3rdPartyLicenses/Licenses.md#pytesseract-0313).
 
@@ -672,7 +719,7 @@ copy ./Examples/Example_Config_Models.py ./src/Configuration/Config_Models.py
 
 Open `Configuration/Config_Banned.py` and `Configuration/Config_Models.py` and configure the settings according to your needs.
 
-### 🧪 9. Run the tests
+### 🧪 10. Run the tests
 
 You may need to install [pytest](https://docs.pytest.org/en/latest/) ([MIT License](3rdPartyLicenses/Licenses.md#pytest-902)) first.
 
@@ -682,7 +729,7 @@ pip install pytest
 python .\tests\RunTests.py
 ```
 
-### ⚙️ 10. Adjust Configuration
+### ⚙️ 11. Adjust Configuration
 
 ### 🤖 LLM, Embedder and Cross Encoder
 
@@ -690,10 +737,90 @@ For details on how model implementations are selected, see [Model Implementation
 
 ### 🔌 Define Ollama endpoint
 
+The Ollama endpoint, streaming mode, and GPU flag are defined inside the
+`_MODELS["ollama"]["_OLLAMA"]` dictionary in `Config_Models.py`:
+
 ```python
-# If Ollama runs on a non-default URL/port, adjust
-_OLLAMA_BASE_URL = "http://localhost:11434/api/generate"
+"ollama": {
+    "_OLLAMA": {
+        "BASE_URL": "http://localhost:11434/api/generate",
+        "STREAMING_REQ": False,
+        "USE_GPU": True,
+        ...
+    },
+},
 ```
+
+### 🌐 Config_RAGChatService.py — HTTP Listener for OpenWebUI
+
+`RAGChatService` exposes `RAGChat` over an OpenAI-compatible REST API
+(`POST /v1/chat/completions`).
+Its configuration file `Config_RAGChatService.py` **re-exports the entire
+`Config_RAGChat.py`** — every retrieval strategy, prompt template, KeyBERT
+setting, and history parameter is inherited as-is. Only the following
+settings are added specifically for the HTTP listener:
+
+| Key | Default used in this repository | Purpose |
+| --- | --- | --- |
+| `OPENWEBUI_API_HOST` | `"127.0.0.1"` | Bind address for the uvicorn server. |
+| `OPENWEBUI_API_PORT` | `11435` | Port for the uvicorn server. |
+| `OPENWEBUI_THREAD_POOL_WORKERS` | `1` | `ThreadPoolExecutor` max workers for `chatter.run()`. |
+| `OPENWEBUI_API_KEY` | `"RAGChatService"` | Shared secret for Bearer token authentication. Must match the API key configured in OpenWebUI. |
+| `SHOW_CLI_LIKE_ALGO_RESULTS` | `True` | When enabled, filter chain algo results (depth/breadth table and ensemble summary) are appended to the LLM answer in Markdown format, mirroring the terminal output of the CLI version. |
+
+`_FRIENDLY_NAME` is set to `"RAGChatService"` so that compliance lookups
+resolve to the correct detection profile in `Config_Banned.py`.
+
+The chat prompt (`_PROMPT_CHAT`) is overridden with an OpenWebUI-specific
+variant that instructs the LLM to suggest adjusting retrieval parameters
+(available in the OpenWebUI Controls sidebar) when context is insufficient.
+
+When `SHOW_CLI_LIKE_ALGO_RESULTS` is `True` (default), the filter chain
+algo results — including the per-algorithm depth/breadth table and the
+ensemble summary — are appended to the LLM answer in Markdown format.
+This mirrors the diagnostic output normally shown in the RAGChat terminal,
+making it visible directly inside the OpenWebUI chat window. Set to `False`
+to return only the LLM answer.
+
+### 🔗 Connecting OpenWebUI to RAGChatService
+
+1. **Enable the service** — set `SERVE_OPENWEBUI_CHAT` to `"1"` in
+   `Configuration/Config_Internet_Env.py` (default used in this repository is `"1"`):
+
+   ```python
+   os.environ["SERVE_OPENWEBUI_CHAT"] = "1"
+   ```
+
+2. **Start RAGChatService**:
+
+   ```powershell
+   python .\src\Apps\RAGChatService.py
+   ```
+
+   The service listens on `OPENWEBUI_API_HOST`:`OPENWEBUI_API_PORT`
+   (default `127.0.0.1:11435`).
+
+   On first launch, `RAGChatService` runs through the same
+   [Initial consent workflow](#-initial-consent-workflow) as `RAGLoad`,
+   `RAGChat`, and `DocClassify` (hash confirmation and model license consent).
+
+3. **Add the connection in OpenWebUI** — in OpenWebUI go to
+   **Admin Panel → Settings → Connections** and add a new **OpenAI API**
+   connection:
+
+   | Field | Value |
+   | --- | --- |
+   | URL | `http://127.0.0.1:11435/v1` |
+   | API Key | The value of `OPENWEBUI_API_KEY` (default `RAGChatService`) |
+
+4. **Select a collection** — after saving the connection, the Chroma DB
+   collections loaded by `RAGLoad` appear as selectable models in the
+   OpenWebUI model dropdown (`GET /v1/models`). Pick a collection and
+   start chatting.
+
+> **Note:** All `/v1/` endpoints require a valid `Authorization: Bearer <key>`
+> header. The key must match `OPENWEBUI_API_KEY` in `Config_RAGChatService.py`.
+> Change the default value before exposing the service beyond localhost.
 
 ## 🌍 About internet
 
@@ -734,7 +861,7 @@ If you see a `RequestsDependencyWarning` see [Troubleshooting](#-troubleshooting
 
 You are asked to consent to the licenses for the models defined in `Config_Models.py`. With the default used in this repository  `LICENSE_DOWNLOAD = "0"`, RAG‑LCC prompts you with `[y/N]` on each individual license download. You can also set `LICENSE_DOWNLOAD` to `"1"` in `Config_Internet_Env.py` to skip the per-fetch prompt if this is acceptable for your environment and policies.
 
-This step is repeated for each of the 8 models defined in the `_MODELS` configuration in `Config_Models.py`. Once consented, license consent is only re-requested if a local license file is missing, the config hash changes, or — when `LICENSE_DOWNLOAD` is enabled — a changed remote license text or TLS certificate is detected.
+This step is repeated for each model that the started application actually requires (for example, `RAGChat` needs the LLM, compliance-check LLM, embedder, cross-encoder, and Ollama provider — but not the OpenWebUI entry, which is only used by `RAGChatService`). Only the licenses relevant to the launched `.py` file are checked; models not used by that application are skipped. Once consented, license consent is only re-requested if a local license file is missing, the config hash changes, or — when `LICENSE_DOWNLOAD` is enabled — a changed remote license text or TLS certificate is detected.
 
 ```text
 🟡 License                        mistral._LLM: missing license or metadata
@@ -774,6 +901,7 @@ Internet access is configured in `Configuration/Config_Internet_Env.py`.
 | `ARGOS_STANZA_DOWNLOAD` | `"0"` | Control stanza network access for Argos Translate. When `"0"`, stanza is blocked from downloading — only pre-installed packages are used. When `"1"`, stanza may download missing tokenizer models at runtime. Requires prior license acceptance via `python src\Scripts\ArgosTranslatePackages.py install`. |
 | `ARGOS_MODEL_PROVIDER` | `"OPENNMT"` | Force Argos Translate to use local packages only. |
 | `ARGOS_CHUNK_TYPE` | "SPACY" | ARGOS_CHUNK_TYPE: Select the sentence boundary detection (SBD) backend |
+| `SERVE_OPENWEBUI_CHAT` | `"0"` | Enable the `RAGChatService` HTTP listener. When `"1"`, `RAGChatService.py` starts a uvicorn server that accepts incoming connections on the configured host/port (`openwebui` slot in `Config_Models.py`). **This opens a network listener.** Change the default `OPENWEBUI_API_KEY` before exposing the service beyond localhost. |
 
 For convenience, these values are displayed at startup.
 
@@ -934,7 +1062,6 @@ Rules:
 | --- | --- | --- |
 | `USE_CPU` | `False` | Force CPU-only mode. Set `EMBEDDER_BITS = 32` when enabled. |
 | `EMBEDDER_BITS` | `32` | Quantisation for embeddings. Use `32` on CPU; `16` on GPU (requires `accelerate`). |
-| `USE_OLLAMA_GPU` | `True` | Let Ollama use the GPU for inference. |
 
 #### 📁 Paths
 
@@ -947,10 +1074,12 @@ Rules:
 
 #### 🦙 Ollama
 
+The Ollama endpoint, streaming mode, and GPU flag have moved into `_MODELS["ollama"]["_OLLAMA"]`
+in `Config_Models.py` (see [Ollama Provider Metadata](#ℹ️-ollama-provider-metadata-_modelsollama_ollama)).
+The remaining Ollama-related setting in `Config_Global.py` is:
+
 | Key | Default used in this repository | Purpose |
 | --- | --- | --- |
-| `_OLLAMA_BASE_URL` | `http://localhost:11434/api/generate` | Ollama endpoint. Change only when the server runs on a different host/port. |
-| `OLLAMA_STREAMING_REQ` | `False` | Enable streamed responses from Ollama. |
 | `REQUEST_TIMEOUT` | `600` | Seconds to wait for an Ollama response before timing out. |
 
 #### 🎫 Token Budget
@@ -1032,8 +1161,9 @@ DEBUG_LEVEL = 3 # Default used in this repository
 | --- | --- | --- |
 | 0 | None | Silent |
 | 1 | Basic | High-level progress |
-| 3 | Default | Default used in this repository; includes compliance decisions |
-| 4 | Alogs | Algorithm internals |
+| 2 | RAGChatService | RAGChatService startup and request handling |
+| 3 | Standard | Default used in this repository; includes compliance decisions |
+| 10 | Algos | Algorithm internals |
 | 50 | Components | Argos Translate, transformers |
 | 60 | Chat Prompt | Chat Prompt |
 | 70 | Extracted Content | Full extracted text per document |
@@ -1059,14 +1189,15 @@ This file defines every model used by RAG-LCC. After editing it, update `_MODELS
 
 #### 🔩 Implementation Selectors
 
-`Config_Models.py` uses a two-level dictionary `_MODELS[<impl>][<role>]` to resolve model configurations. Five top-level selector variables choose which implementation (impl key) to use for each model role:
+`Config_Models.py` uses a two-level dictionary `_MODELS[<impl>][<role>]` to resolve model configurations. Six top-level selector variables choose which implementation (impl key) to use for each model role:
 
 ```python
-_LLM_CHK = "llama_guard"  # impl for _LLM_CHK role. llama_guard, llama, mistral
-_LLM     = "mistral"      # impl for _LLM role. mistral, llama
-_EMBED   = "snowflake"    # impl for _EMBED role
-_CROSS   = "mmarco"       # impl for _CROSS role
-_OLLAMA  = "ollama"       # impl for _OLLAMA role
+_LLM_CHK   = "llama_guard"  # impl for _LLM_CHK role. llama_guard, llama, mistral
+_LLM       = "mistral"      # impl for _LLM role. mistral, llama
+_EMBED     = "snowflake"    # impl for _EMBED role
+_CROSS     = "mmarco"       # impl for _CROSS role
+_OLLAMA    = "ollama"       # impl for _OLLAMA role
+_OPENWEBUI = "openwebui"    # impl for _OPENWEBUI role
 ```
 
 | Selector | Default used in this repository | Resolves to | Allowed values |
@@ -1076,6 +1207,7 @@ _OLLAMA  = "ollama"       # impl for _OLLAMA role
 | `_LLM` | `"mistral"` | `_MODELS["mistral"]["_LLM"]` | `mistral`, `llama` |
 | `_LLM_CHK` | `"llama_guard"` | `_MODELS["llama_guard"]["_LLM_CHK"]` | `llama_guard`, `llama`, `mistral` |
 | `_OLLAMA` | `"ollama"` | `_MODELS["ollama"]["_OLLAMA"]` | `ollama` |
+| `_OPENWEBUI` | `"openwebui"` | `_MODELS["openwebui"]["_OPENWEBUI"]` | `openwebui` |
 
 To switch models, change the selector value to another key that carries a matching role entry in `_MODELS`.
 
@@ -1162,9 +1294,19 @@ A separate LLM used to validate prompts and outputs against compliance rules. De
 
 #### ℹ️ Ollama Provider Metadata (`_MODELS["ollama"]["_OLLAMA"]`)
 
-Records the Ollama provider details (URL, license). Not a model itself. The impl key is selected by `_OLLAMA = "ollama"`.
+Records the Ollama provider details and operational settings. Not a model itself. The impl key is selected by `_OLLAMA = "ollama"`.
+
+| Key | Default used in this repository | Purpose |
+| --- | --- | --- |
+| `BASE_URL` | `http://localhost:11434/api/generate` | Ollama endpoint. Change when the server runs on a different host/port. |
+| `STREAMING_REQ` | `False` | Enable streamed responses from Ollama. |
+| `USE_GPU` | `True` | Let Ollama use the GPU for inference. |
 
 > **Important:** RAG-LCC does **not** download Ollama LLM models. You must install Ollama and pull models yourself, eg. `ollama pull mistral:7b`.
+
+#### 🌐 OpenWebUI Provider Metadata (`_MODELS["openwebui"]["_OPENWEBUI"]`)
+
+Records the OpenWebUI provider details (URL, license). Used by `RAGChatService`. The impl key is selected by `_OPENWEBUI = "openwebui"`.
 
 ### 💬 3. Config_RAGChat.py — Retrieval and Response
 

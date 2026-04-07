@@ -24,7 +24,7 @@ the operator.
 
 | Aspect | Default Posture |
 | ------ | ----------------- |
-| Network exposure | RAG‑LCC itself does not open listening ports. Note: on startup, Python or its dependencies may attempt a brief connection to `[::1]` (IPv6 loopback) to probe whether IPv6 is available on the host. This is a local‑only probe. |
+| Network exposure | RAG‑LCC's console applications do not open listening ports. The optional `RAGChatService.py` **does** open a listening socket (default `127.0.0.1:11435`) via Uvicorn to serve an OpenAI‑compatible REST API. The operator controls bind address and port through configuration and is responsible for any network‑security implications. Note: on startup, Python or its dependencies may attempt a brief connection to `[::1]` (IPv6 loopback) to probe whether IPv6 is available on the host. This is a local‑only probe. |
 | External calls | None unless explicitly configured by the operator |
 | Data storage | Local filesystem and local ChromaDB only |
 | Telemetry | None |
@@ -43,7 +43,8 @@ RAG‑LCC does **not** bundle, ship, or redistribute:
 - LLMs or ML models,
 - translation packages,
 - OCR engines,
-- external tools.
+- external tools,
+- GUI front‑ends (e.g. OpenWebUI).
 
 All dependencies are installed independently by the operator from upstream sources.
 The authors have no control over their code, security posture, or supply chain.

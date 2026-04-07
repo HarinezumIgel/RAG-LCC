@@ -378,7 +378,7 @@ class QueryParts(SingletonMixin):
             "max_output_tokens": (
                 f"{getattr(s, 'max_output_tokens', None)}"
                 + (
-                    f"  [override={s.max_output_tokens_override}]"
+                    f"  [override(api: max_tokens)={s.max_output_tokens_override}]"
                     if getattr(s, "max_output_tokens_override", None) is not None
                     else ""
                 )
@@ -386,7 +386,7 @@ class QueryParts(SingletonMixin):
             "context_size": (
                 f"{self.tokenBudget.get_context_limit()}"
                 if getattr(s, "context_size_override", None) is None
-                else f"override={s.context_size_override}"
+                else f"override(api: num_ctx)={s.context_size_override}"
             ),
             "temperature": getattr(s, "temperature", None),
             "top_p": getattr(s, "top_p", None),
@@ -468,7 +468,7 @@ class QueryParts(SingletonMixin):
                 self.hist.save(f"{s.collection_name}_{s.chat_name}", "Settings")
             s.collection_name = self.collectionPicker.pick_collection()
             self.ragChatImpl.set_vector_store(s)
-            self._reset_things()
+            self.reset_things()
             return
 
         if mode == "chat_name":
@@ -678,7 +678,7 @@ class QueryParts(SingletonMixin):
 
     # ——— Resetting on collection change ———
 
-    def _reset_things(self):
+    def reset_things(self):
         if self.session.file_name or self.session.file_path:
             print(f"⚠ Clearing current file name / file path")
             self.session.file_name, self.session.file_path = None, None
@@ -729,7 +729,7 @@ class QueryParts(SingletonMixin):
                 )
             self.session.collection_name = p
             self.ragChatImpl.set_vector_store(self.session)
-            self._reset_things()
+            self.reset_things()
             return
 
         if tok == "debug":
@@ -780,8 +780,15 @@ class QueryParts(SingletonMixin):
 
     # ——— Defaults loader for strategies ———
 
-    def _base_defaults(self, strategy: str) -> str:
+    def applyStrategyDefaults(
+        self, strategy: str, session: "Session | None" = None
+    ) -> str:
+        """Public entry point for loading strategy defaults into Session. Returns the collection name."""
+        return self._base_defaults(strategy, session=session)
+
+    def _base_defaults(self, strategy: str, *, session: "Session | None" = None) -> str:
         """Read strategy config values and apply them to the session. Returns the collection name."""
+        s = session or self.session
         key = strategy.upper()
         chunks_win = self.cfg.get_int(f"_STRATEGIES.{key}.chunks_window")
         chroma_kval = self.cfg.get_int(f"_STRATEGIES.{key}.chroma_k_value")
@@ -803,21 +810,21 @@ class QueryParts(SingletonMixin):
         bs = self.cfg.get_int(f"_STRATEGIES.{key}.batch_size")
         dbg = self.cfg.get_int(f"_STRATEGIES.{key}.debug_level")
 
-        self.session.chunks_window = chunks_win
-        self.session.chroma_k_value = chroma_kval
-        self.session.chroma_threshold = thr
-        self.session.max_output_tokens = tok_val
-        self.session.temperature = temp
-        self.session.top_p = top_p
-        self.session.top_k = top_k
-        self.session.rerank = bool(rer)
-        self.session.chroma_weight = cw
-        self.session.per_file_limit = fl
-        self.session.use_chat_context = use_ctx
-        self.session.chat_context_k_value = ctx_kval
-        self.session.turns = turn
-        self.session.batch_size = bs
-        self.session.debug_level = dbg
+        s.chunks_window = chunks_win
+        s.chroma_k_value = chroma_kval
+        s.chroma_threshold = thr
+        s.max_output_tokens = tok_val
+        s.temperature = temp
+        s.top_p = top_p
+        s.top_k = top_k
+        s.rerank = bool(rer)
+        s.chroma_weight = cw
+        s.per_file_limit = fl
+        s.use_chat_context = use_ctx
+        s.chat_context_k_value = ctx_kval
+        s.turns = turn
+        s.batch_size = bs
+        s.debug_level = dbg
         self.cfg.set("DEBUG_LEVEL", dbg)
 
         return cn
@@ -839,7 +846,7 @@ class QueryParts(SingletonMixin):
                     "Settings",
                 )
             self.session.collection_name = cn
-            self._reset_things()
+            self.reset_things()
 
             if init_once:
                 print(f"→ Loaded defaults for '{p}':")
@@ -931,7 +938,7 @@ class QueryParts(SingletonMixin):
             setattr(self.session, attr, val_cast)
             # special side effects
             if tok == "chat_name":
-                self._reset_things()
+                self.reset_things()
             if tok == "strategy":
                 # ensure defaults are applied when setting strategy via '='
                 strategy: str = val_cast

@@ -8,7 +8,7 @@
 
 import os
 
-_VERSION = "v0.1.3/1045 03/25/2025"
+_VERSION = "v0.1.4/1045 04/07/2025"
 
 # -----------------------------------------------------------------------------
 #    Adjust this hash when you changed Config_Models.py
@@ -27,7 +27,6 @@ USE_CPU = False
 # !! set to 32 if USE_CPU = TRUE.
 # If 16 bits are used on GPU, accelerate needs to be installed
 EMBEDDER_BITS = 32  # 16, 32 !! set to 32 if USE_CPU = TRUE
-USE_OLLAMA_GPU = True
 
 # -----------------------------------------------------------------------------
 # Base paths and modes
@@ -58,10 +57,6 @@ USE_EXCLUSIONS = False
 _HF_HOME = os.path.join(os.path.expanduser("~"), ".cache", "huggingface")
 _HF_HUB_CACHE = os.path.join(_HF_HOME, "hub")
 
-# -----------------------------------------------------------------------------
-# Ollama URL and endpoint
-# -----------------------------------------------------------------------------
-_OLLAMA_BASE_URL = "http://localhost:11434/api/generate"
 
 # -----------------------------------------------------------------------------
 # Token budget for dynamic max_output_tokens calculation.
@@ -71,14 +66,9 @@ _OLLAMA_BASE_URL = "http://localhost:11434/api/generate"
 # RESERVED_OUTPUT  – tokens kept unconditionally for the model reply.
 # RESERVED_SYSTEM  – tokens reserved for the system / instruction preamble.
 # -----------------------------------------------------------------------------
-TOKEN_BUDGET_CONTEXT_CAP = 16384
+TOKEN_BUDGET_CONTEXT_CAP = 16384*1.5
 TOKEN_BUDGET_RESERVED_OUTPUT = 2048
 TOKEN_BUDGET_RESERVED_SYSTEM = 1024
-
-# -----------------------------------------------------------------------------
-# Ollama streaming
-# -----------------------------------------------------------------------------
-OLLAMA_STREAMING_REQ = False
 
 # -----------------------------------------------------------------------------
 # Unsupported-language handling
@@ -121,8 +111,9 @@ _CONSIDER_AS_TEXT_FILE = ["txt", "md", "py", "c", "h", "cpp", "csv", "log"]
 _ALLOWED_DEBUG_LEVELS = {
     "None": 0,
     "Basic": 1,
+    "RAGChatService": 2,
     "Standard": 3,
-    "Alogs": 4,
+    "Algos": 10,
     "Components": 50,  # argostranslate, transformers
     "Chat Prompt": 60,
     "Extracted Content": 70,
@@ -180,8 +171,8 @@ _CHROMA_EMBED_AND_RETRIEVE_PARAMS: dict[str, dict[str, float | int]] = {
     # ==========================
     # Smaller chunks and fewer neighbours — favors precision and speed.
     "COMPACT": {
-        "CHUNK_SIZE": 128,  # was 256
-        "CHUNK_OVERLAP": 16,  # was 32
+        "CHUNK_SIZE": 128,       # was 256
+        "CHUNK_OVERLAP": 16,     # was 32
         # Don't make this too big. Lower overlap 10 %, Higher overlap 20-30% of CHUNK_SIZE
         "NEIGHBORS_ON_LOAD": 64,  # Explore more neighbours at load time. Affects Load.py
         "NEIGHBORS_RETRIEVE": 64,  # Explore more neighbours at query (chat) time.

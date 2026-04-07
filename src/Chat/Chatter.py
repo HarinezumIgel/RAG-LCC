@@ -1,7 +1,7 @@
 import logging
 import textwrap
 from datetime import datetime
-from typing import Any, Dict
+from typing import Any, Callable, Dict
 
 from langchain_core.prompts import PromptTemplate
 
@@ -45,8 +45,12 @@ class Chatter:
         self.csvWriter: CSVWriter = CSVWriter()
         self.bannedPhraseCollector: BannedPhraseCollector = BannedPhraseCollector()
         self.llm_model: str = self.helpers.get_model_args("_LLM")["MODEL"]
-        self.is_streaming: bool = self.cfg.get_bool("OLLAMA_STREAMING_REQ")
-        self.use_ollama_gpu: bool = self.cfg.get_bool("USE_OLLAMA_GPU")
+        self.is_streaming: bool = self.helpers.get_model_args("_OLLAMA").get(
+            "STREAMING_REQ", False
+        )
+        self.use_ollama_gpu: bool = self.helpers.get_model_args("_OLLAMA").get(
+            "USE_GPU", True
+        )
         self.terminal_line_size: int = self.cfg.get_int("TERMINAL_LINE_SIZE")
         self.prompt: str
         self.prompt_name: str | None
@@ -56,23 +60,42 @@ class Chatter:
 
         self.cp: CommandProcessor = CommandProcessor()
         self.rag: RAGChatImpl = RAGChatImpl()
-        self.session: Session = Session()
         self.chatContext: ChatContext = ChatContext()
         self.llmCaller: LLMCaller = LLMCaller()
         self.modelOutputAdapter: ModelOutputAdapter = ModelOutputAdapter()
         self.masker: Masker = Masker()
         self.tokenBudget: TokenBudget = TokenBudget()
 
-    def run(self) -> bool:
+    def run(
+        self,
+        session: Session,
+        *,
+        apiChunkHandler: Callable[[str], None] | None = None,
+        is_streaming: bool | None = None,
+    ) -> tuple[bool, str | None]:
+        """Run the RAG pipeline for *session* and return ``(success, answer)``.
+
+        Parameters
+        ----------
+        session:
+            Per-request state (collection, query, strategy, …).
+        apiChunkHandler:
+            Optional callback that receives streamed content tokens.
+        is_streaming:
+            Override the config default for ``_MODELS.ollama._OLLAMA.STREAMING_REQ``.
+            When *None* the config value is used.
+        """
+        streaming = self.is_streaming if is_streaming is None else is_streaming
+
         missing = [
             name
             for name, val in (
-                ("chroma_k_value", self.session.chroma_k_value),
-                ("max_output_tokens", self.session.max_output_tokens),
-                ("temperature", self.session.temperature),
-                ("top_k", self.session.top_k),
-                ("top_p", self.session.top_p),
-                ("query", self.session.query),
+                ("chroma_k_value", session.chroma_k_value),
+                ("max_output_tokens", session.max_output_tokens),
+                ("temperature", session.temperature),
+                ("top_k", session.top_k),
+                ("top_p", session.top_p),
+                ("query", session.query),
             )
             if val is None
         ]
@@ -80,10 +103,10 @@ class Chatter:
             raise ValueError(f"Session fields not set: {', '.join(missing)}")
 
         # Pyright can't narrow through the dynamic loop above — bind non-None locals.
-        temperature: float = self.session.temperature  # type: ignore[reportAssignmentType]
-        top_k: float = self.session.top_k  # type: ignore[reportAssignmentType]
-        top_p: float = self.session.top_p  # type: ignore[reportAssignmentType]
-        query: str = self.session.query  # type: ignore[reportAssignmentType]
+        temperature: float = session.temperature  # type: ignore[reportAssignmentType]
+        top_k: float = session.top_k  # type: ignore[reportAssignmentType]
+        top_p: float = session.top_p  # type: ignore[reportAssignmentType]
+        query: str = session.query  # type: ignore[reportAssignmentType]
 
         self.pretty.write("I", "", f"Chatter RAG Query LMM: {self.llm_model}")
 
@@ -91,38 +114,92 @@ class Chatter:
         prompt = PromptTemplate.from_template(self.prompt)
 
         # Retrieve context
-        context, length = self.rag.retrieve(self.session)
+        context, length = self.rag.retrieve(session)
         if length == 0:
-            return True
+            no_results_msg = (
+                "I couldn't find relevant information to answer your query in the provided context.\n\n"
+                "Metadata used: None (context is empty)"
+            )
+            friendly_name = self.cfg.get_str("_FRIENDLY_NAME")
+            if friendly_name == "RAGChatService":
+                no_results_msg += (
+                    "\n\n**Hints (OpenWebUI Controls menu):**\n"
+                    "- Increase the `chroma_k_value` slider (top_k) to retrieve more candidate chunks.\n"
+                    "- Set `chroma_threshold` to a lower value (e.g. **0.2**) so fewer chunks are filtered out.\n"
+                    f"- Try a different `strategy` (current: "
+                    f"{session.strategy or 'default'}). "
+                    f"Allowed: ULTRA_WIDE, WIDE, MEDIUM, NARROW."
+                )
+            elif friendly_name == "RAGChat":
+                no_results_msg += (
+                    "\n\nHints:\n"
+                    "- Use  chroma_k_value  to increase top_k and retrieve more candidate chunks.\n"
+                    "- Use  threshold  to set a lower value (e.g. 0.2) so fewer chunks are filtered out.\n"
+                    f"- Use  strategy  to switch retrieval strategy (current: "
+                    f"{session.strategy or 'default'}). "
+                    f"Allowed: ULTRA_WIDE, WIDE, MEDIUM, NARROW.\n"
+                    "- Type  help?  at the command prompt for all available commands."
+                )
+            if apiChunkHandler is not None:
+                apiChunkHandler(no_results_msg)
+            self.print_llm_answer(no_results_msg, self.terminal_line_size)
+            return True, no_results_msg
 
         # Resolve the prompt with actual values
-        formatted = prompt.format(context=context, input=self.session.query)
+        formatted = prompt.format(context=context, input=session.query)
 
         # Resolve context window and output-token budget (applies user overrides with warnings).
-        effective_ctx, resolved_output = self._resolve_token_params(formatted)
-        self.session.max_output_tokens = resolved_output
+        effective_ctx, resolved_output = self._resolve_token_params(session, formatted)
+        session.max_output_tokens = resolved_output
 
-        handler = self.llmCaller.make_on_chunk(
-            temperature,
-            self.session.max_output_tokens,
-            top_k,
-            top_p,
+        self.pretty.write(
+            "I",
+            "Resolved token params",
+            f"max_output_tokens(api: max_tokens)={resolved_output}  "
+            f"num_ctx={effective_ctx}  "
+            f"(override: max_tokens={session.max_output_tokens_override}  "
+            f"num_ctx={session.context_size_override})",
         )
+
+        # Build the unified Ollama options dict: session params + any extra options from API
+        ollama_options: dict[str, Any] = {
+            "temperature": temperature,
+            "top_k": top_k,
+            "top_p": top_p,
+            "num_predict": session.max_output_tokens,
+            "num_ctx": effective_ctx,
+        }
+        if not self.use_ollama_gpu:
+            ollama_options["num_gpu"] = 0
+        if session.extraOllamaOptions:
+            ollama_options.update(session.extraOllamaOptions)
+
+        handler = self.llmCaller.make_on_chunk(ollama_options)
+        # If an API chunk handler is registered, wrap the base handler so both are called
+        if apiChunkHandler is not None:
+            base_handler: Callable[[Dict[str, str]], None] = handler
+            api_fn: Callable[[str], None] = apiChunkHandler
+
+            def wrapped(
+                chunk: Dict[str, str],
+                bh: Callable[[Dict[str, str]], None] = base_handler,
+                af: Callable[[str], None] = api_fn,
+            ) -> None:
+                bh(chunk)
+                af(chunk.get("content", ""))
+
+            handler = wrapped
         # for cell in handler.__closure__: print(cell.cell_contents)
         llm_result = self.llmCaller.call_llm(
             self.llm_model,
             formatted,
-            temperature,
-            top_k,
-            top_p,
-            self.session.max_output_tokens,
+            ollama_options,
             answer_is_json=True,
-            use_ollama_gpu=self.use_ollama_gpu,
             template_name=self.prompt_name,
             on_chunk=handler,
-            streaming=self.is_streaming,
+            streaming=streaming,
             stage="Run user prompt",
-            context_size=effective_ctx,
+            top_level_params=session.ollamaTopLevelParams,
         )
 
         if isinstance(llm_result, dict) and "error" in llm_result:  # type: ignore[reportUnnecessaryIsInstance]
@@ -134,7 +211,7 @@ class Chatter:
             llm_result,
             self.llm_model,
             is_compliance=False,
-            is_streaming=self.is_streaming,
+            is_streaming=streaming,
         )
         # Compliance hook: run checks on the received LLM answer
         content: str = answer.content or ""
@@ -162,7 +239,7 @@ class Chatter:
         doc: Dict[str, Dict[str, Any]] = {}
         doc["meta"] = {
             "Stage": stage,
-            "Session": self.session.export_session_state_as_cell(),
+            "Session": session.export_session_state_as_cell(),
             "Time": datetime.now(),
             "Status": status,
         }
@@ -174,18 +251,20 @@ class Chatter:
             self.pretty.write(
                 "E", "Answer check", "⚠️    Answer compliance check failed."
             )
-            return False
+            return False, None
 
         # Record the chat turn
-        if self.session.use_chat_context:
-            self.chatContext.add_chat_turn(self.session, query, content)
+        if session.use_chat_context:
+            self.chatContext.add_chat_turn(session, query, content)
 
         # Output the answer
         answer.content = self.masker.mask(content)
         self.print_llm_answer(answer.content, self.terminal_line_size)
-        return True
+        return True, answer.content
 
-    def _resolve_token_params(self, formatted: str) -> tuple[int, int]:
+    def _resolve_token_params(
+        self, session: Session, formatted: str
+    ) -> tuple[int, int]:
         """Resolve effective context window and output-token budget, applying user overrides.
 
         Returns:
@@ -193,7 +272,7 @@ class Chatter:
         """
         # --- context window ---
         auto_ctx: int = self.tokenBudget.get_context_limit(self.llm_model)
-        ctx_override: int | None = self.session.context_size_override
+        ctx_override: int | None = session.context_size_override
         if ctx_override is not None:
             if ctx_override > auto_ctx:
                 self.pretty.write(
@@ -211,7 +290,7 @@ class Chatter:
 
         # --- output-token budget ---
         dynamic_budget: int = self.tokenBudget.compute_dynamic_max_tokens(formatted)
-        override: int | None = self.session.max_output_tokens_override
+        override: int | None = session.max_output_tokens_override
         if override is not None:
             if override > dynamic_budget:
                 self.pretty.write(

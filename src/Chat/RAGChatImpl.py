@@ -1,5 +1,6 @@
 # ── Local Module Imports ──
 import os
+import threading
 # ── Standard Library Imports ──
 from typing import Any, Sequence, Tuple, cast
 
@@ -7,7 +8,7 @@ from chromadb.api import Collection  # type: ignore[attr-defined]
 # ── LangChain Ecosystem ──
 from langchain_chroma import Chroma
 from langdetect import \
-    detect  # type: ignore[reportMissingTypeStubs]  # noqa: F401
+    detect  # pyright: ignore[reportMissingTypeStubs, reportUnusedImport, reportUnknownVariableType]  # noqa: F401
 
 from AI.ModelsCache import ModelsCache
 from Chat.ChatContext import ChatContext
@@ -58,8 +59,14 @@ class RAGChatImpl(SingletonMixin):
         self.persist_directory: str | None = None
         self.vector_store: Chroma | None = None
         self.collection: Collection | None = None
+        self._lock = threading.Lock()
 
     def set_vector_store(self, mySession: Session) -> bool:
+        """Thread-safe wrapper — acquires ``self._lock`` then delegates."""
+        with self._lock:
+            return self._set_vector_store(mySession)
+
+    def _set_vector_store(self, mySession: Session) -> bool:
         self.collection_name, self.persist_directory = (
             self.chromaDBHelper.change_chroma_collection(
                 mySession.collection_name, True
@@ -222,7 +229,12 @@ class RAGChatImpl(SingletonMixin):
             self.pretty.write("D", "Chroma", row.format(i, score, sim, dist, fn))
 
     def retrieve(self, mySession: Session) -> Tuple[str, int]:
-        if self.set_vector_store(mySession):
+        """Thread-safe wrapper — acquires ``self._lock`` then delegates."""
+        with self._lock:
+            return self._retrieve(mySession)
+
+    def _retrieve(self, mySession: Session) -> Tuple[str, int]:
+        if self._set_vector_store(mySession):
             self.pretty.write(
                 "I",
                 "Chroma",
@@ -268,7 +280,7 @@ class RAGChatImpl(SingletonMixin):
             if mySession.rerank == 1:
                 merged_docs = self._rerank(mySession, merged_docs)
 
-            chosen: list[Any] = cast(list[Any], ChunkSelectionService().select_chunks(merged_docs))  # type: ignore[reportUnknownMemberType]
+            chosen: list[Any] = cast(list[Any], ChunkSelectionService(mySession).select_chunks(merged_docs))  # type: ignore[reportUnknownMemberType]
 
             # Format the context by combining the formatted adjacent chunks.
             context: str = "\n\n".join(
@@ -277,11 +289,5 @@ class RAGChatImpl(SingletonMixin):
             if len(chosen) > 0:
                 return context, len(chosen)
             else:
-                self.pretty.write("A", "", "No documents found after applying filters")
-                self.pretty.write(
-                    "W",
-                    "Suggested Action",
-                    f"Try lowering sensitivity. Current: {mySession.chroma_threshold}",
-                )
                 return "", 0
         return "", 0

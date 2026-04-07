@@ -94,12 +94,17 @@ class ClassifyStrategy(SingletonMixin, ProcessingStrategy):
         compliance_config_slot: str = self.helpers.get_compliance_config_slot(
             "PROMPT_CHECK"
         )
-        self.use_ollama_gpu: bool = self.cfg.get_bool("USE_OLLAMA_GPU")
-        self.is_streaming: bool = self.cfg.get_bool("OLLAMA_STREAMING_REQ")
+
+        self.is_streaming: bool = self.helpers.get_model_args("_OLLAMA").get(
+            "STREAMING_REQ", False
+        )
 
         # LLM compliance parameters
         self.temperature_chk: float = self.cfg.get_float(
             f"{compliance_config_slot}.LLM_PARAM.temperature"
+        )
+        self.use_ollama_gpu: bool = self.helpers.get_model_args("_OLLAMA").get(
+            "USE_GPU", True
         )
         self.use_ollama_gpu_chk: bool = self.cfg.get_bool(
             f"{compliance_config_slot}.LLM_PARAM.use_ollama_gpu"
@@ -201,20 +206,24 @@ class ClassifyStrategy(SingletonMixin, ProcessingStrategy):
                 },
             )
             prompt = self.prompt_chk.format_map(_fmt)
+            compliance_options: dict[str, Any] = {
+                "temperature": self.temperature_chk,
+                "top_k": self.top_k_chk,
+                "top_p": self.top_p_chk,
+                "num_predict": self.tokenBudget.compute_dynamic_max_tokens(
+                    prompt, self.llm_chk_model
+                ),
+                "num_ctx": self.tokenBudget.get_context_limit(self.llm_chk_model),
+            }
+            if not self.use_ollama_gpu_chk:
+                compliance_options["num_gpu"] = 0
             self.aiHelpers.check_provided_prompt(
                 prompt=prompt,
                 llm_model=self.llm_chk_model,
-                temperature=self.temperature_chk,
-                top_k=self.top_k_chk,
-                top_p=self.top_p_chk,
-                max_output_tokens=self.tokenBudget.compute_dynamic_max_tokens(
-                    prompt, self.llm_chk_model
-                ),
+                ollama_options=compliance_options,
                 answer_is_json=True,
-                use_ollama_gpu=self.use_ollama_gpu_chk,
                 template_name=self.prompt_chk_name or "",
                 stage="Check provided prompt",
-                context_size=self.tokenBudget.get_context_limit(self.llm_chk_model),
             )
 
     def _process_extract(self, doc: dict[str, Any]):  # Load
@@ -376,24 +385,28 @@ class ClassifyStrategy(SingletonMixin, ProcessingStrategy):
         # Compute output-token budget from the actual assembled prompt
         max_output_tokens_dyn: int = self.tokenBudget.compute_dynamic_max_tokens(prompt)
 
-        handler = self.llmCaller.make_on_chunk(
-            self.temperature_ext, max_output_tokens_dyn, self.top_k_ext, self.top_p_ext
-        )
+        # Build the unified Ollama options dict
+        ollama_options: dict[str, Any] = {
+            "temperature": self.temperature_ext,
+            "top_k": self.top_k_ext,
+            "top_p": self.top_p_ext,
+            "num_predict": max_output_tokens_dyn,
+            "num_ctx": self.tokenBudget.get_context_limit(self.llm_model),
+        }
+        if not self.use_ollama_gpu:
+            ollama_options["num_gpu"] = 0
+
+        handler = self.llmCaller.make_on_chunk(ollama_options)
         # for cell in handler.__closure__: print(cell.cell_contents)
         llm_result = self.llmCaller.call_llm(
             self.llm_model,
             prompt,
-            self.temperature_ext,
-            self.top_k_ext,
-            self.top_p_ext,
-            max_output_tokens_dyn,
+            ollama_options,
             answer_is_json=True,
-            use_ollama_gpu=self.use_ollama_gpu,
             template_name=self.prompt_name,
             on_chunk=handler,
             streaming=self.is_streaming,
             stage="Run classification prompt",
-            context_size=self.tokenBudget.get_context_limit(self.llm_model),
         )
 
         # handle errors

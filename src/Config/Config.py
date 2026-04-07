@@ -3,6 +3,7 @@ import json
 import os
 import pprint
 import sys
+import threading
 from typing import Any, Optional, Tuple, Union, cast
 
 import Configuration.Config_Banned as Config_Banned
@@ -10,6 +11,7 @@ import Configuration.Config_DocClassify as Config_DocClassify
 import Configuration.Config_Global as Config_Global
 import Configuration.Config_Models as Config_Models
 import Configuration.Config_RAGChat as Config_RAGChat
+import Configuration.Config_RAGChatService as Config_RAGChatService
 import Configuration.Config_RAGLoad as Config_RAGLoad
 from Commons.Exceptions import ConfigPathError
 from Commons.SingletonMixin import SingletonMixin
@@ -20,6 +22,7 @@ config_modules = {
     "Config_Banned": Config_Banned,
     "Config_Models": Config_Models,
     "Config_RAGChat": Config_RAGChat,
+    "Config_RAGChatService": Config_RAGChatService,
     "Config_RAGLoad": Config_RAGLoad,
     "Config_DocClassify": Config_DocClassify,
     "Config_Global": Config_Global,
@@ -35,6 +38,8 @@ class Config(SingletonMixin):
         if getattr(self, "_initialized", False):
             return
         self._initialized = True
+
+        self._lock = threading.RLock()
 
         # detect which program-specific constants module to use
         config_name: str = (
@@ -135,6 +140,18 @@ class Config(SingletonMixin):
         return (default, last_slot)
 
     def get(
+        self,
+        key: str,
+        default: Any = None,
+        allow_indirect: bool = True,
+        *,
+        silent: bool = False,
+    ) -> Union[Any, Tuple[Any, Optional[str]]]:
+        """Thread-safe wrapper — delegates to ``_get`` under ``self._lock``."""
+        with self._lock:
+            return self._get(key, default, allow_indirect, silent=silent)
+
+    def _get(
         self,
         key: str,
         default: Any = None,
@@ -365,6 +382,25 @@ class Config(SingletonMixin):
         create_missing: bool = True,
         allow_indirect: bool = True,
     ) -> Any:
+        """Thread-safe wrapper — delegates to ``_set`` under ``self._lock``."""
+        with self._lock:
+            return self._set(
+                key,
+                value,
+                force=force,
+                create_missing=create_missing,
+                allow_indirect=allow_indirect,
+            )
+
+    def _set(
+        self,
+        key: str,
+        value: Any,
+        *,
+        force: bool = False,
+        create_missing: bool = True,
+        allow_indirect: bool = True,
+    ) -> Any:
         """
         Set a configuration value.
 
@@ -443,7 +479,7 @@ class Config(SingletonMixin):
                     self.pretty.write(
                         "D",
                         "Config.set",
-                        f"Set key:'{target_key}' (was before: {pprint.pformat(prev)})",
+                        f"Set key:'{target_key}' (was before: {pprint.pformat(prev)}, now: {pprint.pformat(value)})",
                     )
                 return prev
             else:

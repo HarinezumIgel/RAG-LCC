@@ -7,6 +7,13 @@ import requests
 import torch
 
 from Commons.Exceptions import NoVirtualEnvError, OllamaNotRunning
+
+
+# Custom exception for OpenWebUI
+class OpenWebUINotRunning(Exception):
+    pass
+
+
 from Compliance.Exclusions import Exclusions
 from Config.Config import Config
 from Globals.CounterInstance import (FailedCount, HumanReviewCount,
@@ -20,11 +27,6 @@ from Helpers.PipelineSettingsSummarizer import PipelineSettingsSummarizer
 
 
 class Informer:
-    """
-    A collection of helper methods for handling RAG (Retrieval-Augmented Generation)
-    document queries. This implementation uses instance methods rather than static methods.
-    """
-
     def __init__(self) -> None:
         # Optionally, initialize instance variables (like a custom logger) here.
         # For example: self.logger = your_logger_instance
@@ -45,7 +47,9 @@ class Informer:
         self.exclusions_file_name: str = self.exclusions.get_exclusions_filename()
 
         self.default_algos: list[str] = self.cfg.get_list("_DEFAULT_ALGOS")
-        self.is_streaming: bool = self.cfg.get_bool("OLLAMA_STREAMING_REQ")
+        self.is_streaming: bool = self.helpers.get_model_args("_OLLAMA").get(
+            "STREAMING_REQ", False
+        )
 
         if self.helpers.in_venv() is False:
             msg = f"Virtual environment expected to run this script."
@@ -54,10 +58,41 @@ class Informer:
 
         self.use_exclusions: bool = self.cfg.get_bool("USE_EXCLUSIONS")
 
+    def _check_openwebui_is_running(self) -> None:
+        """
+        Checks if OpenWebUI is running by sending a request to its /v1/models endpoint.
+        Only runs if self.friendly_name == "RAGChatService".
+        Throws OpenWebUINotRunning if not reachable.
+        """
+        # Get OpenWebUI host/port from config or use default
+        openwebui_args: dict[str, Any] = self.helpers.get_model_args("_OPENWEBUI")
+        base_url = openwebui_args["BASE_URL"]
+        try:
+            resp: requests.Response = requests.get(base_url, timeout=2)
+            resp.raise_for_status()
+        except requests.RequestException:
+            msg: str = f"Can't reach OpenWebUI on: {base_url}"
+            self.pretty.write(
+                "E",
+                "OpenWebUI",
+                msg,
+                color=RED,
+            )
+            raise OpenWebUINotRunning(msg)
+        self.pretty.write(
+            "O",
+            "OpenWebUI",
+            f"OpenWebUI is reachable on: {base_url}",
+        )
+
+    """
+    A collection of helper methods for handling RAG (Retrieval-Augmented Generation)
+    document queries. This implementation uses instance methods rather than static methods.
+    """
+
     def _check_ollama_is_running(self) -> None:
         # Read the base URL (defaults to localhost if not set)
-        ollama_args: dict[str, Any] = self.helpers.get_model_args("_OLLAMA")
-        base_url: str = ollama_args["BASE_URL"]
+        base_url: str = self.helpers.get_model_args("_OLLAMA").get("BASE_URL", "")
         base_url = self.helpers.normalize_base_url(base_url)
         try:
             # Try to reach the /health endpoint with a short timeout
@@ -84,6 +119,8 @@ class Informer:
     def inform(self) -> None:
         self.piplineSummarizer.display()
         self._check_ollama_is_running()
+        if self.friendly_name == "RAGChatService":
+            self._check_openwebui_is_running()
         self._inform_cuda()
         if self.friendly_name == "RAGLoad":
             self._delete_collection()

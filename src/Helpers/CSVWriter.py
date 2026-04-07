@@ -42,7 +42,7 @@ class CSVWriter(SingletonMixin):
         self._define_csv_files()
 
     def __del__(self):
-        self._close_all
+        self._close_all()
 
     # ---------------------------
     # Helpers

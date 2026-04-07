@@ -389,6 +389,11 @@ _BANNED_DETECT = {
     },  # end STRICT_DETECT_CONFIG
 }  # end DETECTION_CONFIG
 
+# RAGChatService is RAGChat served over HTTP — reuse identical compliance pipeline
+_BANNED_DETECT["STRICT_DETECT_CONFIG"]["RAGChatService"] = (
+    _BANNED_DETECT["STRICT_DETECT_CONFIG"]["RAGChat"]
+)
+
 # Banned words definitions
 _BANNED_CONFIG = "_STRICT_BANNED"
 _STRICT_BANNED = {

@@ -69,7 +69,9 @@ class AIHelpers(SingletonMixin):
             cfg=self.cfg, pretty=self.pretty, helpers=self.helpers
         )
 
-        self.is_streaming: bool = self.cfg.get_bool("OLLAMA_STREAMING_REQ")
+        self.is_streaming: bool = self.helpers.get_model_args("_OLLAMA").get(
+            "STREAMING_REQ", False
+        )
 
         # Embedding / KeyBERT related config used by embedding helpers
         self.embed_model_name: str = self.helpers.get_model_args("_EMBED")["MODEL"]
@@ -216,38 +218,27 @@ class AIHelpers(SingletonMixin):
         self,
         prompt: str,
         llm_model: str,
-        temperature: float,
-        top_k: int,
-        top_p: float,
-        max_output_tokens: int,
+        ollama_options: dict[str, Any],
+        *,
         answer_is_json: bool,
-        use_ollama_gpu: bool,
         template_name: str,
         stage: str,
-        context_size: int | None = None,
     ) -> None:
         """
         Run compliance check on provided prompt using LLM.
         Raises ComplianceViolationError if not compliant.
         """
-        handler = self.llmCaller.make_on_chunk(
-            temperature, max_output_tokens, top_k, top_p
-        )
+        handler = self.llmCaller.make_on_chunk(ollama_options)
         # for cell in handler.__closure__: print(cell.cell_contents)
         llm_result = self.llmCaller.call_llm(
             model=llm_model,
             prompt=prompt,
-            temperature=temperature,
-            top_k=top_k,
-            top_p=top_p,
-            max_output_tokens=max_output_tokens,
+            ollama_options=ollama_options,
             answer_is_json=answer_is_json,
-            use_ollama_gpu=use_ollama_gpu,
             template_name=template_name,
             on_chunk=handler,
             streaming=self.is_streaming,
             stage=stage,
-            context_size=context_size,
         )
 
         # handle errors
@@ -261,9 +252,62 @@ class AIHelpers(SingletonMixin):
             llm_result, llm_model, is_compliance=True, is_streaming=self.is_streaming
         )
         if self.is_not_compliant_prompt(decision, llm_model):
-            raise ComplianceViolationError(
-                "Prompt compliance check determined input is not compliant"
+            reason = decision.reason or "not compliant"
+            raise ComplianceViolationError(f"Prompt check ({llm_model}): {reason}")
+
+    def check_prompt_with_llm_guard(self, user_query: str) -> Tuple[bool, str]:
+        """Run the LLM-based prompt guard using config-driven parameters.
+
+        Returns ``(rejected, reason)`` where *reason* is the guard's
+        explanation when *rejected* is ``True``, or an empty string otherwise.
+        """
+        from AI.TokenBudget import TokenBudget
+
+        compliance_config_slot = self.helpers.get_compliance_config_slot("PROMPT_CHECK")
+        if not self.cfg.get_bool(f"{compliance_config_slot}.Check", True):
+            return False, ""
+
+        llm_chk_args = self.helpers.get_model_args("_LLM_CHK")
+        llm_chk_model: str = llm_chk_args["MODEL"]
+        chk_prompt_var: str = llm_chk_args["PROMPT_CHAT"]
+        prompt_chk_template, prompt_chk_name = self.cfg.get(f"${chk_prompt_var}")
+
+        temperature: float = self.cfg.get_float(
+            f"{compliance_config_slot}.LLM_PARAM.temperature"
+        )
+        top_k: int = self.cfg.get_int(f"{compliance_config_slot}.LLM_PARAM.top_k")
+        top_p: float = self.cfg.get_float(f"{compliance_config_slot}.LLM_PARAM.top_p")
+        use_gpu: bool = self.cfg.get_bool(
+            f"{compliance_config_slot}.LLM_PARAM.use_ollama_gpu"
+        )
+
+        token_budget = TokenBudget()
+        formatted_prompt = prompt_chk_template.format(USER_MESSAGE=user_query)
+        compliance_options: dict[str, Any] = {
+            "temperature": temperature,
+            "top_k": top_k,
+            "top_p": top_p,
+            "num_predict": token_budget.compute_dynamic_max_tokens(
+                formatted_prompt, llm_chk_model
+            ),
+            "num_ctx": token_budget.get_context_limit(llm_chk_model),
+        }
+        if not use_gpu:
+            compliance_options["num_gpu"] = 0
+
+        try:
+            self.check_provided_prompt(
+                prompt=formatted_prompt,
+                llm_model=llm_chk_model,
+                ollama_options=compliance_options,
+                answer_is_json=True,
+                template_name=prompt_chk_name or "",
+                stage="Check provided prompt",
             )
+        except ComplianceViolationError as exc:
+            return True, str(exc)
+
+        return False, ""
 
     # -------------------------
     # Ensemble / detectors orchestration

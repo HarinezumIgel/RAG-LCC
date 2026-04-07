@@ -78,16 +78,22 @@ class Compliance(SingletonMixin):
         self.logger: logging.Logger = self.helpers.setup_logger("Compliance")
         self.pretty: PrettyWriter = pretty or PrettyWriter()
         self.cfg: Config = cfg or Config()
-        # Flatten _MODELS to {"impl.role": config}
+        # Flatten _MODELS to {"impl.role": config}, filtered by USED_BY
         raw_models: dict[str, Any] = self.cfg.get_dict("_MODELS", {})
         self.models: dict[str, dict[str, Any]] = {}
+        self.friendly_name: str = self.cfg.get_str("_FRIENDLY_NAME")
         for _impl, _roles in raw_models.items():
             if isinstance(_roles, dict):
                 for _role, _config in cast(dict[str, Any], _roles).items():
                     if isinstance(_config, dict):
+                        used_by = _config.get("USED_BY")
+                        if (
+                            isinstance(used_by, list)
+                            and self.friendly_name not in used_by
+                        ):
+                            continue
                         self.models[f"{_impl}.{_role}"] = cast(dict[str, Any], _config)
         self.license_download: str | None = os.environ.get("LICENSE_DOWNLOAD", "0")
-        self.friendly_name: str = self.cfg.get_str("_FRIENDLY_NAME")
 
         self.base_dir: str = "ModelGovernance/licenses"
         os.makedirs(self.base_dir, exist_ok=True)

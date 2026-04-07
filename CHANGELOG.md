@@ -6,6 +6,227 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [v0.1.0/1067] — 2026-04-07
+
+### 🔧 Improved
+
+#### 🎨 RAGChatService — Prettified Filter-Chain Result Display
+
+- **`src/Api/ChatCompletionHandler.py`** — Filter-chain compliance results returned
+  to OpenWebUI are now formatted as styled Markdown (emoji colour indicators, aligned
+  tables, depth/breadth summary) instead of raw plain-text output.  Prompt-check and
+  answer-check stages both emit a `### Filter chain algo results` block that renders
+  cleanly inside the OpenWebUI chat interface.
+- **`src/Helpers/Accumulator.py`** — New `format_results_as_md()` method produces an
+  OpenWebUI-safe Markdown representation of the last ensemble check. Includes a
+  per-phrase table with emoji-coloured score cells (🔴 above threshold, 🟢 clean,
+  🔵 below threshold, ⚪ disabled) and a depth/breadth summary row mirroring the
+  CLI ANSI output.  Snapshot fields `last_phrase_table_for_md` and
+  `last_ensemble_data` added so the service layer can retrieve results after
+  `show_accumulated()`.
+- **`src/Api/ChatCompletionHandler.py`** — New `_format_validation_details()` helper
+  groups `ResultsForPrint` rows by phrase and renders them as a Markdown
+  `**Validation details:**` block with per-algo score lines.
+
+#### 🔒 Thread Safety & Singleton Cleanup
+
+- **`src/Globals/Session.py`** — `Session` no longer inherits `SingletonMixin`.
+  The CLI path creates one instance and reuses it across the interactive loop; the
+  service path creates a **fresh instance per incoming API request** so that
+  concurrent requests cannot clobber each other's state.  Circular import of
+  `AIHelpers` removed from `__init__`.
+- **`src/Config/Config.py`** — `Config.get()` / `Config.set()` wrapped with
+  `threading.RLock()`.  Public methods delegate to private `_get()` / `_set()` under
+  the lock, making all configuration reads and writes safe under concurrent API
+  requests.
+- **`src/Chat/RAGChatImpl.py`** — `set_vector_store()` and `retrieve()` wrapped with
+  `threading.Lock()`.  Public wrappers acquire the lock and delegate to private
+  `_set_vector_store()` / `_retrieve()`, preventing concurrent ChromaDB collection
+  switches from interleaving.
+- **`src/Strategies/HomeBrewChunkSelector.py`** — `ChunkSelector`, `ChunkSelectionService`,
+  and all concrete selectors (`WideUltraWideSelector`, `MediumSelector`,
+  `NarrowSelector`) now accept `session: Session` as a constructor parameter instead
+  of calling `Session()` singleton internally.  `RAGChatImpl._retrieve()` passes the
+  per-request session when constructing `ChunkSelectionService`.
+- **`src/Chat/Chatter.py`** — `run()` now accepts `session: Session` as a positional
+  parameter (no longer stored as `self.session`), removing the last implicit
+  singleton dependency from the hot path.
+
+### 📖 Documentation
+
+- **Mermaid diagrams** added to project documentation.  Architecture and flow
+  visualisations are now rendered with Mermaid for maintainability and inline
+  preview support.
+
+---
+
+## [Unreleased] — 2026-04-01
+
+### ➕ Added
+
+#### 🌐 RAGChatService — OpenWebUI / OpenAI-Compatible REST API
+
+- **`src/Apps/RAGChatService.py`** — New FastAPI application served via `uvicorn`
+  that exposes RAGChat as an OpenAI-compatible HTTP service.  ChromaDB collections
+  are surfaced as selectable models via `GET /v1/models`; chat inference is handled
+  via `POST /v1/chat/completions`.  Requires `SERVE_OPENWEBUI_CHAT="1"` in
+  `Config_Internet_Env.py`; exits with an explanatory message if the variable is
+  absent or disabled.
+- **`src/Api/ChatCompletionHandler.py`** (new `src/Api/` module) — FastAPI/Pydantic
+  handler that validates incoming `ChatCompletionRequest` payloads, maps OpenAI-style
+  fields to RAG-LCC `Session` parameters, and dispatches to `Chatter.run()`.
+  Features:
+  - Streaming (Server-Sent Events) and non-streaming JSON response paths.
+  - Per-request Ollama option passthrough (`seed`, `mirostat`, `repeat_penalty`,
+    `num_gpu`, etc.) and top-level payload param forwarding (`think`, `keep_alive`,
+    `format`).
+  - Automatic detection and short-circuit of OpenWebUI housekeeping prompts
+    (follow-up suggestions, tag generation, title generation) — these bypass the
+    RAG pipeline entirely.
+  - RAG-LCC-specific advanced parameters (`strategy`, `chroma_k_value`, `rerank`,
+    `chroma_threshold`, `chunks_window`, `chroma_weight`, `per_file_limit`) that can
+    be set via OpenWebUI model **Advanced Parameters**.
+  - `chat_id` field accepted (OpenWebUI per-conversation identifier); injected into
+    session for optional chat-context keying.
+- **`src/Configuration/Config_RAGChatService.py`** — New configuration module that
+  re-exports the full `Config_RAGChat` namespace and adds service-specific keys:
+  `OPENWEBUI_API_HOST` (default `127.0.0.1`), `OPENWEBUI_API_PORT` (default `11435`),
+  `OPENWEBUI_THREAD_POOL_WORKERS` (default `1`).  Overrides `_FRIENDLY_NAME` to
+  `"RAGChatService"` and customises `_PROMPT_CHAT` / `_PROMPT_CHAT_MISTRAL` /
+  `_PROMPT_CHAT_LLAMA` with OpenWebUI controls-sidebar hints in the no-context
+  fallback message.
+- **`SERVE_OPENWEBUI_CHAT`** environment variable added to `Config_Internet_Env.py`
+  (default `"1"`).  Documented launch command:
+  `.venv\Scripts\python.exe src/Apps/RAGChatService.py`.
+
+#### 🏗️ _MODELS Hierarchy — Centralised Model Registry
+
+- **`src/Configuration/Config_Models.py`** promoted from `Examples/Example_Config_Models.py`
+  and substantially expanded.  The file now serves as the single authoritative model
+  registry:
+  - Full governance/documentation header covering license consent, model retrieval
+    scope, configuration hash purpose, and implementation selectors.
+  - `_MODELS` dictionary with nested `impl → role → config` lookup.
+  - Implementation selectors: `_LLM`, `_EMBED`, `_CROSS`, `_OLLAMA`, `_OPENWEBUI`,
+    `_LLM_CHK`.
+  - New impls: `openwebui` (`_OPENWEBUI` role — OpenWebUI connection metadata) and
+    `llama_guard` (`_LLM_CHK` role — Llama Guard 3 8B safety model).
+  - All existing model entries (`snowflake`, `mmarco`, `mistral`, `llama`, `ollama`)
+    updated to include `"RAGChatService"` in their `USED_BY` list.
+- **`src/Configuration/Config_Banned.py`** promoted from `Examples/Example_Config_Banned.py`.
+  Added `"RAGChatService"` entry in `_BANNED_DETECT["STRICT_DETECT_CONFIG"]` pointing
+  to the same compliance pipeline as `"RAGChat"`.
+- Flat config keys **removed** from `Config_Global.py`:
+  `USE_OLLAMA_GPU`, `_OLLAMA_BASE_URL`, `OLLAMA_STREAMING_REQ`.
+  All consumers now resolve these values from `_MODELS.ollama._OLLAMA.*` via
+  `Helpers.get_model_args("_OLLAMA")`.
+- Config hash validation **enabled**: `_MODELS_CONFIG_HASH` and `_BANNED_CONFIG_HASH`
+  in `Config_Global.py` are now populated (previously left blank).
+
+### 🔧 Improved
+
+#### 🔒 Thread Safety for Concurrent API Requests
+
+- **`Config.get()` / `Config.set()`** — wrapped with `threading.RLock()`;
+  public methods delegate to private `_get()` / `_set()` under the lock, making
+  all configuration access safe under concurrent API requests.
+- **`RAGChatImpl.set_vector_store()` / `RAGChatImpl.retrieve()`** — wrapped with
+  `threading.Lock()`; public wrappers acquire the lock and delegate to private
+  `_set_vector_store()` / `_retrieve()`.
+
+#### 📦 Session — Singleton Removed, Per-Request Design
+
+- **`Session`** no longer inherits `SingletonMixin`.  Doc comment makes the intent
+  explicit: the CLI path creates one instance and reuses it across the interactive
+  loop; the service path creates a **fresh instance per incoming API request** so
+  that concurrent requests cannot clobber each other's state.
+- Added fields for API option forwarding:
+  - `extraOllamaOptions: dict[str, Any] | None` — Ollama `options` sub-dict entries
+    forwarded from API clients (e.g. `mirostat`, `seed`, `repeat_penalty`).
+  - `ollamaTopLevelParams: dict[str, Any] | None` — top-level Ollama payload params
+    (`think`, `keep_alive`, `format`).
+
+#### 🤖 Chatter — Streaming Callback & Service Integration
+
+- **`Chatter.run()`** refactored: now accepts `session: Session` as a positional
+  parameter (previously stored as `self.session`), an optional
+  `apiChunkHandler: Callable[[str], None]` callback for streaming token forwarding,
+  and `is_streaming: bool | None` to override the config default per-call.
+- When `apiChunkHandler` is provided, the base terminal/CSV chunk handler is wrapped
+  so both receive each streamed token.
+- "No results" message branched by `_FRIENDLY_NAME`: RAGChatService gets Markdown
+  with OpenWebUI Controls sidebar hints; RAGChat gets plain text CLI hints.
+- `run()` return signature changed: `bool` → `tuple[bool, str | None]`
+  (success flag + final answer text, used by the API path).
+- Reads `is_streaming` and `USE_GPU` from `_MODELS.ollama._OLLAMA` dict instead
+  of flat config keys.
+
+#### 🔑 QueryParts — Public Session API
+
+- `reset_things()` made public (was `_reset_things()`); callers updated.
+- `applyStrategyDefaults(strategy, session=None)` added as an explicit public entry
+  point for the API path.
+- `_base_defaults()` now accepts an optional `session` keyword parameter; falls back
+  to `self.session` when not provided.
+
+#### 🛰️ Informer — OpenWebUI Startup Check
+
+- Added `OpenWebUINotRunning` exception.
+- `_check_openwebui_is_running()` — pings the configured OpenWebUI `BASE_URL`
+  (`/v1/models`) on startup when `friendly_name == "RAGChatService"` and raises
+  `OpenWebUINotRunning` with a clear message if unreachable.
+- Reads `is_streaming` / `BASE_URL` from `_MODELS` hierarchy.
+
+#### 🚀 LLMCaller — Option Passthrough
+
+- `call()` gains `extra_options: dict[str, Any] | None` and
+  `top_level_params: dict[str, Any] | None` parameters; values are merged into the
+  Ollama request `options` dict and top-level payload respectively.
+- Ollama `BASE_URL` resolved from `_MODELS.ollama._OLLAMA` instead of flat key.
+- Removed `stream_url` parameter (obsolete after config restructure).
+
+#### 🧩 Strategy Selector Injection — Session Parameter
+
+- `HomeBrewChunkSelector`, `WideUltraWideSelector`, `MediumSelector`,
+  `NarrowSelector` — all now accept `session: Session` in `__init__()` and store it
+  as an instance variable instead of calling `Session()` (singleton).
+- `RAGChatImpl._retrieve()` passes `session` when constructing `ChunkSelectionService`.
+
+#### ⚙️ StartupCommons
+
+- Added environment check gate for `SERVE_OPENWEBUI_CHAT` when
+  `_FRIENDLY_NAME == "RAGChatService"`.
+- Startup informational message updated: Ollama `BASE_URL` and `STREAMING_REQ` now
+  read from `_MODELS.ollama._OLLAMA.*`.
+
+#### 🔢 Token Budget
+
+- `TOKEN_BUDGET_CONTEXT_CAP` raised from `16384` to `16384 × 1.5` (≈ 24 576 tokens)
+  to support larger context windows.
+
+#### 💬 Prompt Updates
+
+- `Config_RAGChat._PROMPT_CHAT` tightened — removes model self-verification steps;
+  instructs model to output the exact two-line fallback without reasoning or
+  rephrasing.
+- `Config_RAGChatService._PROMPT_CHAT` adds OpenWebUI Controls sidebar hints
+  (`chroma_k_value`, `chroma_threshold`, `strategy`) as Markdown in the no-context
+  fallback message.
+
+### 🐛 Fixed
+
+- **`Config_Global.py`** — `_DEBUG_LEVELS` key typo `"Alogs"` corrected to
+  `"Algos"`.
+- **`Config_Internet_Env.py`** — `HF_HUB_OFFLINE` default changed from `"1"` to
+  `"0"` (Hugging Face hub is now accessible by default; was offline-first).
+- **`Config_Internet_Env.py`** — `RAG_LCC_STACK_TRACE` default changed from `"0"`
+  to `"1"` (stack traces enabled by default for diagnostics).
+- **`Apps/RAGChat.py`** — per-session state (`session`) is now explicitly shared
+  across `QueryParts`, `CommandProcessor`, and `Chatter` so all components operate
+  on the same object.
+
+---
+
 ## [v0.1.3/1045] — 2026-03-27
 
 ### ➕ Added

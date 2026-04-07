@@ -113,7 +113,7 @@ class LoadAndClassifyProcessor(SingletonMixin):
         if self.friendly_name == "RAGLoad":
             self.collection_name: str
             self.collection_name, _ = self.chromaDBHelper.change_chroma_collection(
-                self.cfg.get("COLLECTION"), True  # type: ignore[reportArgumentType]
+                self.cfg.get_str("COLLECTION"), True  # type: ignore[reportArgumentType]
             )
 
         self.helpers.configure_tesseract()

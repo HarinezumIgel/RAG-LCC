@@ -149,6 +149,9 @@ class StartupCommons:
                 "ARGOS_STANZA_DOWNLOAD": ("0", True),
                 "HF_HUB_DISABLE_PROGRESS_BARS": (None, False),
             }
+            friendly_name: str = cfg.get_str("_FRIENDLY_NAME", "")
+            if friendly_name == "RAGChatService":
+                _env_checks["SERVE_OPENWEBUI_CHAT"] = ("0", True)
             for key, (target_value, triggers_warn_flag) in _env_checks.items():
                 if target_value is not None and os.environ[key] != target_value:
                     color = ORANGE
@@ -169,13 +172,25 @@ class StartupCommons:
                     color=ORANGE,
                 )
 
+            if (
+                cfg.get("_FRIENDLY_NAME") == "RAGChatService"
+                and os.environ.get("SERVE_OPENWEBUI_CHAT") == "1"
+            ):
+                pretty.write("N", "", "")
+                pretty.write(
+                    "W",
+                    "RAGChatService",
+                    "RAGChatService is serving requests via OpenWebUI (SERVE_OPENWEBUI_CHAT=1)",
+                    color=ORANGE,
+                )
+
             StartupCommons._suppress_argos_logging(cfg.get_int("DEBUG_LEVEL"))
 
             pretty.write("N", "", "")
             pretty.write(
                 "I",
                 "OLLAMA",
-                f"Access to Ollama is *always* enabled. {cfg.get("_OLLAMA_BASE_URL")} streaming: {cfg.get('OLLAMA_STREAMING_REQ')}",
+                f"Access to Ollama is *always* enabled. {cfg.get('_MODELS.ollama._OLLAMA.BASE_URL')} streaming: {cfg.get_bool('_MODELS.ollama._OLLAMA.STREAMING_REQ')}",
             )
             if hf_home:
                 os.environ["_HF_HOME"] = hf_home

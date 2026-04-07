@@ -116,7 +116,8 @@ class ChromaDBHelper:
             self._validate_collection_name(collection_name)
             self.collection_name = collection_name
         elif (
-            self.cfg.get("COLLECTION") is not None and self.cfg.get("COLLECTION") != ""
+            self.cfg.get("COLLECTION") is not None
+            and self.cfg.get_str("COLLECTION") != ""
         ):
             # Fall back to configured default
             raw = str(self.cfg.get_str("COLLECTION"))
@@ -125,7 +126,7 @@ class ChromaDBHelper:
             self.pretty.write(
                 "W",
                 "Chroma Collection",
-                f"Using default collection from ./Configuration/Config_Global.py. Key: COLLECTION value: {self.collection_name}",
+                f"Using collection: {self.collection_name}",
             )
         else:
             # No collection specified

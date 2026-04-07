@@ -31,7 +31,6 @@ from AI.TokenBudget import TokenBudget
 from Chat.Chatter import Chatter
 from Chat.CommandProcessor import CommandProcessor
 from Chat.QueryParts import QueryParts
-from Commons.Exceptions import ComplianceViolationError
 from Compliance.BannedPhraseCollector import BannedPhraseCollector
 from Compliance.HFDownloader import HFDownloader
 from Config.Config import Config
@@ -80,34 +79,27 @@ class RAGChat:
         # load parameters once
         self.cp: CommandProcessor = CommandProcessor()
 
+        # Share the same per-session state across CLI components
+        self.queryParts.session = self.session
+        self.cp.session = self.session
+
+        # Apply strategy defaults so session fields are populated even if the
+        # user skips straight to the query prompt without setting a strategy.
+        default_strategy: str = (
+            self.session.strategy
+            or self.cfg.get_str("CHUNK_SELECT_STRATEGY")
+            or "MEDIUM"
+        )
+        self.session.collection_name = self.queryParts.applyStrategyDefaults(
+            default_strategy, session=self.session
+        )
+
         chroma_slot: str = self.helpers.get_chroma_config_slot()
         self.chunk_size: int = self.cfg.get_int(f"{chroma_slot}.CHUNK_SIZE")
-        # LLM compliance parameters
-        compliance_config_slot: str = self.helpers.get_compliance_config_slot(
-            "PROMPT_CHECK"
+        self.use_ollama_gpu: bool = self.helpers.get_model_args("_OLLAMA").get(
+            "USE_GPU", True
         )
-        self.temperature_chk: float = self.cfg.get_float(
-            f"{compliance_config_slot}.LLM_PARAM.temperature"
-        )
-        self.use_ollama_gpu_chk: bool = self.cfg.get_bool(
-            f"{compliance_config_slot}.LLM_PARAM.use_ollama_gpu"
-        )
-        self.top_k_chk: int = self.cfg.get_int(
-            f"{compliance_config_slot}.LLM_PARAM.top_k"
-        )
-        self.top_p_chk: float = self.cfg.get_float(
-            f"{compliance_config_slot}.LLM_PARAM.top_p"
-        )
-        self.do_check_prompt: bool = self.cfg.get_bool(
-            f"{compliance_config_slot}.Check", True
-        )
-        self.llm_chk_model: str = self.helpers.get_model_args("_LLM_CHK")["MODEL"]
 
-        self.prompt_chk: str
-        self.prompt_chk_name: str | None
-        # Indirect call
-        chk_prompt_var: str = self.helpers.get_model_args("_LLM_CHK")["PROMPT_CHAT"]
-        self.prompt_chk, self.prompt_chk_name = self.cfg.get(f"${chk_prompt_var}")
         self.prompt: str
         self.prompt_name: str | None
         prompt_var: str = self.helpers.get_model_args("_LLM")["PROMPT_CHAT"]
@@ -203,29 +195,7 @@ class RAGChat:
 
         # Now check user query against LLM
 
-        prompt = self.prompt_chk.format(USER_MESSAGE=self.session.query)
-        # Call the compliance LLM (temperature/tokens as before)
-        # call the LLM (streaming-enabled)
-
-        try:
-            self.aiHelpers.check_provided_prompt(
-                prompt=prompt,
-                llm_model=self.llm_chk_model,
-                temperature=self.temperature_chk,
-                top_k=self.top_k_chk,
-                top_p=self.top_p_chk,
-                max_output_tokens=self.tokenBudget.compute_dynamic_max_tokens(
-                    prompt, self.llm_chk_model
-                ),
-                answer_is_json=True,
-                use_ollama_gpu=self.use_ollama_gpu_chk,
-                template_name=self.prompt_chk_name or "",
-                stage="Check provided prompt",
-                context_size=self.tokenBudget.get_context_limit(self.llm_chk_model),
-            )
-
-        except ComplianceViolationError:
-            human_review = True
+        human_review, _ = self.aiHelpers.check_prompt_with_llm_guard(self.session.query)
 
         status = "NOT_OK" if human_review is True else "OK"
 
@@ -242,7 +212,7 @@ class RAGChat:
         )
         if human_review is False:
             # Will issue user query and check
-            self.chatter.run()
+            self.chatter.run(self.session)
         return True
 
     def _run_query(self):

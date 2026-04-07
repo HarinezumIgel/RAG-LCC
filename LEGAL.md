@@ -73,7 +73,7 @@ the authors.
 
 - RAG‑LCC does **not** bundle or redistribute LLMs, embedding models, or cross‑encoders.
 - Operators must independently obtain, review, and accept all applicable model licenses
-  via the model owner’s official distribution channel (e.g. Hugging Face, Ollama).
+  via the model owner's official distribution channel (e.g. Hugging Face, Ollama, OpenWebUI).
 - Export controls, sanctions regimes, and usage restrictions remain the sole
   responsibility of the operator.
 
@@ -88,7 +88,7 @@ RAG‑LCC does **not** bundle, ship, or redistribute any third‑party Python pa
 pre‑trained models, translation packages, or external tools.
 
 All dependencies are obtained independently by the operator from upstream sources
-(PyPI, GitHub, Hugging Face, vendor websites, etc.).
+(PyPI, GitHub, Hugging Face, Open WebUI, vendor websites, etc.).
 
 A list of dependencies and their licenses may be provided in `3rdPartyLicenses/` for
 **informational and attribution purposes only**. This list may be incomplete, outdated,

@@ -232,14 +232,18 @@ def _build_compliance(
     c.license_download = connection_mode
     c.acceptance_identity = None
 
-    # Flatten _MODELS exactly as __init__ does
+    # Flatten _MODELS exactly as __init__ does (with USED_BY filtering)
     raw = cfg.get_dict("_MODELS", {})
     c.models = {}
-    for impl, roles in raw.items():
-        if isinstance(roles, dict):
-            for role, config in roles.items():
-                if isinstance(config, dict):
-                    c.models[f"{impl}.{role}"] = config
+    if raw is not None:
+        for impl, roles in raw.items():
+            if isinstance(roles, dict):
+                for role, config in roles.items():
+                    if isinstance(config, dict):
+                        used_by = config.get("USED_BY")
+                        if isinstance(used_by, list) and c.friendly_name not in used_by:
+                            continue
+                        c.models[f"{impl}.{role}"] = config
 
     return c
 
@@ -358,7 +362,7 @@ class TestComputeHeight:
         import shutil as _shutil
 
         orig = _shutil.get_terminal_size
-        _shutil.get_terminal_size = lambda *a, **kw: os.terminal_size((80, 6))
+        _shutil.get_terminal_size = lambda *a: os.terminal_size((80, 6))  # type: ignore[reportUnknownParameterType]
         try:
             c = _build_compliance()
             assert c._compute_height() >= 4  # 6 - 2 = 4, but >= 5 guard
@@ -515,14 +519,14 @@ class TestTlsFingerprint:
 class TestFetchLicenseOfflineGate:
     def test_offline_mode_prompts_and_aborts_on_no(self, monkeypatch):
         c = _build_compliance(connection_mode="0")
-        monkeypatch.setattr("builtins.input", lambda _: "n")
+        monkeypatch.setattr("builtins.input", lambda _: "n")  # type: ignore[reportUnknownParameterType]
         with pytest.raises(InternetConnectionDisabledError):
             c._fetch_license("https://example.com/license", "TestModel", "test/path")
 
     def test_offline_mode_proceeds_on_yes(self, monkeypatch):
         c = _build_compliance(connection_mode="0")
         inputs = iter(["y"])
-        monkeypatch.setattr("builtins.input", lambda _: next(inputs))
+        monkeypatch.setattr("builtins.input", lambda _: next(inputs))  # type: ignore[reportUnknownParameterType]
 
         import requests as _req
 
@@ -533,7 +537,7 @@ class TestFetchLicenseOfflineGate:
             def raise_for_status(self):
                 pass
 
-        monkeypatch.setattr(_req, "get", lambda *a, **kw: FakeResponse())
+        monkeypatch.setattr(_req, "get", lambda *args, **kwargs: FakeResponse())  # type: ignore[reportUnknownParameterType]
         result = c._fetch_license("https://example.com/license", "Test", "path")
         assert "MIT License" in result
 
@@ -549,7 +553,7 @@ class TestFetchLicenseOfflineGate:
             def raise_for_status(self):
                 pass
 
-        monkeypatch.setattr(_req, "get", lambda *a, **kw: FakeResponse())
+        monkeypatch.setattr(_req, "get", lambda *args, **kwargs: FakeResponse())  # type: ignore[reportUnknownParameterType]
         result = c._fetch_license("https://example.com/license", "Test", "path")
         assert "Apache License" in result
 
@@ -558,7 +562,7 @@ class TestFetchLicenseOfflineGate:
 
         import requests as _req
 
-        def fail_get(*a, **kw):
+        def fail_get(*args):
             raise ConnectionError("network down")
 
         monkeypatch.setattr(_req, "get", fail_get)
@@ -586,7 +590,7 @@ class TestProcessOneBundled:
             f.write("Apache License Version 2.0")
 
         # Simulate user accepting
-        monkeypatch.setattr("builtins.input", lambda _: "y")
+        monkeypatch.setattr("builtins.input", lambda _: "y")  # type: ignore[reportUnknownParameterType]
 
         c._process_one(c.models, section)
 
@@ -611,7 +615,7 @@ class TestProcessOneBundled:
             f.write("Some License Text")
 
         # Simulate user rejecting
-        monkeypatch.setattr("builtins.input", lambda _: "n")
+        monkeypatch.setattr("builtins.input", lambda _: "n")  # type: ignore[reportUnknownParameterType]
 
         with pytest.raises(ComplianceViolationError):
             c._process_one(c.models, section)
@@ -688,11 +692,11 @@ class TestProcessOneAlreadyConsented:
             def raise_for_status(self):
                 pass
 
-        monkeypatch.setattr(_req, "get", lambda *a, **kw: FakeResponse())
-        monkeypatch.setattr("builtins.input", lambda _: "y")
+        monkeypatch.setattr(_req, "get", lambda *args, **kwargs: FakeResponse())  # type: ignore[reportUnknownParameterType]
+        monkeypatch.setattr("builtins.input", lambda _: "y")  # type: ignore[reportUnknownParameterType]
         monkeypatch.setattr(
             "Compliance.Compliance.Compliance._get_tls_fingerprint",
-            lambda self, url: "ab" * 32,
+            lambda self, url: "ab" * 32,  # type: ignore[reportUnknownParameterType]
         )
 
         c._process_one(c.models, section)
@@ -720,11 +724,11 @@ class TestProcessOneLiveFetch:
             def raise_for_status(self):
                 pass
 
-        monkeypatch.setattr(_req, "get", lambda *a, **kw: FakeResponse())
-        monkeypatch.setattr("builtins.input", lambda _: "y")
+        monkeypatch.setattr(_req, "get", lambda *args, **kwargs: FakeResponse())  # type: ignore[reportUnknownParameterType]
+        monkeypatch.setattr("builtins.input", lambda _: "y")  # type: ignore[reportUnknownParameterType]
         monkeypatch.setattr(
             "Compliance.Compliance.Compliance._get_tls_fingerprint",
-            lambda self, url: "ab" * 32,
+            lambda self, url: "ab" * 32,  # type: ignore[reportUnknownParameterType]
         )
 
         c._process_one(c.models, section)
@@ -762,8 +766,8 @@ class TestProcessOneLiveFetch:
             def raise_for_status(self):
                 pass
 
-        monkeypatch.setattr(_req, "get", lambda *a, **kw: FakeResponse())
-        monkeypatch.setattr("builtins.input", lambda _: "n")
+        monkeypatch.setattr(_req, "get", lambda *args, **kwargs: FakeResponse())  # type: ignore[reportUnknownParameterType]
+        monkeypatch.setattr("builtins.input", lambda _: "n")  # type: ignore[reportUnknownParameterType]
 
         with pytest.raises(ComplianceViolationError):
             c._process_one(c.models, section)

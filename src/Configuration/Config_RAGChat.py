@@ -15,18 +15,18 @@ _ALLOWED_STRATEGIES = ["ULTRA_WIDE", "WIDE", "MEDIUM", "NARROW"]
 CHUNK_SELECT_STRATEGY = "MEDIUM"  # Default: pick one of _ALLOWED_STRATEGIES
 
 # -----------------------------------------------------------------------------
+# Chat history and user defaults
+# -----------------------------------------------------------------------------
+_HISTORY_DIRECTORY = r"history"  # Where to store chat histories and metadata
+
+# Keys to extract# -----------------------------------------------------------------------------
 # Keyword extraction
 # -----------------------------------------------------------------------------
 _KEY_BERT = {
     "TOP_N_FIRST": 100,  # Keywords from first  KeyBERT pass
     "TOP_N_SECOND": 60,  # Keywords from second KeyBERT pass
 }
-# -----------------------------------------------------------------------------
-# Chat history and user defaults
-# -----------------------------------------------------------------------------
-_HISTORY_DIRECTORY = r"history"  # Where to store chat histories and metadata
 
-# Keys to extract
 _CLASSIFICATION_KEYS = []
 
 _DEFAULT_CHAT_NAME = "MyFirstChat"  # Fallback user identifier
@@ -111,21 +111,22 @@ _STRATEGIES: dict[str, dict[str, int | float | bool | str]] = {
 _PROMPT_CHAT = """
 CRITICAL: You must ONLY use information found in the context below.
 Do NOT use your training knowledge, do NOT guess, do NOT infer beyond what the context states.
-If the context is empty, incomplete, or irrelevant to the query, respond EXACTLY:
-  I couldn't find relevant information to answer your query.
-Then stop — do not add anything else.
+If the context is empty, incomplete, or irrelevant to the query, you MUST respond with
+EXACTLY these two lines and NOTHING else — no metadata, no explanation, no rephrasing:
+
+I couldn't find relevant information to answer your query.
+Try increasing chroma_k_value, top_k and lower threshold or change strategy.
+
+Do NOT alter, summarize, or add to those two lines.
 
 Context:
 ---------------------
 {context}
 ---------------------
 
-Before answering, verify:
-- Is the context above non-empty?
-- Does it contain information relevant to the query?
-If EITHER check fails, respond EXACTLY as instructed above.
+IMPORTANT: If the context above is empty or does not contain information that directly answers the query, you MUST respond with EXACTLY those two lines above and nothing else. Do NOT output any reasoning or verification steps.
 
-If you do find an answer:
+When the context does contain a direct answer:
   • Cite direct evidence from the context.
   • At the end, list only the metadata fields you used:
      - FileName

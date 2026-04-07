@@ -87,11 +87,12 @@
 #
 # -----------------------------------------------------------------------------
 
-_LLM_CHK = "llama_guard"  # impl for _LLM_CHK role. llama_guard, llama, mistral
-_LLM     = "mistral"      # impl for _LLM role. mistral, llama
-_EMBED   = "snowflake"    # impl for _EMBED role
-_CROSS   = "mmarco"       # impl for _CROSS role
-_OLLAMA  = "ollama"       # impl for _OLLAMA role
+_LLM_CHK    = "llama_guard"  # impl for _LLM_CHK role. llama_guard, llama, mistral
+_LLM        = "mistral"      # impl for _LLM role. mistral, llama
+_EMBED      = "snowflake"    # impl for _EMBED role
+_CROSS      = "mmarco"       # impl for _CROSS role
+_OLLAMA     = "ollama"       # impl for _OLLAMA role
+_OPENWEBUI  = "openwebui"    # impl for _OPENWEBUI role
 
 # _MODELS hierarchy: _MODELS[impl][role] -> config dict
 _MODELS = {
@@ -105,6 +106,7 @@ _MODELS = {
             "LICENSE_URL": "https://www.apache.org/licenses/LICENSE-2.0.txt",
             "COMPLIANCE_MSG": "Embedder: Snowflake arctic-embed-l-v2.0 is the newest addition to the suite of embedding models Snowflake has released optimizing for retrieval performance and inference efficiency",
             "MODEL_CARD": "https://huggingface.co/Snowflake/snowflake-arctic-embed-l-v2.0",
+            "USED_BY": ["RAGChat", "RAGLoad", "RAGChatService", "DocClassify"],
         },
     },
 
@@ -118,6 +120,7 @@ _MODELS = {
             "LICENSE_URL": "https://huggingface.co/datasets/choosealicense/licenses/resolve/main/markdown/apache-2.0.md",
             "COMPLIANCE_MSG": "Cross Encoder: This model was trained on the MMARCO dataset. It is a machine translated version of MS MARCO using Google Translate.",
             "MODEL_CARD": "https://huggingface.co/cross-encoder/mmarco-mMiniLMv2-L12-H384-v1",
+            "USED_BY": ["RAGChat", "RAGChatService"],
         },
     },
 
@@ -133,6 +136,7 @@ _MODELS = {
             "MODEL_CARD": "https://huggingface.co/mistralai/Mistral-7B-v0.1",
             "PROMPT_CHAT": "_PROMPT_CHAT",
             "PROMPT_CLASSIFY": "_PROMPT_CLASSIFY_MISTRAL",
+            "USED_BY": ["RAGChat", "RAGChatService", "DocClassify"],
         },
 
         "_LLM_CHK": {
@@ -146,6 +150,7 @@ _MODELS = {
             "MODEL_CARD": "https://huggingface.co/mistralai/Mistral-7B-v0.1",
             "PROMPT_CHAT": "_PROMPT_CHECK_CHAT_MISTRAL",
             "PROMPT_CLASSIFY": "_PROMPT_CHECK_CLASSIFY_MISTRAL",
+            "USED_BY": ["RAGChat", "RAGChatService", "DocClassify"],
         },
     },
 
@@ -161,6 +166,7 @@ _MODELS = {
             "MODEL_CARD": "https://github.com/meta-llama/llama-models/blob/main/models/llama3_1/MODEL_CARD.md",
             "PROMPT_CHAT": "_PROMPT_CHAT",
             "PROMPT_CLASSIFY": "_PROMPT_CLASSIFY_LLAMA",
+            "USED_BY": ["RAGChat", "RAGChatService", "DocClassify"],
         },
 
         "_LLM_CHK": {
@@ -175,6 +181,7 @@ _MODELS = {
             "MODEL_CARD": "https://github.com/meta-llama/llama-models/blob/main/models/llama3_1/MODEL_CARD.md",
             "PROMPT_CHAT": "_PROMPT_CHECK_CHAT_MISTRAL",
             "PROMPT_CLASSIFY": "_PROMPT_CHECK_CLASSIFY_MISTRAL",
+            "USED_BY": ["RAGChat", "RAGChatService", "DocClassify"],
         },
     },
 
@@ -191,6 +198,7 @@ _MODELS = {
             "MODEL_CARD": "https://ollama.com/library/llama-guard3",
             "PROMPT_CHAT": "_PROMPT_CHECK_CHAT_LLAMA_GUARD",
             "PROMPT_CLASSIFY": "_PROMPT_CHECK_CLASSIFY_LLAMA_GUARD",
+            "USED_BY": ["RAGChat", "RAGChatService", "DocClassify"],
         },
     },
 
@@ -199,12 +207,28 @@ _MODELS = {
             "PROVIDER": "ollama",
             "FRIENDLY_NAME": "Ollama Local LLM Provider",
             "SOURCE": "https://github.com/ollama/ollama",
-            "BASE_URL": "http://localhost:11434",
+            "BASE_URL": "http://localhost:11434/api/generate",
+            "STREAMING_REQ": False,
+            "USE_GPU": True,
             "LICENSE": "MIT",
             "LICENSE_URL": "https://raw.githubusercontent.com/ollama/ollama/main/LICENSE",
             "MODEL_LICENSES_NOTE": "Each model has its own license—see `ollama list`",
             "COMPLIANCE_MSG": "OLLAMA Local LLM Provider",
             "MODEL_CARD": "https://ollama.com",
+            "USED_BY": ["RAGChat", "RAGLoad", "RAGChatService", "DocClassify"],
+        },
+    },
+
+    "openwebui": {
+        "_OPENWEBUI": {
+            "FRIENDLY_NAME": "OpenWebUI (OpenAI-compatible UI)",
+            "SOURCE": "https://github.com/open-webui/open-webui",
+            "BASE_URL": "http://localhost:8080",
+            "LICENSE": "Modified BSD-3-Clause (with branding clause)",
+            "LICENSE_URL": "https://github.com/open-webui/open-webui/blob/main/LICENSE",
+            "COMPLIANCE_MSG": "OpenWebUI is licensed under a modified BSD 3-Clause license with a branding-preservation clause. See LICENSE and LICENSE_HISTORY in the Open WebUI repository.",
+            "MODEL_CARD": "https://github.com/open-webui/open-webui#readme",
+            "USED_BY": ["RAGChatService"],
         },
     },
 }
