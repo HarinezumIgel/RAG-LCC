@@ -8,7 +8,7 @@
 
 import os
 
-_VERSION = "v0.1.4/1067 2026-04-07"
+_VERSION = "v0.2.0/1073 2026-04-12"
 
 # -----------------------------------------------------------------------------
 #    Adjust this hash when you changed Config_Models.py
@@ -66,7 +66,7 @@ _HF_HUB_CACHE = os.path.join(_HF_HOME, "hub")
 # RESERVED_OUTPUT  – tokens kept unconditionally for the model reply.
 # RESERVED_SYSTEM  – tokens reserved for the system / instruction preamble.
 # -----------------------------------------------------------------------------
-TOKEN_BUDGET_CONTEXT_CAP = 16384*1.5
+TOKEN_BUDGET_CONTEXT_CAP = 16384 * 1.5
 TOKEN_BUDGET_RESERVED_OUTPUT = 2048
 TOKEN_BUDGET_RESERVED_SYSTEM = 1024
 
@@ -171,8 +171,8 @@ _CHROMA_EMBED_AND_RETRIEVE_PARAMS: dict[str, dict[str, float | int]] = {
     # ==========================
     # Smaller chunks and fewer neighbours — favors precision and speed.
     "COMPACT": {
-        "CHUNK_SIZE": 128,       # was 256
-        "CHUNK_OVERLAP": 16,     # was 32
+        "CHUNK_SIZE": 128,  # was 256
+        "CHUNK_OVERLAP": 16,  # was 32
         # Don't make this too big. Lower overlap 10 %, Higher overlap 20-30% of CHUNK_SIZE
         "NEIGHBORS_ON_LOAD": 64,  # Explore more neighbours at load time. Affects Load.py
         "NEIGHBORS_RETRIEVE": 64,  # Explore more neighbours at query (chat) time.
@@ -321,6 +321,53 @@ _ARGOS_DEFINITIONS: dict[str, float | dict[str, str] | list[tuple[str, str]]] = 
 # Terminal size
 # -----------------------------------------------------------------------------
 TERMINAL_LINE_SIZE = 160
+
+# =============================================================================
+# WordNet synonym expansion for banned-word lists.
+# Expands banned phrases with English synonyms (NLTK WordNet) before
+# translation / detection.  Only feeds Regex, Jaccard, BM25 — KeyBERT
+# already captures semantic neighbours via embeddings.
+# =============================================================================
+_WORDNET: dict[str, int | bool | list[str]] = {
+    # --- expansion control ---------------------------------------------------
+    # Enable / disable synonym expansion globally
+    "ENABLED": True,
+    # WordNet lookup depth (1 = direct synonyms only, 2 = synonyms of synonyms)
+    "DEPTH": 1,
+    # Maximum number of synonyms to add per original banned phrase
+    "MAX_SYNONYMS_PER_PHRASE": 3,
+    # --- POS filtering -------------------------------------------------------
+    # Restrict to these WordNet POS tags.  Allowed: "n" (noun), "v" (verb),
+    # "a" (adjective), "r" (adverb), "s" (adjective satellite).
+    # Empty list = no POS filter (accept all).
+    "POS_FILTER": ["n", "v"],
+    # --- stoplist ------------------------------------------------------------
+    # Generic words that appear as WordNet synonyms but are too broad to be
+    # useful as banned-word expansions.  Case-insensitive comparison.
+    "STOPLIST": [
+        "word",
+        "number",
+        "figure",
+        "item",
+        "thing",
+        "part",
+        "piece",
+        "set",
+        "group",
+        "kind",
+        "type",
+        "form",
+        "point",
+        "line",
+        "way",
+        "case",
+        "level",
+        "area",
+        "place",
+        "make",
+        "give",
+    ],
+}
 
 _LEET_MAP = {
     "0": "o",

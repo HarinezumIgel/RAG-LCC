@@ -3,6 +3,7 @@ from collections import defaultdict
 from typing import Any, DefaultDict, Dict, List
 
 from Algos.ComplianceAlgoResult import ComplianceAlgoResult, ScorerBase
+from Algos.Synonyms import Synonyms
 # Replace these imports with your real modules if present
 from Compliance.SharedHelpers import SharedHelpers
 from Config.Config import Config
@@ -33,7 +34,9 @@ class RegexScorer(ScorerBase):
         self.compiled_cache: DefaultDict[str, Dict[str, List[Dict[str, Any]]]] = (
             defaultdict(dict)
         )
-        self.banlist_en: List[str] = self.helpers.get_banned_phrases_config_slot()
+        self.banlist_en: List[str] = Synonyms().expand(
+            self.helpers.get_banned_phrases_config_slot()
+        )
 
         # runtime fields set in verify()
         self.soft_score_hard: float = 0.0

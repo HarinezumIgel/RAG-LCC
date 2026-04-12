@@ -44,8 +44,7 @@ class CommandProcessor:
             f"{self.session.collection_name}_{self.session.chat_name}", "Settings"
         )
         while True:
-            print(" 🛠️  >", end="")
-            raw = input().strip()
+            raw = self.hist.prompt(" 🛠️  >").strip()
             if not raw:
                 break
 
@@ -69,11 +68,11 @@ class CommandProcessor:
         )
         print(
             f"{ORANGE}b: back to settings / ↵ to enter query / ↵↵ to quit RAGChat{RESET}\n"
-            f"{CYAN}{BOLD}{"+" * self.terminal_line_size}{RESET}\n",
-            f"{YELLOW}{BOLD}💬 Your actual query>{RESET}  ",
-            end="",
+            f"{CYAN}{BOLD}{"+" * self.terminal_line_size}{RESET}"
         )
-        query = input().strip()
+        query = self.hist.prompt(
+            f"{YELLOW}{BOLD}💬 Your actual query>{RESET}  "
+        ).strip()
         print(f"{CYAN}{BOLD}{"+" * self.terminal_line_size}{RESET}\n")
         self.hist.save(
             f"{self.session.collection_name}_{self.session.chat_name}", "Query"

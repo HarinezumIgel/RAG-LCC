@@ -10,10 +10,17 @@ This project builds on excellent open-source software and pre-trained models. RA
 - **Ollama** – Local LLM inference engine
 - **OpenWebUI** – Web-based chat interface for LLM interaction (used as an optional frontend for `RAGChatService`)
 - **HuggingFace Transformers** – Pre-trained NLP models and sentence transformers
-- **NLTK** – Natural Language Toolkit for tokenization and stemming
+- **NLTK** – Natural Language Toolkit for tokenization, stemming, and optional WordNet synonym expansion
 - **PyTorch** – Deep learning framework
 - **Argos Translate** – Language translation library
 - **pywin32** – Python extensions for Windows COM automation (used for optional Microsoft Office document extraction)
+
+### 📚 NLTK Data — WordNet Corpus
+
+The optional synonym-expansion feature (`Algos/Synonyms.py`) uses the **WordNet** lexical database, downloaded at the operator's discretion via `nltk.download("wordnet")`.
+
+- **WordNet 3.0** — Copyright © 2006 by Princeton University. Licensed under the [WordNet 3.0 License](https://wordnet.princeton.edu/license-and-commercial-use). The WordNet corpus is **not** distributed with RAG‑LCC; operators download it independently from NLTK's data servers.
+- Attribution: George A. Miller (1995). *WordNet: A Lexical Database for English.* Communications of the ACM, 38(11), 39–41.
 
 ### 🤖 Pre-Trained Models
 

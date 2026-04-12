@@ -3,6 +3,7 @@ from collections import Counter
 from typing import Any, Dict, List, Optional
 
 from Algos.ComplianceAlgoResult import ComplianceAlgoResult, ScorerBase
+from Algos.Synonyms import Synonyms
 from Commons.SingletonMixin import SingletonMixin
 from Compliance.SharedHelpers import SharedHelpers
 from Config.Config import Config
@@ -31,8 +32,10 @@ class BM25Scorer(SingletonMixin, ScorerBase):
 
         self.aiHelpers: AIHelpers = AIHelpers()
 
-        # base banlist and algo name
-        self.banlist_en: List[str] = self.helpers.get_banned_phrases_config_slot()
+        # base banlist and algo name, expanded with WordNet synonyms
+        self.banlist_en: List[str] = Synonyms().expand(
+            self.helpers.get_banned_phrases_config_slot()
+        )
         self.algo: str = self.cfg.get_str("_BM25") or self.cfg.get_str("_M25") or "BM25"
 
         # caches per language

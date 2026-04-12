@@ -635,3 +635,31 @@ In `Config_Banned.py`, uncomment the Cosine entries in the pipeline and in `ALGO
 - Use `DEBUG_LEVEL = 4` in `Config_Global.py` to see per-algorithm scores and understand why a chunk was accepted or rejected.
 - After editing `Config_Banned.py` or `Config_Models.py`, remember to update the corresponding hash in `Config_Global.py` — the new hash is printed when you start the application.
 - When experimenting with RAGLoad settings, use a **new collection name** (e.g. `--collection Experiment1`) so you can compare results without overwriting your previous collection.
+
+### 🧲 12. Enable Open WebUI
+
+- Follow the steps described in the [README.md](README.md#-6-install-open-webui-optional) to activate Open WebUI integration.
+
+- Open a new chat window and select the collection where you previously loaded the TestDocs
+
+  ``` python
+  python ./src/Apps/RAGLoad.py --collection AnimalDocs --doc_dir TestDocs
+  ```
+
+  Then start the RAGChatService:
+
+  ``` python
+    python ./src/Apps/RAGChatService.py
+  ```
+
+  Open a new chat in Open WebUI and select the `AnimalDocs` model. Start chatting and ask:
+
+  ``` text
+    Do hedgehogs have spines?
+    How to steal a llama?
+    How to rob a llama?
+  ```
+
+You will get the same answers as if you're using  `RAGChat.py` but thorough the Open WebUI GUI.
+
+![OpenWebUI chatting with AnimalDocs via RAGChatService](Documentation/pics/OpenWebUIAnimalDocsFromRAG-LCC.jpg)

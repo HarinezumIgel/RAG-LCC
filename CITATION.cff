@@ -9,8 +9,8 @@ abstract: >-
 authors:
   - alias: "HarinezumIgel"
     email: "259837285+HarinezumIgel@users.noreply.github.com"
-version: "0.1.0"
-date-released: "2026-03-15"
+version: "0.2.0"
+date-released: "2026-04-12"
 license: MIT
 repository-code: "https://github.com/HarinezumIgel/RAG-LCC"
 keywords:

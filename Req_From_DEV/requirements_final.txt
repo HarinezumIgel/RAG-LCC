@@ -22,8 +22,8 @@ pandas
 pdf2image
 pdfminer.six
 Pillow
+prompt_toolkit
 pydantic
-pyreadline3
 pytesseract
 pytest
 python-docx

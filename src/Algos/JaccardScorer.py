@@ -1,6 +1,7 @@
 from typing import Any, Dict, List, cast
 
 from Algos.ComplianceAlgoResult import ComplianceAlgoResult, ScorerBase
+from Algos.Synonyms import Synonyms
 from Compliance.SharedHelpers import SharedHelpers
 from Config.Config import Config
 from Gui.PrettyWriter import PrettyWriter
@@ -25,8 +26,10 @@ class JaccardScorer(ScorerBase):
         # static config keys / tunables (language-independent)
         self.algo: str = self.cfg.get_str("_JACCARD")
 
-        # english banlist source (raw strings)
-        self.banlist_en: List[str] = self.helpers.get_banned_phrases_config_slot()
+        # english banlist source (raw strings), expanded with WordNet synonyms
+        self.banlist_en: List[str] = Synonyms().expand(
+            self.helpers.get_banned_phrases_config_slot()
+        )
 
         # per-language cache:
         # lang -> list of dicts { phrase, toks, char_grams }

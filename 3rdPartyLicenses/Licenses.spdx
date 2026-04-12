@@ -8,9 +8,9 @@ SPDXVersion: SPDX-2.2
 DataLicense: CC0-1.0
 SPDXID: SPDXRef-DOCUMENT
 DocumentName: 3rdPartyLicenses
-DocumentNamespace: http://example.org/spdxdocs/3rdPartyLicenses-20260407150751
+DocumentNamespace: http://example.org/spdxdocs/3rdPartyLicenses-20260412165703
 Creator: pip-licenses
-Created: 04/07/2026 15:07:51.ToUniversalTime().ToString('o')
+Created: 04/12/2026 16:57:03.ToUniversalTime().ToString('o')
 
 #####
 PackageName: Jinja2
@@ -103,6 +103,16 @@ PackageLicenseDeclared: MIT License
 PackageHomePage: https://www.argosopentech.com
 
 #####
+PackageName: asttokens
+SPDXID: SPDXRef-Package-asttokens
+PackageVersion: 3.0.1
+PackageDownloadLocation: NOASSERTION
+FilesAnalyzed: false
+PackageLicenseConcluded: Apache 2.0
+PackageLicenseDeclared: Apache 2.0
+PackageHomePage: https://github.com/gristlabs/asttokens
+
+#####
 PackageName: attrs
 SPDXID: SPDXRef-Package-attrs
 PackageVersion: 26.1.0
@@ -113,6 +123,16 @@ PackageLicenseDeclared: MIT
 PackageHomePage: https://www.attrs.org/en/stable/changelog.html
 
 #####
+PackageName: backcall
+SPDXID: SPDXRef-Package-backcall
+PackageVersion: 0.2.0
+PackageDownloadLocation: NOASSERTION
+FilesAnalyzed: false
+PackageLicenseConcluded: BSD License
+PackageLicenseDeclared: BSD License
+PackageHomePage: https://github.com/takluyver/backcall
+
+#####
 PackageName: bcrypt
 SPDXID: SPDXRef-Package-bcrypt
 PackageVersion: 5.0.0
@@ -121,6 +141,26 @@ FilesAnalyzed: false
 PackageLicenseConcluded: Apache Software License
 PackageLicenseDeclared: Apache Software License
 PackageHomePage: https://github.com/pyca/bcrypt/
+
+#####
+PackageName: beautifulsoup4
+SPDXID: SPDXRef-Package-beautifulsoup4
+PackageVersion: 4.14.3
+PackageDownloadLocation: NOASSERTION
+FilesAnalyzed: false
+PackageLicenseConcluded: MIT License
+PackageLicenseDeclared: MIT License
+PackageHomePage: https://www.crummy.com/software/BeautifulSoup/bs4/
+
+#####
+PackageName: bleach
+SPDXID: SPDXRef-Package-bleach
+PackageVersion: 6.3.0
+PackageDownloadLocation: NOASSERTION
+FilesAnalyzed: false
+PackageLicenseConcluded: Apache Software License
+PackageLicenseDeclared: Apache Software License
+PackageHomePage: https://github.com/mozilla/bleach
 
 #####
 PackageName: blis
@@ -135,7 +175,7 @@ PackageHomePage: https://github.com/explosion/cython-blis
 #####
 PackageName: build
 SPDXID: SPDXRef-Package-build
-PackageVersion: 1.4.2
+PackageVersion: 1.4.3
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: MIT
@@ -175,7 +215,7 @@ PackageHomePage: https://cffi.readthedocs.io/en/latest/whatsnew.html
 #####
 PackageName: chardet
 SPDXID: SPDXRef-Package-chardet
-PackageVersion: 7.4.0.post2
+PackageVersion: 7.4.1
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: 0BSD
@@ -195,7 +235,7 @@ PackageHomePage: https://github.com/jawah/charset_normalizer/blob/master/CHANGEL
 #####
 PackageName: chromadb
 SPDXID: SPDXRef-Package-chromadb
-PackageVersion: 1.5.6
+PackageVersion: 1.5.7
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: Apache Software License
@@ -255,7 +295,7 @@ PackageHomePage: https://github.com/contourpy/contourpy
 #####
 PackageName: cryptography
 SPDXID: SPDXRef-Package-cryptography
-PackageVersion: 46.0.6
+PackageVersion: 46.0.7
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: Apache-2.0 OR BSD-3-Clause
@@ -291,6 +331,26 @@ FilesAnalyzed: false
 PackageLicenseConcluded: MIT License
 PackageLicenseDeclared: MIT License
 PackageHomePage: https://github.com/explosion/cymem
+
+#####
+PackageName: decorator
+SPDXID: SPDXRef-Package-decorator
+PackageVersion: 5.2.1
+PackageDownloadLocation: NOASSERTION
+FilesAnalyzed: false
+PackageLicenseConcluded: BSD License
+PackageLicenseDeclared: BSD License
+PackageHomePage: UNKNOWN
+
+#####
+PackageName: defusedxml
+SPDXID: SPDXRef-Package-defusedxml
+PackageVersion: 0.7.1
+PackageDownloadLocation: NOASSERTION
+FilesAnalyzed: false
+PackageLicenseConcluded: Python Software Foundation License
+PackageLicenseDeclared: Python Software Foundation License
+PackageHomePage: https://github.com/tiran/defusedxml
 
 #####
 PackageName: docopt
@@ -333,6 +393,16 @@ PackageLicenseDeclared: MIT License
 PackageHomePage: https://foss.heptapod.net/openpyxl/et_xmlfile
 
 #####
+PackageName: executing
+SPDXID: SPDXRef-Package-executing
+PackageVersion: 2.2.1
+PackageDownloadLocation: NOASSERTION
+FilesAnalyzed: false
+PackageLicenseConcluded: MIT License
+PackageLicenseDeclared: MIT License
+PackageHomePage: https://github.com/alexmojaki/executing
+
+#####
 PackageName: fastapi
 SPDXID: SPDXRef-Package-fastapi
 PackageVersion: 0.135.3
@@ -341,6 +411,16 @@ FilesAnalyzed: false
 PackageLicenseConcluded: MIT
 PackageLicenseDeclared: MIT
 PackageHomePage: https://github.com/fastapi/fastapi
+
+#####
+PackageName: fastjsonschema
+SPDXID: SPDXRef-Package-fastjsonschema
+PackageVersion: 2.21.2
+PackageDownloadLocation: NOASSERTION
+FilesAnalyzed: false
+PackageLicenseConcluded: BSD License
+PackageLicenseDeclared: BSD License
+PackageHomePage: https://github.com/horejsek/python-fastjsonschema
 
 #####
 PackageName: filelock
@@ -465,7 +545,7 @@ PackageHomePage: https://github.com/encode/httpx
 #####
 PackageName: huggingface_hub
 SPDXID: SPDXRef-Package-huggingface-hub
-PackageVersion: 1.9.0
+PackageVersion: 1.10.1
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: Apache Software License
@@ -495,11 +575,11 @@ PackageHomePage: https://github.com/python/importlib_metadata
 #####
 PackageName: importlib_resources
 SPDXID: SPDXRef-Package-importlib-resources
-PackageVersion: 6.5.2
+PackageVersion: 7.0.0
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
-PackageLicenseConcluded: Apache Software License
-PackageLicenseDeclared: Apache Software License
+PackageLicenseConcluded: Apache-2.0
+PackageLicenseDeclared: Apache-2.0
 PackageHomePage: https://github.com/python/importlib_resources
 
 #####
@@ -521,6 +601,26 @@ FilesAnalyzed: false
 PackageLicenseConcluded: MIT License
 PackageLicenseDeclared: MIT License
 PackageHomePage: https://github.com/kazhala/InquirerPy
+
+#####
+PackageName: ipython
+SPDXID: SPDXRef-Package-ipython
+PackageVersion: 8.12.3
+PackageDownloadLocation: NOASSERTION
+FilesAnalyzed: false
+PackageLicenseConcluded: BSD License
+PackageLicenseDeclared: BSD License
+PackageHomePage: https://ipython.org
+
+#####
+PackageName: jedi
+SPDXID: SPDXRef-Package-jedi
+PackageVersion: 0.19.2
+PackageDownloadLocation: NOASSERTION
+FilesAnalyzed: false
+PackageLicenseConcluded: MIT License
+PackageLicenseDeclared: MIT License
+PackageHomePage: https://github.com/davidhalter/jedi
 
 #####
 PackageName: joblib
@@ -583,6 +683,36 @@ PackageLicenseDeclared: MIT
 PackageHomePage: https://github.com/python-jsonschema/jsonschema-specifications
 
 #####
+PackageName: jupyter_client
+SPDXID: SPDXRef-Package-jupyter-client
+PackageVersion: 8.8.0
+PackageDownloadLocation: NOASSERTION
+FilesAnalyzed: false
+PackageLicenseConcluded: BSD License
+PackageLicenseDeclared: BSD License
+PackageHomePage: https://jupyter.org
+
+#####
+PackageName: jupyter_core
+SPDXID: SPDXRef-Package-jupyter-core
+PackageVersion: 5.9.1
+PackageDownloadLocation: NOASSERTION
+FilesAnalyzed: false
+PackageLicenseConcluded: BSD-3-Clause
+PackageLicenseDeclared: BSD-3-Clause
+PackageHomePage: https://jupyter.org
+
+#####
+PackageName: jupyterlab_pygments
+SPDXID: SPDXRef-Package-jupyterlab-pygments
+PackageVersion: 0.3.0
+PackageDownloadLocation: NOASSERTION
+FilesAnalyzed: false
+PackageLicenseConcluded: BSD License
+PackageLicenseDeclared: BSD License
+PackageHomePage: https://github.com/jupyterlab/jupyterlab_pygments
+
+#####
 PackageName: keybert
 SPDXID: SPDXRef-Package-keybert
 PackageVersion: 0.9.0
@@ -625,7 +755,7 @@ PackageHomePage: https://docs.langchain.com/oss/python/integrations/providers/ch
 #####
 PackageName: langchain-core
 SPDXID: SPDXRef-Package-langchain-core
-PackageVersion: 1.2.26
+PackageVersion: 1.2.28
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: MIT License
@@ -665,7 +795,7 @@ PackageHomePage: https://github.com/Mimino666/langdetect
 #####
 PackageName: langsmith
 SPDXID: SPDXRef-Package-langsmith
-PackageVersion: 0.7.26
+PackageVersion: 0.7.30
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: MIT
@@ -675,7 +805,7 @@ PackageHomePage: https://smith.langchain.com/
 #####
 PackageName: lxml
 SPDXID: SPDXRef-Package-lxml
-PackageVersion: 6.0.2
+PackageVersion: 6.0.3
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: BSD-3-Clause
@@ -703,6 +833,16 @@ PackageLicenseDeclared: Python Software Foundation License
 PackageHomePage: https://matplotlib.org
 
 #####
+PackageName: matplotlib-inline
+SPDXID: SPDXRef-Package-matplotlib-inline
+PackageVersion: 0.2.1
+PackageDownloadLocation: NOASSERTION
+FilesAnalyzed: false
+PackageLicenseConcluded: UNKNOWN
+PackageLicenseDeclared: UNKNOWN
+PackageHomePage: https://github.com/ipython/matplotlib-inline
+
+#####
 PackageName: mdurl
 SPDXID: SPDXRef-Package-mdurl
 PackageVersion: 0.1.2
@@ -721,6 +861,16 @@ FilesAnalyzed: false
 PackageLicenseConcluded: GNU Affero General Public License v3
 PackageLicenseDeclared: GNU Affero General Public License v3
 PackageHomePage: https://github.com/LibreTranslate/MiniSBD
+
+#####
+PackageName: mistune
+SPDXID: SPDXRef-Package-mistune
+PackageVersion: 3.2.0
+PackageDownloadLocation: NOASSERTION
+FilesAnalyzed: false
+PackageLicenseConcluded: BSD License
+PackageLicenseDeclared: BSD License
+PackageHomePage: https://github.com/lepture/mistune
 
 #####
 PackageName: mmh3
@@ -761,6 +911,36 @@ FilesAnalyzed: false
 PackageLicenseConcluded: MIT
 PackageLicenseDeclared: MIT
 PackageHomePage: https://github.com/python/mypy_extensions
+
+#####
+PackageName: nbclient
+SPDXID: SPDXRef-Package-nbclient
+PackageVersion: 0.10.4
+PackageDownloadLocation: NOASSERTION
+FilesAnalyzed: false
+PackageLicenseConcluded: BSD License
+PackageLicenseDeclared: BSD License
+PackageHomePage: https://jupyter.org
+
+#####
+PackageName: nbconvert
+SPDXID: SPDXRef-Package-nbconvert
+PackageVersion: 7.17.1
+PackageDownloadLocation: NOASSERTION
+FilesAnalyzed: false
+PackageLicenseConcluded: BSD License
+PackageLicenseDeclared: BSD License
+PackageHomePage: https://jupyter.org
+
+#####
+PackageName: nbformat
+SPDXID: SPDXRef-Package-nbformat
+PackageVersion: 5.10.4
+PackageDownloadLocation: NOASSERTION
+FilesAnalyzed: false
+PackageLicenseConcluded: BSD License
+PackageLicenseDeclared: BSD License
+PackageHomePage: https://jupyter.org
 
 #####
 PackageName: networkx
@@ -825,7 +1005,7 @@ PackageHomePage: https://openpyxl.readthedocs.io
 #####
 PackageName: opentelemetry-api
 SPDXID: SPDXRef-Package-opentelemetry-api
-PackageVersion: 1.40.0
+PackageVersion: 1.41.0
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: Apache-2.0
@@ -835,7 +1015,7 @@ PackageHomePage: https://github.com/open-telemetry/opentelemetry-python/tree/mai
 #####
 PackageName: opentelemetry-exporter-otlp-proto-common
 SPDXID: SPDXRef-Package-opentelemetry-exporter-otlp-proto-common
-PackageVersion: 1.40.0
+PackageVersion: 1.41.0
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: Apache-2.0
@@ -845,7 +1025,7 @@ PackageHomePage: https://github.com/open-telemetry/opentelemetry-python/tree/mai
 #####
 PackageName: opentelemetry-exporter-otlp-proto-grpc
 SPDXID: SPDXRef-Package-opentelemetry-exporter-otlp-proto-grpc
-PackageVersion: 1.40.0
+PackageVersion: 1.41.0
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: Apache-2.0
@@ -855,7 +1035,7 @@ PackageHomePage: https://github.com/open-telemetry/opentelemetry-python/tree/mai
 #####
 PackageName: opentelemetry-proto
 SPDXID: SPDXRef-Package-opentelemetry-proto
-PackageVersion: 1.40.0
+PackageVersion: 1.41.0
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: Apache-2.0
@@ -865,7 +1045,7 @@ PackageHomePage: https://github.com/open-telemetry/opentelemetry-python/tree/mai
 #####
 PackageName: opentelemetry-sdk
 SPDXID: SPDXRef-Package-opentelemetry-sdk
-PackageVersion: 1.40.0
+PackageVersion: 1.41.0
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: Apache-2.0
@@ -875,7 +1055,7 @@ PackageHomePage: https://github.com/open-telemetry/opentelemetry-python/tree/mai
 #####
 PackageName: opentelemetry-semantic-conventions
 SPDXID: SPDXRef-Package-opentelemetry-semantic-conventions
-PackageVersion: 0.61b0
+PackageVersion: 0.62b0
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: Apache-2.0
@@ -923,6 +1103,26 @@ PackageLicenseDeclared: BSD License
 PackageHomePage: https://pandas.pydata.org
 
 #####
+PackageName: pandocfilters
+SPDXID: SPDXRef-Package-pandocfilters
+PackageVersion: 1.5.1
+PackageDownloadLocation: NOASSERTION
+FilesAnalyzed: false
+PackageLicenseConcluded: BSD License
+PackageLicenseDeclared: BSD License
+PackageHomePage: http://github.com/jgm/pandocfilters
+
+#####
+PackageName: parso
+SPDXID: SPDXRef-Package-parso
+PackageVersion: 0.8.6
+PackageDownloadLocation: NOASSERTION
+FilesAnalyzed: false
+PackageLicenseConcluded: MIT License
+PackageLicenseDeclared: MIT License
+PackageHomePage: https://github.com/davidhalter/parso
+
+#####
 PackageName: pathspec
 SPDXID: SPDXRef-Package-pathspec
 PackageVersion: 1.0.4
@@ -961,6 +1161,16 @@ FilesAnalyzed: false
 PackageLicenseConcluded: MIT License
 PackageLicenseDeclared: MIT License
 PackageHomePage: https://github.com/kazhala/pfzy
+
+#####
+PackageName: pickleshare
+SPDXID: SPDXRef-Package-pickleshare
+PackageVersion: 0.7.5
+PackageDownloadLocation: NOASSERTION
+FilesAnalyzed: false
+PackageLicenseConcluded: MIT License
+PackageLicenseDeclared: MIT License
+PackageHomePage: https://github.com/pickleshare/pickleshare
 
 #####
 PackageName: pillow
@@ -1005,7 +1215,7 @@ PackageHomePage: https://github.com/jgonggrijp/pip-review
 #####
 PackageName: pipreqs
 SPDXID: SPDXRef-Package-pipreqs
-PackageVersion: 0.4.13
+PackageVersion: 0.5.0
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: Apache Software License
@@ -1015,7 +1225,7 @@ PackageHomePage: https://github.com/bndr/pipreqs
 #####
 PackageName: platformdirs
 SPDXID: SPDXRef-Package-platformdirs
-PackageVersion: 4.9.4
+PackageVersion: 4.9.6
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: MIT
@@ -1071,6 +1281,16 @@ FilesAnalyzed: false
 PackageLicenseConcluded: 3-Clause BSD License
 PackageLicenseDeclared: 3-Clause BSD License
 PackageHomePage: https://developers.google.com/protocol-buffers/
+
+#####
+PackageName: pure_eval
+SPDXID: SPDXRef-Package-pure-eval
+PackageVersion: 0.2.3
+PackageDownloadLocation: NOASSERTION
+FilesAnalyzed: false
+PackageLicenseConcluded: MIT License
+PackageLicenseDeclared: MIT License
+PackageHomePage: http://github.com/alexmojaki/pure_eval
 
 #####
 PackageName: pybase64
@@ -1143,16 +1363,6 @@ PackageLicenseDeclared: MIT License
 PackageHomePage: https://github.com/pypa/pyproject-hooks
 
 #####
-PackageName: pyreadline3
-SPDXID: SPDXRef-Package-pyreadline3
-PackageVersion: 3.5.4
-PackageDownloadLocation: NOASSERTION
-FilesAnalyzed: false
-PackageLicenseConcluded: BSD License
-PackageLicenseDeclared: BSD License
-PackageHomePage: https://github.com/pyreadline3/pyreadline3
-
-#####
 PackageName: pytesseract
 SPDXID: SPDXRef-Package-pytesseract
 PackageVersion: 0.3.13
@@ -1165,7 +1375,7 @@ PackageHomePage: https://github.com/madmaze/pytesseract
 #####
 PackageName: pytest
 SPDXID: SPDXRef-Package-pytest
-PackageVersion: 9.0.2
+PackageVersion: 9.0.3
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: MIT
@@ -1233,6 +1443,16 @@ PackageLicenseDeclared: Python Software Foundation License
 PackageHomePage: https://github.com/mhammond/pywin32
 
 #####
+PackageName: pyzmq
+SPDXID: SPDXRef-Package-pyzmq
+PackageVersion: 27.1.0
+PackageDownloadLocation: NOASSERTION
+FilesAnalyzed: false
+PackageLicenseConcluded: BSD License
+PackageLicenseDeclared: BSD License
+PackageHomePage: https://pyzmq.readthedocs.org
+
+#####
 PackageName: referencing
 SPDXID: SPDXRef-Package-referencing
 PackageVersion: 0.37.0
@@ -1285,7 +1505,7 @@ PackageHomePage: https://toolbelt.readthedocs.io/
 #####
 PackageName: rich
 SPDXID: SPDXRef-Package-rich
-PackageVersion: 14.3.3
+PackageVersion: 15.0.0
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: MIT License
@@ -1345,7 +1565,7 @@ PackageHomePage: https://scipy.org/
 #####
 PackageName: sentence-transformers
 SPDXID: SPDXRef-Package-sentence-transformers
-PackageVersion: 5.3.0
+PackageVersion: 5.4.0
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: Apache Software License
@@ -1403,6 +1623,16 @@ PackageLicenseDeclared: MIT License
 PackageHomePage: https://github.com/piskvorky/smart_open
 
 #####
+PackageName: soupsieve
+SPDXID: SPDXRef-Package-soupsieve
+PackageVersion: 2.8.3
+PackageDownloadLocation: NOASSERTION
+FilesAnalyzed: false
+PackageLicenseConcluded: MIT
+PackageLicenseDeclared: MIT
+PackageHomePage: https://github.com/facelessuser/soupsieve
+
+#####
 PackageName: spacy
 SPDXID: SPDXRef-Package-spacy
 PackageVersion: 3.8.14
@@ -1441,6 +1671,16 @@ FilesAnalyzed: false
 PackageLicenseConcluded: MIT License
 PackageLicenseDeclared: MIT License
 PackageHomePage: https://github.com/explosion/srsly
+
+#####
+PackageName: stack-data
+SPDXID: SPDXRef-Package-stack-data
+PackageVersion: 0.6.3
+PackageDownloadLocation: NOASSERTION
+FilesAnalyzed: false
+PackageLicenseConcluded: MIT License
+PackageLicenseDeclared: MIT License
+PackageHomePage: http://github.com/alexmojaki/stack_data
 
 #####
 PackageName: stanza
@@ -1503,6 +1743,16 @@ PackageLicenseDeclared: BSD License
 PackageHomePage: https://github.com/joblib/threadpoolctl
 
 #####
+PackageName: tinycss2
+SPDXID: SPDXRef-Package-tinycss2
+PackageVersion: 1.4.0
+PackageDownloadLocation: NOASSERTION
+FilesAnalyzed: false
+PackageLicenseConcluded: BSD License
+PackageLicenseDeclared: BSD License
+PackageHomePage: https://www.courtbouillon.org/tinycss2
+
+#####
 PackageName: tokenizers
 SPDXID: SPDXRef-Package-tokenizers
 PackageVersion: 0.22.2
@@ -1523,6 +1773,16 @@ PackageLicenseDeclared: BSD-3-Clause
 PackageHomePage: https://pytorch.org
 
 #####
+PackageName: tornado
+SPDXID: SPDXRef-Package-tornado
+PackageVersion: 6.5.5
+PackageDownloadLocation: NOASSERTION
+FilesAnalyzed: false
+PackageLicenseConcluded: Apache Software License
+PackageLicenseDeclared: Apache Software License
+PackageHomePage: http://www.tornadoweb.org/
+
+#####
 PackageName: tqdm
 SPDXID: SPDXRef-Package-tqdm
 PackageVersion: 4.67.3
@@ -1533,9 +1793,19 @@ PackageLicenseDeclared: MPL-2.0 AND MIT
 PackageHomePage: https://tqdm.github.io
 
 #####
+PackageName: traitlets
+SPDXID: SPDXRef-Package-traitlets
+PackageVersion: 5.14.3
+PackageDownloadLocation: NOASSERTION
+FilesAnalyzed: false
+PackageLicenseConcluded: BSD License
+PackageLicenseDeclared: BSD License
+PackageHomePage: https://github.com/ipython/traitlets
+
+#####
 PackageName: transformers
 SPDXID: SPDXRef-Package-transformers
-PackageVersion: 5.5.0
+PackageVersion: 5.5.3
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: Apache 2.0 License
@@ -1653,6 +1923,16 @@ PackageLicenseDeclared: MIT License
 PackageHomePage: https://github.com/explosion/weasel/
 
 #####
+PackageName: webencodings
+SPDXID: SPDXRef-Package-webencodings
+PackageVersion: 0.5.1
+PackageDownloadLocation: NOASSERTION
+FilesAnalyzed: false
+PackageLicenseConcluded: BSD License
+PackageLicenseDeclared: BSD License
+PackageHomePage: https://github.com/SimonSapin/python-webencodings
+
+#####
 PackageName: websocket-client
 SPDXID: SPDXRef-Package-websocket-client
 PackageVersion: 1.9.0
@@ -1715,7 +1995,7 @@ PackageHomePage: https://github.com/ifduyue/python-xxhash
 #####
 PackageName: yarg
 SPDXID: SPDXRef-Package-yarg
-PackageVersion: 0.1.10
+PackageVersion: 0.1.9
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: MIT License

@@ -1,15 +1,11 @@
 import os
-from typing import Any
+
+from prompt_toolkit import PromptSession
+from prompt_toolkit.formatted_text import ANSI
+from prompt_toolkit.history import FileHistory
 
 from Config.Config import Config
 from Gui.PrettyWriter import PrettyWriter
-
-try:
-    import readline as _readline  # type: ignore[attr-defined]
-except ImportError:
-    import pyreadline3 as _readline  # type: ignore[attr-defined,import-untyped]
-
-readline: Any = _readline
 
 
 class HistoryManager:
@@ -27,13 +23,10 @@ class HistoryManager:
         d = os.path.dirname(self.path)
         if d:
             os.makedirs(d, exist_ok=True)
+        self._session: PromptSession[str] | None = None
 
-    def load(self, collection: str, mode: str):
-        """Clear Python's readline buffer and load history from a file.
-        If the file does not exist, create it and pass the filename to any exception.
-        """
-        readline.clear_history()
-
+    def load(self, collection: str, mode: str) -> None:
+        """Create a new prompt session backed by a file history for this collection/mode."""
         path = f"{self.path}\\{collection}_{mode}.txt"
         directory = os.path.dirname(path)
         os.makedirs(directory, exist_ok=True)
@@ -47,17 +40,14 @@ class HistoryManager:
                 raise OSError(f"Failed to create history file: {path}") from exc
             self.pretty.write("I", "HistoryManager", f"Created history file {path}")
 
-        # Load history with explicit filename in the exception
-        try:
-            readline.read_history_file(path)
-        except FileNotFoundError as exc:
-            raise FileNotFoundError(f"History file not found: {path}") from exc
-        except OSError as exc:
-            raise OSError(f"Could not read history file: {path}") from exc
+        self._session = PromptSession[str](history=FileHistory(path))
 
-        readline.set_history_length(self.max_length)
+    def prompt(self, prompt_text: str = "") -> str:
+        """Show prompt with arrow-key history. Falls back to input() if no session loaded."""
+        if self._session is None:
+            return input(prompt_text)
+        return self._session.prompt(ANSI(prompt_text))
 
-    def save(self, collection: str, mode: str):
-        """Write whatever’s in readline buffer back to disk."""
-        path = f"{self.path}\\{collection}_{mode}.txt"
-        readline.write_history_file(path)
+    def save(self, collection: str, mode: str) -> None:
+        """No-op: prompt_toolkit's FileHistory auto-saves on each entry."""
+        _ = collection, mode

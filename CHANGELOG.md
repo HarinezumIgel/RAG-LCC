@@ -6,6 +6,41 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [v0.2.0/1073] — 2026-04-12
+
+### ➕ Added
+
+#### 🧠 WordNet Synonym Expansion for Banned-Word Scoring
+
+- **`src/Algos/Synonyms.py`** — New `Synonyms` singleton that expands banned-word
+  lists with WordNet synonyms before they are evaluated by **BM25Scorer**,
+  **JaccardScorer**, and **RegexScorer**.  KeyBertScorer is intentionally excluded
+  (embeddings already capture semantic neighbours).
+  - Configurable via `_WORDNET` config block: `ENABLED`, `DEPTH` (hop count),
+    `MAX_SYNONYMS_PER_PHRASE`, `POS_FILTER` (noun/verb/adj/adv), and `STOPLIST`
+    to suppress overly generic expansions.
+  - Lazy WordNet import — avoids startup crash when NLTK / WordNet corpus is not
+    installed; falls back gracefully to the original banned-word list with a warning.
+  - Result caching per input list for repeated lookups within the same session.
+  - Multi-word phrase support: looks up underscore-joined WordNet lemma first, then
+    falls back to individual token lookup.
+  - Breadth-first synonym-of-synonym traversal for `DEPTH ≥ 2`.
+
+### 🐛 Fixed
+
+#### 🖥️ CLI Cursor Positioning
+
+- **`src/Gui/HistoryManager.py`** — Replaced `pyreadline3` with `prompt_toolkit`
+  for CLI input handling.  `pyreadline3` miscalculated visible prompt width when
+  ANSI escape codes or emoji were present, causing the cursor to be displaced from
+  the actual typing position in VS Code's integrated terminal.  `prompt_toolkit`'s
+  `ANSI()` formatted-text wrapper computes visible width correctly, keeping the
+  cursor aligned.
+- **`tests/test_cursor.py`** — Regression tests added: verifies `prompt_toolkit`
+  import, absence of `pyreadline3` references in `HistoryManager.py`.
+
+---
+
 ## [v0.1.0/1067] — 2026-04-07
 
 ### 🔧 Improved

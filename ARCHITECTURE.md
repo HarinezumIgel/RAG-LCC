@@ -318,6 +318,43 @@ GENERATION & RESPONSE VALIDATION PHASE:
 - **Enable/disable prompt check**: Balance between latency and coverage
 - **Chain is OR-based**: If ANY check detects issue, content is flagged
 
+### 📖 WordNet Synonym Expansion (Optional)
+
+When enabled (`_WORDNET.ENABLED = True` in `Config_Global.py`), the banned‑word list is expanded with English synonyms from [NLTK WordNet](https://wordnet.princeton.edu/) before translation and detection.
+This is handled by `Algos/Synonyms.py` (singleton, lazy‑loaded, cached).
+
+**Which algorithms receive the expanded list:**
+
+| Algorithm | Uses expanded list? | Reason |
+| ----------- | -------------------- | ------- |
+| RegexScorer | Yes | Strict `\b` matching only fires on exact words; synonyms give it new targets. |
+| JaccardScorer | Yes | Character n‑gram overlap misses semantic synonyms; expansion fills the gap. |
+| BM25Scorer | Yes | Pure term‑frequency scorer — cannot match words absent from the list. |
+| KeyBertScorer | **No** | Embedding similarity already captures semantic neighbours; expansion would be redundant. |
+| LevenshteinScorer | Indirect | Post‑processes RegexScorer output, so it automatically benefits from Regex’s expanded list. |
+| Masker | No | Pattern‑based (credit cards, SSNs, etc.), not driven by the banned‑word list. |
+
+**Expansion flow (runs once at scorer initialisation):**
+
+```text
+Banned list (English)  ───▶  Synonyms.expand()  ───▶  Expanded list
+    ~70 phrases             │                        ~70–280 phrases
+                            │
+                   WordNet lookup (depth=1)
+                   POS filter (noun + verb)
+                   Max 3 synonyms / phrase
+                   Stoplist exclusion
+                   Deduplication
+```
+
+The expanded list is then passed through the existing translation pipeline (`SharedHelpers.get_banlist_for_language`) so synonyms are also translated to the document language when applicable.
+
+**Explosion control:** Depth cap, per‑phrase synonym cap, POS filtering, and a configurable stoplist prevent the list from growing unboundedly.
+
+**Graceful degradation:** If NLTK or the WordNet corpus is not installed, an orange warning is printed and the original (unexpanded) list is used — no functionality is lost.
+
+For installation and configuration details see [README § 8a](README.md#-8a-nltk-wordnet-synonyms-optional--bannedword-expansion).
+
 ## 🧮 Detection Algorithm Architecture
 
 Configured algorithms work for compliance checking:

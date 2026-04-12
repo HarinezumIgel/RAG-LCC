@@ -35,7 +35,7 @@ After the initial setup phase, the system can operate locally without requiring 
 
 - **Query‑Driven Document Routing**
   The system can classify and select relevant documents *based on the user’s prompt*.
-  Then selectively load (SQLLite query) those documents into a local vector store for downstream retrieval.
+  Then selectively load (SQLite query) those documents into a local vector store for downstream retrieval.
 
 - **Hybrid Retrieval Stack**
   Combine filter algorithms, LLM prompt checking, dense embeddings, rerankers inside a unified chain.
@@ -192,7 +192,7 @@ For details, see [Caching in ARCHITECTURE.md](ARCHITECTURE.md#caching).
 ## 🌐 Translation
 
 Banned-word lists can be translated to the document language for detection using [Argos Translate](https://www.argosopentech.com/) (local, offline neural machine translation).
-For details see [6. Install Argos Translate](#-6-install-argos-translate).
+For details see [6. Install Argos Translate](#-install-argos-translate).
 
 ---
 
@@ -315,9 +315,10 @@ Also **helpful**: see the example session and suggestions for further experiment
 
 ```Windows
 Note: The outputs were created running RAGLoad.py RAGChat.py and DocClassify.py as follows:
-python ./src/Apps/RAGLoad.py      --doc-dir TestDocs
-python ./src/Apps/RAGChat.py      --doc-dir TestDocs
-python ./src/Apps/DocClassify.py  --doc-dir TestDocs
+python ./src/Apps/RAGLoad.py             --doc-dir TestDocs
+python ./src/Apps/RAGChat.py             --doc-dir TestDocs
+python ./src/Apps/RAGChatService.py
+python ./src/Apps/DocClassify.py         --doc-dir TestDocs
 ```
 
 ### 📥 RAGLoad
@@ -667,6 +668,52 @@ _CUSTOM_NLTK_DATA_DIRECTORY = (
     _ABSOLUTE_PATH + r"\AppData\Roaming\nltk_data\corpora\stopwords"
 )
 ```
+
+### 📖 8a. NLTK WordNet Synonyms (Optional — Banned‑Word Expansion)
+
+RAG‑LCC can optionally expand the English banned‑word list with synonyms from
+[WordNet](https://wordnet.princeton.edu/) before detection and translation.
+This strengthens the lexical scorers (Regex, Jaccard, BM25) by giving them
+more surface forms to match against, while KeyBERT (embedding‑based) is left
+unchanged since it already captures semantic neighbours.
+
+NLTK is already installed if you followed step 8 above. You only need to
+download the WordNet corpus:
+
+```python
+import nltk
+nltk.download("wordnet")
+```
+
+If the WordNet corpus is **not** installed, RAG‑LCC prints an orange warning
+at startup and proceeds with the original (unexpanded) banned‑word list — no
+functionality is lost.
+
+> **License:** The WordNet corpus is developed and maintained by Princeton
+> University. **WordNet 3.0** — Copyright © 2006 by Princeton University.
+> Licensed under the [WordNet 3.0 License](https://wordnet.princeton.edu/license-and-commercial-use).
+> The corpus is **not** distributed with RAG‑LCC; operators download it
+> independently from NLTK's data servers and are bound by its license terms.
+
+**Configuration** in `Configuration/Config_Global.py`:
+
+```python
+_WORDNET = {
+    "ENABLED": True,             # Toggle synonym expansion on / off
+    "DEPTH": 1,                  # 1 = direct synonyms only, 2 = synonyms of synonyms
+    "MAX_SYNONYMS_PER_PHRASE": 3,# Cap per banned phrase to prevent list explosion
+    "POS_FILTER": ["n", "v"],    # WordNet POS tags: n(oun), v(erb), a(dj), r(adv), s(at‑adj)
+    "STOPLIST": ["word", "number", ...],  # Overly generic terms to suppress
+}
+```
+
+| Key | Default | Description |
+| ----- | ------- | ----------- |
+| `ENABLED` | `True` | Master switch. Set to `False` to skip expansion entirely. |
+| `DEPTH` | `1` | Synonym hop depth. `1` = direct synonyms only (recommended). `2` adds synonyms‑of‑synonyms. |
+| `MAX_SYNONYMS_PER_PHRASE` | `3` | Maximum synonyms added per original banned phrase. Prevents list explosion. |
+| `POS_FILTER` | `["n", "v"]` | Restrict to these WordNet parts of speech. Empty list = accept all. |
+| `STOPLIST` | *(~20 generic words)* | Words excluded from expansion even if they appear as WordNet synonyms. |
 
 ### 👁️ 9. Installing OCR Support (Tesseract)
 
@@ -1696,6 +1743,7 @@ python src/Scripts/ArgosTranslatePackages.py remove
 | Low retrieval quality | Bad chunk settings | Test `CHUNK_SIZE`: 128, 256, 512. Regenerate (load) the collection |
 | `RequestsDependencyWarning: urllib3 … or chardet … doesn't match a supported version!` | `chardet` ≥ 6 installed but `requests` requires `chardet < 6` | Run `pip install "chardet<6,>=3.0.2"` to downgrade to a compatible version (e.g. 5.2.0) |
 | `Language en package default expects mwt, which has been added` | Stanza (used by Argos Translate) auto-adds the Multi-Word Token processor for the English model | Harmless informational warning — no action required |
+| Cursor displaced / misaligned in RAGChat terminal prompts (VS Code) | `pyreadline3` uses low-level Win32 console APIs (`windll.kernel32`) that conflict with VS Code's xterm.js terminal emulator. Known upstream issues: [#40](https://github.com/pyreadline3/pyreadline3/issues/40), [#43](https://github.com/pyreadline3/pyreadline3/issues/43). No upstream fix exists. | RAG‑LCC replaced `pyreadline3` with `prompt_toolkit` for interactive input history. If you still experience cursor issues, run `python test_cursor.py prompt_toolkit` vs `python test_cursor.py pyreadline3` in a fresh VS Code terminal to confirm the cause. Ensure `pyreadline3` is not imported anywhere in your environment. See also `tests/test_cursor.py`. |
 
 ## ⚡ Performance Tuning Checklist
 
