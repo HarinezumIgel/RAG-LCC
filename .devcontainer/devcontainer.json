@@ -1,0 +1,53 @@
+{
+  "name": "RAG-LCC Experimental Lab Framework",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
+
+  "workspaceFolder": "/workspaces/RAG-LCC",
+  // workspaceMount is intentionally set to "" to disable the default bind-mount.
+  // Files are baked into the image via COPY in the Dockerfile for performance reasons
+  // (bind-mounting the host folder into the container is too slow).
+  // To update files in the container, use "Dev Containers: Rebuild Container".
+  "workspaceMount": "",
+  "remoteUser": "vscode",
+
+  "containerEnv": {
+    "HF_HOME": "/home/vscode/.cache",
+    "XDG_CACHE_HOME": "/home/vscode/.cache",
+    "PIP_CACHE_DIR": "/home/vscode/.cache/pip"
+  },
+
+  "mounts": [
+    "source=persistent-hf-cache,target=/home/vscode/.cache/.hf-cache,type=volume",
+    "source=RAG-LCC-pip-cache,target=/home/vscode/.cache/pip,type=volume"
+  ],
+
+  "forwardPorts": [
+    11435
+  ],
+
+  "postCreateCommand": "python3 -m venv /workspaces/RAG-LCC/.venv && /workspaces/RAG-LCC/.venv/bin/python -m pip install --upgrade pip && echo 'source /workspaces/RAG-LCC/.venv/bin/activate' >> ~/.bashrc",
+
+  "postStartCommand": "[ \"$(ls -A /home/vscode/.cache/.hf-cache 2>/dev/null)\" ] || echo 'WARNING: The HF model cache volume is empty. Run create_hf_volume.py on the Windows host to seed it: python deploy/scripts/create_hf_volume.py'",
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "/workspaces/RAG-LCC/.venv/bin/python",
+        "python.terminal.activateEnvironment": true
+      }
+    }
+  },
+
+  "portsAttributes": {
+    "11435": {
+      "label": "RAGChatService",
+      "onAutoForward": "notify"
+    }
+  }
+}

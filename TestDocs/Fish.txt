@@ -1,0 +1,35 @@
+🐟 What fish are
+Fish are a diverse group of aquatic vertebrates that live in freshwater and marine environments worldwide. They range from tiny species a few centimeters long to giants like whale sharks that reach many meters. Most fish have gills for extracting oxygen from water, fins for locomotion and balance, and bodies adapted to life in a fluid medium. Fish occupy nearly every aquatic habitat, from shallow coastal reefs to the deepest ocean trenches. Fish live in rivers, lakes and the sea.
+
+Key biological features
+
+Respiration: Most fish breathe using gills that extract dissolved oxygen from water; some species supplement with air-breathing adaptations.
+
+Locomotion: Fins and streamlined bodies reduce drag and allow efficient swimming; different fin shapes reflect different lifestyles (burst swimmers, maneuverable reef dwellers, bottom-dwellers).
+
+Senses: Many fish have well-developed senses—vision, smell, lateral line systems that detect water movement, and in some species electroreception.
+
+Diversity: Fish include jawless fishes (lampreys, hagfish), cartilaginous fishes (sharks, rays), and bony fishes (the largest group, including most familiar species).
+
+Physiology and temperature regulation
+Fish generally do not generate large amounts of internal heat to maintain a constant body temperature. Instead, their body temperature tends to follow the surrounding water temperature, so they are described as ectothermic or cold-blooded. Scientists prefer the term ectotherm because “cold-blooded” is imprecise and has been deprecated in formal usage. Some fish (for example certain tunas and sharks) have evolved partial endothermy or regional warming that lets them keep parts of their bodies warmer than the surrounding water, but these are exceptions rather than the rule. 
+
+Reproduction and life cycles
+Fish reproductive strategies are highly varied:
+
+Many broadcast spawn, releasing eggs and sperm into the water where fertilization occurs externally.
+
+Others show internal fertilization and give birth to live young or lay fertilized eggs in nests.
+
+Parental care ranges from none to extensive—some species guard eggs and young, while others abandon them immediately after spawning.
+These strategies reflect adaptations to predation pressure, habitat stability, and resource availability.
+
+Ecological roles and importance
+Fish are central to aquatic food webs: they act as primary consumers, predators, and prey for birds, mammals, and other fish. They influence nutrient cycling, help maintain habitat structure (for example, grazing herbivorous fish on reefs), and support complex ecological interactions. Human societies rely on fish for food, livelihoods, cultural practices, and recreation, and fisheries and aquaculture are major global industries. Overfishing, habitat loss, pollution, and climate change threaten many fish populations and the ecosystems they support.
+
+Terminology explained
+Cold-blooded: A common everyday phrase meaning an animal whose body temperature varies with the environment; widely used but scientifically imprecise. 
+
+Ectotherm: The preferred scientific term for animals that rely mainly on external heat sources to regulate body temperature; includes most fish, amphibians, reptiles, and many invertebrates. 
+
+Poikilotherm: A term describing organisms whose internal temperature varies considerably; often used interchangeably with ectotherm in ecological contexts. 

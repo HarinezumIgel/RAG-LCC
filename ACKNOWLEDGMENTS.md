@@ -1,0 +1,44 @@
+# Acknowledgments
+
+## 📦 Third-Party Libraries and Models
+
+This project builds on excellent open-source software and pre-trained models. RAG‑LCC does not distribute these packages; users install them independently from upstream sources. For comprehensive licensing information and attribution for all third-party dependencies, see [3rdPartyLicenses/Licenses.md](3rdPartyLicenses/Licenses.md).
+
+### 🔑 Key Dependencies
+
+- **ChromaDB** – Vector database for embedding storage and retrieval
+- **Ollama** – Local LLM inference engine
+- **OpenWebUI** – Web-based chat interface for LLM interaction (used as an optional frontend for `RAGChatService`)
+- **HuggingFace Transformers** – Pre-trained NLP models and sentence transformers
+- **NLTK** – Natural Language Toolkit for tokenization, stemming, and optional WordNet synonym expansion
+- **PyTorch** – Deep learning framework
+- **Argos Translate** – Language translation library
+- **pywin32** – Python extensions for Windows COM automation (used for optional Microsoft Office document extraction)
+
+### 📚 NLTK Data — WordNet Corpus
+
+The optional synonym-expansion feature (`Algos/Synonyms.py`) uses the **WordNet** lexical database, downloaded at the operator's discretion via `nltk.download("wordnet")`.
+
+- **WordNet 3.0** — Copyright © 2006 by Princeton University. Licensed under the [WordNet 3.0 License](https://wordnet.princeton.edu/license-and-commercial-use). The WordNet corpus is **not** distributed with RAG‑LCC; operators download it independently from NLTK's data servers.
+- Attribution: George A. Miller (1995). *WordNet: A Lexical Database for English.* Communications of the ACM, 38(11), 39–41.
+
+### 🤖 Pre-Trained Models
+
+Model selections, quantization options, and embedding/cross-encoder configurations are managed in [Configuration/Config_Models.py](src/Configuration/Config_Models.py). Models referenced in this repository:
+
+- **Embedding**: Snowflake Arctic-embed (or configurable alternative)
+- **Cross-Encoder**: Built from HuggingFace model hub
+- **LLM**: Ollama-compatible endpoint (commonly used with local Ollama deployments)
+
+Model downloads and licensing are user-controlled; see the setup instructions in [README.md](README.md) and model disclaimers.
+
+**Attribution:** Llama 3.1 and Llama Guard 3 — Built with Meta Llama 3. Licensed under the Llama 3.1 Community License Agreement, Copyright © Meta Platforms, Inc. All Rights Reserved. By downloading and using these models, operators are bound by the model license terms.
+
+### 📎 External Applications
+
+- **Microsoft Office** – Optional. Required only for extracting text from Office formats (.doc(x), .ppt(x), .xls(x)) via COM automation. Microsoft Office is **not** included with or distributed by RAG‑LCC; users must obtain and license it independently.
+- **OpenWebUI** – Optional. A self-hosted web UI for interacting with LLMs. When used with `RAGChatService`, it connects to the OpenAI-compatible REST API exposed by RAG‑LCC. OpenWebUI is **not** included with or distributed by RAG‑LCC; users must obtain and deploy it independently. OpenWebUI is licensed under a [modified BSD 3-Clause license with a branding-preservation clause](https://github.com/open-webui/open-webui/blob/main/LICENSE); see also [LICENSE_HISTORY](https://github.com/open-webui/open-webui/blob/main/LICENSE_HISTORY) for prior contributions.
+
+## ⚖️ License
+
+RAG-LCC itself is licensed under [LICENSE](LICENSE). All third-party software retains its original license; see [3rdPartyLicenses/Licenses.md](3rdPartyLicenses/Licenses.md).

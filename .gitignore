@@ -1,0 +1,51 @@
+# =====================================================
+# Python / RAG framework standard ignores
+# =====================================================
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual environments
+.venv/
+venv/
+
+# Packaging / build artifacts
+build/
+dist/
+*.egg-info/
+
+# PyTorch / ML artifacts
+pytorch_wheels/
+
+# =====================================================
+# Editor / IDE settings
+# =====================================================
+.vscode/
+
+# =====================================================
+# Tooling / config files (local only)
+# =====================================================
+.fossa.yml
+
+# =====================================================
+# Local data / documents (not for version control)
+# =====================================================
+DocsToLoadOrClassify/
+Documentation/Private/
+
+# =====================================================
+# Security: PEM keys
+# =====================================================
+# Ignore ALL PEM files
+*.pem
+
+# =====================================================
+# Deployment scripts
+# =====================================================
+# Ignore depoy directories
+scripts_posh/
+
+# But keep the public verification key
+!verify_sign/RAG_LCC_public.pem
+``

@@ -1,0 +1,21 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "RAG-LCC"
+abstract: >-
+  RAG-LCC is a configuration-driven, offline-first experimental lab and
+  research framework for Retrieval-Augmented Generation with integrated
+  rag load, rag chat and document classification.
+authors:
+  - alias: "HarinezumIgel"
+    email: "259837285+HarinezumIgel@users.noreply.github.com"
+version: "0.2.0"
+date-released: "2026-04-12"
+license: MIT
+repository-code: "https://github.com/HarinezumIgel/RAG-LCC"
+keywords:
+  - retrieval-augmented-generation
+  - content filtering
+  - document-classification
+  - natural-language-processing
+  - research
