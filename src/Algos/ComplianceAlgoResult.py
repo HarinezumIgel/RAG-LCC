@@ -27,14 +27,19 @@ class ScorerBase(ABC):
         """Scorer logic — implement in each subclass."""
         raise NotImplementedError
 
+    def __init__(self) -> None:
+        self.perf_logger: PerfLogger = PerfLogger()
+
     def verify(self, *args: Any, **kwargs: Any) -> List[ComplianceAlgoResult]:
         """Timing wrapper: emits perf start/stop events around _verify_impl()."""
         caller = f"{type(self).__name__}.verify"
-        PerfLogger().log(caller, "start verify")
+        self.perf_logger.log(caller, "start verify")
         t0 = time.perf_counter()
         result = self._verify_impl(*args, **kwargs)
         elapsed = time.perf_counter() - t0
-        PerfLogger().log(caller, f"stop  verify n={len(result)} elapsed={elapsed:.3f}s")
+        self.perf_logger.log(
+            caller, f"stop  verify n={len(result)} elapsed={elapsed:.3f}s"
+        )
         return result
 
 

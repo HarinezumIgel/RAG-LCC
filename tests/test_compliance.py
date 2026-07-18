@@ -829,6 +829,7 @@ class TestVerify:
 
         # Stub _check_models_config_hash to avoid needing real module files
         monkeypatch.setattr(c, "_check_models_config_hash", lambda: None)
+        monkeypatch.setattr(c, "_verify_argos_consent", lambda: None)
 
         self._setup_consented(c, tmp_path)
         # Should not raise
@@ -839,6 +840,7 @@ class TestVerify:
         c.base_dir = str(tmp_path)
 
         monkeypatch.setattr(c, "_check_models_config_hash", lambda: None)
+        monkeypatch.setattr(c, "_verify_argos_consent", lambda: None)
 
         update_called = []
         monkeypatch.setattr(c, "_update_licenses", lambda: update_called.append(True))
@@ -852,6 +854,7 @@ class TestVerify:
         c.base_dir = str(tmp_path)
 
         monkeypatch.setattr(c, "_check_models_config_hash", lambda: None)
+        monkeypatch.setattr(c, "_verify_argos_consent", lambda: None)
 
         self._setup_consented(c, tmp_path)
 
@@ -874,6 +877,7 @@ class TestVerify:
         c.base_dir = str(tmp_path)
 
         monkeypatch.setattr(c, "_check_models_config_hash", lambda: None)
+        monkeypatch.setattr(c, "_verify_argos_consent", lambda: None)
 
         self._setup_consented(c, tmp_path)
 
@@ -895,6 +899,7 @@ class TestVerify:
         c.base_dir = str(tmp_path)
 
         monkeypatch.setattr(c, "_check_models_config_hash", lambda: None)
+        monkeypatch.setattr(c, "_verify_argos_consent", lambda: None)
 
         self._setup_consented(c, tmp_path)
 

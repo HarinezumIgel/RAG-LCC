@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
-## [Released] — 2026-07-16
+## [Released] — 2026-07-18
 
 This is a major release including last 2 months work. Among bug fixes, small improvements
 there are:
@@ -18,6 +18,62 @@ there are:
 - Install script Setup.py that guides through the installation (Windows + Unix)
 
 For a quick start read [INSTALL.md](INSTALL.md).
+
+## [Unreleased] — 2026-07-18
+
+### 🔄 Changed — `PerfLogger` refactored: singleton instance pattern, no threading
+
+`PerfLogger` was refactored to eliminate a race condition where the log
+filename was derived from `sys.argv[0]` instead of `_FRIENDLY_NAME` because
+the first `PerfLogger().log()` call arrived before `Config` had finished
+loading.
+
+**Root cause:** `_build_log_filename()` was called lazily inside a
+double-checked lock on first write. A background thread calling `log()` before
+the main thread finished setting `_FRIENDLY_NAME` in `Config` caused the
+fallback to `sys.argv[0]`, and the wrong filename was then locked in for the
+process lifetime.
+
+**Fix:** Callers now own the singleton lifetime. Each class that uses the
+logger adds `self.perf_logger: PerfLogger = PerfLogger()` to its `__init__`
+**after** `Config` (and therefore `_FRIENDLY_NAME`) is fully initialised.
+All subsequent calls use `self.perf_logger.log(...)`. Because construction
+is now single-threaded by design, all locking (`_file_lock`, `_times_lock`,
+double-checked locking) was removed.
+
+- **`PerfLogger`:** removed `threading` import and both `Lock` instances;
+  simplified `_get_file_logger()` and `log()`.
+- **All 13 call-site files** updated to the `self.perf_logger` pattern:
+  `LLMCaller`, `ModelsCache`, `BM25Scorer`, `CosineScorer`, `JaccardScorer`,
+  `KeyBertScorer`, `RegexScorer`, `LevenshteinScorer`, `BM25Retriever`,
+  `DocumentIngestionStrategy`, `GraphRetriever`, `WebRetriever`, `RAGChatImpl`.
+- **`ScorerBase`** (`ComplianceAlgoResult.py`) gained an `__init__` that sets
+  `self.perf_logger` so the shared `verify()` timing wrapper works for any
+  subclass.
+- **Test factory functions** in `test_bm25_retriever.py`,
+  `test_models_cache.py`, `test_graph_retriever.py`, and `test_llm_caller.py`
+  updated to set `perf_logger = MagicMock()` after bypassing `__init__`.
+
+### ✨ Added — `PerfLogger` elapsed time as a dedicated log column
+
+The `Δ=...s` elapsed value is now written as its own fourth pipe-separated
+column instead of being appended to the detail string. A new `_DETAIL_WIDTH`
+constant (65 chars) pads the detail column so the elapsed column aligns
+across all log lines.
+
+Previous format:
+```
+2026-07-13T14:22:05.145Z | BM25Retriever.query              | stop  bm25 query n=42 elapsed=0.145s  Δ=0.145s
+```
+New format:
+```
+2026-07-13T14:22:05.123Z | BM25Retriever.query              | start bm25 query q='cats'                         |
+2026-07-13T14:22:05.145Z | BM25Retriever.query              | stop  bm25 query n=42 elapsed=0.145s              | Δ=0.145s
+```
+
+- **Affected file:** `src/Helpers/PerfLogger.py`
+
+---
 
 ## [Unreleased] — 2026-07-15
 

@@ -45,7 +45,7 @@ os.environ["NLTK_STOPWORDS_DOWNLOAD"] = "0"
 
 # RAG_LCC_NW_TRACE: Enable network-level socket tracing for debugging
 # Set to "1" to see detailed network activity
-os.environ["RAG_LCC_NW_TRACE"] = ""
+os.environ["RAG_LCC_NW_TRACE"] = "0"
 
 # RAG_LCC_STACK_TRACE: Enable stack trace output for debugging
 os.environ["RAG_LCC_STACK_TRACE"] = "0"

@@ -126,6 +126,7 @@ def _make_caller(cfg_overrides=None, token_budget=None):
         return resolved_out, resolved_ctx
 
     caller._resolve_token_budget = _resolve
+    caller.perf_logger = MagicMock()
     return caller
 
 

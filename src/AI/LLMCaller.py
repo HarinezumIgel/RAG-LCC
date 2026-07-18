@@ -28,6 +28,7 @@ class LLMCaller:
         self.cfg: Config = Config()
         self.pretty: PrettyWriter = PrettyWriter()
         self.helpers: Helpers = Helpers()
+        self.perf_logger: PerfLogger = PerfLogger()
 
     def redact(
         self, obj: Any, keys: tuple[str, ...] = ("authorization", "api_key", "token")
@@ -224,7 +225,7 @@ class LLMCaller:
             )
 
             start: float = time.perf_counter()
-            PerfLogger().log(
+            self.perf_logger.log(
                 "LLMCaller.call_llm", f"start inference model={model!r} stage={stage!r}"
             )
             # Log request details for debugging
@@ -353,7 +354,7 @@ class LLMCaller:
                 "Call LLM",
                 f"Elapsed time calling: {model} took {minutes:02d}:{seconds:02d}",
             )
-            PerfLogger().log(
+            self.perf_logger.log(
                 "LLMCaller.call_llm",
                 f"stop  inference model={model!r} stage={stage!r} elapsed={elapsed:.3f}s",
             )

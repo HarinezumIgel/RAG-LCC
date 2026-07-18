@@ -36,15 +36,24 @@ Execution order:
              where missing, so the application has default configuration
              files to start from.
 
-  4. Recalculate configuration hashes
-             Compute fresh SHA-256 hashes for Config_Models.py,
-             Config_Banned.py, Config_WebSearch.py, and
-             Config_Internet_Env.py, then write them into
-             the corresponding *_CONFIG_HASH values in Config_Global.py.
+  4. Download NLTK stopwords and WordNet
+             Fetch NLTK and WordNet licenses for the installed versions,
+             record consent, and download the stopwords and wordnet corpora.
 
   5. Install Argos Translate language packages
              Present the Argos Translate license/consent flow and download
              the language packages listed in ARGOS_LANGUAGES.
+
+  Config setup –
+             Ask for endpoint, internet-mode, and service settings
+             (API keys are masked in output).  Write the answers into
+             the configuration files via UpdateConfigValues.py.
+
+  6. Recalculate configuration hashes
+             Compute fresh SHA-256 hashes for Config_Models.py,
+             Config_Banned.py, Config_WebSearch.py, and
+             Config_Internet_Env.py, then write them into
+             the corresponding *_CONFIG_HASH values in Config_Global.py.
 
 Run from the project root with the project virtual environment activated:
 
@@ -231,16 +240,16 @@ def _print_execution_plan() -> None:
         f"{_DIM}  Step 3:{_RESET} Copy Example_*.py files from Examples/ to src/Configuration/ (skips existing unless forced by child script options)."
     )
     print(
-        f"{_DIM}  Step 5:{_RESET} Download NLTK stopwords + WordNet resources with consent flow for installed versions."
+        f"{_DIM}  Step 4:{_RESET} Download NLTK stopwords + WordNet resources with consent flow for installed versions."
     )
     print(
-        f"{_DIM}  Step 6:{_RESET} Optionally install Argos Translate language packages after explicit user confirmation."
+        f"{_DIM}  Step 5:{_RESET} Optionally install Argos Translate language packages after explicit user confirmation."
     )
     print(
         f"{_DIM}  Runtime questions:{_RESET} After all downloads, ask for endpoint/internet/service settings (API keys masked), then write values to config files."
     )
     print(
-        f"{_DIM}  Finalize:{_RESET} Recalculate and write critical config hashes in Config_Global.py."
+        f"{_DIM}  Step 6:{_RESET} Recalculate and write critical config hashes in Config_Global.py."
     )
     print(f"{_CYAN}{'─' * w}{_RESET}")
 
@@ -2575,7 +2584,7 @@ def main() -> None:
     parser.add_argument(
         "--no-config-rehash",
         action="store_true",
-        help="Skip Step 4 — do not recalculate SHA-256 config hashes.",
+        help="Skip Step 6 — do not recalculate SHA-256 config hashes.",
     )
     parser.add_argument(
         "--set-config-values-only",
@@ -2625,15 +2634,15 @@ def main() -> None:
         _run_setup_questions()
 
         if args.no_config_rehash:
-            print(f"{_YELLOW}  ⏭  Step 4 skipped (--no-config-rehash).{_RESET}")
+            print(f"{_YELLOW}  ⏭  Step 6 skipped (--no-config-rehash).{_RESET}")
             _write_setup_log(
                 "step_skipped",
-                step=4,
+                step=6,
                 reason="--no-config-rehash",
             )
         else:
             _run_step(
-                step=4,
+                step=6,
                 label="Recalculate SHA-256 config hashes",
                 script="RecalcConfigHashes.py",
                 description=(
@@ -2890,11 +2899,11 @@ def main() -> None:
                 )
 
     # ------------------------------------------------------------------
-    # Step 5 – Download NLTK corpora (stopwords + WordNet).
+    # Step 4 – Download NLTK corpora (stopwords + WordNet).
     # Must run after Step 2 (pip install) so NLTK is available.
     # ------------------------------------------------------------------
     _run_step(
-        step=5,
+        step=4,
         label="Download NLTK stopwords and WordNet",
         script="NLTK_Stopwords_WordNet.py",
         description=(
@@ -2905,7 +2914,7 @@ def main() -> None:
     )
 
     # ------------------------------------------------------------------
-    # Step 6 – Install Argos Translate language packages.
+    # Step 5 – Install Argos Translate language packages.
     # ------------------------------------------------------------------
     _print_next_action_block(
         "Next action",
@@ -2919,12 +2928,12 @@ def main() -> None:
         print(f"{_YELLOW}  Skipping Argos Translate install.{_RESET}")
         _write_setup_log(
             "step_skipped",
-            step=6,
+            step=5,
             reason="user declined Argos install",
         )
     else:
         _run_step(
-            step=6,
+            step=5,
             label="Install Argos Translate language packages",
             script="ArgosTranslatePackages.py",
             description=(
@@ -2942,19 +2951,19 @@ def main() -> None:
     _run_setup_questions()
 
     # ------------------------------------------------------------------
-    # Finalize – Recalculate config hashes.
+    # Step 6 – Recalculate config hashes.
     # Must run after runtime question updates.
     # ------------------------------------------------------------------
     if args.no_config_rehash:
-        print(f"{_YELLOW}  ⏭  Finalize skipped (--no-config-rehash).{_RESET}")
+        print(f"{_YELLOW}  ⏭  Step 6 skipped (--no-config-rehash).{_RESET}")
         _write_setup_log(
             "step_skipped",
-            step=4,
+            step=6,
             reason="--no-config-rehash",
         )
     else:
         _run_step(
-            step=4,
+            step=6,
             label="Recalculate SHA-256 config hashes",
             script="RecalcConfigHashes.py",
             description=(

@@ -53,7 +53,9 @@ Inspect `./3rdPartyLicenses` and obtain any required approvals before installing
 
 ## 🛠️ Installation
 
-**Install prerequisites:**
+### 📋 Install Prerequisites
+
+⚠️ **Note:** `Setup.py` can run on both Windows and Unix-based systems, either inside a Docker container or directly within a host `.venv` environment. The prerequisites listed below are required **only for Docker-based installations**.
 
 - [Visual Studio Code](https://code.visualstudio.com/)
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/)

@@ -10,7 +10,7 @@
 import os
 from typing import Any
 
-_VERSION = "v0.4.0/1375 2026-07-16"
+_VERSION = "v0.4.1/1381 2026-07-16"
 
 # -----------------------------------------------------------------------------
 # Adjust these hashes when you changed Config_Models.py, Config_Banned.py,
@@ -18,10 +18,10 @@ _VERSION = "v0.4.0/1375 2026-07-16"
 # Run:  python src/Scripts/RecalcConfigHashes.py  to update automatically.
 # -----------------------------------------------------------------------------
 _CRITICAL_CONFIG_HASHES = {
-    "Config_Models": "",
-    "Config_Banned": "",
-    "Config_WebSearch": "",
-    "Config_Internet_Env": "",
+    "Config_Models": "9e0de6cc3b95dae9d322d5b8ee4307384b658923b46927c4dbf96b66c5f9023a",
+    "Config_Banned": "502e0a49c6aeeedaed42d6f4f6a410f2a0648b03558ee57d274fbb10c982d5c3",
+    "Config_WebSearch": "482488ad4c10b1fa9a626f6155d864736a14c37ff3987622e41da9c8d126dbdb",
+    "Config_Internet_Env": "eea4f43e3ffad389e1f257c554bd76b4baf17f679267004bb3c0592f59315b63",
 }
 
 # -----------------------------------------------------------------------------

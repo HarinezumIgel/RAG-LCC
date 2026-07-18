@@ -114,6 +114,7 @@ class BM25Retriever(SingletonMixin):
         self._k1: float = self.cfg.get_float("_BM25_INDEX.k1")
         self._b: float = self.cfg.get_float("_BM25_INDEX.b")
         self._rrf_k: int = self.cfg.get_int("_BM25_INDEX.rrf_k")
+        self.perf_logger: PerfLogger = PerfLogger()
 
     def get_bm25_dir(self, collection_name: str) -> str:
         """Return the BM25 index directory for *collection_name*.
@@ -160,7 +161,7 @@ class BM25Retriever(SingletonMixin):
         ):
             return
 
-        PerfLogger().log(
+        self.perf_logger.log(
             "BM25Retriever.load_or_rebuild", f"start load collection={collection_name}"
         )
 
@@ -179,7 +180,7 @@ class BM25Retriever(SingletonMixin):
                     f"Loaded persisted BM25 index ({self._data.N} chunks, "
                     f"{len(self._data.idf)} terms)",
                 )
-                PerfLogger().log(
+                self.perf_logger.log(
                     "BM25Retriever.load_or_rebuild",
                     f"stop  load (persisted) collection={collection_name} n={self._data.N}",
                 )
@@ -194,7 +195,7 @@ class BM25Retriever(SingletonMixin):
         # not see a stale file and repeat the rebuild.
         self._rebuild_from_collection(collection_name, collection, file_filter)
         self._persist(idx_path)
-        PerfLogger().log(
+        self.perf_logger.log(
             "BM25Retriever.load_or_rebuild",
             f"stop  load (rebuilt) collection={collection_name} n={self._data.N}",
         )
@@ -310,7 +311,7 @@ class BM25Retriever(SingletonMixin):
         if not query_tokens:
             return []
 
-        PerfLogger().log(
+        self.perf_logger.log(
             "BM25Retriever.query", f"start bm25 query q={query_text[:60]!r}"
         )
         _t0 = time.perf_counter()
@@ -342,7 +343,7 @@ class BM25Retriever(SingletonMixin):
                 id=self._data.chunk_ids[idx],
             )
             docs.append(doc)
-        PerfLogger().log(
+        self.perf_logger.log(
             "BM25Retriever.query",
             f"stop  bm25 query n={len(docs)} elapsed={time.perf_counter() - _t0:.3f}s",
         )
@@ -506,7 +507,7 @@ class BM25Retriever(SingletonMixin):
         file_filter: Optional[Dict[str, Any]] = None,
     ) -> None:
         """Fetch all chunks from ChromaDB and build the BM25 index."""
-        PerfLogger().log(
+        self.perf_logger.log(
             "BM25Retriever._rebuild_from_collection",
             f"start rebuild collection={collection_name}",
         )
@@ -560,7 +561,7 @@ class BM25Retriever(SingletonMixin):
             f"Built BM25 index: {data.N} chunks, {len(data.idf)} unique terms, "
             f"avg_dl={data.avg_dl:.1f}",
         )
-        PerfLogger().log(
+        self.perf_logger.log(
             "BM25Retriever._rebuild_from_collection",
             f"stop  rebuild collection={collection_name} n={data.N} elapsed={time.perf_counter() - _t0:.3f}s",
         )

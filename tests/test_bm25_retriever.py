@@ -98,6 +98,7 @@ def _make_retriever(**overrides: Any) -> BM25Retriever:
     r._k1 = overrides.get("k1", 1.2)
     r._b = overrides.get("b", 0.75)
     r._rrf_k = overrides.get("rrf_k", 60)
+    r.perf_logger = MagicMock()
     # Register as the singleton instance so is_loaded_for works
     BM25Retriever._instance = r  # type: ignore[reportPrivateUsage]
     return r
@@ -690,6 +691,7 @@ class TestConfigValues:
         r._k1 = r.cfg.get_float("_BM25_INDEX.k1")
         r._b = r.cfg.get_float("_BM25_INDEX.b")
         r._rrf_k = r.cfg.get_int("_BM25_INDEX.rrf_k")
+        r.perf_logger = MagicMock()
         assert r._k1 == 1.5
 
     def test_b_from_config(self):

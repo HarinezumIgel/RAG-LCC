@@ -90,6 +90,7 @@ class GraphRetriever(SingletonMixin):
         self.cfg: Config = cfg or Config()
         self.pretty: PrettyWriter = pretty or PrettyWriter()
         self._data: _GraphIndexData = _GraphIndexData()
+        self.perf_logger: PerfLogger = PerfLogger()
 
         # Graph hyper-parameters from _GRAPH_INDEX config slot
         self._entity_types: List[str] = self.cfg.get_list("_GRAPH_INDEX.entity_types")
@@ -283,7 +284,7 @@ class GraphRetriever(SingletonMixin):
         if not self._data.chunk_entities:
             return []
 
-        PerfLogger().log(
+        self.perf_logger.log(
             "GraphRetriever.query", f"start graph query q={query_text[:60]!r}"
         )
         _t0 = time.perf_counter()
@@ -353,7 +354,7 @@ class GraphRetriever(SingletonMixin):
                     id=cid,
                 )
             )
-        PerfLogger().log(
+        self.perf_logger.log(
             "GraphRetriever.query",
             f"stop  graph query n={len(docs)} elapsed={time.perf_counter() - _t0:.3f}s",
         )

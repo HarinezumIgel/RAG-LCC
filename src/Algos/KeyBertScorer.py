@@ -39,6 +39,7 @@ class KeyBertScorer(SingletonMixin, ScorerBase):
         self.helpers: Helpers = helpers or Helpers()
         self.models_cache: ModelsCache = ModelsCache()
         self.tensorHelpers: TensorHelpers = TensorHelpers()
+        self.perf_logger: PerfLogger = PerfLogger()
 
         # phrases come from config key "BANNED"
         self.banlist_en: List[str] = self.helpers.get_banned_phrases_config_slot()
@@ -91,7 +92,7 @@ class KeyBertScorer(SingletonMixin, ScorerBase):
         """
         phrases: list[str] = [p for p in self.banlist_en if p]
 
-        PerfLogger().log(
+        self.perf_logger.log(
             "KeyBertScorer.build_keybert_cache", f"start cache build n={len(phrases)}"
         )
         _t0 = time.perf_counter()
@@ -150,7 +151,7 @@ class KeyBertScorer(SingletonMixin, ScorerBase):
             "Cache build Keybert Scorer",
             f"Built KeyBert embeddings cache with {len(cache)} entries",
         )
-        PerfLogger().log(
+        self.perf_logger.log(
             "KeyBertScorer.build_keybert_cache",
             f"stop  cache build n={len(cache)} elapsed={time.perf_counter() - _t0:.3f}s",
         )

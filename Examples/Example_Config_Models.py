@@ -102,6 +102,7 @@ _ACTIVE_TRANSLATION = "m2m100"
 
 # Optional Hugging Face access token used for gated/private model downloads.
 # Leave empty for public models and anonymous access.
+# This one overrides the model specific _HF_API_KEY definitions.
 _HF_API_KEY = ""
 
 # _MODELS hierarchy: _MODELS[impl][role] -> config dict
@@ -112,6 +113,8 @@ _MODELS: dict[str, dict[str, dict[str, Any]]] = {
             "FRIENDLY_NAME": "Snowflake Arctic Embed L v2.0",
             "REVISION": "",
             "SOURCE": "https://huggingface.co/Snowflake/snowflake-arctic-embed-l-v2.0",
+            # Optional per-model HF key. If empty, _HF_API_KEY is used.
+            "HF_API_KEY": "",
             "LICENSE": "Apache-2.0",
             "LICENSE_URL": "https://www.apache.org/licenses/LICENSE-2.0.txt",
             "COMPLIANCE_MSG": "Embedder: Snowflake arctic-embed-l-v2.0 is the newest addition to the suite of embedding models Snowflake has released optimizing for retrieval performance and inference efficiency",
@@ -132,6 +135,8 @@ _MODELS: dict[str, dict[str, dict[str, Any]]] = {
             # "Represent this sentence for searching relevant passages: ".
             "QUERY_INSTRUCTION": "",
             "SOURCE": "https://huggingface.co/cross-encoder/mmarco-mMiniLMv2-L12-H384-v1",
+            # Optional per-model HF key. If empty, _HF_API_KEY is used.
+            "HF_API_KEY": "",
             "LICENSE": "Apache-2.0",
             "LICENSE_URL": "https://www.apache.org/licenses/LICENSE-2.0.txt",
             "COMPLIANCE_MSG": "Cross Encoder: This model was trained on the MMARCO dataset. It is a machine translated version of MS MARCO using Google Translate.",
@@ -156,6 +161,8 @@ _MODELS: dict[str, dict[str, dict[str, Any]]] = {
             "FRIENDLY_NAME": "M2M-100 1.2B Multilingual Translation",
             "REVISION": "",
             "SOURCE": "https://huggingface.co/facebook/m2m100_1.2B",
+            # Optional per-model HF key. If empty, _HF_API_KEY is used.
+            "HF_API_KEY": "",
             "LICENSE": "MIT",
             "LICENSE_URL": "https://raw.githubusercontent.com/spdx/license-list-data/main/text/MIT.txt",
             "COMPLIANCE_MSG": "M2M-100 is a many-to-many multilingual translation model released by Facebook/Meta under the MIT licence, supporting 100 languages. Used to translate non-English user queries into English before retrieval.",
@@ -178,6 +185,8 @@ _MODELS: dict[str, dict[str, dict[str, Any]]] = {
             "MODEL_VLLM": "mistral_7b",
             "FRIENDLY_NAME": "Mistral 7B",
             "SOURCE": "https://huggingface.co/mistralai/Mistral-7B-v0.1",
+            # Optional per-model HF key. If empty, _HF_API_KEY is used.
+            "HF_API_KEY": "",
             "LICENSE": "Apache-2.0",
             "LICENSE_URL": "https://www.apache.org/licenses/LICENSE-2.0.txt",
             "COMPLIANCE_MSG": "LLM: Mistral 7B is a 7.3B parameter model",
@@ -197,6 +206,8 @@ _MODELS: dict[str, dict[str, dict[str, Any]]] = {
             "MODEL_VLLM": "mistral_7b",
             "FRIENDLY_NAME": "Mistral 7B",
             "SOURCE": "https://huggingface.co/mistralai/Mistral-7B-v0.1",
+            # Optional per-model HF key. If empty, _HF_API_KEY is used.
+            "HF_API_KEY": "",
             "LICENSE": "Apache-2.0",
             "LICENSE_URL": "https://www.apache.org/licenses/LICENSE-2.0.txt",
             "COMPLIANCE_MSG": "LLM: Mistral 7B is a 7.3B parameter model",
@@ -216,6 +227,8 @@ _MODELS: dict[str, dict[str, dict[str, Any]]] = {
             "MODEL_VLLM": "mistral_7b",
             "FRIENDLY_NAME": "Mistral 7B",
             "SOURCE": "https://huggingface.co/mistralai/Mistral-7B-v0.1",
+            # Optional per-model HF key. If empty, _HF_API_KEY is used.
+            "HF_API_KEY": "",
             "LICENSE": "Apache-2.0",
             "LICENSE_URL": "https://www.apache.org/licenses/LICENSE-2.0.txt",
             "COMPLIANCE_MSG": "LLM: Mistral 7B is a 7.3B parameter model",
@@ -346,6 +359,7 @@ _MODELS: dict[str, dict[str, dict[str, Any]]] = {
             "FRIENDLY_NAME": "vLLM OpenAI-compatible Provider",
             "SOURCE": "https://github.com/vllm-project/vllm",
             "BASE_URL": "http://<vllm host>:8000/v1/chat/completions", # server IP, localhost or Docker host.docker.internal
+            # Optional per-model HF key. If empty, _HF_API_KEY is used.
             "API_KEY": "", # might need sk- prefix
             "STREAMING_REQ": False,
             "TRY_FALLBACK_URLS": True,  # True: try localhost/docker fallbacks on failure  False: only probe BASE_URL
@@ -380,6 +394,7 @@ _MODELS: dict[str, dict[str, dict[str, Any]]] = {
             "HOST": "<RAGChatService host>",  # Listener address (0.0.0.0 for Docker/external access)
             "PORT": 11435,        # Service port
             "BASE_URL": "http://localhost:11435",  # Full service URL
+            # Optional per-model HF key. If empty, _HF_API_KEY is used.
             "API_KEY": "",        # Bearer token for authenticating incoming requests from OpenWebUI
             "LICENSE": "MIT",
             "LICENSE_URL": "https://raw.githubusercontent.com/HarinezumIgel/RAG-LCC/main/LICENSE",

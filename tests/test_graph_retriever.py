@@ -146,6 +146,7 @@ def _make_retriever(nlp: Any = None, **overrides: Any) -> GraphRetriever:
     r._spacy_model = "en_core_web_sm"
     r._noun_chunk_min_chars = overrides.get("noun_chunk_min_chars", 3)
     r._noun_chunk_drop_leading = overrides.get("noun_chunk_drop_leading", "[({<")
+    r.perf_logger = MagicMock()
     # Register as the singleton instance
     GraphRetriever._instance = r  # type: ignore[reportPrivateUsage]
     return r

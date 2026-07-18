@@ -57,6 +57,7 @@ class ModelsCache(SingletonMixin):
         self.pretty: PrettyWriter = pretty or PrettyWriter()
         self.cfg: Config = cfg or Config()
         self.helpers: Helpers = helpers or Helpers()
+        self.perf_logger: PerfLogger = PerfLogger()
 
         # --- caches ---
         self.hf_embeddings_cache: Dict[str, HuggingFaceEmbeddings] = {}
@@ -226,13 +227,13 @@ class ModelsCache(SingletonMixin):
                 "HF",
                 f"Reusing cached embeddings for {model_name} rev='{revision}' device={device_key} dtype={dtype_key}",
             )
-            PerfLogger().log(
+            self.perf_logger.log(
                 "ModelsCache.get_hf_embeddings",
                 f"cache hit model={model_name!r} key={cache_key}",
             )
             return cached
 
-        PerfLogger().log(
+        self.perf_logger.log(
             "ModelsCache.get_hf_embeddings",
             f"start load model={model_name!r} device={device_key}",
         )
@@ -299,7 +300,7 @@ class ModelsCache(SingletonMixin):
             )
 
         self.hf_embeddings_cache[cache_key] = embeddings
-        PerfLogger().log(
+        self.perf_logger.log(
             "ModelsCache.get_hf_embeddings",
             f"stop  load model={model_name!r} device={device_key} elapsed={time.perf_counter() - _t0:.3f}s",
         )
@@ -394,16 +395,22 @@ class ModelsCache(SingletonMixin):
     # Text truncation
     # -----------------------------------------------------------------
     def truncate_texts(
-        self, texts: list[str], model_name: str, max_length: int, padding: bool = False
+        self,
+        texts: list[str],
+        model_name: str,
+        max_length: int,
+        padding: bool = False,
     ) -> list[str]:
-        """Truncate and decode texts using a tokenizer for a given model."""
+        """Truncate and decode texts using a tokenizer for a given model.
+
+        The HF API token is resolved via ``get_model_args`` (per-model key,
+        falling back to the global ``_HF_API_KEY`` when the per-model key is
+        empty).
+        """
         if not texts:
             return []
-        try:
-            raw_hf_api_key: Any = self.cfg.get_str("_HF_API_KEY", "", silent=True)
-        except TypeError:
-            raw_hf_api_key = self.cfg.get_str("_HF_API_KEY", "")
-        hf_api_key: str = str(raw_hf_api_key or "").strip()
+        model_args: Dict[str, Any] = self.helpers.get_model_args("_ACTIVE_EMBED")
+        hf_api_key: str = model_args["hf_api_key"]
         tokenizer: Any = AutoTokenizer.from_pretrained(  # type: ignore[reportUnknownMemberType]
             model_name,
             use_fast=True,

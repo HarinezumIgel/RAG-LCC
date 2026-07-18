@@ -5,6 +5,7 @@ from Config.Config import Config
 from Gui.PrettyWriter import PrettyWriter
 from Helpers.DebugHelper import DebugHelper
 from Helpers.Helpers import Helpers
+from Helpers.PerfLogger import PerfLogger
 
 
 class LevenshteinScorer(ScorerBase):
@@ -27,6 +28,7 @@ class LevenshteinScorer(ScorerBase):
 
         self.aiHelpers: AIHelpers = AIHelpers()
         self.helpers: Helpers = helpers or Helpers()
+        self.perf_logger: PerfLogger = PerfLogger()
         self.algo: str = "Levenshtein"
         self.threshold: float | None = None
         self.compliance_results: List[ComplianceAlgoResult] = []

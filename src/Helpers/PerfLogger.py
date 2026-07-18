@@ -8,9 +8,13 @@ Usage::
 
     from Helpers.PerfLogger import PerfLogger
 
-    PerfLogger().log("BM25Retriever.query", "start bm25 query q='cats'")
+    # In app __init__, after _FRIENDLY_NAME is set in Config:
+    self.perf_logger = PerfLogger()
+
+    # Later, wherever timing is needed:
+    self.perf_logger.log("BM25Retriever.query", "start bm25 query q='cats'")
     # ... do work ...
-    PerfLogger().log("BM25Retriever.query", f"stop  bm25 query n={len(results)}")
+    self.perf_logger.log("BM25Retriever.query", f"stop  bm25 query n={len(results)}")
 
 Log format (one line per event)::
 
@@ -20,14 +24,15 @@ Enable/disable via ``PERFORMANCE_LOGGING`` in ``Configuration/Config_Global.py``
 The log file is created (with its directory) on first write.
 The filename is derived from ``_FRIENDLY_NAME`` and a startup timestamp so each
 application run (RAGChat, RAGChatService, …) produces its own dated file.
-All writes are thread-safe via an instance-level lock.
+Instantiate PerfLogger only after ``_FRIENDLY_NAME`` has been set in Config so
+the correct filename is used from the start.
 """
 
 from __future__ import annotations
 
 import logging
 import os
-import threading
+import sys
 import time
 from datetime import datetime, timezone
 
@@ -41,15 +46,21 @@ def _build_log_filename() -> str:
     """Return a dated log filename derived from the active app's friendly name.
 
     Pattern: ``<_FRIENDLY_NAME>_Performance_<YYYYMMDD_HHMMSS>.log``
-    Falls back to ``Performance_<YYYYMMDD_HHMMSS>.log`` when the config is
-    not yet available.
+    Falls back to the script stem from ``sys.argv[0]`` when ``_FRIENDLY_NAME``
+    is absent (should not happen if PerfLogger is instantiated after Config
+    is fully initialised).
     """
     try:
         from Config.Config import Config  # lazy — avoids circular imports
 
-        friendly = Config().get_str("_FRIENDLY_NAME") or "Performance"
+        friendly = Config().get_str("_FRIENDLY_NAME", silent=True) or ""
     except Exception:
-        friendly = "Performance"
+        friendly = ""
+
+    if not friendly:
+        argv0 = sys.argv[0] if sys.argv else ""
+        friendly = os.path.splitext(os.path.basename(argv0))[0] or "Unknown"
+
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     return f"{friendly}_Performance_{stamp}.log"
 
@@ -65,24 +76,16 @@ class PerfLogger(SingletonMixin):
         if self._initialized:
             return
         self._initialized = True
-        self._file_lock: threading.Lock = threading.Lock()
         self._file_logger: logging.Logger | None = None
         self._start_times: dict[str, float] = {}
-        self._times_lock: threading.Lock = threading.Lock()
 
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
 
     def _get_file_logger(self) -> logging.Logger:
-        """Return the singleton file logger, initialising it on first call."""
-        if self._file_logger is not None:
-            return self._file_logger
-
-        with self._file_lock:
-            if self._file_logger is not None:  # double-checked
-                return self._file_logger
-
+        """Return the file logger, creating it on first call."""
+        if self._file_logger is None:
             log_path: str = os.path.join(_LOG_DIR, _build_log_filename())
             os.makedirs(_LOG_DIR, exist_ok=True)
 
@@ -98,7 +101,8 @@ class PerfLogger(SingletonMixin):
                 logger.addHandler(fh)
 
             self._file_logger = logger
-            return self._file_logger
+
+        return self._file_logger
 
     @staticmethod
     def _is_enabled() -> bool:
@@ -134,22 +138,21 @@ class PerfLogger(SingletonMixin):
             return
 
         now: float = time.perf_counter()
-        detail_out: str = detail
+        elapsed_col: str = ""
 
         if detail.startswith("start"):
-            with self._times_lock:
-                self._start_times[caller] = now
+            self._start_times[caller] = now
         elif detail.startswith("stop"):
-            with self._times_lock:
-                t0 = self._start_times.pop(caller, None)
+            t0 = self._start_times.pop(caller, None)
             if t0 is not None:
-                detail_out = f"{detail}  \u0394={now - t0:.3f}s"
+                elapsed_col = f"\u0394={now - t0:.3f}s"
 
         ts: str = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
         self._get_file_logger().info(
-            "%s | %-*s | %s",
+            "%s | %-10s | %-*s | %s",
             ts,
+            elapsed_col,
             _CALLER_WIDTH,
             caller,
-            detail_out,
+            detail,
         )

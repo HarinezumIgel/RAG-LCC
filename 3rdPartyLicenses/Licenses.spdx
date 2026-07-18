@@ -4,7 +4,7 @@ SPDXID: SPDXRef-DOCUMENT
 DocumentName: RAG-LCC-DEPLOY-Licenses
 DocumentNamespace: http://example.org/spdxdocs/RAG-LCC-DEPLOY-Licenses
 Creator: pip-licenses
-Created: 2026-07-16T19:15:55+02:00
+Created: 2026-07-18T10:43:06+02:00
 
 #####
 PackageName: Jinja2
@@ -405,7 +405,7 @@ PackageLicenseDeclared: BSD License
 #####
 PackageName: filelock
 SPDXID: SPDXRef-Package-filelock
-PackageVersion: 3.30.1
+PackageVersion: 3.31.0
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: MIT
@@ -468,7 +468,7 @@ PackageLicenseDeclared: MIT License
 #####
 PackageName: hf-xet
 SPDXID: SPDXRef-Package-hf-xet
-PackageVersion: 1.5.1
+PackageVersion: 1.5.2
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: Apache-2.0
@@ -513,7 +513,7 @@ PackageLicenseDeclared: BSD License
 #####
 PackageName: huggingface_hub
 SPDXID: SPDXRef-Package-huggingface_hub
-PackageVersion: 1.23.0
+PackageVersion: 1.24.0
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: Apache Software License
@@ -720,7 +720,7 @@ PackageLicenseDeclared: Apache Software License
 #####
 PackageName: langsmith
 SPDXID: SPDXRef-Package-langsmith
-PackageVersion: 0.10.5
+PackageVersion: 0.10.6
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: MIT
@@ -1116,7 +1116,7 @@ PackageLicenseDeclared: Apache Software License
 #####
 PackageName: platformdirs
 SPDXID: SPDXRef-Package-platformdirs
-PackageVersion: 4.10.0
+PackageVersion: 4.10.1
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: MIT
@@ -1251,7 +1251,7 @@ PackageLicenseDeclared: BSD-3-Clause
 #####
 PackageName: pypdfium2
 SPDXID: SPDXRef-Package-pypdfium2
-PackageVersion: 5.12.0
+PackageVersion: 5.12.1
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: BSD-3-Clause, Apache-2.0, dependency licenses
@@ -1647,7 +1647,7 @@ PackageLicenseDeclared: Apache Software License
 #####
 PackageName: tqdm
 SPDXID: SPDXRef-Package-tqdm
-PackageVersion: 4.68.4
+PackageVersion: 4.69.0
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: MPL-2.0 AND MIT
@@ -1791,7 +1791,7 @@ PackageLicenseDeclared: Apache Software License
 #####
 PackageName: websockets
 SPDXID: SPDXRef-Package-websockets
-PackageVersion: 16.1
+PackageVersion: 16.1.1
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: BSD-3-Clause

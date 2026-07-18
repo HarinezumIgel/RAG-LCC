@@ -36,6 +36,7 @@ class CosineScorer(SingletonMixin, ScorerBase):
         self.helpers: Helpers = helpers or Helpers()
         self.tensorHelpers: TensorHelpers = TensorHelpers()
         self.models_cache: ModelsCache = ModelsCache()
+        self.perf_logger: PerfLogger = PerfLogger()
 
         # banned phrases
         self.banned: List[str] = self.helpers.get_banned_phrases_config_slot()
@@ -82,7 +83,7 @@ class CosineScorer(SingletonMixin, ScorerBase):
             )
             return {}
 
-        PerfLogger().log(
+        self.perf_logger.log(
             "CosineScorer.build_cosine_cache", f"start cache build n={len(phrases)}"
         )
         _t0 = time.perf_counter()
@@ -90,7 +91,7 @@ class CosineScorer(SingletonMixin, ScorerBase):
             phrases,
             list_cache=self.phrase_embedding_cache,
         )
-        PerfLogger().log(
+        self.perf_logger.log(
             "CosineScorer.build_cosine_cache",
             f"stop  cache build n={len(self.phrase_embedding_cache_tensor)} elapsed={time.perf_counter() - _t0:.3f}s",
         )

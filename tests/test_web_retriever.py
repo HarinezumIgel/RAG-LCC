@@ -77,7 +77,9 @@ class StubPretty:
 
 def _make_retriever(**cfg_overrides) -> WebRetriever:
     """Return a WebRetriever wired with stub dependencies."""
-    return WebRetriever(cfg=StubConfig(cfg_overrides), pretty=StubPretty())
+    r = WebRetriever(cfg=StubConfig(cfg_overrides), pretty=StubPretty())
+    r.perf_logger = MagicMock()
+    return r
 
 
 # ---------------------------------------------------------------------------

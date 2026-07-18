@@ -77,6 +77,7 @@ class DocumentIngestionStrategy(SingletonMixin):
         self.exclusions: Exclusions = Exclusions()
         self.bm25_retriever: BM25Retriever = BM25Retriever()
         self.graph_retriever: GraphRetriever = GraphRetriever()
+        self.perf_logger: PerfLogger = PerfLogger()
 
         _coll_name, _ = self.chromaDBHelper.change_chroma_collection(
             self.cfg.get_str("COLLECTION"), False
@@ -219,7 +220,7 @@ class DocumentIngestionStrategy(SingletonMixin):
         assert self.content is not None and self.doc is not None
         doc_chunks: list[langchainDoc]
         pre_embeddings: list[list[float] | None] | None
-        PerfLogger().log(
+        self.perf_logger.log(
             "DocumentIngestionStrategy.ingest",
             f"start chunking chunker={chunker_label}",
         )
@@ -227,7 +228,7 @@ class DocumentIngestionStrategy(SingletonMixin):
         doc_chunks, pre_embeddings = self.chunker.chunk(
             self.content, self.doc.get("meta", {})
         )
-        PerfLogger().log(
+        self.perf_logger.log(
             "DocumentIngestionStrategy.ingest",
             f"stop  chunking chunker={chunker_label} n={len(doc_chunks)} elapsed={time.perf_counter() - _t_chunk:.3f}s",
         )
@@ -340,7 +341,7 @@ class DocumentIngestionStrategy(SingletonMixin):
           are sent to the embedding model, saving a potentially expensive
           second full-batch call.
         """
-        PerfLogger().log(
+        self.perf_logger.log(
             "DocumentIngestionStrategy._resolve_embeddings",
             f"start embed n={len(texts_trunc)}",
         )
@@ -348,7 +349,7 @@ class DocumentIngestionStrategy(SingletonMixin):
         if pre_embeddings is None:
             # No pre-computed embeddings — embed everything
             result_emb = self.embedder.embed_documents(texts_trunc)
-            PerfLogger().log(
+            self.perf_logger.log(
                 "DocumentIngestionStrategy._resolve_embeddings",
                 f"stop  embed (full) n={len(result_emb)} elapsed={time.perf_counter() - _t_emb:.3f}s",
             )
@@ -364,7 +365,7 @@ class DocumentIngestionStrategy(SingletonMixin):
                 "Embeddings",
                 "Reusing all pre-computed chunk embeddings (0 to embed).",
             )
-            PerfLogger().log(
+            self.perf_logger.log(
                 "DocumentIngestionStrategy._resolve_embeddings",
                 f"stop  embed (all cached) n={len(pre_embeddings)} elapsed={time.perf_counter() - _t_emb:.3f}s",
             )
@@ -386,7 +387,7 @@ class DocumentIngestionStrategy(SingletonMixin):
         for idx, emb in zip(need_idx, new_embs):
             result[idx] = emb
 
-        PerfLogger().log(
+        self.perf_logger.log(
             "DocumentIngestionStrategy._resolve_embeddings",
             f"stop  embed (partial) reused={len(texts_trunc) - len(need_idx)} embedded={len(need_idx)} elapsed={time.perf_counter() - _t_emb:.3f}s",
         )

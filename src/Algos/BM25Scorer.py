@@ -34,6 +34,7 @@ class BM25Scorer(SingletonMixin, ScorerBase):
         from AI.AIHelpers import AIHelpers
 
         self.aiHelpers: AIHelpers = AIHelpers()
+        self.perf_logger: PerfLogger = PerfLogger()
 
         # base banlist and algo name, expanded with WordNet synonyms
         self.banlist_en: List[str] = Synonyms().expand(
@@ -67,7 +68,7 @@ class BM25Scorer(SingletonMixin, ScorerBase):
         if cached is not None:
             return cached
 
-        PerfLogger().log(
+        self.perf_logger.log(
             "BM25Scorer._prepare_banlist", f"start cache build lang={lang}"
         )
         _t0 = time.perf_counter()
@@ -117,7 +118,7 @@ class BM25Scorer(SingletonMixin, ScorerBase):
         avg_len: float = (total_len / N) if N > 0 else 1.0
         self.avg_len_cache[lang] = avg_len
 
-        PerfLogger().log(
+        self.perf_logger.log(
             "BM25Scorer._prepare_banlist",
             f"stop  cache build lang={lang} n={len(prepared)} elapsed={time.perf_counter() - _t0:.3f}s",
         )

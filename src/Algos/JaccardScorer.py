@@ -31,6 +31,7 @@ class JaccardScorer(ScorerBase):
         from AI.AIHelpers import AIHelpers
 
         self.aiHelpers: AIHelpers = AIHelpers()
+        self.perf_logger: PerfLogger = PerfLogger()
 
         # static config keys / tunables (language-independent)
         self.algo: str = self.cfg.get_str("_JACCARD")
@@ -57,7 +58,7 @@ class JaccardScorer(ScorerBase):
         if cached is not None:
             return cached
 
-        PerfLogger().log(
+        self.perf_logger.log(
             "JaccardScorer._prepare_banlist", f"start cache build lang={lang}"
         )
         _t0 = time.perf_counter()
@@ -83,7 +84,7 @@ class JaccardScorer(ScorerBase):
             )
             prepared.append({"phrase": phrase, "toks": toks, "char_grams": char_grams})
         self.banlist_cache[lang] = prepared
-        PerfLogger().log(
+        self.perf_logger.log(
             "JaccardScorer._prepare_banlist",
             f"stop  cache build lang={lang} n={len(prepared)} elapsed={time.perf_counter() - _t0:.3f}s",
         )

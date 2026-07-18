@@ -10,6 +10,7 @@ downloads.  No monkeypatching or sys.modules manipulation needed.
 import pytest
 import sys
 import os
+from unittest.mock import MagicMock
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
@@ -244,6 +245,7 @@ def _build_models_cache(cfg_overrides=None, helpers=None, pretty=None):
     mc.use_cpu = mc.cfg.get_bool("USE_CPU")
     mc.bits = mc.cfg.get_int("EMBEDDER_BITS", 32)
     mc.lastDeviceBitSize = 0
+    mc.perf_logger = MagicMock()
 
     return mc
 

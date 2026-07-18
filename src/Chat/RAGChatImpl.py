@@ -87,6 +87,7 @@ class RAGChatImpl(SingletonMixin):
         self.bm25_retriever: BM25Retriever = BM25Retriever()
         self.graph_retriever: GraphRetriever = GraphRetriever()
         self.web_retriever: WebRetriever = WebRetriever()
+        self.perf_logger: PerfLogger = PerfLogger()
         self.web_pre_filter: WebPreFilter = WebPreFilter(
             cfg=self.cfg, embedder=self.embedder, pretty=self.pretty
         )
@@ -191,7 +192,7 @@ class RAGChatImpl(SingletonMixin):
         return True
 
     def _rerank(self, mySession: Session, all_docs: list[Any]) -> list[Any]:
-        PerfLogger().log(
+        self.perf_logger.log(
             "RAGChatImpl._rerank",
             f"start rerank pairs={len(all_docs)} model={self.cross_encoder_model_name!r}",
         )
@@ -351,7 +352,7 @@ class RAGChatImpl(SingletonMixin):
             f"Reranking with {self.cross_encoder_model_name} returned {len(reranked)} chunks",
             color=CYAN,
         )
-        PerfLogger().log(
+        self.perf_logger.log(
             "RAGChatImpl._rerank",
             f"stop  rerank n={len(reranked)} elapsed={time.perf_counter() - _t_rerank:.3f}s",
         )
@@ -420,7 +421,7 @@ class RAGChatImpl(SingletonMixin):
 
     def _retrieve(self, mySession: Session) -> Tuple[str, int]:
         if self._set_vector_store(mySession):
-            PerfLogger().log("RAGChatImpl._retrieve", "start retrieve")
+            self.perf_logger.log("RAGChatImpl._retrieve", "start retrieve")
             # Reset one-shot topic-switch flag from the previous turn.
             mySession.force_skip_rewrite = False
             mySession.effective_query = None
@@ -670,7 +671,7 @@ class RAGChatImpl(SingletonMixin):
                 assert (
                     self.vector_store is not None
                 ), "vector_store not initialized; call set_vector_store first"
-                PerfLogger().log(
+                self.perf_logger.log(
                     "RAGChatImpl._retrieve", "start vector similarity_search"
                 )
                 _t_vec = time.perf_counter()
@@ -678,7 +679,7 @@ class RAGChatImpl(SingletonMixin):
                     mySession.query or "", **(mySession.base_kwargs or {})
                 )
                 vector_docs = self.chatContext.annotate_chunks(hits)
-                PerfLogger().log(
+                self.perf_logger.log(
                     "RAGChatImpl._retrieve",
                     f"stop  vector similarity_search n={len(vector_docs)} elapsed={time.perf_counter() - _t_vec:.3f}s",
                 )
@@ -734,7 +735,7 @@ class RAGChatImpl(SingletonMixin):
                 )
                 assert self.collection is not None
                 assert self.persist_directory is not None
-                PerfLogger().log(
+                self.perf_logger.log(
                     "RAGChatImpl._retrieve",
                     f"start bm25 block collection={self.collection_name}",
                 )
@@ -762,7 +763,7 @@ class RAGChatImpl(SingletonMixin):
                     "BM25",
                     f"BM25 retrieval returned {len(bm25_docs)} chunks",
                 )
-                PerfLogger().log(
+                self.perf_logger.log(
                     "RAGChatImpl._retrieve",
                     f"stop  bm25 block n={len(bm25_docs)} elapsed={time.perf_counter() - _t_bm25:.3f}s",
                 )
@@ -781,7 +782,7 @@ class RAGChatImpl(SingletonMixin):
                     f"Querying graph index on collection {self.collection_name}",
                 )
                 assert self.collection is not None
-                PerfLogger().log(
+                self.perf_logger.log(
                     "RAGChatImpl._retrieve",
                     f"start graph block collection={self.collection_name}",
                 )
@@ -808,7 +809,7 @@ class RAGChatImpl(SingletonMixin):
                     "Graph",
                     f"Graph retrieval returned {len(graph_docs)} chunks",
                 )
-                PerfLogger().log(
+                self.perf_logger.log(
                     "RAGChatImpl._retrieve",
                     f"stop  graph block n={len(graph_docs)} elapsed={time.perf_counter() - _t_graph:.3f}s",
                 )
@@ -852,7 +853,7 @@ class RAGChatImpl(SingletonMixin):
                         else "Querying web search..."
                     )
                     self.pretty.write("I", "Web", label)
-                    PerfLogger().log("RAGChatImpl._retrieve", "start web block")
+                    self.perf_logger.log("RAGChatImpl._retrieve", "start web block")
                     _t_web = time.perf_counter()
                     web_docs = self.web_retriever.query(
                         mySession.query or "",
@@ -867,7 +868,7 @@ class RAGChatImpl(SingletonMixin):
                         f"Web search returned {len(web_docs)} results",
                         color=CYAN,
                     )
-                    PerfLogger().log(
+                    self.perf_logger.log(
                         "RAGChatImpl._retrieve",
                         f"stop  web block n={len(web_docs)} elapsed={time.perf_counter() - _t_web:.3f}s",
                     )
@@ -1107,7 +1108,7 @@ class RAGChatImpl(SingletonMixin):
             )
             context: str = header + body
             if chosen:
-                PerfLogger().log(
+                self.perf_logger.log(
                     "RAGChatImpl._retrieve", f"stop  retrieve n={len(chosen)}"
                 )
                 return context, len(chosen)

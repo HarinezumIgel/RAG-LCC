@@ -113,6 +113,7 @@ class WebRetriever:
             extensions_cfg=WEB_SEARCH_INTENT_EXTENSIONS,
             log_path=intent_log_path,
         )
+        self.perf_logger: PerfLogger = PerfLogger()
 
     # ------------------------------------------------------------------
     # Public API
@@ -189,7 +190,7 @@ class WebRetriever:
             "Web",
             f"Internet search started — backend: {self._backend!r}  query: {sanitized!r}",
         )
-        PerfLogger().log(
+        self.perf_logger.log(
             "WebRetriever.query",
             f"start web query backend={self._backend!r} q={sanitized[:60]!r}",
         )
@@ -319,7 +320,7 @@ class WebRetriever:
                 )
             )
 
-        PerfLogger().log(
+        self.perf_logger.log(
             "WebRetriever.query",
             f"stop  web query n={len(docs)} elapsed={time.perf_counter() - _t0:.3f}s",
         )

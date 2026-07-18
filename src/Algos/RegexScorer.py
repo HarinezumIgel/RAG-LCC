@@ -36,6 +36,7 @@ class RegexScorer(ScorerBase):
         from AI.AIHelpers import AIHelpers
 
         self.aiHelpers: AIHelpers = AIHelpers()
+        self.perf_logger: PerfLogger = PerfLogger()
 
         self.algo: str = self.cfg.get_str("_REGEX")
 
@@ -64,7 +65,7 @@ class RegexScorer(ScorerBase):
         if cached is not None:
             return cached
 
-        PerfLogger().log(
+        self.perf_logger.log(
             "RegexScorer._compile_patterns",
             f"start cache build lang={lang} stage={stage}",
         )
@@ -199,7 +200,7 @@ class RegexScorer(ScorerBase):
 
         # cache in-memory only
         self.compiled_cache[lang][stage] = compiled_list
-        PerfLogger().log(
+        self.perf_logger.log(
             "RegexScorer._compile_patterns",
             f"stop  cache build lang={lang} stage={stage} n={len(compiled_list)} elapsed={time.perf_counter() - _t0:.3f}s",
         )
