@@ -40,7 +40,16 @@ class HistoryManager:
                 raise OSError(f"Failed to create history file: {path}") from exc
             self.pretty.write("I", "HistoryManager", f"Created history file {path}")
 
-        self._session = PromptSession[str](history=FileHistory(path))
+        # Use sys.__stdout__ / sys.__stdin__ (the original streams before any
+        # wrapping by colorama.init()) so that prompt_toolkit gets real terminal
+        # handles and can set up raw-mode input correctly.
+        # real_stdout = getattr(sys, "__stdout__", None) or sys.stdout
+        # real_stdin = getattr(sys, "__stdin__", None) or sys.stdin
+        self._session = PromptSession[str](
+            history=FileHistory(path),
+            #   output=create_output(real_stdout),
+            #   input=create_input(real_stdin),
+        )
 
     def prompt(self, prompt_text: str = "") -> str:
         """Show prompt with arrow-key history. Falls back to input() if no session loaded."""

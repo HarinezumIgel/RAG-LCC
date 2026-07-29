@@ -1,4 +1,4 @@
-# pyright: reportUnknownParameterType=false, reportMissingParameterType=false, reportMissingImports=false, reportUnknownVariableType=false, reportUnknownMemberType=false, reportArgumentType=false, reportUnknownArgumentType=false, reportUnusedVariable=false
+# pyright: reportUnknownParameterType=false, reportMissingParameterType=false, reportMissingImports=false, reportUnknownVariableType=false, reportArgumentType=false, reportUnknownArgumentType=false, reportUnusedVariable=false, reportPrivateUsage=false, reportUnknownMemberType=false
 """
 Tests for Strategies.WebRetriever and HomeBrewChunkSelector.filter_threshold.
 
@@ -550,6 +550,7 @@ class StubSession:
 
     def __init__(self, threshold: float = 0.40) -> None:
         self.chroma_threshold = threshold
+        self.web_rerank_threshold = 0.0
         self.per_file_limit = 10
         self.strategy = "DEFAULT"
         self.debug_level = 0
@@ -661,11 +662,7 @@ class TestFilterThreshold:
 # WebSearchFilter — weighted intent classifier
 # ===========================================================================
 
-from Strategies.WebSearchFilter import (
-    WebSearchFilter,
-    _merge_entities,
-    _apply_threshold_overrides,
-)  # noqa: E402
+from Strategies.WebSearchFilter import WebSearchFilter  # noqa: E402
 
 
 @pytest.fixture(autouse=False)
@@ -676,7 +673,9 @@ def reset_filter_singleton():
     WebSearchFilter._instance = None
 
 
-def _make_filter(extensions: dict | None = None, log_path: str = "") -> WebSearchFilter:
+def _make_filter(
+    extensions: Dict[str, Any] | None = None, log_path: str = ""
+) -> WebSearchFilter:
     WebSearchFilter._instance = None
     return WebSearchFilter.get_instance(
         extensions_cfg=extensions or {},

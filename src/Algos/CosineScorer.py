@@ -84,7 +84,9 @@ class CosineScorer(SingletonMixin, ScorerBase):
             return {}
 
         self.perf_logger.log(
-            "CosineScorer.build_cosine_cache", f"start cache build n={len(phrases)}"
+            "CosineScorer.build_cosine_cache",
+            "scorer",
+            f"start cache build n={len(phrases)}",
         )
         _t0 = time.perf_counter()
         self.phrase_embedding_cache_tensor = self.build_phrase_cache(
@@ -93,6 +95,7 @@ class CosineScorer(SingletonMixin, ScorerBase):
         )
         self.perf_logger.log(
             "CosineScorer.build_cosine_cache",
+            "scorer",
             f"stop  cache build n={len(self.phrase_embedding_cache_tensor)} elapsed={time.perf_counter() - _t0:.3f}s",
         )
         self.pretty.write(

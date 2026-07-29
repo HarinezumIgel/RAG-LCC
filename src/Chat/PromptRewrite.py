@@ -2,6 +2,7 @@
 
 import json
 import re
+import time
 from typing import Any
 
 # POS tags whose tokens qualify as content words for the grounding check.
@@ -17,6 +18,7 @@ from Gui.Colors import BRIGHT_MAGENTA, ORANGE, VIOLET
 from Gui.PrettyWriter import PrettyWriter
 from Helpers.DebugHelper import DebugHelper
 from Helpers.Helpers import Helpers
+from Helpers.PerfLogger import PerfLogger
 
 
 class PromptRewrite(SingletonMixin):
@@ -39,6 +41,7 @@ class PromptRewrite(SingletonMixin):
         self.llmCaller: LLMCaller = LLMCaller()
         self.tokenBudget: TokenBudget = TokenBudget()
         self.chatContext: ChatContext = ChatContext()
+        self.perf_logger: PerfLogger = PerfLogger()
 
         # Read model and prompt config from dedicated _LLM_REWRITE_PROMPT role
         llm_args: dict[str, Any] = self.helpers.get_model_args(
@@ -97,6 +100,14 @@ class PromptRewrite(SingletonMixin):
         standalone_rewrite otherwise. Falls back to the original query on
         parse failure or LLM error.
         """
+        # Performance logging
+        self.perf_logger.log(
+            "PromptRewrite.rewrite",
+            "chat",
+            f"start query expansion original_len={len(session.query or '')}",
+        )
+        _t0 = time.perf_counter()
+
         # EXAMPLE: session.query = "does it have spines"
         original_query: str = session.query or ""
         # EXAMPLE: original_query = "does it have spines"
@@ -482,4 +493,13 @@ class PromptRewrite(SingletonMixin):
                 "QueryRewrite",
                 f"Topic-detect prompt:\n{formatted}",
             )
+
+        # Performance logging stop
+        elapsed = time.perf_counter() - _t0
+        self.perf_logger.log(
+            "PromptRewrite.rewrite",
+            "chat",
+            f"stop  query expansion chosen={chosen[:50]!r} elapsed={elapsed:.3f}s",
+        )
+
         return chosen

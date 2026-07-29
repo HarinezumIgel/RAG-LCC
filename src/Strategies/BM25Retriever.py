@@ -162,7 +162,9 @@ class BM25Retriever(SingletonMixin):
             return
 
         self.perf_logger.log(
-            "BM25Retriever.load_or_rebuild", f"start load collection={collection_name}"
+            "BM25Retriever.load_or_rebuild",
+            "retriever",
+            f"start load collection={collection_name}",
         )
 
         idx_path = self._index_path(bm25_directory)
@@ -182,6 +184,7 @@ class BM25Retriever(SingletonMixin):
                 )
                 self.perf_logger.log(
                     "BM25Retriever.load_or_rebuild",
+                    "retriever",
                     f"stop  load (persisted) collection={collection_name} n={self._data.N}",
                 )
                 return
@@ -197,6 +200,7 @@ class BM25Retriever(SingletonMixin):
         self._persist(idx_path)
         self.perf_logger.log(
             "BM25Retriever.load_or_rebuild",
+            "retriever",
             f"stop  load (rebuilt) collection={collection_name} n={self._data.N}",
         )
 
@@ -312,7 +316,9 @@ class BM25Retriever(SingletonMixin):
             return []
 
         self.perf_logger.log(
-            "BM25Retriever.query", f"start bm25 query q={query_text[:60]!r}"
+            "BM25Retriever.query",
+            "retriever",
+            f"start bm25 query q={query_text[:60]!r}",
         )
         _t0 = time.perf_counter()
         scored: List[Tuple[int, float]] = []
@@ -345,6 +351,7 @@ class BM25Retriever(SingletonMixin):
             docs.append(doc)
         self.perf_logger.log(
             "BM25Retriever.query",
+            "retriever",
             f"stop  bm25 query n={len(docs)} elapsed={time.perf_counter() - _t0:.3f}s",
         )
         return docs
@@ -509,6 +516,7 @@ class BM25Retriever(SingletonMixin):
         """Fetch all chunks from ChromaDB and build the BM25 index."""
         self.perf_logger.log(
             "BM25Retriever._rebuild_from_collection",
+            "retriever",
             f"start rebuild collection={collection_name}",
         )
         _t0 = time.perf_counter()
@@ -563,6 +571,7 @@ class BM25Retriever(SingletonMixin):
         )
         self.perf_logger.log(
             "BM25Retriever._rebuild_from_collection",
+            "retriever",
             f"stop  rebuild collection={collection_name} n={data.N} elapsed={time.perf_counter() - _t0:.3f}s",
         )
 

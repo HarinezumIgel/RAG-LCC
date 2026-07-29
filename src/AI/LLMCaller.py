@@ -226,7 +226,9 @@ class LLMCaller:
 
             start: float = time.perf_counter()
             self.perf_logger.log(
-                "LLMCaller.call_llm", f"start inference model={model!r} stage={stage!r}"
+                "LLMCaller.call_llm",
+                "llm",
+                f"start inference model={model!r} stage={stage!r}",
             )
             # Log request details for debugging
             if DebugHelper.check(self.cfg, 80):
@@ -356,6 +358,7 @@ class LLMCaller:
             )
             self.perf_logger.log(
                 "LLMCaller.call_llm",
+                "llm",
                 f"stop  inference model={model!r} stage={stage!r} elapsed={elapsed:.3f}s",
             )
 

@@ -69,7 +69,7 @@ class BM25Scorer(SingletonMixin, ScorerBase):
             return cached
 
         self.perf_logger.log(
-            "BM25Scorer._prepare_banlist", f"start cache build lang={lang}"
+            "BM25Scorer._prepare_banlist", "scorer", f"start cache build lang={lang}"
         )
         _t0 = time.perf_counter()
         banlist: List[str] = self.sharedHelpers.get_translated_wordlist(
@@ -120,6 +120,7 @@ class BM25Scorer(SingletonMixin, ScorerBase):
 
         self.perf_logger.log(
             "BM25Scorer._prepare_banlist",
+            "scorer",
             f"stop  cache build lang={lang} n={len(prepared)} elapsed={time.perf_counter() - _t0:.3f}s",
         )
         self.pretty.write(

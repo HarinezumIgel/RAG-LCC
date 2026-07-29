@@ -1,6 +1,7 @@
 # pyright: reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownVariableType=false, reportUnknownMemberType=false
 """Tests for the VisualMarkers package."""
 
+import importlib
 import io
 import os
 import sys
@@ -244,6 +245,54 @@ def test_mark_to_bytes_does_not_modify_source(tmp_path):
 def test_visual_marker_base_raises_not_implemented():
     with pytest.raises(NotImplementedError):
         VisualMarker().mark_to_bytes(Path("x.pdf"), [])
+
+
+def test_answer_grounder_uses_singleton_config(monkeypatch):
+    import Config.Config as cfg_mod
+
+    class FakeConfig:
+        def __init__(self, *args, **kwargs):
+            self._initialized = True
+
+        def get(self, key, default=None, allow_indirect=True, *, silent=False):
+            if key == "_MARKED_DOCS_GROUNDING":
+                return {
+                    "min_sentence_tokens": 3,
+                    "min_fragment_len": 7,
+                    "min_overlap_window": 4,
+                }
+            if key == "_MARKED_DOCS_GROUNDING.min_sentence_tokens":
+                return 3
+            if key == "_MARKED_DOCS_GROUNDING.min_fragment_len":
+                return 7
+            if key == "_MARKED_DOCS_GROUNDING.min_overlap_window":
+                return 4
+            return default
+
+        def get_int(self, key, default=0, *, silent=False):
+            if key == "_MARKED_DOCS_GROUNDING.min_sentence_tokens":
+                return 3
+            if key == "_MARKED_DOCS_GROUNDING.min_fragment_len":
+                return 7
+            if key == "_MARKED_DOCS_GROUNDING.min_overlap_window":
+                return 4
+            return int(default)
+
+    monkeypatch.setattr(cfg_mod, "Config", FakeConfig, raising=False)
+
+    module = importlib.import_module("VisualMarkers.AnswerGrounder")
+    module = importlib.reload(module)
+    module.AnswerGrounder._reset()
+
+    grounded = module.AnswerGrounder()
+
+    assert grounded.min_sentence_tokens == 3
+    assert grounded.min_fragment_len == 7
+    assert grounded.min_overlap_window == 4
+    assert (
+        grounded.ground_answer_cli("A short answer", ["A matching chunk"])
+        == "A short answer"
+    )
 
 
 # ---------------------------------------------------------------------------

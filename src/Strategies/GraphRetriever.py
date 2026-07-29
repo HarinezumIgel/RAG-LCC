@@ -285,7 +285,9 @@ class GraphRetriever(SingletonMixin):
             return []
 
         self.perf_logger.log(
-            "GraphRetriever.query", f"start graph query q={query_text[:60]!r}"
+            "GraphRetriever.query",
+            "retriever",
+            f"start graph query q={query_text[:60]!r}",
         )
         _t0 = time.perf_counter()
         seed_entities = [
@@ -356,6 +358,7 @@ class GraphRetriever(SingletonMixin):
             )
         self.perf_logger.log(
             "GraphRetriever.query",
+            "retriever",
             f"stop  graph query n={len(docs)} elapsed={time.perf_counter() - _t0:.3f}s",
         )
         return docs

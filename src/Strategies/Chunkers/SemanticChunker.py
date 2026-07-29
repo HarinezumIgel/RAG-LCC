@@ -1,3 +1,4 @@
+import time
 import uuid
 from typing import Any
 
@@ -11,6 +12,7 @@ from Gui.Colors import BRIGHT_BLUE, RESET, VIOLET
 from Gui.PrettyWriter import PrettyWriter
 from Helpers.FileUtils import FileUtils
 from Helpers.Helpers import Helpers
+from Helpers.PerfLogger import PerfLogger
 from Strategies.Chunkers.ChunkerStrategy import ChunkerStrategy, ChunkResult
 from Strategies.Chunkers.SentenceSplitter import SentenceSplitter
 
@@ -61,6 +63,7 @@ class SemanticChunker(ChunkerStrategy):
         self._cfg: Config = cfg or Config()
         self._helpers: Helpers = helpers or Helpers()
         self._fileUtils: FileUtils = file_utils or FileUtils()
+        self.perf_logger: PerfLogger = PerfLogger()
 
         chunker_slot: str = (
             f"_CHUNKERS.{chunker_name}"
@@ -90,6 +93,13 @@ class SemanticChunker(ChunkerStrategy):
         return self._max_chunk_size
 
     def chunk(self, content: str, metadata: dict[str, Any]) -> ChunkResult:
+        self.perf_logger.log(
+            "SemanticChunker.chunk",
+            "chunker",
+            f"start content_len={len(content)}",
+        )
+        _t0 = time.perf_counter()
+
         sentences: list[str] = self._split_sentences(content)
 
         if len(sentences) <= 1:
@@ -97,7 +107,14 @@ class SemanticChunker(ChunkerStrategy):
             if texts and self._fileUtils.count_words(texts[0]) > self._max_chunk_size:
                 texts = self._split_oversized(texts[0])
             # No sentence embeddings available → caller must embed these
-            return self._to_docs(texts, metadata), None
+            result = self._to_docs(texts, metadata), None
+            elapsed = time.perf_counter() - _t0
+            self.perf_logger.log(
+                "SemanticChunker.chunk",
+                "chunker",
+                f"stop n={len(result[0])} elapsed={elapsed:.3f}s",
+            )
+            return result
 
         # Merge consecutive short fragments so they get one embedding
         # instead of noisy individual vectors (common in PDF tables/specs).
@@ -154,7 +171,14 @@ class SemanticChunker(ChunkerStrategy):
             f"({len(breakpoints)} topic boundaries detected){RESET}",
         )
 
-        return self._to_docs(final_texts, metadata), chunk_embeddings
+        result = self._to_docs(final_texts, metadata), chunk_embeddings
+        elapsed = time.perf_counter() - _t0
+        self.perf_logger.log(
+            "SemanticChunker.chunk",
+            "chunker",
+            f"stop n={len(result[0])} elapsed={elapsed:.3f}s",
+        )
+        return result
 
     # -- Internal helpers ---------------------------------------------------
 

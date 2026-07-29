@@ -33,6 +33,7 @@ from Helpers.CSVWriter import CSVWriter
 from Helpers.FileUtils import FileUtils
 from Helpers.Helpers import Helpers
 from Helpers.OfficeDocConverter import OfficeDocConverter
+from Helpers.PerfLogger import PerfLogger
 from Helpers.ValidExtensions import ValidExtensions
 from Strategies.ProcessingStrategy import ProcessingStrategy
 from Strategies.StrategyType import StrategyType
@@ -78,6 +79,7 @@ class LoadAndClassifyProcessor(SingletonMixin):
         self.csvWriter: CSVWriter = CSVWriter()
         self.masker: Masker = Masker()
         self.unicode_normalizer: UnicodeNormalizer = UnicodeNormalizer()
+        self.perf_logger: PerfLogger = PerfLogger()
 
         self.fileName: str | None = None
         self.fileHash: str = "N/A"
@@ -237,6 +239,14 @@ class LoadAndClassifyProcessor(SingletonMixin):
         Walk self.doc_dir, extract text from each file, then either
         chunk or classify.
         """
+        # Performance logging for batch processing
+        self.perf_logger.log(
+            "LoadAndClassifyProcessor.process_files",
+            "pipeline",
+            f"start batch processing dir={self.doc_dir}",
+        )
+        _t0_batch = time.perf_counter()
+
         for root, _, files in os.walk(self.doc_dir):
             for self.fileName in files:
                 self.filePath: str = os.path.join(root, self.fileName)
@@ -407,6 +417,7 @@ class LoadAndClassifyProcessor(SingletonMixin):
                     self.globalsInstance.add_failed_doc(
                         {"FilePath": self.escapedFilePath, "error": str(e)}
                     )
+
                     continue
                 if self.content == "":
                     if disabled_office_component != "":
@@ -422,6 +433,7 @@ class LoadAndClassifyProcessor(SingletonMixin):
                             "Empty file",
                             f"File {self.escapedFilePath} has no content and is ignored",
                         )
+
                     continue
                 self.content = self.unicode_normalizer.normalize(
                     self.content,
@@ -435,3 +447,11 @@ class LoadAndClassifyProcessor(SingletonMixin):
                 self.strategy.process(self.doc)
 
                 self.processed_countInstance.increment()
+
+        # Log batch completion
+        elapsed_batch = time.perf_counter() - _t0_batch
+        self.perf_logger.log(
+            "LoadAndClassifyProcessor.process_files",
+            "pipeline",
+            f"stop  batch processing elapsed={elapsed_batch:.3f}s",
+        )

@@ -12,13 +12,13 @@ Usage::
     self.perf_logger = PerfLogger()
 
     # Later, wherever timing is needed:
-    self.perf_logger.log("BM25Retriever.query", "start bm25 query q='cats'")
+    self.perf_logger.log("BM25Retriever.query", "bm25", "start bm25 query q='cats'")
     # ... do work ...
-    self.perf_logger.log("BM25Retriever.query", f"stop  bm25 query n={len(results)}")
+    self.perf_logger.log("BM25Retriever.query", "bm25", f"stop  bm25 query n={len(results)}")
 
 Log format (one line per event)::
 
-    2026-07-13T14:22:05.123Z | BM25Retriever.query              | start bm25 query q='cats'
+    2026-07-13T14:22:05.123Z | 1.234s | bm25   | BM25Retriever.query              | start bm25 query q='cats'
 
 Enable/disable via ``PERFORMANCE_LOGGING`` in ``Configuration/Config_Global.py``.
 The log file is created (with its directory) on first write.
@@ -35,11 +35,13 @@ import os
 import sys
 import time
 from datetime import datetime, timezone
+from typing import Optional
 
 from Commons.SingletonMixin import SingletonMixin
 
 _LOG_DIR: str = os.path.join("logs", "Performance")
 _CALLER_WIDTH: int = 45
+_GROUP_WIDTH: int = 12
 
 
 def _build_log_filename() -> str:
@@ -119,7 +121,7 @@ class PerfLogger(SingletonMixin):
     # Public API
     # ------------------------------------------------------------------
 
-    def log(self, caller: str, detail: str) -> None:
+    def log(self, caller: str, group: Optional[str], detail: str) -> None:
         """Emit a timestamped performance event to ``logs/Performance/<AppName>_Performance_<stamp>.log``.
 
         No-op when ``PERFORMANCE_LOGGING = False`` in Config_Global.py.
@@ -129,6 +131,9 @@ class PerfLogger(SingletonMixin):
         caller:
             Module and function name, e.g. ``"BM25Retriever.query"``.
             Padded to a fixed width so columns align across callers.
+        group:
+            Logical group for the event, e.g. ``"bm25"``, ``"cache"``, ``"scorer"``.
+            Padded to a fixed width. Use ``None`` or ``"-"`` for ungrouped events.
         detail:
             Free-form description, e.g.
             ``"start bm25 query q='cats'"`` or
@@ -148,10 +153,12 @@ class PerfLogger(SingletonMixin):
                 elapsed_col = f"\u0394={now - t0:.3f}s"
 
         ts: str = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+        group_str: str = group if group is not None else "-"
         self._get_file_logger().info(
-            "%s | %-10s | %-*s | %s",
+            "%s | %-10s | %-12s | %-*s | %s",
             ts,
             elapsed_col,
+            group_str,
             _CALLER_WIDTH,
             caller,
             detail,

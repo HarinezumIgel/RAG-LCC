@@ -4,7 +4,7 @@ SPDXID: SPDXRef-DOCUMENT
 DocumentName: RAG-LCC-DEPLOY-Licenses
 DocumentNamespace: http://example.org/spdxdocs/RAG-LCC-DEPLOY-Licenses
 Creator: pip-licenses
-Created: 2026-07-18T10:43:06+02:00
+Created: 2026-07-29T16:45:00+02:00
 
 #####
 PackageName: Jinja2
@@ -63,7 +63,7 @@ PackageLicenseDeclared: Python Software Foundation License
 #####
 PackageName: aiohttp
 SPDXID: SPDXRef-Package-aiohttp
-PackageVersion: 3.14.1
+PackageVersion: 3.14.3
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: Apache-2.0 AND MIT
@@ -81,7 +81,7 @@ PackageLicenseDeclared: Apache Software License
 #####
 PackageName: annotated-doc
 SPDXID: SPDXRef-Package-annotated-doc
-PackageVersion: 0.0.4
+PackageVersion: 0.0.5
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: MIT
@@ -90,11 +90,11 @@ PackageLicenseDeclared: MIT
 #####
 PackageName: annotated-types
 SPDXID: SPDXRef-Package-annotated-types
-PackageVersion: 0.7.0
+PackageVersion: 0.8.0
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
-PackageLicenseConcluded: MIT License
-PackageLicenseDeclared: MIT License
+PackageLicenseConcluded: MIT
+PackageLicenseDeclared: MIT
 
 #####
 PackageName: anyio
@@ -198,7 +198,7 @@ PackageLicenseDeclared: MIT License
 #####
 PackageName: certifi
 SPDXID: SPDXRef-Package-certifi
-PackageVersion: 2026.6.17
+PackageVersion: 2026.7.22
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: Mozilla Public License 2.0 (MPL 2.0)
@@ -387,7 +387,7 @@ PackageLicenseDeclared: MIT License
 #####
 PackageName: fastapi
 SPDXID: SPDXRef-Package-fastapi
-PackageVersion: 0.139.2
+PackageVersion: 0.140.13
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: MIT
@@ -396,7 +396,7 @@ PackageLicenseDeclared: MIT
 #####
 PackageName: fastjsonschema
 SPDXID: SPDXRef-Package-fastjsonschema
-PackageVersion: 2.21.2
+PackageVersion: 2.22.1
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: BSD License
@@ -405,7 +405,7 @@ PackageLicenseDeclared: BSD License
 #####
 PackageName: filelock
 SPDXID: SPDXRef-Package-filelock
-PackageVersion: 3.31.0
+PackageVersion: 3.32.0
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: MIT
@@ -432,7 +432,7 @@ PackageLicenseDeclared: Apache-2.0
 #####
 PackageName: fsspec
 SPDXID: SPDXRef-Package-fsspec
-PackageVersion: 2026.6.0
+PackageVersion: 2026.7.0
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: BSD-3-Clause
@@ -450,7 +450,7 @@ PackageLicenseDeclared: Apache Software License
 #####
 PackageName: grpcio
 SPDXID: SPDXRef-Package-grpcio
-PackageVersion: 1.82.1
+PackageVersion: 1.83.0
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: Apache-2.0
@@ -513,7 +513,7 @@ PackageLicenseDeclared: BSD License
 #####
 PackageName: huggingface_hub
 SPDXID: SPDXRef-Package-huggingface_hub
-PackageVersion: 1.24.0
+PackageVersion: 1.25.1
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: Apache Software License
@@ -675,7 +675,7 @@ PackageLicenseDeclared: Apache Software License
 #####
 PackageName: langchain-core
 SPDXID: SPDXRef-Package-langchain-core
-PackageVersion: 1.4.9
+PackageVersion: 1.5.2
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: MIT License
@@ -720,7 +720,7 @@ PackageLicenseDeclared: Apache Software License
 #####
 PackageName: langsmith
 SPDXID: SPDXRef-Package-langsmith
-PackageVersion: 0.10.6
+PackageVersion: 0.10.12
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: MIT
@@ -783,7 +783,7 @@ PackageLicenseDeclared: GNU Affero General Public License v3
 #####
 PackageName: mistune
 SPDXID: SPDXRef-Package-mistune
-PackageVersion: 3.3.3
+PackageVersion: 3.3.4
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: BSD License
@@ -900,7 +900,7 @@ PackageLicenseDeclared: BSD-3-Clause
 #####
 PackageName: onnxruntime
 SPDXID: SPDXRef-Package-onnxruntime
-PackageVersion: 1.27.0
+PackageVersion: 1.28.0
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: MIT License
@@ -999,7 +999,7 @@ PackageLicenseDeclared: Apache-2.0 OR BSD-2-Clause
 #####
 PackageName: pandas
 SPDXID: SPDXRef-Package-pandas
-PackageVersion: 3.0.3
+PackageVersion: 3.0.5
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: BSD License
@@ -1116,7 +1116,7 @@ PackageLicenseDeclared: Apache Software License
 #####
 PackageName: platformdirs
 SPDXID: SPDXRef-Package-platformdirs
-PackageVersion: 4.10.1
+PackageVersion: 4.11.0
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: MIT
@@ -1161,7 +1161,7 @@ PackageLicenseDeclared: BSD-3-Clause
 #####
 PackageName: prompt_toolkit
 SPDXID: SPDXRef-Package-prompt_toolkit
-PackageVersion: 3.0.52
+PackageVersion: 3.0.53
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: BSD License
@@ -1350,7 +1350,7 @@ PackageLicenseDeclared: MIT
 #####
 PackageName: regex
 SPDXID: SPDXRef-Package-regex
-PackageVersion: 2026.7.10
+PackageVersion: 2026.7.19
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: Apache-2.0 AND CNRI-Python
@@ -1440,7 +1440,7 @@ PackageLicenseDeclared: BSD License
 #####
 PackageName: sentence-transformers
 SPDXID: SPDXRef-Package-sentence-transformers
-PackageVersion: 5.6.0
+PackageVersion: 5.6.1
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: Apache-2.0
@@ -1503,7 +1503,7 @@ PackageLicenseDeclared: Apache Software License; MIT License
 #####
 PackageName: soupsieve
 SPDXID: SPDXRef-Package-soupsieve
-PackageVersion: 2.8.4
+PackageVersion: 2.9.1
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: MIT
@@ -1647,7 +1647,7 @@ PackageLicenseDeclared: Apache Software License
 #####
 PackageName: tqdm
 SPDXID: SPDXRef-Package-tqdm
-PackageVersion: 4.69.0
+PackageVersion: 4.70.0
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: MPL-2.0 AND MIT
@@ -1728,7 +1728,7 @@ PackageLicenseDeclared: BSD-3-Clause
 #####
 PackageName: uvicorn
 SPDXID: SPDXRef-Package-uvicorn
-PackageVersion: 0.51.0
+PackageVersion: 0.52.0
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: BSD-3-Clause
@@ -1809,7 +1809,7 @@ PackageLicenseDeclared: MIT
 #####
 PackageName: wrapt
 SPDXID: SPDXRef-Package-wrapt
-PackageVersion: 2.2.2
+PackageVersion: 2.3.0
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: BSD-2-Clause
@@ -1845,7 +1845,7 @@ PackageLicenseDeclared: MIT License
 #####
 PackageName: yarl
 SPDXID: SPDXRef-Package-yarl
-PackageVersion: 1.24.2
+PackageVersion: 1.24.5
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: Apache-2.0

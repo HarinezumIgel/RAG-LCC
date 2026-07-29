@@ -67,6 +67,7 @@ class RegexScorer(ScorerBase):
 
         self.perf_logger.log(
             "RegexScorer._compile_patterns",
+            "scorer",
             f"start cache build lang={lang} stage={stage}",
         )
         _t0 = time.perf_counter()
@@ -202,6 +203,7 @@ class RegexScorer(ScorerBase):
         self.compiled_cache[lang][stage] = compiled_list
         self.perf_logger.log(
             "RegexScorer._compile_patterns",
+            "scorer",
             f"stop  cache build lang={lang} stage={stage} n={len(compiled_list)} elapsed={time.perf_counter() - _t0:.3f}s",
         )
         if DebugHelper.check(self.cfg, 10):

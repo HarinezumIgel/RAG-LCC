@@ -1,10 +1,12 @@
 import os
+import time
 from typing import Any
 
 from Config.Config import Config
 from Gui.Colors import ORANGE
 from Helpers.FileUtils import FileUtils
 from Helpers.Helpers import Helpers
+from Helpers.PerfLogger import PerfLogger
 from Strategies.Chunkers.PageBasedChunker import PageBasedChunker, PageData
 
 
@@ -39,6 +41,7 @@ class PdfPageChunker(PageBasedChunker):
             file_utils=file_utils,
             chunker_name=chunker_name,
         )
+        self.perf_logger: PerfLogger = PerfLogger()
 
     # -- PageBasedChunker interface -----------------------------------------
 

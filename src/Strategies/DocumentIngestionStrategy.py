@@ -222,6 +222,7 @@ class DocumentIngestionStrategy(SingletonMixin):
         pre_embeddings: list[list[float] | None] | None
         self.perf_logger.log(
             "DocumentIngestionStrategy.ingest",
+            "ingestion",
             f"start chunking chunker={chunker_label}",
         )
         _t_chunk = time.perf_counter()
@@ -230,6 +231,7 @@ class DocumentIngestionStrategy(SingletonMixin):
         )
         self.perf_logger.log(
             "DocumentIngestionStrategy.ingest",
+            "ingestion",
             f"stop  chunking chunker={chunker_label} n={len(doc_chunks)} elapsed={time.perf_counter() - _t_chunk:.3f}s",
         )
         self.pretty.write(
@@ -343,6 +345,7 @@ class DocumentIngestionStrategy(SingletonMixin):
         """
         self.perf_logger.log(
             "DocumentIngestionStrategy._resolve_embeddings",
+            "ingestion",
             f"start embed n={len(texts_trunc)}",
         )
         _t_emb = time.perf_counter()
@@ -351,6 +354,7 @@ class DocumentIngestionStrategy(SingletonMixin):
             result_emb = self.embedder.embed_documents(texts_trunc)
             self.perf_logger.log(
                 "DocumentIngestionStrategy._resolve_embeddings",
+                "ingestion",
                 f"stop  embed (full) n={len(result_emb)} elapsed={time.perf_counter() - _t_emb:.3f}s",
             )
             return result_emb
@@ -367,6 +371,7 @@ class DocumentIngestionStrategy(SingletonMixin):
             )
             self.perf_logger.log(
                 "DocumentIngestionStrategy._resolve_embeddings",
+                "ingestion",
                 f"stop  embed (all cached) n={len(pre_embeddings)} elapsed={time.perf_counter() - _t_emb:.3f}s",
             )
             return [emb for emb in pre_embeddings]  # type: ignore[misc]
@@ -389,6 +394,7 @@ class DocumentIngestionStrategy(SingletonMixin):
 
         self.perf_logger.log(
             "DocumentIngestionStrategy._resolve_embeddings",
+            "ingestion",
             f"stop  embed (partial) reused={len(texts_trunc) - len(need_idx)} embedded={len(need_idx)} elapsed={time.perf_counter() - _t_emb:.3f}s",
         )
         return result

@@ -194,6 +194,7 @@ class RAGChatImpl(SingletonMixin):
     def _rerank(self, mySession: Session, all_docs: list[Any]) -> list[Any]:
         self.perf_logger.log(
             "RAGChatImpl._rerank",
+            "chat",
             f"start rerank pairs={len(all_docs)} model={self.cross_encoder_model_name!r}",
         )
         _t_rerank = time.perf_counter()
@@ -354,6 +355,7 @@ class RAGChatImpl(SingletonMixin):
         )
         self.perf_logger.log(
             "RAGChatImpl._rerank",
+            "chat",
             f"stop  rerank n={len(reranked)} elapsed={time.perf_counter() - _t_rerank:.3f}s",
         )
         return reranked
@@ -421,7 +423,7 @@ class RAGChatImpl(SingletonMixin):
 
     def _retrieve(self, mySession: Session) -> Tuple[str, int]:
         if self._set_vector_store(mySession):
-            self.perf_logger.log("RAGChatImpl._retrieve", "start retrieve")
+            self.perf_logger.log("RAGChatImpl._retrieve", "chat", "start retrieve")
             # Reset one-shot topic-switch flag from the previous turn.
             mySession.force_skip_rewrite = False
             mySession.effective_query = None
@@ -672,7 +674,7 @@ class RAGChatImpl(SingletonMixin):
                     self.vector_store is not None
                 ), "vector_store not initialized; call set_vector_store first"
                 self.perf_logger.log(
-                    "RAGChatImpl._retrieve", "start vector similarity_search"
+                    "RAGChatImpl._retrieve", "chat", "start vector similarity_search"
                 )
                 _t_vec = time.perf_counter()
                 hits: list[Any] = self.vector_store.similarity_search_with_score(
@@ -681,6 +683,7 @@ class RAGChatImpl(SingletonMixin):
                 vector_docs = self.chatContext.annotate_chunks(hits)
                 self.perf_logger.log(
                     "RAGChatImpl._retrieve",
+                    "chat",
                     f"stop  vector similarity_search n={len(vector_docs)} elapsed={time.perf_counter() - _t_vec:.3f}s",
                 )
                 for d in vector_docs:
@@ -737,6 +740,7 @@ class RAGChatImpl(SingletonMixin):
                 assert self.persist_directory is not None
                 self.perf_logger.log(
                     "RAGChatImpl._retrieve",
+                    "chat",
                     f"start bm25 block collection={self.collection_name}",
                 )
                 _t_bm25 = time.perf_counter()
@@ -765,6 +769,7 @@ class RAGChatImpl(SingletonMixin):
                 )
                 self.perf_logger.log(
                     "RAGChatImpl._retrieve",
+                    "chat",
                     f"stop  bm25 block n={len(bm25_docs)} elapsed={time.perf_counter() - _t_bm25:.3f}s",
                 )
                 if DebugHelper.check_session(mySession, 10):
@@ -784,6 +789,7 @@ class RAGChatImpl(SingletonMixin):
                 assert self.collection is not None
                 self.perf_logger.log(
                     "RAGChatImpl._retrieve",
+                    "chat",
                     f"start graph block collection={self.collection_name}",
                 )
                 _t_graph = time.perf_counter()
@@ -811,6 +817,7 @@ class RAGChatImpl(SingletonMixin):
                 )
                 self.perf_logger.log(
                     "RAGChatImpl._retrieve",
+                    "chat",
                     f"stop  graph block n={len(graph_docs)} elapsed={time.perf_counter() - _t_graph:.3f}s",
                 )
                 if DebugHelper.check_session(mySession, 30):
@@ -853,7 +860,9 @@ class RAGChatImpl(SingletonMixin):
                         else "Querying web search..."
                     )
                     self.pretty.write("I", "Web", label)
-                    self.perf_logger.log("RAGChatImpl._retrieve", "start web block")
+                    self.perf_logger.log(
+                        "RAGChatImpl._retrieve", "chat", "start web block"
+                    )
                     _t_web = time.perf_counter()
                     web_docs = self.web_retriever.query(
                         mySession.query or "",
@@ -870,6 +879,7 @@ class RAGChatImpl(SingletonMixin):
                     )
                     self.perf_logger.log(
                         "RAGChatImpl._retrieve",
+                        "chat",
                         f"stop  web block n={len(web_docs)} elapsed={time.perf_counter() - _t_web:.3f}s",
                     )
                     if DebugHelper.check_session(mySession, 10):
@@ -1109,7 +1119,7 @@ class RAGChatImpl(SingletonMixin):
             context: str = header + body
             if chosen:
                 self.perf_logger.log(
-                    "RAGChatImpl._retrieve", f"stop  retrieve n={len(chosen)}"
+                    "RAGChatImpl._retrieve", "chat", f"stop  retrieve n={len(chosen)}"
                 )
                 return context, len(chosen)
             return "", 0
@@ -1253,15 +1263,9 @@ class RAGChatImpl(SingletonMixin):
         if not answer_text:
             return grounded
 
-        min_sentence_tokens = max(
-            1, self.cfg.get_int("_MARKED_DOCS_GROUNDING.min_sentence_tokens") or 5
-        )
-        min_fragment_len = max(
-            1, self.cfg.get_int("_MARKED_DOCS_GROUNDING.min_fragment_len") or 12
-        )
-        min_overlap_window = max(
-            1, self.cfg.get_int("_MARKED_DOCS_GROUNDING.min_overlap_window") or 5
-        )
+        from VisualMarkers.AnswerGrounder import AnswerGrounder
+
+        grounder = AnswerGrounder()
 
         seen_by_file: dict[str, set[str]] = {}
         for doc in chosen:
@@ -1283,13 +1287,7 @@ class RAGChatImpl(SingletonMixin):
             if not chunk_text.strip():
                 continue
 
-            matched = find_grounded_sentences(
-                answer_text,
-                [chunk_text],
-                min_sentence_tokens=min_sentence_tokens,
-                min_fragment_len=min_fragment_len,
-                min_overlap_window=min_overlap_window,
-            )
+            matched = grounder.find_grounded_sentences(answer_text, [chunk_text])
             if DebugHelper.check(self.cfg, 33):
                 fn = meta.get("FileName", os.path.basename(file_path))
                 self.pretty.write(
@@ -1303,12 +1301,7 @@ class RAGChatImpl(SingletonMixin):
                 continue
 
             # Use verbatim chunk sentences (matched by window overlap) for PDF highlighting.
-            pdf_texts = find_grounding_fragments_in_chunk(
-                matched,
-                chunk_text,
-                min_fragment_len=min_fragment_len,
-                min_overlap_window=min_overlap_window,
-            )
+            pdf_texts = grounder.find_grounding_fragments_in_chunk(matched, chunk_text)
             if DebugHelper.check(self.cfg, 33):
                 fn = meta.get("FileName", os.path.basename(file_path))
                 fallback = pdf_texts == matched
@@ -1324,11 +1317,8 @@ class RAGChatImpl(SingletonMixin):
                     color=CYAN,
                 )
                 for i, sentence in enumerate(matched):
-                    hits = find_grounding_fragments_in_chunk(
-                        [sentence],
-                        chunk_text,
-                        min_fragment_len=min_fragment_len,
-                        min_overlap_window=min_overlap_window,
+                    hits = grounder.find_grounding_fragments_in_chunk(
+                        [sentence], chunk_text
                     )
                     hit_strs = hits if hits != [sentence] else []
                     self.pretty.write(
@@ -1338,13 +1328,8 @@ class RAGChatImpl(SingletonMixin):
                         color=CYAN,
                     )
                     if hit_strs:
-                        from VisualMarkers.AnswerGrounder import \
-                            find_first_overlap_span
-
                         for h in hit_strs:
-                            span = find_first_overlap_span(
-                                sentence, h, min_overlap_window=min_overlap_window
-                            )
+                            span = grounder.find_first_overlap_span(sentence, h)
                             self.pretty.write(
                                 "D", "Grounding", f"    → pdf:   {h!r}", color=CYAN
                             )

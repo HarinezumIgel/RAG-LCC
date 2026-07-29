@@ -102,7 +102,7 @@ class ClassifyHelper:
         self.pretty.write(
             "I",
             "KeyBERT",
-            f"Embed model: {embed_model_name}, bits: {self.bits} top_n_first/second {top_n_first} / {top_n_second} ngram_pass1/2 {ngram_pass1} / {ngram_pass2}",
+            f"Embed model: {embed_model_name}, bits: {self.bits} top_n_first/second {top_n_first} / {top_n_second} ngram_pass 1/2 {ngram_pass1} / {ngram_pass2}",
         )
         self.pretty.write(
             "I",

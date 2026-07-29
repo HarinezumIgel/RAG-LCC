@@ -4,18 +4,14 @@ Strategy (Option A — token overlap)
 -------------------------------------
 After the LLM returns its answer, split it into sentences, then run the same
 bidirectional token-containment check used by ``PlainTextVisualMarker`` against
-every retrieved chunk text.  Sentences that pass the check are considered
+every retrieved chunk text. Sentences that pass the check are considered
 *grounded* and are wrapped with a format-specific marker:
 
-* CLI (terminal)  — ANSI escape codes for a configurable background colour.
+* CLI (terminal) — ANSI escape codes for a configurable background colour.
 * Markdown / HTML — ``<mark style="background: COLOR">…</mark>``.
 
 This approach has a ~30–50% match rate on paraphrased text, but every match it
 finds is a genuine one (no false positives from the token check).
-
-The module is intentionally stateless: ``ground_answer_cli`` and
-``ground_answer_md`` are pure functions that accept the answer string and chunk
-texts and return the annotated string.
 """
 
 from __future__ import annotations
@@ -23,14 +19,8 @@ from __future__ import annotations
 import re
 from typing import Callable, Sequence
 
-# Minimum token count for a sentence to be eligible for grounding.
-_MIN_SENTENCE_TOKENS = 5
-
-# Minimum fragment length (characters) used when splitting chunks into lines.
-_MIN_FRAGMENT_LEN = 12
-
-# Contiguous token window size for paraphrase grounding.
-_MIN_OVERLAP_WINDOW = 5
+from Commons.SingletonMixin import SingletonMixin
+from Config.Config import Config
 
 _PUNCT_RX = re.compile(r"[^\w\s]")
 
@@ -44,44 +34,200 @@ _SENTENCE_SPLIT_RX = re.compile(r"(?<=[.!?])\s+")
 # ---------------------------------------------------------------------------
 
 
+class AnswerGrounder(SingletonMixin):
+    """Singleton that marks grounded answer sentences using config-backed thresholds."""
+
+    def __init__(self) -> None:
+        if getattr(self, "_initialized", False):
+            return
+        self._initialized = True
+
+        self.config = Config()
+        self.min_sentence_tokens: int = max(
+            1,
+            self.config.get_int(
+                "_MARKED_DOCS_GROUNDING.min_sentence_tokens", 5, silent=True
+            ),
+        )
+        self.min_fragment_len: int = max(
+            1,
+            self.config.get_int(
+                "_MARKED_DOCS_GROUNDING.min_fragment_len", 12, silent=True
+            ),
+        )
+        self.min_overlap_window: int = max(
+            1,
+            self.config.get_int(
+                "_MARKED_DOCS_GROUNDING.min_overlap_window", 5, silent=True
+            ),
+        )
+
+    def ground_answer_cli(
+        self,
+        answer: str,
+        chunk_texts: Sequence[str],
+        ansi_codes: str = "48;5;116",
+    ) -> str:
+        """Return *answer* with grounded sentences wrapped in ANSI colour codes."""
+        if not ansi_codes or not chunk_texts:
+            return answer
+        reset = "\033[0m"
+        open_tag = f"\033[{ansi_codes}m"
+
+        def _wrap(sentence: str) -> str:
+            return f"{open_tag}{sentence}{reset}"
+
+        return _apply_grounding(
+            answer,
+            chunk_texts,
+            _wrap,
+            min_sentence_tokens=self.min_sentence_tokens,
+            min_fragment_len=self.min_fragment_len,
+            min_overlap_window=self.min_overlap_window,
+        )
+
+    def ground_answer_md(
+        self,
+        answer: str,
+        chunk_texts: Sequence[str],
+        mark_color: str = "#C8F0E8",
+    ) -> str:
+        """Return *answer* with grounded sentences wrapped in ``<mark>`` HTML tags."""
+        if not chunk_texts:
+            return answer
+        if mark_color:
+
+            def _wrap(sentence: str) -> str:
+                return f'<mark style="background-color: {mark_color}">{sentence}</mark>'
+
+        else:
+
+            def _wrap(sentence: str) -> str:  # type: ignore[misc]
+                return f"<mark>{sentence}</mark>"
+
+        return _apply_grounding(
+            answer,
+            chunk_texts,
+            _wrap,
+            min_sentence_tokens=self.min_sentence_tokens,
+            min_fragment_len=self.min_fragment_len,
+            min_overlap_window=self.min_overlap_window,
+        )
+
+    def find_grounded_sentences(
+        self, answer: str, chunk_texts: Sequence[str]
+    ) -> list[str]:
+        """Return a list of grounded sentences from the answer."""
+        if not chunk_texts:
+            return []
+
+        chunk_token_sets: list[list[str]] = [_tokenize(c) for c in chunk_texts]
+        chunk_fragments: list[list[str]] = [
+            [f for f in _iter_fragments(c, min_fragment_len=self.min_fragment_len)]
+            for c in chunk_texts
+        ]
+
+        grounded: list[str] = []
+        for para in answer.splitlines():
+            if not para.strip():
+                continue
+
+            sentences = _SENTENCE_SPLIT_RX.split(para)
+            for sentence in sentences:
+                tokens = _tokenize(sentence)
+                if len(tokens) >= self.min_sentence_tokens and _is_grounded(
+                    tokens,
+                    sentence,
+                    chunk_token_sets,
+                    chunk_fragments,
+                    self.min_overlap_window,
+                ):
+                    grounded.append(sentence)
+
+        return grounded
+
+    def find_grounding_fragments_in_chunk(
+        self, grounded_sentences: list[str], chunk_text: str
+    ) -> list[str]:
+        """Return verbatim chunk sentences that overlap with *grounded_sentences*."""
+        if not grounded_sentences or not chunk_text.strip():
+            return grounded_sentences
+
+        sentence_token_sets = [_tokenize(s) for s in grounded_sentences]
+        window = max(1, self.min_overlap_window)
+
+        chunk_sentences: list[str] = []
+        seen_cs: set[str] = set()
+        for line in chunk_text.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            for sent in _SENTENCE_SPLIT_RX.split(line):
+                stripped = sent.strip()
+                if len(stripped) >= self.min_fragment_len and stripped not in seen_cs:
+                    seen_cs.add(stripped)
+                    chunk_sentences.append(stripped)
+        if not chunk_sentences:
+            stripped = chunk_text.strip()
+            if stripped:
+                chunk_sentences = [stripped]
+
+        result: list[str] = []
+        seen_result: set[str] = set()
+        for chunk_sent in chunk_sentences:
+            c_tokens = _tokenize(chunk_sent)
+            key = " ".join(c_tokens)
+            if key in seen_result:
+                continue
+            for s_tokens in sentence_token_sets:
+                effective_window = min(window, len(s_tokens), len(c_tokens))
+                if effective_window < 1:
+                    continue
+                if _has_contiguous_overlap(
+                    s_tokens, c_tokens, window=effective_window
+                ) or _has_contiguous_overlap(
+                    c_tokens, s_tokens, window=effective_window
+                ):
+                    seen_result.add(key)
+                    result.append(chunk_sent)
+                    break
+
+        return result if result else grounded_sentences
+
+    def find_first_overlap_span(self, sentence_text: str, chunk_text: str) -> str:
+        """Return the first token span shared between *sentence_text* and *chunk_text*."""
+        s_tokens = _tokenize(sentence_text)
+        c_tokens = _tokenize(chunk_text)
+        window = max(1, min(self.min_overlap_window, len(s_tokens), len(c_tokens)))
+        for i in range(len(s_tokens) - window + 1):
+            span = s_tokens[i : i + window]
+            if _contains_sequence(c_tokens, span):
+                return " ".join(span)
+        for i in range(len(c_tokens) - window + 1):
+            span = c_tokens[i : i + window]
+            if _contains_sequence(s_tokens, span):
+                return " ".join(span)
+        return ""
+
+
 def ground_answer_cli(
     answer: str,
     chunk_texts: Sequence[str],
     ansi_codes: str = "48;5;116",
     *,
-    min_sentence_tokens: int = _MIN_SENTENCE_TOKENS,
-    min_fragment_len: int = _MIN_FRAGMENT_LEN,
-    min_overlap_window: int = _MIN_OVERLAP_WINDOW,
+    min_sentence_tokens: int | None = None,
+    min_fragment_len: int | None = None,
+    min_overlap_window: int | None = None,
 ) -> str:
-    """Return *answer* with grounded sentences wrapped in ANSI colour codes.
-
-    Parameters
-    ----------
-    answer:
-        Full LLM answer text (may contain Markdown formatting).
-    chunk_texts:
-        Raw text of every chunk that was sent to the LLM.
-    ansi_codes:
-        ANSI SGR parameter string (without ``\\033[`` and ``m``).
-        Default ``"48;5;116"`` is a soft teal background.
-        Pass ``""`` to disable terminal highlighting.
-    """
-    if not ansi_codes or not chunk_texts:
-        return answer
-    reset = "\033[0m"
-    open_tag = f"\033[{ansi_codes}m"
-
-    def _wrap(sentence: str) -> str:
-        return f"{open_tag}{sentence}{reset}"
-
-    return _apply_grounding(
-        answer,
-        chunk_texts,
-        _wrap,
-        min_sentence_tokens=max(1, int(min_sentence_tokens)),
-        min_fragment_len=max(1, int(min_fragment_len)),
-        min_overlap_window=max(1, int(min_overlap_window)),
-    )
+    """Compatibility wrapper around :class:`AnswerGrounder`."""
+    grounder = AnswerGrounder()
+    if min_sentence_tokens is not None:
+        grounder.min_sentence_tokens = max(1, int(min_sentence_tokens))
+    if min_fragment_len is not None:
+        grounder.min_fragment_len = max(1, int(min_fragment_len))
+    if min_overlap_window is not None:
+        grounder.min_overlap_window = max(1, int(min_overlap_window))
+    return grounder.ground_answer_cli(answer, chunk_texts, ansi_codes=ansi_codes)
 
 
 def ground_answer_md(
@@ -89,183 +235,67 @@ def ground_answer_md(
     chunk_texts: Sequence[str],
     mark_color: str = "#C8F0E8",
     *,
-    min_sentence_tokens: int = _MIN_SENTENCE_TOKENS,
-    min_fragment_len: int = _MIN_FRAGMENT_LEN,
-    min_overlap_window: int = _MIN_OVERLAP_WINDOW,
+    min_sentence_tokens: int | None = None,
+    min_fragment_len: int | None = None,
+    min_overlap_window: int | None = None,
 ) -> str:
-    """Return *answer* with grounded sentences wrapped in ``<mark>`` HTML tags.
-
-    Parameters
-    ----------
-    answer:
-        Full LLM answer text (may contain Markdown formatting).
-    chunk_texts:
-        Raw text of every chunk that was sent to the LLM.
-    mark_color:
-        CSS colour for the ``background`` style on the ``<mark>`` element.
-        Pass ``""`` to use the browser's default ``<mark>`` colour.
-    """
-    if not chunk_texts:
-        return answer
-    if mark_color:
-
-        def _wrap(sentence: str) -> str:
-            # Use background-color for better compatibility with Markdown renderers.
-            return f'<mark style="background-color: {mark_color}">{sentence}</mark>'
-
-    else:
-
-        def _wrap(sentence: str) -> str:  # type: ignore[misc]
-            return f"<mark>{sentence}</mark>"
-
-    return _apply_grounding(
-        answer,
-        chunk_texts,
-        _wrap,
-        min_sentence_tokens=max(1, int(min_sentence_tokens)),
-        min_fragment_len=max(1, int(min_fragment_len)),
-        min_overlap_window=max(1, int(min_overlap_window)),
-    )
+    """Compatibility wrapper around :class:`AnswerGrounder`."""
+    grounder = AnswerGrounder()
+    if min_sentence_tokens is not None:
+        grounder.min_sentence_tokens = max(1, int(min_sentence_tokens))
+    if min_fragment_len is not None:
+        grounder.min_fragment_len = max(1, int(min_fragment_len))
+    if min_overlap_window is not None:
+        grounder.min_overlap_window = max(1, int(min_overlap_window))
+    return grounder.ground_answer_md(answer, chunk_texts, mark_color=mark_color)
 
 
 def find_grounded_sentences(
     answer: str,
     chunk_texts: Sequence[str],
     *,
-    min_sentence_tokens: int = _MIN_SENTENCE_TOKENS,
-    min_fragment_len: int = _MIN_FRAGMENT_LEN,
-    min_overlap_window: int = _MIN_OVERLAP_WINDOW,
+    min_sentence_tokens: int | None = None,
+    min_fragment_len: int | None = None,
+    min_overlap_window: int | None = None,
 ) -> list[str]:
-    """Return a list of grounded sentences from the answer.
-
-    Parameters
-    ----------
-    answer:
-        Full LLM answer text (may contain Markdown formatting).
-    chunk_texts:
-        Raw text of every chunk that was sent to the LLM.
-
-    Returns
-    -------
-    list[str]:
-        List of sentence strings that are grounded in the chunks.
-    """
-    if not chunk_texts:
-        return []
-
-    # Pre-tokenize all chunk texts and collect their line fragments once.
-    chunk_token_sets: list[list[str]] = [_tokenize(c) for c in chunk_texts]
-    chunk_fragments: list[list[str]] = [
-        [f for f in _iter_fragments(c, min_fragment_len=min_fragment_len)]
-        for c in chunk_texts
-    ]
-
-    grounded: list[str] = []
-    for para in answer.splitlines():
-        if not para.strip():
-            continue
-
-        # Split paragraph into sentences; check each independently.
-        sentences = _SENTENCE_SPLIT_RX.split(para)
-        for sentence in sentences:
-            tokens = _tokenize(sentence)
-            if len(tokens) >= min_sentence_tokens and _is_grounded(
-                tokens, sentence, chunk_token_sets, chunk_fragments, min_overlap_window
-            ):
-                grounded.append(sentence)
-
-    return grounded
+    """Compatibility wrapper around :class:`AnswerGrounder`."""
+    grounder = AnswerGrounder()
+    if min_sentence_tokens is not None:
+        grounder.min_sentence_tokens = max(1, int(min_sentence_tokens))
+    if min_fragment_len is not None:
+        grounder.min_fragment_len = max(1, int(min_fragment_len))
+    if min_overlap_window is not None:
+        grounder.min_overlap_window = max(1, int(min_overlap_window))
+    return grounder.find_grounded_sentences(answer, chunk_texts)
 
 
 def find_grounding_fragments_in_chunk(
     grounded_sentences: list[str],
     chunk_text: str,
     *,
-    min_fragment_len: int = _MIN_FRAGMENT_LEN,
-    min_overlap_window: int = _MIN_OVERLAP_WINDOW,
+    min_fragment_len: int | None = None,
+    min_overlap_window: int | None = None,
 ) -> list[str]:
-    """Return verbatim chunk sentences that overlap with *grounded_sentences*.
-
-    Strategy
-    --------
-    1. Split the chunk into sentences (on both newlines and ``[.!?]`` boundaries)
-       so PDF-page chunks (which have no newlines) are handled correctly.
-    2. For each chunk sentence, test window overlap against every answer sentence
-       using the same ``_has_contiguous_overlap`` that triggered the grounding
-       match — this tolerates paraphrases (e.g. "They are native" vs
-       "Hedgehogs are native").
-    3. Return matched chunk sentences, which are guaranteed to exist verbatim
-       in the source document and can therefore be found by the PDF annotator.
-
-    Falls back to *grounded_sentences* when no chunk sentence overlaps.
-    """
-    if not grounded_sentences or not chunk_text.strip():
-        return grounded_sentences
-
-    sentence_token_sets = [_tokenize(s) for s in grounded_sentences]
-    window = max(1, min_overlap_window)
-
-    # Split chunk into sentences via newlines first, then sentence-ending punctuation.
-    chunk_sentences: list[str] = []
-    seen_cs: set[str] = set()
-    for line in chunk_text.splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        for sent in _SENTENCE_SPLIT_RX.split(line):
-            stripped = sent.strip()
-            if len(stripped) >= min_fragment_len and stripped not in seen_cs:
-                seen_cs.add(stripped)
-                chunk_sentences.append(stripped)
-    if not chunk_sentences:
-        stripped = chunk_text.strip()
-        if stripped:
-            chunk_sentences = [stripped]
-
-    result: list[str] = []
-    seen_result: set[str] = set()
-    for chunk_sent in chunk_sentences:
-        c_tokens = _tokenize(chunk_sent)
-        key = " ".join(c_tokens)
-        if key in seen_result:
-            continue
-        for s_tokens in sentence_token_sets:
-            effective_window = min(window, len(s_tokens), len(c_tokens))
-            if effective_window < 1:
-                continue
-            if _has_contiguous_overlap(
-                s_tokens, c_tokens, window=effective_window
-            ) or _has_contiguous_overlap(c_tokens, s_tokens, window=effective_window):
-                seen_result.add(key)
-                result.append(chunk_sent)
-                break
-
-    return result if result else grounded_sentences
+    """Compatibility wrapper around :class:`AnswerGrounder`."""
+    grounder = AnswerGrounder()
+    if min_fragment_len is not None:
+        grounder.min_fragment_len = max(1, int(min_fragment_len))
+    if min_overlap_window is not None:
+        grounder.min_overlap_window = max(1, int(min_overlap_window))
+    return grounder.find_grounding_fragments_in_chunk(grounded_sentences, chunk_text)
 
 
 def find_first_overlap_span(
     sentence_text: str,
     chunk_text: str,
     *,
-    min_overlap_window: int = _MIN_OVERLAP_WINDOW,
+    min_overlap_window: int | None = None,
 ) -> str:
-    """Return the first token span shared between *sentence_text* and *chunk_text*.
-
-    Used for debug output to show *why* two sentences were considered overlapping.
-    Returns an empty string when no span is found.
-    """
-    s_tokens = _tokenize(sentence_text)
-    c_tokens = _tokenize(chunk_text)
-    window = max(1, min(min_overlap_window, len(s_tokens), len(c_tokens)))
-    for i in range(len(s_tokens) - window + 1):
-        span = s_tokens[i : i + window]
-        if _contains_sequence(c_tokens, span):
-            return " ".join(span)
-    for i in range(len(c_tokens) - window + 1):
-        span = c_tokens[i : i + window]
-        if _contains_sequence(s_tokens, span):
-            return " ".join(span)
-    return ""
+    """Compatibility wrapper around :class:`AnswerGrounder`."""
+    grounder = AnswerGrounder()
+    if min_overlap_window is not None:
+        grounder.min_overlap_window = max(1, int(min_overlap_window))
+    return grounder.find_first_overlap_span(sentence_text, chunk_text)
 
 
 # ---------------------------------------------------------------------------
@@ -282,7 +312,6 @@ def _apply_grounding(
     min_fragment_len: int,
     min_overlap_window: int,
 ) -> str:
-    # Pre-tokenize all chunk texts and collect their line fragments once.
     chunk_token_sets: list[list[str]] = [_tokenize(c) for c in chunk_texts]
     chunk_fragments: list[list[str]] = [
         [f for f in _iter_fragments(c, min_fragment_len=min_fragment_len)]
@@ -295,9 +324,7 @@ def _apply_grounding(
             result_lines.append(para)
             continue
 
-        # Split paragraph into sentences; process each independently.
         sentences = _SENTENCE_SPLIT_RX.split(para)
-        # re.split loses inter-sentence spaces, reconstruct with single space.
         annotated: list[str] = []
         for sentence in sentences:
             tokens = _tokenize(sentence)
@@ -320,20 +347,16 @@ def _is_grounded(
     min_overlap_window: int,
 ) -> bool:
     for chunk_tokens, fragments in zip(chunk_token_sets, chunk_fragments):
-        # Bidirectional: sentence tokens appear in chunk OR chunk tokens in sentence.
         if _contains_sequence(chunk_tokens, sentence_tokens):
             return True
         if _contains_sequence(sentence_tokens, chunk_tokens):
             return True
-        # Window overlap: allow paraphrases that still preserve a long
-        # contiguous source phrase (e.g. "beetles, caterpillars, ...").
         if _has_contiguous_overlap(
             sentence_tokens,
             chunk_tokens,
             window=min(min_overlap_window, len(sentence_tokens)),
         ):
             return True
-        # Fragment-level: any long-enough line from the chunk appears in sentence.
         for frag in fragments:
             frag_tokens = _tokenize(frag)
             if frag_tokens and _contains_sequence(sentence_tokens, frag_tokens):
@@ -368,26 +391,8 @@ def _tokenize(text: str) -> list[str]:
     return _PUNCT_RX.sub(" ", text.lower()).split()
 
 
-def _iter_fragments(
-    text: str, *, min_fragment_len: int = _MIN_FRAGMENT_LEN
-) -> list[str]:
-    """Extract stable chunk-line anchors for grounding.
-
-    Logic:
-    - Split chunk text into lines and trim whitespace.
-    - Keep only sufficiently long lines (``min_fragment_len``) to avoid noisy
-          anchors like headers, bullets, or short tokens.
-    - Deduplicate repeated lines while preserving first-seen order.
-
-    Tuning effect:
-    - Lower ``min_fragment_len`` increases recall (more orange matches), but can
-      increase false positives because short/common phrases are easier to match.
-    - Higher ``min_fragment_len`` increases precision (fewer false positives),
-      but can miss valid grounded matches that rely on shorter phrases.
-
-    The returned fragments are later token-matched against answer sentences as
-    an additional grounding signal beyond full-chunk sequence checks.
-    """
+def _iter_fragments(text: str, *, min_fragment_len: int = 12) -> list[str]:
+    """Extract stable chunk-line anchors for grounding."""
     seen: set[str] = set()
     result: list[str] = []
     for line in text.splitlines():

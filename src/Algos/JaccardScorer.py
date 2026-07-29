@@ -59,7 +59,7 @@ class JaccardScorer(ScorerBase):
             return cached
 
         self.perf_logger.log(
-            "JaccardScorer._prepare_banlist", f"start cache build lang={lang}"
+            "JaccardScorer._prepare_banlist", "scorer", f"start cache build lang={lang}"
         )
         _t0 = time.perf_counter()
         # read tunables (these are per-algo keys in config)
@@ -86,6 +86,7 @@ class JaccardScorer(ScorerBase):
         self.banlist_cache[lang] = prepared
         self.perf_logger.log(
             "JaccardScorer._prepare_banlist",
+            "scorer",
             f"stop  cache build lang={lang} n={len(prepared)} elapsed={time.perf_counter() - _t0:.3f}s",
         )
         self.pretty.write(

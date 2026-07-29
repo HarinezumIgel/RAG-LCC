@@ -109,6 +109,7 @@ class StubHelpers:
             "local_files_only": True,
             "friendly_name": "Test Embed",
             "source": "test",
+            "hf_api_key": "",
         }
         self._dtype = dtype or torch.float32
 
@@ -120,6 +121,7 @@ class StubHelpers:
                 "local_files_only": True,
                 "friendly_name": "Test Cross",
                 "source": "test",
+                "hf_api_key": "",
             }
         return dict(self._model_args)
 

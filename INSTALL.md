@@ -131,7 +131,26 @@ Point its **OpenAI API** connection to the `RAGChatService` endpoint (`http://lo
 - GitHub: <https://github.com/open-webui/open-webui>
 - License: **Open WebUI License** — see <https://github.com/open-webui/open-webui/blob/main/LICENSE> (includes a branding-preservation clause; prior contributions retain their original licenses — see `LICENSE_HISTORY`).
 
-## 📦 2. Clone and Setup
+## � Performance Optimization: HF Transfer (xet Protocol)
+
+For faster HuggingFace model downloads, enable high performance transfer with Xet:
+
+```bash
+export HF_XET_HIGH_PERFORMANCE=1  # Linux/macOS
+set HF_XET_HIGH_PERFORMANCE=1     # Windows CMD
+$env:HF_XET_HIGH_PERFORMANCE="1"  # Windows PowerShell
+```
+
+This requires the `xet` package to be installed. The environment variable is automatically enabled in deployed environments via `Config_Internet_Env.py`.
+
+**Benefits:**
+- Significantly faster downloads for large models
+- Uses the xet protocol for optimized data transfer
+- Particularly useful for models with multiple files (e.g., sharded checkpoints)
+
+> **Note:** This is automatically configured during deployment. For manual installations, set the environment variable before pulling models.
+
+## �📦 2. Clone and Setup
 
 > **Important:** RAG-LCC must be installed in its own dedicated directory. Do not clone it into an existing project folder or a shared location. The application uses its installation directory as a trust boundary — file and directory deletions (e.g. ChromaDB collection removal) are restricted to paths inside the project root. Placing RAG-LCC inside another project's tree may cause unintended interactions.
 

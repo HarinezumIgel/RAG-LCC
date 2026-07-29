@@ -33,12 +33,12 @@ class ScorerBase(ABC):
     def verify(self, *args: Any, **kwargs: Any) -> List[ComplianceAlgoResult]:
         """Timing wrapper: emits perf start/stop events around _verify_impl()."""
         caller = f"{type(self).__name__}.verify"
-        self.perf_logger.log(caller, "start verify")
+        self.perf_logger.log(caller, "scorer", "start verify")
         t0 = time.perf_counter()
         result = self._verify_impl(*args, **kwargs)
         elapsed = time.perf_counter() - t0
         self.perf_logger.log(
-            caller, f"stop  verify n={len(result)} elapsed={elapsed:.3f}s"
+            caller, "scorer", f"stop  verify n={len(result)} elapsed={elapsed:.3f}s"
         )
         return result
 

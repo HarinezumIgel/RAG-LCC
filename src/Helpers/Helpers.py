@@ -528,15 +528,35 @@ class Helpers:
             print_newline (bool): If True, terminate the in-place bar with a newline.
             label (str): Step label displayed to the left of the bar.
         """
+        if total <= 0:
+            total = 1
+            processed = 0
+
+        if processed < 0:
+            processed = 0
+        elif processed > total:
+            processed = total
+
+        is_tty: bool = bool(getattr(sys.stdout, "isatty", lambda: False)())
+
         if print_newline:
-            sys.stdout.write("\n")
+            # Terminate only when rendering in-place in a real terminal.
+            if is_tty:
+                sys.stdout.write("\n")
         else:
             percent: float = processed / total
             filled: int = int(bar_length * percent)
             bar: str = "#" * filled + "-" * (bar_length - filled)
-            sys.stdout.write(
-                f"\r   {VIOLET}{label:<30} [{bar}] {processed}/{total} ({percent:.0%}){RESET}"
+            line: str = (
+                f"   {VIOLET}{label:<30} [{bar}] {processed}/{total} ({percent:.0%}){RESET}"
             )
+            if is_tty:
+                # Interactive terminal: update a single line.
+                sys.stdout.write(f"\r{line}")
+            else:
+                # Captured/non-interactive streams do not handle carriage
+                # returns well; emit one full line per update.
+                sys.stdout.write(f"{line}\n")
         sys.stdout.flush()
 
     def make_ordered_dict(self, raw: Any) -> OrderedDict[str, bool]:

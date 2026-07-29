@@ -1,5 +1,6 @@
 import os
 import re
+import time
 import uuid
 from typing import Any
 
@@ -11,6 +12,7 @@ from Gui.Colors import ORANGE
 from Gui.PrettyWriter import PrettyWriter
 from Helpers.FileUtils import FileUtils
 from Helpers.Helpers import Helpers
+from Helpers.PerfLogger import PerfLogger
 from Strategies.Chunkers.ChunkerStrategy import ChunkerStrategy, ChunkResult
 
 # Heading level → heading text → body text under it
@@ -46,6 +48,7 @@ class HeadingChunker(ChunkerStrategy):
         self._cfg: Config = cfg or Config()
         self._helpers: Helpers = helpers or Helpers()
         self._fileUtils: FileUtils = file_utils or FileUtils()
+        self.perf_logger: PerfLogger = PerfLogger()
         self._pretty: PrettyWriter = PrettyWriter()
 
         chunker_slot: str = (
@@ -77,6 +80,13 @@ class HeadingChunker(ChunkerStrategy):
         return self._max_chunk_size
 
     def chunk(self, content: str, metadata: dict[str, Any]) -> ChunkResult:
+        self.perf_logger.log(
+            "HeadingChunker.chunk",
+            "chunker",
+            f"start content_len={len(content)}",
+        )
+        _t0 = time.perf_counter()
+
         file_type: str = str(metadata.get("FileType", "")).lower()
         file_path: str = str(metadata.get("FilePath", ""))
 
@@ -95,11 +105,25 @@ class HeadingChunker(ChunkerStrategy):
             sections = self._parse_flat(content)
 
         if not sections:
-            return [], None
+            result = [], None
+            elapsed = time.perf_counter() - _t0
+            self.perf_logger.log(
+                "HeadingChunker.chunk",
+                "chunker",
+                f"stop n=0 elapsed={elapsed:.3f}s",
+            )
+            return result
 
         pairs: list[tuple[str, str]] = self._sections_to_texts(sections)
         # No pre-computed embeddings — caller will embed all chunks
-        return self._to_docs(pairs, metadata), None
+        result = self._to_docs(pairs, metadata), None
+        elapsed = time.perf_counter() - _t0
+        self.perf_logger.log(
+            "HeadingChunker.chunk",
+            "chunker",
+            f"stop n={len(result[0])} elapsed={elapsed:.3f}s",
+        )
+        return result
 
     # -- Parsers ------------------------------------------------------------
 

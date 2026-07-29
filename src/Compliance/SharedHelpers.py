@@ -140,13 +140,6 @@ class SharedHelpers(SingletonMixin):
         except Exception:
             langs = []
         self.installed_langs = {getattr(l, "code", "").lower(): l for l in langs}
-        if DebugHelper.check(self.cfg, 10):
-            for lang in langs:
-                self.pretty.write(
-                    "D",
-                    "Argos Translate",
-                    f"Lang: Installed {lang.name:<20} ({lang.code:<5})",
-                )
 
     # -------------------------
     # Normalization / token helpers

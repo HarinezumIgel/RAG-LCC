@@ -33,8 +33,7 @@ if os.environ.get("SERVE_OPENWEBUI_CHAT", "0") != "1":
         'Set SERVE_OPENWEBUI_CHAT="1" in Config_Internet_Env.py to start the service.',
         color=RED,
     )
-    sys.exit(1)
-
+    StartupCommons._die()  # pyright: ignore[reportPrivateUsage]
 import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -115,7 +114,7 @@ class RAGChatService:
                 f"to disable document serving and suppress this error.",
                 color=RED,
             )
-            sys.exit(1)
+            StartupCommons._die()  # pyright: ignore[reportPrivateUsage]
         configure_marked_docs_store(
             ttl_seconds=int(block.get("ttl_seconds", 1800)),
             max_total_bytes=int(block.get("max_total_mb", 200)) * 1024 * 1024,

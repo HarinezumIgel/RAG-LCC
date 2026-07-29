@@ -93,7 +93,9 @@ class KeyBertScorer(SingletonMixin, ScorerBase):
         phrases: list[str] = [p for p in self.banlist_en if p]
 
         self.perf_logger.log(
-            "KeyBertScorer.build_keybert_cache", f"start cache build n={len(phrases)}"
+            "KeyBertScorer.build_keybert_cache",
+            "scorer",
+            f"start cache build n={len(phrases)}",
         )
         _t0 = time.perf_counter()
         # Use OrderedDict to preserve insertion order and make intent explicit
@@ -153,6 +155,7 @@ class KeyBertScorer(SingletonMixin, ScorerBase):
         )
         self.perf_logger.log(
             "KeyBertScorer.build_keybert_cache",
+            "scorer",
             f"stop  cache build n={len(cache)} elapsed={time.perf_counter() - _t0:.3f}s",
         )
 

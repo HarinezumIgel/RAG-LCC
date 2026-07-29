@@ -94,6 +94,11 @@ os.environ["TRANSFORMERS_OFFLINE"] = "1"
 # HF_DATASETS_OFFLINE: Disable Hugging Face datasets library hub access
 os.environ["HF_DATASETS_OFFLINE"] = "1"
 
+# HF_XET_HIGH_PERFORMANCE: Enable high performance transfer with Xet (replaces deprecated HF_HUB_ENABLE_HF_TRANSFER)
+# Set to "1" to enable accelerated downloads using the Xet protocol
+# Requires the 'xet' package to be installed
+os.environ["HF_XET_HIGH_PERFORMANCE"] = "1"
+
 # ARGOS_STANZA_DOWNLOAD: Control Argos Translate consent & package downloads.
 # "0" = only use locally installed argostranslate language pairs;
 #        non-installed languages fall back to English-normalized patterns.

@@ -1,3 +1,4 @@
+import time
 import uuid
 from abc import ABC, abstractmethod
 from typing import Any
@@ -10,6 +11,7 @@ from Gui.Colors import ORANGE
 from Gui.PrettyWriter import PrettyWriter
 from Helpers.FileUtils import FileUtils
 from Helpers.Helpers import Helpers
+from Helpers.PerfLogger import PerfLogger
 from Strategies.Chunkers.ChunkerStrategy import ChunkerStrategy, ChunkResult
 
 # (page/slide number, label/title, body text)
@@ -48,6 +50,7 @@ class PageBasedChunker(ChunkerStrategy, ABC):
         self._cfg: Config = cfg or Config()
         self._helpers: Helpers = helpers or Helpers()
         self._fileUtils: FileUtils = file_utils or FileUtils()
+        self.perf_logger: PerfLogger = PerfLogger()
         self._pretty: PrettyWriter = PrettyWriter()
 
         chunker_slot: str = (
@@ -67,15 +70,36 @@ class PageBasedChunker(ChunkerStrategy, ABC):
         return self._max_chunk_size
 
     def chunk(self, content: str, metadata: dict[str, Any]) -> ChunkResult:
+        self.perf_logger.log(
+            "PageBasedChunker.chunk",
+            "chunker",
+            f"start content_len={len(content)}",
+        )
+        _t0 = time.perf_counter()
+
         file_type: str = str(metadata.get("FileType", "")).lower()
         file_path: str = str(metadata.get("FilePath", ""))
 
         pages: list[PageData] = self._parse_pages(file_type, file_path, content)
         if not pages:
-            return [], None
+            result = [], None
+            elapsed = time.perf_counter() - _t0
+            self.perf_logger.log(
+                "PageBasedChunker.chunk",
+                "chunker",
+                f"stop n=0 elapsed={elapsed:.3f}s",
+            )
+            return result
 
         page_texts: list[_PageText] = self._pages_to_texts(pages)
-        return self._to_docs(page_texts, metadata), None
+        result = self._to_docs(page_texts, metadata), None
+        elapsed = time.perf_counter() - _t0
+        self.perf_logger.log(
+            "PageBasedChunker.chunk",
+            "chunker",
+            f"stop n={len(result[0])} elapsed={elapsed:.3f}s",
+        )
+        return result
 
     # -- Subclass interface -------------------------------------------------
 

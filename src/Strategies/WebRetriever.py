@@ -192,6 +192,7 @@ class WebRetriever:
         )
         self.perf_logger.log(
             "WebRetriever.query",
+            "retriever",
             f"start web query backend={self._backend!r} q={sanitized[:60]!r}",
         )
         _t0 = time.perf_counter()
@@ -322,6 +323,7 @@ class WebRetriever:
 
         self.perf_logger.log(
             "WebRetriever.query",
+            "retriever",
             f"stop  web query n={len(docs)} elapsed={time.perf_counter() - _t0:.3f}s",
         )
         return docs

@@ -81,7 +81,7 @@ class StartupCommons:
                 f"Start this app from project root: {project_root} (current working directory: {cwd})",
                 color=RED,
             )
-            sys.exit(1)
+            StartupCommons._die()
 
     @staticmethod
     def _validate_collection_config(cfg: Config) -> None:
@@ -106,11 +106,30 @@ class StartupCommons:
         return "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
 
     @staticmethod
+    def _die(code: int = 1) -> NoReturn:
+        """Hard-exit the process with a trailing newline.
+
+        Uses ``os._exit()`` instead of ``sys.exit()`` so that debugpy cannot
+        intercept ``SystemExit`` and hold the session open.  stdout/stderr are
+        flushed explicitly first because ``os._exit()`` bypasses normal cleanup.
+        """
+        print(flush=True)
+        sys.stdout.flush()
+        sys.stderr.flush()
+        os._exit(code)
+
+    @staticmethod
     def run_with_top_level_handlers(main_callable: Callable[[], None]) -> None:
         try:
             main_callable()
         except Exception as exc:
             StartupCommons._handle_top_level_exception(exc)
+        finally:
+            # Flush on normal completion so the shell prompt starts on a fresh line.
+            # os._exit() in _die() bypasses finally, so error paths are unaffected.
+            print(flush=True)
+            sys.stdout.flush()
+            sys.stderr.flush()
 
     @dataclass
     class StartupContext:
@@ -402,7 +421,7 @@ class StartupCommons:
 
         if isinstance(exc, FileNotFoundError):
             pretty.write("W", "FILE NOT FOUND", str(exc), color=ORANGE)
-            sys.exit(1)
+            StartupCommons._die()
 
         if isinstance(
             exc,
@@ -417,7 +436,7 @@ class StartupCommons:
                 ChromaInstallCurrentEmbeddingsMismatch,
             ),
         ):
-            sys.exit(1)
+            StartupCommons._die()
 
         if isinstance(exc, NoVirtualEnvError):
             pretty.write(
@@ -426,7 +445,7 @@ class StartupCommons:
                 f"{exc.args[0]}",
                 color=RED,
             )
-            sys.exit(1)
+            StartupCommons._die()
 
         if isinstance(exc, TesseractPathError):
             pretty.write(
@@ -435,7 +454,7 @@ class StartupCommons:
                 f"{exc.args[0]}",
                 color=RED,
             )
-            sys.exit(1)
+            StartupCommons._die()
 
         if isinstance(exc, ConfigurationError):
             pretty.write(
@@ -444,7 +463,7 @@ class StartupCommons:
                 f"{exc.args[0]}",
                 color=RED,
             )
-            sys.exit(1)
+            StartupCommons._die()
 
         if isinstance(
             exc,
@@ -464,14 +483,14 @@ class StartupCommons:
                     "to accept the Argos Translate license and then restart.",
                     color=ORANGE,
                 )
-                sys.exit(1)
+                StartupCommons._die()
             pretty.write(
                 "E",
                 "COMPLIANCE VIOLATION",
                 f"Execution stopped due to compliance check: {exc.args[0]}",
                 color=RED,
             )
-            sys.exit(1)
+            StartupCommons._die()
 
         if isinstance(exc, ExclusionsError):
             pretty.write(
@@ -480,7 +499,7 @@ class StartupCommons:
                 f"Execution stopped due to: {exc.args[0]}",
                 color=RED,
             )
-            sys.exit(1)
+            StartupCommons._die()
 
         if isinstance(exc, ArgosPermissionError):
             pretty.write(
@@ -489,7 +508,7 @@ class StartupCommons:
                 f"Argos Translate runtime permission error: {exc}",
                 color=RED,
             )
-            sys.exit(1)
+            StartupCommons._die()
 
         if isinstance(exc, InternetConnectionDisabledError):
             reason: str = str(exc) if str(exc) else ""
@@ -500,7 +519,7 @@ class StartupCommons:
                 f"(Probably change internet access flags in Configuration/Config_Internet_Env.py)",
                 color=ORANGE,
             )
-            sys.exit(1)
+            StartupCommons._die()
 
         if isinstance(exc, HFDownloaderError):
             pretty.write(
@@ -509,7 +528,7 @@ class StartupCommons:
                 f"Execution stopped due to: {exc.args[0]}",
                 color=ORANGE,
             )
-            sys.exit(1)
+            StartupCommons._die()
 
         if isinstance(exc, BackendUnavailableError):
             label = getattr(exc, "backend_name", "BACKEND")
@@ -519,7 +538,7 @@ class StartupCommons:
                 f"Execution stopped due to: {exc.args[0]}",
                 color=ORANGE,
             )
-            sys.exit(1)
+            StartupCommons._die()
 
         if isinstance(exc, ModelLoadError):
             pretty.write(
@@ -528,7 +547,7 @@ class StartupCommons:
                 f"Execution stopped due to: {exc.args[0]}",
                 color=ORANGE,
             )
-            sys.exit(1)
+            StartupCommons._die()
 
         if isinstance(exc, DataProcessingError):
             pretty.write(
@@ -537,7 +556,7 @@ class StartupCommons:
                 f"Execution stopped due to: {exc.args[0]}",
                 color=ORANGE,
             )
-            sys.exit(1)
+            StartupCommons._die()
 
         if isinstance(exc, LLMResultError):
             pretty.write(
@@ -546,7 +565,7 @@ class StartupCommons:
                 f"Execution stopped due to: {exc.args[0]}",
                 color=ORANGE,
             )
-            sys.exit(1)
+            StartupCommons._die()
 
         if isinstance(exc, InvalidCollectionName):
             pretty.write(
@@ -557,7 +576,7 @@ class StartupCommons:
                 f"(e.g. 'Test', not 'C:\\\\path\\\\to\\\\Test' or './Test').",
                 color=RED,
             )
-            sys.exit(1)
+            StartupCommons._die()
 
         # --- Unexpected errors ---
         pretty.write(
@@ -574,4 +593,4 @@ class StartupCommons:
                 "Stack trace",
                 'Stack trace was omitted because RAG_LCC_STACK_TRACE = "0"',
             )
-        sys.exit(1)
+        StartupCommons._die()

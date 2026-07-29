@@ -29,6 +29,7 @@ from Gui.PrettyWriter import PrettyWriter
 from Helpers.Accumulator import Accumulator
 from Helpers.CSVWriter import CSVWriter
 from Helpers.DebugHelper import DebugHelper
+from Helpers.PerfLogger import PerfLogger
 from Helpers.SourcePathLinkifier import SourcePathLinkifier
 
 # ---------------------------------------------------------------------------
@@ -1049,6 +1050,16 @@ async def handleRequest(
 
     await lock.acquire()
     lock_released = False
+
+    # Performance logging for the entire request
+    perf_logger = PerfLogger()
+    perf_logger.log(
+        "ChatCompletionHandler.handleRequest",
+        "api",
+        f"start endpoint model={req.model!r} messages={len(req.messages)} stream={req.stream}",
+    )
+    _t0_request = time.perf_counter()
+
     try:
         raw_dump = (
             req.model_dump()
@@ -1434,6 +1445,14 @@ async def handleRequest(
             answer_out,
             allow_local_file_uri=False,
             strip_local_open_link_tail=True,
+        )
+
+        # Log successful completion
+        elapsed_success = time.perf_counter() - _t0_request
+        perf_logger.log(
+            "ChatCompletionHandler.handleRequest",
+            "api",
+            f"stop  endpoint model={req.model!r} status=success elapsed={elapsed_success:.3f}s",
         )
 
         return JSONResponse(

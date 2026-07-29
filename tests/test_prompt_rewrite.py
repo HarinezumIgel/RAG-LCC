@@ -50,6 +50,14 @@ class StubPrettyWriter:
         return ""
 
 
+class StubPerfLogger:
+    def __init__(self):
+        self.calls: list[tuple[str, str, str]] = []
+
+    def log(self, category: str, subcategory: str, message: str) -> None:
+        self.calls.append((category, subcategory, message))
+
+
 # ---------------------------------------------------------------------------
 # Minimal spaCy stubs — no real model needed in tests
 # ---------------------------------------------------------------------------
@@ -388,7 +396,7 @@ def _load_rewrite_func():
     # We only need the rewrite() method body.  Extract it by finding the class
     # and compiling it in a namespace that provides BRIGHT_MAGENTA.
     # Simpler approach: exec the method def in isolation.
-    import textwrap, re, json
+    import textwrap, re, json, time
 
     # Pull out the rewrite method source
     match = re.search(
@@ -431,6 +439,7 @@ def _load_rewrite_func():
         "SharedHelpers": StubSharedHelpers,
         "re": re,
         "json": json,
+        "time": time,
         "_FIRST_SECOND_PERSON": _FIRST_SECOND_PERSON,
         "_CONTENT_POS": _CONTENT_POS,
         "DebugHelper": _DebugHelper,
@@ -475,6 +484,7 @@ def _make_rewriter(
     pw.llmCaller = StubLLMCaller(llm_response, llm_exception)
     pw.fileUtils = StubFileUtils()
     pw._shared = StubSharedHelpers()
+    pw.perf_logger = StubPerfLogger()
 
     # Populate fields that __init__ would compute from config
     pw.llm_model = "mistral:7b"

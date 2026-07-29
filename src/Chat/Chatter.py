@@ -467,25 +467,14 @@ class Chatter:
         RAGChatService).  *answer.content* is never modified — the coloured version is
         only used for the local terminal print, never sent to API clients.
         """
-        min_sentence_tokens = max(
-            1, self.cfg.get_int("_MARKED_DOCS_GROUNDING.min_sentence_tokens") or 5
-        )
-        min_fragment_len = max(
-            1, self.cfg.get_int("_MARKED_DOCS_GROUNDING.min_fragment_len") or 12
-        )
-        min_overlap_window = max(
-            1, self.cfg.get_int("_MARKED_DOCS_GROUNDING.min_overlap_window") or 5
-        )
-        from VisualMarkers.AnswerGrounder import ground_answer_cli
+        from VisualMarkers.AnswerGrounder import AnswerGrounder
 
         ansi = self.cfg.get_str("_MARKED_DOCS_COLORS.answer_ansi") or ""
-        return ground_answer_cli(
+        grounder = AnswerGrounder()
+        return grounder.ground_answer_cli(
             answer.content or "",
             chunk_texts,
             ansi_codes=ansi,
-            min_sentence_tokens=min_sentence_tokens,
-            min_fragment_len=min_fragment_len,
-            min_overlap_window=min_overlap_window,
         )
 
     def _resolve_token_params(

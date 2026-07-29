@@ -1,3 +1,4 @@
+import time
 import uuid
 from typing import Any
 
@@ -7,6 +8,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from Config.Config import Config
 from Helpers.FileUtils import FileUtils
 from Helpers.Helpers import Helpers
+from Helpers.PerfLogger import PerfLogger
 from Strategies.Chunkers.ChunkerStrategy import ChunkerStrategy, ChunkResult
 from Strategies.Chunkers.SentenceSplitter import SentenceSplitter
 
@@ -34,6 +36,7 @@ class SentenceWindowChunker(ChunkerStrategy):
         self._cfg: Config = cfg or Config()
         self._helpers: Helpers = helpers or Helpers()
         self._fileUtils: FileUtils = file_utils or FileUtils()
+        self.perf_logger: PerfLogger = PerfLogger()
 
         chunker_slot: str = (
             f"_CHUNKERS.{chunker_name}"
@@ -50,6 +53,13 @@ class SentenceWindowChunker(ChunkerStrategy):
         return self._max_chunk_size
 
     def chunk(self, content: str, metadata: dict[str, Any]) -> ChunkResult:
+        self.perf_logger.log(
+            "SentenceWindowChunker.chunk",
+            "chunker",
+            f"start content_len={len(content)}",
+        )
+        _t0 = time.perf_counter()
+
         sentences: list[str] = self._split_sentences(content)
 
         if not sentences:
@@ -66,7 +76,15 @@ class SentenceWindowChunker(ChunkerStrategy):
                 final_texts.append(group)
 
         # No pre-computed embeddings — caller will embed all chunks
-        return self._to_docs(final_texts, metadata), None
+        result = self._to_docs(final_texts, metadata), None
+
+        elapsed = time.perf_counter() - _t0
+        self.perf_logger.log(
+            "SentenceWindowChunker.chunk",
+            "chunker",
+            f"stop n={len(result[0])} elapsed={elapsed:.3f}s",
+        )
+        return result
 
     # -- Internal helpers ---------------------------------------------------
 

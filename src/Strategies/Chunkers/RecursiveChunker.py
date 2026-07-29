@@ -1,3 +1,4 @@
+import time
 import uuid
 from typing import Any
 
@@ -7,6 +8,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from Config.Config import Config
 from Helpers.FileUtils import FileUtils
 from Helpers.Helpers import Helpers
+from Helpers.PerfLogger import PerfLogger
 from Strategies.Chunkers.ChunkerStrategy import ChunkerStrategy, ChunkResult
 
 
@@ -29,6 +31,7 @@ class RecursiveChunker(ChunkerStrategy):
         self._cfg: Config = cfg or Config()
         self._helpers: Helpers = helpers or Helpers()
         self._fileUtils: FileUtils = file_utils or FileUtils()
+        self.perf_logger: PerfLogger = PerfLogger()
 
         self._separators: list[Any] = self._cfg.get_list("_SEPARATORS")
         chunker_slot: str = (
@@ -44,6 +47,13 @@ class RecursiveChunker(ChunkerStrategy):
         return self._chunk_size
 
     def chunk(self, content: str, metadata: dict[str, Any]) -> ChunkResult:
+        self.perf_logger.log(
+            "RecursiveChunker.chunk",
+            "chunker",
+            f"start content_len={len(content)}",
+        )
+        _t0 = time.perf_counter()
+
         stop_words: list[str] = self._fileUtils.get_stopwords(content)
         if stop_words:
             cleaned: str | None = self._fileUtils.removeStopwords(
@@ -76,4 +86,12 @@ class RecursiveChunker(ChunkerStrategy):
                 langchainDoc(page_content=s.page_content, metadata=meta, id=ids[i])
             )
         # No pre-computed embeddings — caller will embed all chunks
-        return chunks, None
+        result = chunks, None
+
+        elapsed = time.perf_counter() - _t0
+        self.perf_logger.log(
+            "RecursiveChunker.chunk",
+            "chunker",
+            f"stop n={len(result[0])} elapsed={elapsed:.3f}s",
+        )
+        return result

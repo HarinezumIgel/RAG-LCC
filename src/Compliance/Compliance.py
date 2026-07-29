@@ -75,7 +75,8 @@ class Compliance(SingletonMixin):
         helpers: "Helpers | None" = None,
     ) -> None:
         if self._initialized:
-            self._initialized = True
+            return
+        self._initialized = True
 
         self.globalsInstance: Globals = Globals()
         self.helpers: Helpers = helpers or Helpers()

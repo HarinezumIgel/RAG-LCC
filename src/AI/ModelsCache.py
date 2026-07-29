@@ -229,12 +229,14 @@ class ModelsCache(SingletonMixin):
             )
             self.perf_logger.log(
                 "ModelsCache.get_hf_embeddings",
+                "cache",
                 f"cache hit model={model_name!r} key={cache_key}",
             )
             return cached
 
         self.perf_logger.log(
             "ModelsCache.get_hf_embeddings",
+            "cache",
             f"start load model={model_name!r} device={device_key}",
         )
         _t0 = time.perf_counter()
@@ -302,6 +304,7 @@ class ModelsCache(SingletonMixin):
         self.hf_embeddings_cache[cache_key] = embeddings
         self.perf_logger.log(
             "ModelsCache.get_hf_embeddings",
+            "cache",
             f"stop  load model={model_name!r} device={device_key} elapsed={time.perf_counter() - _t0:.3f}s",
         )
         return embeddings
@@ -410,7 +413,7 @@ class ModelsCache(SingletonMixin):
         if not texts:
             return []
         model_args: Dict[str, Any] = self.helpers.get_model_args("_ACTIVE_EMBED")
-        hf_api_key: str = model_args["hf_api_key"]
+        hf_api_key: str = model_args.get("hf_api_key", "")
         tokenizer: Any = AutoTokenizer.from_pretrained(  # type: ignore[reportUnknownMemberType]
             model_name,
             use_fast=True,

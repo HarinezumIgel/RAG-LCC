@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
-## [Released] — 2026-07-18
+## [Released] — 2026-07-29
 
 This is a major release including last 2 months work. Among bug fixes, small improvements
 there are:
@@ -19,7 +19,34 @@ there are:
 
 For a quick start read [INSTALL.md](INSTALL.md).
 
+## [Unreleased] — 2026-07-29
+
+### 🐛 Fixed — Progress bar output in non-interactive streams
+
+Fixed garbled progress bar output when running in non-TTY environments (log files,
+CI pipelines, captured streams). The `Embeddings` progress bar and subsequent
+`KeyWrdChk Summary` output would collide into a single corrupted line because
+carriage-return (`\r`) in-place updates don't work correctly in non-interactive
+streams.
+
+**Changes:**
+- **`Helpers.show_progress()`** now detects TTY status using `sys.stdout.isatty()`
+  - Interactive terminals: preserve the existing in-place progress bar behavior using `\r`
+  - Non-interactive streams: emit one full line per update with `\n` to avoid concatenation
+- Added bounds checking for `total` and `processed` parameters to prevent divide-by-zero
+- Updated terminating newline to be conditional on TTY status
+
+**Affected file:** `src/Helpers/Helpers.py`
+
+---
+
 ## [Unreleased] — 2026-07-18
+
+### ✨ Added — HF Transfer (xet protocol) support
+
+- Added `xet` to managed packages in deployment script (`deploy.py`)
+- Enabled `HF_XET_HIGH_PERFORMANCE` environment variable for faster HuggingFace downloads (replacing deprecated `HF_HUB_ENABLE_HF_TRANSFER`)
+- Added documentation to `Config_Internet_Env.py` and `INSTALL.md`
 
 ### 🔄 Changed — `PerfLogger` refactored: singleton instance pattern, no threading
 
