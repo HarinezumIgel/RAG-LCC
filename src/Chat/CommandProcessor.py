@@ -26,11 +26,14 @@ class CommandProcessor:
         self.hist: HistoryManager = HistoryManager()
         _raw_size: Any = self.cfg.get("TERMINAL_LINE_SIZE")
         if isinstance(_raw_size, dict):
+            from typing import cast as _cast
+
             from Helpers.DebugHelper import DebugHelper as _DH
 
+            _size_dict: dict[str, Any] = _cast(dict[str, Any], _raw_size)
             _key = "debug" if _DH.level(self.cfg) > 0 else "no_debug"
             self.terminal_line_size: int = int(
-                _raw_size.get(_key, _raw_size.get("debug", 160))
+                _size_dict.get(_key, _size_dict.get("debug", 160))
             )
         else:
             self.terminal_line_size: int = (
@@ -43,7 +46,10 @@ class CommandProcessor:
             self.queryParts.print_values()
             self._first_configure = False
         print(
-            f"{MAGENTA}help? for help   show? for current values\nPress ↵ on an empty line to proceed to your query prompt{RESET}"
+            f"{MAGENTA}help? for help   show? for current values\n"
+            f"key=value to set (e.g. strategy=default)   key! to pick (e.g. strategy!)   "
+            f"key- to unset (e.g. file-)   strategy*preset for quick defaults (e.g. strategy*narrow)\n"
+            f"Press ↵ on an empty line to proceed to your query prompt{RESET}"
         )
 
         # ——————————————

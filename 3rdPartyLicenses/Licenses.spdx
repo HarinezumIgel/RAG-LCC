@@ -4,7 +4,7 @@ SPDXID: SPDXRef-DOCUMENT
 DocumentName: RAG-LCC-DEPLOY-Licenses
 DocumentNamespace: http://example.org/spdxdocs/RAG-LCC-DEPLOY-Licenses
 Creator: pip-licenses
-Created: 2026-07-29T16:45:00+02:00
+Created: 2026-08-01T14:29:10+02:00
 
 #####
 PackageName: Jinja2
@@ -279,7 +279,7 @@ PackageLicenseDeclared: MIT License
 #####
 PackageName: cryptography
 SPDXID: SPDXRef-Package-cryptography
-PackageVersion: 49.0.0
+PackageVersion: 50.0.0
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: Apache-2.0 OR BSD-3-Clause
@@ -387,7 +387,7 @@ PackageLicenseDeclared: MIT License
 #####
 PackageName: fastapi
 SPDXID: SPDXRef-Package-fastapi
-PackageVersion: 0.140.13
+PackageVersion: 0.141.1
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: MIT
@@ -405,7 +405,7 @@ PackageLicenseDeclared: BSD License
 #####
 PackageName: filelock
 SPDXID: SPDXRef-Package-filelock
-PackageVersion: 3.32.0
+PackageVersion: 3.32.2
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: MIT
@@ -513,7 +513,7 @@ PackageLicenseDeclared: BSD License
 #####
 PackageName: huggingface_hub
 SPDXID: SPDXRef-Package-huggingface_hub
-PackageVersion: 1.25.1
+PackageVersion: 1.26.0
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: Apache Software License
@@ -675,7 +675,7 @@ PackageLicenseDeclared: Apache Software License
 #####
 PackageName: langchain-core
 SPDXID: SPDXRef-Package-langchain-core
-PackageVersion: 1.5.2
+PackageVersion: 1.5.3
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: MIT License
@@ -720,7 +720,7 @@ PackageLicenseDeclared: Apache Software License
 #####
 PackageName: langsmith
 SPDXID: SPDXRef-Package-langsmith
-PackageVersion: 0.10.12
+PackageVersion: 0.10.15
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: MIT
@@ -873,7 +873,7 @@ PackageLicenseDeclared: BSD-3-Clause
 #####
 PackageName: nltk
 SPDXID: SPDXRef-Package-nltk
-PackageVersion: 3.10.0
+PackageVersion: 3.10.1
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: Apache Software License
@@ -1080,7 +1080,7 @@ PackageLicenseDeclared: MIT-CMU
 #####
 PackageName: pip
 SPDXID: SPDXRef-Package-pip
-PackageVersion: 26.1.2
+PackageVersion: 26.2
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: MIT
@@ -1656,7 +1656,7 @@ PackageLicenseDeclared: MPL-2.0 AND MIT
 #####
 PackageName: traitlets
 SPDXID: SPDXRef-Package-traitlets
-PackageVersion: 5.15.1
+PackageVersion: 5.16.0
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: BSD License
@@ -1791,7 +1791,7 @@ PackageLicenseDeclared: Apache Software License
 #####
 PackageName: websockets
 SPDXID: SPDXRef-Package-websockets
-PackageVersion: 16.1.1
+PackageVersion: 17.0.1
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: BSD-3-Clause

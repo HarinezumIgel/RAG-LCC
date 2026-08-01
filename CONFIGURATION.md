@@ -727,7 +727,7 @@ Controls the optional internet retrieval leg added to the RRF pipeline at query 
 | `default_web_weight` | `0.5` | Default RRF weight for web results relative to local retrievers (Vector/BM25/Graph = 1.0). `0.5` means every local result naturally outranks any web result; raise to `1.0+` for equal or higher web influence. Overridable per-session with `web_weight=<value>`. |
 | `bm25_pre_filter` | `0.10` | Minimum BM25 score (against the query) a web result must reach to survive before entering the rerank pool. `0.0` = disabled (all results pass). Typical useful range: `0.05–0.30`. Only active when `retrieve_mode` includes web results (`web_search=True` or `retrieve_mode=WEB`). |
 | `cosine_pre_filter` | `0.30` | Minimum cosine similarity (query embedding vs. snippet embedding) a web result must reach to survive. `0.0` = disabled. Runs after `bm25_pre_filter` when both are set. Typical useful range: `0.20–0.50`. Requires the embedding model to be loaded (always true in RAGChat). |
-| `rerank_threshold` | `0.0` | After reranking, web chunks whose cross-encoder score falls below this value are dropped. Defaults to `0.0` (no additional filtering) because `bm25_pre_filter` and `cosine_pre_filter` already gate quality; cross-encoder scores on short web snippets are structurally lower than on local full-text chunks and must not be compared against the local `chroma_threshold`. Raise if you want stricter post-rerank filtering for web results (e.g. `0.05`). |
+| `rerank_threshold` | `0.50` | Minimum `sigmoid(raw_rerank_score)` probability for web chunks to survive post-rerank filtering. `0.50` = neutral (sigmoid(0) = 50 % relevance probability) — the `cosine_pre_filter` (`0.30`) is the primary admission gate so this default is intentionally permissive. Lower toward `0.0` to keep weak-scoring web results; raise toward `1.0` for stricter filtering. |
 
 ### 🎯 Intent-Filter Extensions (`WEB_SEARCH_INTENT_EXTENSIONS`)
 
@@ -774,11 +774,11 @@ Each strategy is a complete parameter set defined in `_STRATEGIES` (see [Strateg
 
 | Strategy | `final_chunks_to_llm` | `retriever_k` | `threshold` | `max_output_tokens` | `filelim` | Use case |
 | --- | --- | --- | --- | --- | --- | --- |
-| DEFAULT | 50 | 100 | 0.35 | 14 366 | 15 | General-purpose, score-ranked (default) |
-| NARROW | 20 | 80 | 0.75 | 8 192 | 5 | Precise, answer-focused |
-| BALANCED_FILE_CAP | 40 | 60 | 0.55 | 14 366 | 10 | Balanced with per-file chunk cap |
-| WIDE | 60 | 160 | 0.35 | 14 366 | 20 | Exploratory, high recall |
-| ULTRA_WIDE | 1 500 | 3 000 | 0.20 | 14 366 | 0 | Exhaustive / debugging |
+| DEFAULT | 50 | 100 | 0.60 | 14 366 | 15 | General-purpose, score-ranked (default) |
+| NARROW | 20 | 80 | 0.70 | 8 192 | 5 | Precise, answer-focused |
+| BALANCED_FILE_CAP | 40 | 60 | 0.65 | 14 366 | 10 | Balanced with per-file chunk cap |
+| WIDE | 60 | 160 | 0.60 | 14 366 | 20 | Exploratory, high recall |
+| ULTRA_WIDE | 1 500 | 3 000 | 0.55 | 14 366 | 0 | Exhaustive / debugging |
 
 > `DEFAULT` uses `ScoreRankedSelector` — chunks are selected strictly by descending reranker score.
 > `BALANCED_FILE_CAP` uses `PerFileCapSelector` — caps each source file to at most `filelim` chunks, preventing any single file from dominating the context window.
@@ -795,7 +795,7 @@ Strategy parameters explained:
 | --- | --- |
 | `final_chunks_to_llm` | Maximum number of chunks passed to the LLM after reranking and threshold filtering. |
 | `retriever_k` | Number of candidate chunks each retriever fetches before filtering and reranking. |
-| `threshold` | Minimum reranker score to keep a chunk. Scores are min-max normalized within the candidate pool (worst candidate → 0.0, best → 1.0), so `0.75` means "top 25 % of this query's pool". Web doc scores use a separate sigmoid scale and are not affected by this normalization. **Relative-band fallback:** when the cross-encoder gives all-negative raw logits (common with mmarco-style models on technical content), the pool's absolute best score falls below the threshold and would cause every chunk to be rejected. In that case the selector automatically falls back to a relative band — keeping chunks whose score is ≥ 75 % of the pool's best local score — so the top-ranked chunk is always surfaced. A diagnostic message is logged at debug level ≥ 10 when the fallback fires. |
+| `threshold` | Minimum `sigmoid(raw_rerank_score)` probability to keep a chunk. Values are in `[0, 1]` — `0.60` means 60 % relevance confidence. The comparison is `sigmoid(raw_logit) ≥ threshold`; the raw logit is query-independent while the normalized `rerank_score` is used only for intra-query ordering. `0.50` = neutral (sigmoid(0)); below `0.50` is permissive, above is increasingly strict. **Relative-band fallback:** when the pool's best sigmoid score is still below the threshold (common with mmarco-style models on technical content), the selector accepts chunks whose raw logit is within `_RELATIVE_LOGIT_MARGIN` (1.0 logit unit) of the pool maximum, so the top-ranked chunk is always surfaced. A diagnostic message is logged at debug level ≥ 10 when the fallback fires. |
 | `max_output_tokens` | Output token ceiling for this strategy (may be further reduced by the token budget). |
 | `temperature` | LLM sampling temperature. Lower = more deterministic. |
 | `top_k` | Limit sampling to the top-k most likely next tokens. |

@@ -313,14 +313,16 @@ class Chatter:
                     )
 
         if apiChunkHandler is None:
+            chosen = getattr(session, "last_chosen_chunks", [])
             if mark_text_enabled:
                 marked: list[tuple[str, bytes]] = list(
                     getattr(session, "marked_documents", []) or []
                 )
                 if marked:
                     self._open_marked_documents(marked)
+                if chosen:
+                    self._show_web_sources(chosen)
             else:
-                chosen = getattr(session, "last_chosen_chunks", [])
                 if chosen:
                     self._show_original_sources(chosen)
 
@@ -547,6 +549,31 @@ class Chatter:
             project_root=self.cfg.get_str("_ABSOLUTE_PATH") or None,
         )
 
+    def _show_web_sources(self, chosen: list[Any]) -> None:
+        """Display web source URLs from chosen chunks as clickable terminal links."""
+        web_urls: list[str] = []
+        seen: set[str] = set()
+        for doc in chosen:
+            meta = getattr(doc, "metadata", {}) or {}
+            if str(meta.get("Source", "")).lower() != "web":
+                continue
+            url = str(meta.get("FilePath", "")).strip()
+            if url and url not in seen:
+                seen.add(url)
+                web_urls.append(url)
+
+        if not web_urls:
+            return
+
+        self.pretty.write(
+            "I",
+            "Web sources",
+            f"{len(web_urls)} web source(s):",
+            color=CYAN,
+        )
+        for url in web_urls:
+            print(f"   🌐 {url}")
+
     def _show_original_sources(self, chosen: list[Any]) -> None:
         """Display original source file paths when mark_text=False."""
         import os
@@ -562,19 +589,19 @@ class Chatter:
             if file_path and os.path.isfile(file_path):
                 source_paths.add(file_path)
 
-        if not source_paths:
-            return
+        if source_paths:
+            sorted_paths = sorted(source_paths)
+            self.pretty.write(
+                "I",
+                "Sources",
+                f"{len(sorted_paths)} document(s), click to open:",
+                color=CYAN,
+            )
+            for path in sorted_paths:
+                abs_path = Path(path).resolve()
+                print(f"   📄 {abs_path.as_uri()}")
 
-        sorted_paths = sorted(source_paths)
-        self.pretty.write(
-            "I",
-            "Sources",
-            f"{len(sorted_paths)} document(s), click to open:",
-            color=CYAN,
-        )
-        for path in sorted_paths:
-            abs_path = Path(path).resolve()
-            print(f"   📄 {abs_path.as_uri()}")
+        self._show_web_sources(chosen)
 
     def print_llm_answer(
         self, answer: str, terminal_width: int, prefix: str = "💡>  ", color: str = ""

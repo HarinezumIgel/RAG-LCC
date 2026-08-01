@@ -125,10 +125,6 @@ RAG‑LCC treats **chunking, retrieval strategies, and filtering** as *context�
 A slide deck is available as [`RAG-LCC_Presentation.pptx`](Documentation/Presentations/RAG-LCC_Presentation.pptx).
 It provides a quick visual overview of the architecture, the four applications, the retrieval pipeline, and the key design decisions — useful as a starting point before diving into the detailed documentation.
 
-A demo video is available on YouTube: [https://youtu.be/CQW3B5FeNtA](https://youtu.be/CQW3B5FeNtA)
-
-![Demo](Documentation/Pics/RAG-LCC-Screenshots.gif)
-
 ---
 
 ## ✨ Key features
@@ -271,9 +267,14 @@ Some design decisions in RAG‑LCC are motivated by concrete failure analyses:
 - **Lessons Learned Building an Experimental RAG Lab**
   Reddit write‑up on failure modes that only surface with end‑to‑end visibility: retrieval pool size, context poisoning, multilingual gaps, scoring assumptions, and why old workarounds become bugs
   [https://www.reddit.com/r/Rag/comments/1to784v/lessons_learned_building_an_experimental_rag_lab/](https://www.reddit.com/r/Rag/comments/1to784v/lessons_learned_building_an_experimental_rag_lab/)
+
+
 - **Adding Web Search to Our RAG Pipeline: What Broke and Why**
   DEV.to article on integrating internet retrieval into an experimental RAG pipeline — query routing, compliance gating, threshold failures, and the edge cases that only appear in production-like conditions
   [https://dev.to/harinezumigel/adding-web-search-to-our-rag-pipeline-what-broke-and-why-4ge5](https://dev.to/harinezumigel/adding-web-search-to-our-rag-pipeline-what-broke-and-why-4ge5)
+- **15 Months Building a RAG System in Retirement: Lessons Learned and What Actually Worked**
+  Reddit write‑up on lessons learned building RAG‑LCC from the ground up — architectural decisions, what worked, what didn't, and practical insights from extended experimentation
+  [https://www.reddit.com/r/Rag/comments/1valvk6/15_months_building_a_rag_system_in_retirement/](https://www.reddit.com/r/Rag/comments/1valvk6/15_months_building_a_rag_system_in_retirement/)
 These are not tutorials — they document *observed failure modes* that this lab explores programmatically.
 
 ---
@@ -299,21 +300,6 @@ If this project helps you reason about **retrieval, chunking, and context assemb
 A `CITATION.cff` file is included for academic or technical reference.
 
 ---
-
-## 🗺️ Documentation Map
-
-This README is the landing page. The detailed material has been split into focused
-documents so each topic stays readable:
-
-| Document | What's inside |
-| --- | --- |
-| 🚀 [INSTALL.md](INSTALL.md) | Prerequisites · cloning · dependencies · Ollama / Open WebUI / Argos / NLTK / Tesseract / spaCy / GPU setup · running the test suite · first-run walkthrough |
-| 📚 [CONFIGURATION.md](CONFIGURATION.md) | Per-file reference for every `Config_*.py` (Global, Models, RAGChat, RAGLoad, DocClassify, Banned, Internet) · CLI overrides · translation config · troubleshooting · performance tuning |
-| 📸 [EXAMPLES.md](EXAMPLES.md) | End-to-end terminal sessions for `RAGLoad`, `RAGChat`, `DocClassify`, `RAGChatService`; class diagrams; project structure |
-| 🏗️ [ARCHITECTURE.md](ARCHITECTURE.md) | Pipeline internals · compliance chain · chunking architecture · query rewrite · graph index |
-| 🧭 [HANDS_ON_TOUR.md](HANDS_ON_TOUR.md) | Curated hands-on session and suggested experiments |
-| ⚖️ [LEGAL.md](LEGAL.md) · 🔐 [SECURITY.md](SECURITY.md) | Definitions, governance, security policy and limitations |
-| 🧹 [banlist_pipeline_final_with_tldr.md](banlist_pipeline_final_with_tldr.md) | Long-form write-up on the multi-layer banlist pipeline |
 
 ### TL;DR — try it locally
 

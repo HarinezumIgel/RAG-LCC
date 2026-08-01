@@ -85,7 +85,7 @@ _STRATEGIES: dict[str, dict[str, int | float | bool | str]] = {
     "NARROW": {  # Precision-oriented — only strong semantic matches
         "final_chunks_to_llm": 20,  # Max chunks after selection — small for focused answers
         "retriever_k": 80,  # Retriever candidates fetched per store before fusion/reranking
-        "threshold": 0.75,  # High reranker cutoff — only strong matches survive
+        "threshold": 0.70,  # sigmoid probability ≥ 0.70 (70 % confidence); only strong matches survive
         "max_output_tokens": 8192,  # Upper bound on generated output tokens
         "temperature": 0.1,  # Low temperature — near-deterministic output
         "top_k": 20,  # Narrow token sampling — focused word choices
@@ -106,7 +106,7 @@ _STRATEGIES: dict[str, dict[str, int | float | bool | str]] = {
     "BALANCED_FILE_CAP": {  # Balanced precision / recall with per-file chunk cap
         "final_chunks_to_llm": 40,  # Moderate selection window
         "retriever_k": 60,  # Retriever candidates fetched per store before fusion/reranking
-        "threshold": 0.55,  # Medium reranker cutoff — balances relevance and breadth
+        "threshold": 0.65,  # sigmoid probability ≥ 0.65 (65 % confidence); balances relevance and breadth
         "max_output_tokens": 14366,  # Upper bound on generated output tokens
         "temperature": 0.1,  # Low temperature — near-deterministic output
         "top_k": 40,  # Moderate token sampling — some variety
@@ -127,7 +127,7 @@ _STRATEGIES: dict[str, dict[str, int | float | bool | str]] = {
     "DEFAULT": {  # General-purpose balanced retrieval
         "final_chunks_to_llm": 50,  # Moderate selection window
         "retriever_k": 100,  # Retriever candidates fetched per store before fusion/reranking
-        "threshold": 0.35,  # Moderate reranker cutoff — cuts tail while keeping good chunks
+        "threshold": 0.60,  # sigmoid probability ≥ 0.60 (60 % confidence); cuts tail while keeping good chunks
         "max_output_tokens": 14366,  # Upper bound on generated output tokens
         "temperature": 0.1,  # Low temperature — near-deterministic output
         "top_k": 40,  # Moderate token sampling — some variety
@@ -148,7 +148,7 @@ _STRATEGIES: dict[str, dict[str, int | float | bool | str]] = {
     "WIDE": {  # Recall-oriented — exploratory search across many chunks
         "final_chunks_to_llm": 60,  # Large selection window — more context for the LLM
         "retriever_k": 160,  # Retriever candidates fetched per store before fusion/reranking
-        "threshold": 0.35,  # Relaxed reranker cutoff — favors recall over precision
+        "threshold": 0.60,  # sigmoid probability ≥ 0.60 (60 % confidence); favors recall over precision
         "max_output_tokens": 14366,  # Upper bound on generated output tokens
         "temperature": 0.1,  # Low temperature — near-deterministic output
         "top_k": 100,  # Broad token sampling — 100 candidates per step
@@ -169,7 +169,7 @@ _STRATEGIES: dict[str, dict[str, int | float | bool | str]] = {
     "ULTRA_WIDE": {  # Diagnostic / exploratory — very high recall, high cost
         "final_chunks_to_llm": 1500,  # Very large selection window (high computational cost)
         "retriever_k": 3000,  # Retriever candidates fetched per store before fusion/reranking
-        "threshold": 0.20,  # Permissive cutoff — includes weak matches
+        "threshold": 0.55,  # sigmoid probability ≥ 0.55 (55 % confidence); includes weak matches
         "max_output_tokens": 14366,  # Upper bound on generated output tokens
         "temperature": 0.1,  # Low temperature — near-deterministic output
         "top_k": 100,  # Broad token sampling — 100 candidates per step

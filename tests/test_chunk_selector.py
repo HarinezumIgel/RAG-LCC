@@ -110,6 +110,7 @@ def _make_chunk(
     path: str,
     sources: str = "Vector",
     content: str = "some text",
+    raw_score: float | None = None,
 ) -> Any:
     """Return a minimal document-like object ChunkSelector can process."""
     chunk = types.SimpleNamespace()
@@ -120,6 +121,7 @@ def _make_chunk(
         "FileName": os.path.basename(path),
         "retriever_sources": sources,
         "rerank_score": score,
+        "raw_rerank_score": raw_score if raw_score is not None else score,
     }
     return chunk
 
@@ -168,33 +170,33 @@ class TestFilterThresholdBoost:
     """Boost is applied only to files that appear exactly once in the pool."""
 
     def test_single_chunk_file_is_boosted_past_threshold(self):
-        """A file with 1 chunk whose raw score × boost >= threshold should pass."""
-        # threshold=0.35, boost=1.25 → 0.29 * 1.25 = 0.3625 >= 0.35 → hit
-        session = _StubSession(threshold=0.35, boost=1.25)
+        """A file with 1 chunk whose sigmoid(raw + ln(boost)) >= threshold should pass."""
+        # threshold=0.59, boost=1.25 → sigmoid(0.15 + ln(1.25)) = sigmoid(0.373) ≈ 0.592 ≥ 0.59 → hit
+        # sentinel keeps pool max sigmoid above threshold so absolute path is used
+        session = _StubSession(threshold=0.59, boost=1.25)
         sel = _make_selector(session)
-        chunk = _make_chunk(score=0.29, path="/docs/lonely.txt")
-        result = sel.filter_threshold([chunk])
+        chunk = _make_chunk(score=0.15, path="/docs/lonely.txt")
+        sentinel = _make_chunk(score=0.60, path="/docs/sentinel.txt")
+        result = sel.filter_threshold([chunk, sentinel])
         assert chunk in result
 
     def test_single_chunk_file_still_misses_if_boost_insufficient(self):
-        """Even with boost, if effective score < threshold the chunk is dropped."""
-        # threshold=0.35, boost=1.25 → 0.20 * 1.25 = 0.25 < 0.35 → miss.
-        # A sentinel at 0.60 keeps pool max >= threshold so the absolute path
-        # is used (no relative-band fallback).
-        session = _StubSession(threshold=0.35, boost=1.25)
+        """Even with boost, if sigmoid(raw + ln(boost)) < threshold the chunk is dropped."""
+        # threshold=0.59, boost=1.25 → sigmoid(0.10 + ln(1.25)) = sigmoid(0.323) ≈ 0.580 < 0.59 → miss
+        # sentinel keeps pool max sigmoid above threshold so the absolute path is used
+        session = _StubSession(threshold=0.59, boost=1.25)
         sel = _make_selector(session)
-        chunk = _make_chunk(score=0.20, path="/docs/lonely.txt")
+        chunk = _make_chunk(score=0.10, path="/docs/lonely.txt")
         sentinel = _make_chunk(score=0.60, path="/docs/sentinel.txt")
         result = sel.filter_threshold([chunk, sentinel])
         assert chunk not in result
 
     def test_multi_chunk_file_not_boosted(self):
         """Files with >1 chunk in the pool must not receive the boost."""
-        # threshold=0.35, boost=1.25.  Both chunks from the same file with
-        # raw score 0.29 — eff stays 0.29 → both miss.
-        # A sentinel at 0.60 keeps pool max >= threshold so the absolute path
-        # is used (no relative-band fallback).
-        session = _StubSession(threshold=0.35, boost=1.25)
+        # threshold=0.59, boost=1.25.  Both chunks from the same file with
+        # raw score 0.29 — sigmoid(0.29) ≈ 0.572 < 0.59 → both miss.
+        # A sentinel at 0.60 keeps pool sigmoid ≥ threshold (absolute path, no fallback).
+        session = _StubSession(threshold=0.59, boost=1.25)
         sel = _make_selector(session)
         c1 = _make_chunk(score=0.29, path="/docs/big.txt")
         c2 = _make_chunk(score=0.29, path="/docs/big.txt")
@@ -205,9 +207,8 @@ class TestFilterThresholdBoost:
 
     def test_no_boost_when_factor_is_one(self):
         """With boost=1.0 a single-chunk file below threshold must not pass."""
-        # A sentinel at 0.60 keeps pool max >= threshold so the absolute path
-        # is used (no relative-band fallback).
-        session = _StubSession(threshold=0.35, boost=1.0)
+        # A sentinel at 0.60 keeps pool sigmoid ≥ threshold (absolute path, no fallback).
+        session = _StubSession(threshold=0.59, boost=1.0)
         sel = _make_selector(session)
         chunk = _make_chunk(score=0.29, path="/docs/lonely.txt")
         sentinel = _make_chunk(score=0.60, path="/docs/sentinel.txt")
@@ -225,19 +226,21 @@ class TestFilterThresholdBoost:
 
     def test_mixed_pool_single_and_multi(self):
         """Single-chunk file is boosted; sibling chunks from large file are not."""
-        session = _StubSession(threshold=0.35, boost=1.25)
+        session = _StubSession(threshold=0.59, boost=1.25)
         sel = _make_selector(session)
         lonely = _make_chunk(score=0.29, path="/docs/lonely.txt")
         big1 = _make_chunk(
             score=0.50, path="/docs/big.txt"
-        )  # above threshold naturally
+        )  # sigmoid(0.50)≈0.622 ≥ 0.59 naturally
         big2 = _make_chunk(
             score=0.29, path="/docs/big.txt"
-        )  # below threshold, not boosted
+        )  # sigmoid(0.29)≈0.572 < 0.59, no boost
         result = sel.filter_threshold([lonely, big1, big2])
-        assert lonely in result  # boosted 0.29→0.3625 >= 0.35
-        assert big1 in result  # naturally above 0.35
-        assert big2 not in result  # 0.29 < 0.35, no boost
+        assert lonely in result  # sigmoid(0.29+ln(1.25)=0.513)≈0.626 ≥ 0.59
+        assert big1 in result  # sigmoid(0.50)≈0.622 ≥ 0.59 naturally
+        assert (
+            big2 not in result
+        )  # sigmoid(0.29)≈0.572 < 0.59, no boost (multi-chunk file)
 
 
 # ===========================================================================
@@ -255,16 +258,16 @@ class TestFilterThresholdWebChunks:
         assert web_chunk in result  # 0.25 >= web threshold 0.20
 
     def test_web_chunk_below_web_threshold_missed(self):
-        session = _StubSession(threshold=0.35, web_threshold=0.30, boost=1.0)
+        session = _StubSession(threshold=0.59, web_threshold=0.60, boost=1.0)
         sel = _make_selector(session)
         web_chunk = _make_chunk(score=0.25, path="/web/page.html", sources="Web")
         result = sel.filter_threshold([web_chunk])
-        assert web_chunk not in result
+        assert web_chunk not in result  # sigmoid(0.25)≈0.562 < 0.60
 
     def test_web_chunk_not_boosted(self):
-        """Web chunks should never receive the single-chunk boost."""
-        # web threshold=0.40, boost=1.25: 0.29*1.25=0.3625 still < 0.40
-        session = _StubSession(threshold=0.35, web_threshold=0.40, boost=1.25)
+        """Web chunks must not receive the single-chunk logit boost."""
+        # web_threshold=0.60; sigmoid(0.29)≈0.572 < 0.60, no logit boost on web → miss
+        session = _StubSession(threshold=0.59, web_threshold=0.60, boost=1.25)
         sel = _make_selector(session)
         web_chunk = _make_chunk(score=0.29, path="/web/page.html", sources="Web")
         result = sel.filter_threshold([web_chunk])
@@ -300,12 +303,12 @@ class TestFilterThresholdMessage:
 
 class TestPrintFinalScore:
     def test_smoke_no_crash_with_boosted_and_plain_chunks(self):
-        session = _StubSession(threshold=0.35, boost=1.25, debug_level=10)
+        session = _StubSession(threshold=0.59, boost=1.25, debug_level=10)
         sel = _make_selector(session)
         # Mix: boosted hit, plain hit, plain miss
         lonely_hit = _make_chunk(score=0.29, path="/docs/lonely.txt")
         plain_hit = _make_chunk(score=0.50, path="/docs/plain.txt")
-        # Two chunks from same file — no boost, low score → misses
+        # Two chunks from same file — no boost, sigmoid(0.10)≈0.525 < 0.59 → misses
         miss1 = _make_chunk(score=0.10, path="/docs/big.txt")
         miss2 = _make_chunk(score=0.10, path="/docs/big.txt")
 
@@ -323,17 +326,18 @@ class TestPrintFinalScore:
 
 
 class TestFilterThresholdRelativeBand:
-    """When the pool's best local score is below the absolute threshold the
-    selector falls back to a relative band: accept chunks whose score is within
-    _RELATIVE_THRESHOLD_FACTOR (0.75) of the pool best."""
+    """When the pool's best local raw logit is below the threshold the selector
+    falls back to a relative band: accept chunks within _RELATIVE_LOGIT_MARGIN
+    (1.0 logit unit) of the pool maximum."""
 
-    # Convenience: threshold=0.35, pool max=0.047 → relative thr = 0.047*0.75 ≈ 0.035
-    _THRESHOLD = 0.35
+    # threshold=0.60, pool max=0.047 → sigmoid(0.047)≈0.512 < 0.60 → fallback fires
+    # relative_thr (logit) = 0.047 - 1.0 = -0.953 → effective prob = sigmoid(-0.953)≈0.279
+    _THRESHOLD = 0.60
     _POOL_MAX = 0.047
-    _FACTOR = ScoreRankedSelector._RELATIVE_THRESHOLD_FACTOR  # 0.75
+    _MARGIN = ScoreRankedSelector._RELATIVE_LOGIT_MARGIN  # 1.0
 
     def _relative_thr(self) -> float:
-        return self._POOL_MAX * self._FACTOR
+        return self._POOL_MAX - self._MARGIN
 
     def test_top_ranked_chunk_passes_relative_band(self):
         """The best chunk in a below-threshold pool must be kept."""
@@ -346,20 +350,22 @@ class TestFilterThresholdRelativeBand:
 
     def test_chunk_just_above_relative_thr_passes(self):
         """A chunk above the relative threshold should pass."""
+        # relative_thr = 0.047 - 1.0 = -0.953; chunk at -0.952 > -0.953 → pass
         session = _StubSession(threshold=self._THRESHOLD, boost=1.0)
         sel = _make_selector(session)
-        thr = self._relative_thr()
-        chunk = _make_chunk(score=thr + 0.001, path="/docs/a.pdf")
+        thr = self._relative_thr()  # -0.953
+        chunk = _make_chunk(score=thr + 0.001, path="/docs/a.pdf")  # -0.952
         pool_max = _make_chunk(score=self._POOL_MAX, path="/docs/b.pdf")
         result = sel.filter_threshold([chunk, pool_max])
         assert chunk in result
 
     def test_chunk_below_relative_thr_misses(self):
         """A chunk below the relative threshold must still be dropped."""
+        # relative_thr = 0.047 - 1.0 = -0.953; chunk at -0.955 < -0.953 → miss
         session = _StubSession(threshold=self._THRESHOLD, boost=1.0)
         sel = _make_selector(session)
-        thr = self._relative_thr()
-        low = _make_chunk(score=thr - 0.002, path="/docs/a.pdf")
+        thr = self._relative_thr()  # -0.953
+        low = _make_chunk(score=thr - 0.002, path="/docs/a.pdf")  # -0.955
         pool_max = _make_chunk(score=self._POOL_MAX, path="/docs/b.pdf")
         result = sel.filter_threshold([low, pool_max])
         assert low not in result
@@ -372,14 +378,18 @@ class TestFilterThresholdRelativeBand:
         assert result == []
 
     def test_absolute_threshold_used_when_pool_max_exceeds_threshold(self):
-        """When pool max >= threshold the normal absolute path must be used."""
-        session = _StubSession(threshold=0.35, boost=1.0)
+        """When pool max sigmoid >= threshold the normal absolute path must be used."""
+        session = _StubSession(threshold=0.60, boost=1.0)
         sel = _make_selector(session)
-        above = _make_chunk(score=0.60, path="/docs/a.pdf")
-        below = _make_chunk(score=0.20, path="/docs/b.pdf")
+        above = _make_chunk(
+            score=0.60, path="/docs/a.pdf"
+        )  # sigmoid(0.60)≈0.645 ≥ 0.60
+        below = _make_chunk(
+            score=0.20, path="/docs/b.pdf"
+        )  # sigmoid(0.20)≈0.550 < 0.60
         result = sel.filter_threshold([above, below])
         assert above in result
-        assert below not in result  # 0.20 < 0.35 absolute threshold
+        assert below not in result
 
     def test_debug_message_emitted_when_fallback_active(self):
         """At debug_level >= 10, a message about the relative band should appear."""
@@ -403,11 +413,61 @@ class TestFilterThresholdRelativeBand:
         """Web chunks must not influence max_local_score used in the fallback."""
         # Local chunks all below threshold; web chunk has high score — but
         # local_scores should still trigger the fallback.
-        session = _StubSession(threshold=0.35, web_threshold=0.10, boost=1.0)
+        session = _StubSession(threshold=0.60, web_threshold=0.10, boost=1.0)
         sel = _make_selector(session)
         local = _make_chunk(score=0.040, path="/docs/a.pdf", sources="Vector")
         web = _make_chunk(score=0.90, path="/web/page.html", sources="Web")
         result = sel.filter_threshold([local, web])
-        # local: relative thr = 0.040*0.75=0.030 → passes; web: 0.90 >= 0.10 → passes
+        # local: sigmoid(0.040)≈0.510 > sigmoid(-0.960)≈0.277 relative_thr → passes
+        # web: sigmoid(0.90)≈0.711 >= 0.10 → passes
         assert local in result
         assert web in result
+
+
+# ===========================================================================
+# filter_threshold — raw logit gate vs normalized rerank_score
+# ===========================================================================
+
+
+class TestRawScoreFallback:
+    """Threshold gate uses raw_rerank_score when present; falls back to rerank_score."""
+
+    def test_falls_back_to_rerank_score_when_raw_absent(self):
+        """When raw_rerank_score is absent, rerank_score is used for the gate."""
+        session = _StubSession(threshold=0.35, boost=1.0)
+        sel = _make_selector(session)
+        chunk = types.SimpleNamespace()
+        chunk.score = 0.50
+        chunk.page_content = "text"
+        chunk.metadata = {
+            "FilePath": "/docs/a.txt",
+            "FileName": "a.txt",
+            "retriever_sources": "Vector",
+            "rerank_score": 0.50,
+            # raw_rerank_score deliberately absent — fallback path
+        }
+        sentinel = _make_chunk(score=0.60, path="/docs/s.txt")
+        result = sel.filter_threshold([chunk, sentinel])
+        assert chunk in result  # 0.50 >= 0.35 via fallback
+
+    def test_raw_logit_below_threshold_drops_chunk_despite_high_normalized_score(self):
+        """High rerank_score must not override a low raw logit at the gate."""
+        # rerank_score=0.80 would pass a permissive threshold,
+        # but sigmoid(raw_rerank_score=0.20)=0.550 < 0.60 → dropped.
+        session = _StubSession(threshold=0.60, boost=1.0)
+        sel = _make_selector(session)
+        chunk = _make_chunk(score=0.80, path="/docs/a.txt", raw_score=0.20)
+        sentinel = _make_chunk(score=0.60, path="/docs/s.txt")
+        result = sel.filter_threshold([chunk, sentinel])
+        assert chunk not in result  # sigmoid(0.20)≈0.550 < threshold 0.60
+
+    def test_high_raw_logit_passes_despite_low_normalized_score(self):
+        """A high raw logit passes even when normalized rerank_score is very low."""
+        # rerank_score=0.10 would fail the old normalized threshold,
+        # but raw_rerank_score=0.80 >= 0.35 → kept under the new gate.
+        session = _StubSession(threshold=0.35, boost=1.0)
+        sel = _make_selector(session)
+        chunk = _make_chunk(score=0.10, path="/docs/a.txt", raw_score=0.80)
+        sentinel = _make_chunk(score=0.60, path="/docs/s.txt")
+        result = sel.filter_threshold([chunk, sentinel])
+        assert chunk in result  # raw 0.80 >= threshold 0.35

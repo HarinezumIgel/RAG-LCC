@@ -66,6 +66,7 @@ This is an example with standard debug output at `debug=30` (Standard level). It
 
 ```Text
 help? for help   show? for current values
+key=value to set (e.g. strategy=default)   key! to pick (e.g. strategy!)   key- to unset (e.g. file-)   strategy*preset for quick defaults (e.g. strategy*narrow)
 Press ↵ on an empty line to proceed to your query prompt
  🛠️  >debug_level=30
  🛠️  >
@@ -471,6 +472,7 @@ b: back to settings / ↵ to enter query / ↵↵ to quit RAGChat  · type new: 
 💡>    - D:/RAG-LCC/TestDocs/BlazingFast_Workstation.md
 💡>    - HeadingPath: blazingfast workstation technical specifications > core compute architecture
 help? for help   show? for current values
+key=value to set (e.g. strategy=default)   key! to pick (e.g. strategy!)   key- to unset (e.g. file-)   strategy*preset for quick defaults (e.g. strategy*narrow)
 Press ↵ on an empty line to proceed to your query prompt
  🛠️  >
 ```

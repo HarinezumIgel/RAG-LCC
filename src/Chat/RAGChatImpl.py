@@ -1,5 +1,4 @@
 ﻿# ── Local Module Imports ──
-import math
 import os
 import threading
 import time
@@ -9,8 +8,7 @@ from typing import Any, Sequence, Tuple, cast
 from chromadb.api import Collection  # type: ignore[attr-defined]
 # ── LangChain Ecosystem ──
 from langchain_chroma import Chroma
-from langdetect import \
-    detect  # pyright: ignore[reportMissingTypeStubs, reportUnusedImport, reportUnknownVariableType]  # noqa: F401
+from langdetect import detect  # type: ignore[import-untyped]  # noqa: F401
 
 from AI.ModelsCache import ModelsCache
 from AI.TokenBudget import TokenBudget
@@ -249,21 +247,26 @@ class RAGChatImpl(SingletonMixin):
             )
             raise RerankError
 
-        # Score normalization strategy — sigmoid-capped min-max (unified pool):
+        # Credits: Fix according to input from Don Karter (u/donk8r on Reddit).
+        # Before fix: We only hire people if they are among the best applicants in today's candidate pool.
+        # So an identical candidate may pass on Tuesday and fail on Wednesday.
+        # Fix: We hire anyone scoring above 80. Then rank hired candidates afterward.
         #
-        # All docs (local + web) are placed in a single pool.
-        #   score = min_max(raw, pool_lo, pool_hi) × sigmoid(pool_hi)
+        # Score normalization — plain min-max over the unified pool (local + web).
         #
-        # Why this works:
-        #   • min_max preserves relative ordering within the pool.
-        #   • sigmoid(pool_hi) is an absolute gate: it equals the final score of
-        #     the top-ranked document.  If the best raw logit in the pool is below
-        #     ≈ −0.62, sigmoid(pool_hi) < 0.35 and EVERY document fails the
-        #     threshold — the LLM correctly reports no relevant context.
-        #   • When at least one doc is genuinely relevant (raw > 0), sigmoid ≈ 1
-        #     and the pool distributes across [0, 1] normally.
-        #   • Web docs additionally get multiplied by web_wt (default 0.5) so
-        #     local knowledge retains a natural edge when both sources are relevant.
+        #   rerank_score = (raw − pool_lo) / (pool_hi − pool_lo)
+        #
+        # rerank_score is used ONLY for intra-query ordering.  It is deliberately
+        # query-relative: the best chunk in any pool approaches 1.0, so it must
+        # not be used for absolute keep/drop decisions.
+        #
+        # Threshold decisions (keep/drop) use raw_rerank_score — the raw
+        # cross-encoder logit stored below — which is on a query-independent scale.
+        # See HomeBrewChunkSelector.filter_threshold.
+        #
+        # Web docs are multiplied by web_wt for ordering so local knowledge
+        # retains a natural edge.  In web-only mode the multiplier is skipped
+        # (it would uniformly lower all scores without changing their order).
 
         # Resolve the web weight from the session override or the global config default.
         web_wt: float = float(
@@ -272,7 +275,7 @@ class RAGChatImpl(SingletonMixin):
             else (self.cfg.get_float("_WEB_SEARCH.default_web_weight") or 0.5)
         )
 
-        # Store raw scores and compute pool min/max across all candidates.
+        # Store raw cross-encoder logits; compute pool min/max for ordering.
         for i, doc in enumerate(candidates):
             doc.metadata["raw_rerank_score"] = float(raw_rerank[i])
 
@@ -280,9 +283,8 @@ class RAGChatImpl(SingletonMixin):
         lo = min(all_raw_scores) if all_raw_scores else 0.0
         hi = max(all_raw_scores) if all_raw_scores else 1.0
         full_range = hi - lo if hi != lo else 1.0
-        sigmoid_hi = 1.0 / (1.0 + math.exp(-hi))
 
-        # Assign rerank_score: sigmoid-capped min-max for all docs.
+        # Assign rerank_score: plain min-max for relative ordering only.
         # Web docs are additionally scaled by web_wt to let local knowledge retain
         # a natural edge when both sources are present.  In web-only mode (all docs
         # are web) the multiplier is skipped — there is no local content to protect
@@ -293,11 +295,10 @@ class RAGChatImpl(SingletonMixin):
         for i, doc in enumerate(candidates):
             raw = float(raw_rerank[i])
             normalized = (raw - lo) / full_range
-            scaled = normalized * sigmoid_hi
             if doc.metadata.get("Source") == "Web" and not all_web:
-                doc.metadata["rerank_score"] = web_wt * scaled
+                doc.metadata["rerank_score"] = web_wt * normalized
             else:
-                doc.metadata["rerank_score"] = scaled
+                doc.metadata["rerank_score"] = normalized
 
         # Sort documents by combined score in descending order
         reranked: list[Any] = sorted(
@@ -422,707 +423,693 @@ class RAGChatImpl(SingletonMixin):
             return self._retrieve(mySession)
 
     def _retrieve(self, mySession: Session) -> Tuple[str, int]:
-        if self._set_vector_store(mySession):
-            self.perf_logger.log("RAGChatImpl._retrieve", "chat", "start retrieve")
-            # Reset one-shot topic-switch flag from the previous turn.
-            mySession.force_skip_rewrite = False
-            mySession.effective_query = None
-            mySession.effective_query_reason = None
+        if not self._set_vector_store(mySession):
+            return "", 0
+        self.perf_logger.log("RAGChatImpl._retrieve", "chat", "start retrieve")
+        user_query_original = self._prepare_session(mySession)
+        final_query, alternate_queries = self._normalize_query(
+            mySession, user_query_original
+        )
+        if self._check_gates(mySession, final_query):
+            return "", 0
+        retrieve_mode: str = (mySession.retrieve_mode or "VECTOR").upper()
+        bm25_query: str = mySession.query or ""
+        vector_docs, bm25_docs, graph_docs = self._fetch_local_docs(
+            mySession, retrieve_mode, bm25_query, alternate_queries
+        )
+        web_docs = self._fetch_web_docs(mySession, retrieve_mode, user_query_original)
+        chosen = self._merge_and_select(
+            mySession, vector_docs, bm25_docs, graph_docs, web_docs
+        )
+        return self._build_context(mySession, chosen)
 
-            # Auto-reset chat context when web_search mode changes mid-session.
-            # Prior answers sourced from web content would confuse the LLM when
-            # the next query runs without (or with) web search.
-            if (
-                mySession.last_web_search is not None
-                and mySession.last_web_search != mySession.web_search
-                and mySession.use_chat_context
-            ):
+    def _prepare_session(self, mySession: Session) -> str:
+        """Reset per-turn flags, handle mode-change and topic-switch resets.
+
+        Returns user_query_original (the query before any translation/rewrite).
+        """
+        mySession.force_skip_rewrite = False
+        mySession.effective_query = None
+        mySession.effective_query_reason = None
+
+        if (
+            mySession.last_web_search is not None
+            and mySession.last_web_search != mySession.web_search
+            and mySession.use_chat_context
+        ):
+            self.chatContext.reset_conversation()
+            self.pretty.write(
+                "W",
+                "TopicSwitch",
+                "Web search mode changed — chat history cleared to prevent context contamination.",
+            )
+
+        if (
+            mySession.last_fetch_page_content is not None
+            and mySession.last_fetch_page_content != mySession.fetch_page_content
+            and mySession.use_chat_context
+        ):
+            self.chatContext.reset_conversation()
+            self.pretty.write(
+                "W",
+                "TopicSwitch",
+                "fetch_page_content mode changed — chat history cleared to prevent context contamination.",
+            )
+
+        raw_query: str = mySession.query or ""
+        for pfx in _TOPIC_SWITCH_PREFIXES:
+            if raw_query.lower().startswith(pfx):
+                mySession.query = raw_query[len(pfx) :].strip()
+                mySession.force_skip_rewrite = True
                 self.chatContext.reset_conversation()
                 self.pretty.write(
                     "W",
                     "TopicSwitch",
-                    "Web search mode changed — chat history cleared to prevent context contamination.",
+                    f"Topic switch detected (prefix {pfx!r}) — chat history cleared, query rewrite disabled for this turn.",
                 )
+                break
 
-            # Auto-reset chat context when fetch_page_content mode changes.
-            # Answers built from full fetched pages vs. snippets differ enough
-            # in detail that mixing them in the same conversation context would
-            # mislead the query rewriter on the next turn.
-            if (
-                mySession.last_fetch_page_content is not None
-                and mySession.last_fetch_page_content != mySession.fetch_page_content
-                and mySession.use_chat_context
-            ):
-                self.chatContext.reset_conversation()
-                self.pretty.write(
-                    "W",
-                    "TopicSwitch",
-                    "fetch_page_content mode changed — chat history cleared to prevent context contamination.",
+        mySession.last_web_search = mySession.web_search
+        mySession.last_fetch_page_content = mySession.fetch_page_content
+
+        user_query_original: str = mySession.query or ""
+        self.pretty.write(
+            "I",
+            "UserQuery",
+            f"Original user query: {user_query_original!r}",
+            color=CYAN,
+        )
+        return user_query_original
+
+    def _normalize_query(
+        self, mySession: Session, user_query_original: str
+    ) -> tuple[str, list[str]]:
+        """Translate → rewrite → re-translate; set effective_query; expand alternate queries.
+
+        Returns (final_query, alternate_queries).
+        """
+        backend: str = (
+            getattr(mySession, "translation_backend", None)
+            or self._translation_backend
+            or "off"
+        ).lower()
+        translator = self._get_translator(backend)
+        was_translated: bool = False
+
+        if translator is not None and mySession.query:
+            original_query: str = mySession.query
+            detected_lang: str = self._fileUtils.get_user_text_language(
+                original_query,
+                output="nltk",
+                native_lang=None,
+            )
+            # Tag the session so ChatContext can filter turns by language.
+            mySession.current_query_lang = detected_lang
+
+            if detected_lang != "english":
+                translated: str = translator.translate_text(
+                    original_query,
+                    target_lang="en",
+                    source_lang=detected_lang,
                 )
-
-            # Check for an explicit topic-switch prefix (e.g. "new: ...").
-            # Strip the prefix so downstream steps (translation, retrieval,
-            # history storage) never see it, and set the flag so the rewriter
-            # is skipped this turn.
-            raw_query: str = mySession.query or ""
-            for pfx in _TOPIC_SWITCH_PREFIXES:
-                if raw_query.lower().startswith(pfx):
-                    mySession.query = raw_query[len(pfx) :].strip()
-                    mySession.force_skip_rewrite = True
-                    self.chatContext.reset_conversation()
+                if translated and translated != original_query:
                     self.pretty.write(
-                        "W",
-                        "TopicSwitch",
-                        f"Topic switch detected (prefix {pfx!r}) — chat history cleared, query rewrite disabled for this turn.",
+                        "I",
+                        "QueryNorm",
+                        f"Normalized user query [{detected_lang}\u2192english, "
+                        f"backend={backend}]: "
+                        f"{original_query!r} \u2192 {translated!r}",
                     )
-                    break
+                    mySession.query = translated
+                    was_translated = True
 
-            # Snapshot the user's original query for later comparison /
-            # logging. This is what the user actually typed, before any
-            # translation or coreference rewriting.
-            # Snapshot web_search and fetch_page_content state so the next
-            # turn can detect a change.
-            mySession.last_web_search = mySession.web_search
-            mySession.last_fetch_page_content = mySession.fetch_page_content
+        pre_rewrite_query: str = mySession.query or ""
+        if mySession.use_chat_context:
+            mySession.query = self.promptRewrite.rewrite(mySession)
+        was_rewritten: bool = (mySession.query or "") != pre_rewrite_query
 
-            user_query_original: str = mySession.query or ""
+        # Post-rewrite re-normalisation: rewriter may introduce non-English names.
+        if translator is not None and mySession.query:
+            rewritten_query: str = mySession.query
+            detected_after_rewrite: str = self._fileUtils.get_user_text_language(
+                rewritten_query,
+                output="nltk",
+                native_lang=None,
+            )
+            if detected_after_rewrite != "english":
+                translated_after: str = translator.translate_text(
+                    rewritten_query,
+                    target_lang="en",
+                    source_lang=detected_after_rewrite,
+                )
+                if translated_after and translated_after != rewritten_query:
+                    self.pretty.write(
+                        "I",
+                        "QueryNorm",
+                        f"Normalized rewritten query "
+                        f"[{detected_after_rewrite}\u2192english, "
+                        f"backend={backend}]: "
+                        f"{rewritten_query!r} \u2192 {translated_after!r}",
+                    )
+                    mySession.query = translated_after
+                    was_translated = True
+
+        final_query: str = mySession.query or ""
+        if final_query != user_query_original:
+            mySession.effective_query = final_query
+            if was_translated and was_rewritten:
+                mySession.effective_query_reason = "translated+rewritten"
+            elif was_translated:
+                mySession.effective_query_reason = "translated"
+            elif was_rewritten:
+                mySession.effective_query_reason = "rewritten"
+            else:
+                mySession.effective_query_reason = "changed"
             self.pretty.write(
                 "I",
-                "UserQuery",
-                f"Original user query: {user_query_original!r}",
+                "FinalQuery",
+                f"Final query for retrieval: {final_query!r} "
+                f"(was: {user_query_original!r})",
+                color=CYAN,
+            )
+        else:
+            self.pretty.write(
+                "I",
+                "FinalQuery",
+                f"Final query for retrieval: {final_query!r} (unchanged)",
                 color=CYAN,
             )
 
-            # --- User query normalisation (pre-rewrite, pre-retrieval) ---
-            # Translate non-English queries to English so both vector and BM25
-            # paths see the same query and HYBRID RRF fusion stays consistent.
-            # The rewriter LLM also handles English pronouns more reliably.
-            backend: str = (
-                getattr(mySession, "translation_backend", None)
-                or self._translation_backend
-                or "off"
-            ).lower()
-            translator = self._get_translator(backend)
-            was_translated: bool = False
-            if translator is not None and mySession.query:
-                original_query: str = mySession.query
-                detected_lang: str = self._fileUtils.get_user_text_language(
-                    original_query,
-                    output="nltk",
-                    native_lang=None,
-                )
+        alternate_queries: list[str] = self._generate_alternate_queries(
+            final_query, mySession
+        )
+        if alternate_queries and DebugHelper.check_session(mySession, 29):
+            self.pretty.write(
+                "D",
+                "MultiQuery",
+                f"Alternate queries ({len(alternate_queries)}): "
+                + " | ".join(f"{i+1}: {q!r}" for i, q in enumerate(alternate_queries)),
+                color=CYAN,
+            )
 
-                # Tag the session so ChatContext can store and filter turns by
-                # language — German turns are never fetched for an English query
-                # and vice-versa (see ChatContext.add_chat_turn / _fetch_context_docs).
-                mySession.current_query_lang = detected_lang
+        return final_query, alternate_queries
 
-                if detected_lang != "english":
-                    translated: str = translator.translate_text(
-                        original_query,
-                        target_lang="en",
-                        source_lang=detected_lang,
-                    )
-                    if translated and translated != original_query:
-                        self.pretty.write(
-                            "I",
-                            "QueryNorm",
-                            f"Normalized user query [{detected_lang}\u2192english, "
-                            f"backend={backend}]: "
-                            f"{original_query!r} \u2192 {translated!r}",
-                        )
-                        mySession.query = translated
-                        was_translated = True
+    def _check_gates(self, mySession: Session, final_query: str) -> bool:
+        """Run the retrieval eligibility and intent classifier gates.
 
-            # Query rewrite: resolve coreferences using conversation history
-            pre_rewrite_query: str = mySession.query or ""
-            if mySession.use_chat_context:
-                mySession.query = self.promptRewrite.rewrite(mySession)
-            was_rewritten: bool = (mySession.query or "") != pre_rewrite_query
+        Returns True if retrieval should be aborted (caller returns "", 0).
+        """
+        if self.retrievalGate.check(mySession):
+            return True
 
-            # --- Post-rewrite re-normalisation ---
-            # The rewriter may pull non-English entity names from chat history,
-            # e.g. "Are Eichh\u00f6rnchen, Katzen, ... seed animals?". Detect language
-            # again and translate a second time if needed so retrieval always
-            # sees a clean English query.
-            if translator is not None and mySession.query:
-                rewritten_query: str = mySession.query
-                detected_after_rewrite: str = self._fileUtils.get_user_text_language(
-                    rewritten_query,
-                    output="nltk",
-                    native_lang=None,
-                )
-                if detected_after_rewrite != "english":
-                    translated_after: str = translator.translate_text(
-                        rewritten_query,
-                        target_lang="en",
-                        source_lang=detected_after_rewrite,
-                    )
-                    if translated_after and translated_after != rewritten_query:
-                        self.pretty.write(
-                            "I",
-                            "QueryNorm",
-                            f"Normalized rewritten query "
-                            f"[{detected_after_rewrite}\u2192english, "
-                            f"backend={backend}]: "
-                            f"{rewritten_query!r} \u2192 {translated_after!r}",
-                        )
-                        mySession.query = translated_after
-                        was_translated = True
-
-            # Always show the FINAL query that retrieval (vector + BM25) and
-            # the chat LLM will see. Helps diagnose hallucinations when the
-            # query was silently changed by rewrite — and shows the original
-            # query verbatim when the rewriter made no change.
-            final_query: str = mySession.query or ""
-            if final_query != user_query_original:
-                mySession.effective_query = final_query
-                if was_translated and was_rewritten:
-                    mySession.effective_query_reason = "translated+rewritten"
-                elif was_translated:
-                    mySession.effective_query_reason = "translated"
-                elif was_rewritten:
-                    mySession.effective_query_reason = "rewritten"
-                else:
-                    mySession.effective_query_reason = "changed"
+        score, outcome, reasons = self.intent_filter.score_query(
+            final_query, path="local"
+        )
+        if outcome == "REFUSE":
+            reason_str = ", ".join(reasons) if reasons else "intent score"
+            mySession.clarification_response = (
+                f"Your query was blocked by the content policy "
+                f"(intent score {score} — {reason_str})."
+            )
+            if DebugHelper.check_session(mySession, 30):
                 self.pretty.write(
-                    "I",
-                    "FinalQuery",
-                    f"Final query for retrieval: {final_query!r} "
-                    f"(was: {user_query_original!r})",
-                    color=CYAN,
+                    "W",
+                    "IntentFilter",
+                    f"Query blocked \u2014 score={score}, reasons={reasons}",
+                )
+            return True
+        if outcome == "ALLOW_WITH_SAFETY_FRAMING":
+            if DebugHelper.check_session(mySession, 30):
+                self.pretty.write(
+                    "W",
+                    "IntentFilter",
+                    f"Dual-use query detected \u2014 score={score}, reasons={reasons}. "
+                    "Proceeding with retrieval.",
+                )
+        return False
+
+    def _fetch_local_docs(
+        self,
+        mySession: Session,
+        retrieve_mode: str,
+        bm25_query: str,
+        alternate_queries: list[str],
+    ) -> tuple[list[Any], list[Any], list[Any]]:
+        """Run Vector (+ alternate-query expansion), BM25, and Graph retrievers.
+
+        Returns (vector_docs, bm25_docs, graph_docs).
+        """
+        VECTOR_MODES = ("VECTOR", "ALL", "VECTOR_GRAPH", "VECTOR_BM25")
+        BM25_MODES = ("BM25", "ALL", "BM25_GRAPH", "VECTOR_BM25")
+        GRAPH_MODES = ("GRAPH", "ALL", "VECTOR_GRAPH", "BM25_GRAPH")
+
+        # --- VECTOR retrieval ---
+        vector_docs: list[Any] = []
+        vector_weight = float(
+            mySession.vector_weight if mySession.vector_weight is not None else 1.0
+        )
+        if retrieve_mode in VECTOR_MODES and vector_weight != 0.0:
+            self.pretty.write(
+                "I",
+                "Chroma",
+                f"Querying Chroma DB on vector store {self.persist_directory}",
+            )
+            assert (
+                self.vector_store is not None
+            ), "vector_store not initialized; call set_vector_store first"
+            self.perf_logger.log(
+                "RAGChatImpl._retrieve", "chat", "start vector similarity_search"
+            )
+            _t_vec = time.perf_counter()
+            hits: list[Any] = self.vector_store.similarity_search_with_score(
+                mySession.query or "", **(mySession.base_kwargs or {})
+            )
+            vector_docs = self.chatContext.annotate_chunks(hits)
+            self.perf_logger.log(
+                "RAGChatImpl._retrieve",
+                "chat",
+                f"stop  vector similarity_search n={len(vector_docs)} elapsed={time.perf_counter() - _t_vec:.3f}s",
+            )
+            for d in vector_docs:
+                d.metadata["retriever_sources"] = "Vector"
+
+            if alternate_queries:
+                existing_ids: set[str] = {
+                    str(d.metadata.get("id", d.page_content)) for d in vector_docs
+                }
+                for qi, aq in enumerate(alternate_queries, start=1):
+                    try:
+                        aq_hits: list[Any] = (
+                            self.vector_store.similarity_search_with_score(
+                                aq, **(mySession.base_kwargs or {})
+                            )
+                        )
+                        aq_docs = self.chatContext.annotate_chunks(aq_hits)
+                        for d in aq_docs:
+                            doc_id = str(d.metadata.get("id", d.page_content))
+                            if doc_id not in existing_ids:
+                                d.metadata["retriever_sources"] = f"Vector-AQ{qi}"
+                                vector_docs.append(d)
+                                existing_ids.add(doc_id)
+                    except Exception as aq_exc:
+                        self.pretty.write(
+                            "W",
+                            "MultiQuery",
+                            f"Alternate query {qi} vector search failed: {aq_exc}",
+                        )
+            if DebugHelper.check_session(mySession, 10):
+                self._print_chroma_debug(vector_docs)
+            self.pretty.write(
+                "O",
+                "Chroma",
+                f"Querying Chroma DB query returned {len(vector_docs)} chunks",
+            )
+
+        # --- BM25 retrieval ---
+        bm25_docs: list[Any] = []
+        bm25_weight = float(
+            mySession.bm25_weight if mySession.bm25_weight is not None else 1.0
+        )
+        if retrieve_mode in BM25_MODES and bm25_weight != 0.0:
+            self.pretty.write(
+                "I",
+                "BM25",
+                f"Querying BM25 index on collection {self.collection_name}",
+            )
+            assert self.collection is not None
+            assert self.persist_directory is not None
+            self.perf_logger.log(
+                "RAGChatImpl._retrieve",
+                "chat",
+                f"start bm25 block collection={self.collection_name}",
+            )
+            _t_bm25 = time.perf_counter()
+            bm25_dir = self.bm25_retriever.get_bm25_dir(self.collection_name)
+            self.bm25_retriever.load_or_rebuild(
+                bm25_dir,
+                self.collection_name,
+                self.collection,
+            )
+            bm25_filter: dict[str, Any] | None = None
+            if mySession.base_kwargs and "filter" in mySession.base_kwargs:
+                bm25_filter = mySession.base_kwargs["filter"]
+
+            bm25_docs = self.bm25_retriever.query(
+                bm25_query,
+                k=mySession.retriever_k or 100,
+                file_filter=bm25_filter,
+            )
+            for d in bm25_docs:
+                d.metadata["retriever_sources"] = "BM25"
+            self.pretty.write(
+                "O",
+                "BM25",
+                f"BM25 retrieval returned {len(bm25_docs)} chunks",
+            )
+            self.perf_logger.log(
+                "RAGChatImpl._retrieve",
+                "chat",
+                f"stop  bm25 block n={len(bm25_docs)} elapsed={time.perf_counter() - _t_bm25:.3f}s",
+            )
+            if DebugHelper.check_session(mySession, 10):
+                self._print_bm25_debug(bm25_docs)
+
+        # --- Graph retrieval ---
+        graph_docs: list[Any] = []
+        graph_weight = float(
+            mySession.graph_weight if mySession.graph_weight is not None else 1.0
+        )
+        if retrieve_mode in GRAPH_MODES and graph_weight != 0.0:
+            self.pretty.write(
+                "I",
+                "Graph",
+                f"Querying graph index on collection {self.collection_name}",
+            )
+            assert self.collection is not None
+            self.perf_logger.log(
+                "RAGChatImpl._retrieve",
+                "chat",
+                f"start graph block collection={self.collection_name}",
+            )
+            _t_graph = time.perf_counter()
+            graph_dir = self.graph_retriever.get_graph_dir(self.collection_name)
+            self.graph_retriever.load_or_rebuild(
+                graph_dir,
+                self.collection_name,
+                self.collection,
+            )
+            graph_filter: dict[str, Any] | None = None
+            if mySession.base_kwargs and "filter" in mySession.base_kwargs:
+                graph_filter = mySession.base_kwargs["filter"]
+
+            graph_docs = self.graph_retriever.query(
+                bm25_query,
+                k=mySession.retriever_k or 100,
+                file_filter=graph_filter,
+            )
+            for d in graph_docs:
+                d.metadata["retriever_sources"] = "Graph"
+            self.pretty.write(
+                "O",
+                "Graph",
+                f"Graph retrieval returned {len(graph_docs)} chunks",
+            )
+            self.perf_logger.log(
+                "RAGChatImpl._retrieve",
+                "chat",
+                f"stop  graph block n={len(graph_docs)} elapsed={time.perf_counter() - _t_graph:.3f}s",
+            )
+            if DebugHelper.check_session(mySession, 30):
+                self._print_graph_debug(graph_docs)
+
+        return vector_docs, bm25_docs, graph_docs
+
+    def _fetch_web_docs(
+        self,
+        mySession: Session,
+        retrieve_mode: str,
+        user_query_original: str,
+    ) -> list[Any]:
+        """Run web retrieval and apply BM25/cosine pre-filters.
+
+        Returns web_docs (empty list when web search is disabled or blocked).
+        """
+        web_docs: list[Any] = []
+        web_triggered: bool = mySession.web_search or retrieve_mode == "WEB"
+        if not web_triggered:
+            return web_docs
+
+        web_mode: str = str(os.environ.get("WEB_SEARCH_MODE", "0")).strip().lower()
+        if web_mode == "0":
+            if retrieve_mode == "WEB":
+                self.pretty.write(
+                    "W",
+                    "Web",
+                    'retrieve_mode=WEB requested but WEB_SEARCH_MODE="0" '
+                    "— no results will be returned.",
                 )
             else:
                 self.pretty.write(
-                    "I",
-                    "FinalQuery",
-                    f"Final query for retrieval: {final_query!r} (unchanged)",
-                    color=CYAN,
+                    "W",
+                    "Web",
+                    'Web search blocked by administrator (WEB_SEARCH_MODE = "0") — skipping',
                 )
-
-            # --- Multi-query expansion ---
-            # Generate alternate phrasings of the final (resolved) query and
-            # run extra vector searches so the retrieval pool sees a wider
-            # semantic neighbourhood before RRF fusion.
-            alternate_queries: list[str] = self._generate_alternate_queries(
-                final_query, mySession
+            return web_docs
+        if web_mode != "1":
+            self.pretty.write(
+                "W",
+                "Web",
+                f"Web search blocked (WEB_SEARCH_MODE = {web_mode!r}) — skipping",
             )
-            if alternate_queries and DebugHelper.check_session(mySession, 29):
-                self.pretty.write(
-                    "D",
-                    "MultiQuery",
-                    f"Alternate queries ({len(alternate_queries)}): "
-                    + " | ".join(
-                        f"{i+1}: {q!r}" for i, q in enumerate(alternate_queries)
-                    ),
-                    color=CYAN,
-                )
+            return web_docs
 
-            retrieve_mode: str = (mySession.retrieve_mode or "VECTOR").upper()
+        label = (
+            "retrieve_mode=WEB — querying web only..."
+            if retrieve_mode == "WEB"
+            else "Querying web search..."
+        )
+        self.pretty.write("I", "Web", label)
+        self.perf_logger.log("RAGChatImpl._retrieve", "chat", "start web block")
+        _t_web = time.perf_counter()
+        web_docs = self.web_retriever.query(
+            mySession.query or "",
+            k=self.cfg.get_int("_WEB_SEARCH.max_results") or 5,
+            fetch_page_content=bool(mySession.fetch_page_content),
+            original_query=user_query_original,
+            collection=mySession.collection_name or "",
+        )
+        self.pretty.write(
+            "O",
+            "Web",
+            f"Web search returned {len(web_docs)} results",
+            color=CYAN,
+        )
+        self.perf_logger.log(
+            "RAGChatImpl._retrieve",
+            "chat",
+            f"stop  web block n={len(web_docs)} elapsed={time.perf_counter() - _t_web:.3f}s",
+        )
+        if DebugHelper.check_session(mySession, 10):
+            self._print_web_debug(web_docs)
 
-            # --- Retrieval eligibility gate ---
-            if self.retrievalGate.check(mySession):
-                return "", 0
-
-            # --- Intent classifier gate (local path) ---
-            # Runs unconditionally regardless of retrieval mode (Vector/BM25/Graph/Web).
-            # A REFUSE here prevents all local and web retrieval for this turn.
-            score, outcome, reasons = self.intent_filter.score_query(
-                final_query, path="local"
-            )
-            if outcome == "REFUSE":
-                reason_str = ", ".join(reasons) if reasons else "intent score"
-                mySession.clarification_response = (
-                    f"Your query was blocked by the content policy "
-                    f"(intent score {score} — {reason_str})."
-                )
-                if DebugHelper.check_session(mySession, 30):
-                    self.pretty.write(
-                        "W",
-                        "IntentFilter",
-                        f"Query blocked \u2014 score={score}, reasons={reasons}",
-                    )
-                return "", 0
-            if outcome == "ALLOW_WITH_SAFETY_FRAMING":
-                if DebugHelper.check_session(mySession, 30):
-                    self.pretty.write(
-                        "W",
-                        "IntentFilter",
-                        f"Dual-use query detected \u2014 score={score}, reasons={reasons}. "
-                        "Proceeding with retrieval.",
-                    )
-
-            bm25_query: str = mySession.query or ""
-
-            # Mode membership constants
-            VECTOR_MODES = ("VECTOR", "ALL", "VECTOR_GRAPH", "VECTOR_BM25")
-            BM25_MODES = ("BM25", "ALL", "BM25_GRAPH", "VECTOR_BM25")
-            GRAPH_MODES = ("GRAPH", "ALL", "VECTOR_GRAPH", "BM25_GRAPH")
-
-            # --- VECTOR retrieval ---
-            vector_docs: list[Any] = []
-            vector_weight = float(
-                mySession.vector_weight if mySession.vector_weight is not None else 1.0
-            )
-            if retrieve_mode in VECTOR_MODES and vector_weight != 0.0:
-                self.pretty.write(
-                    "I",
-                    "Chroma",
-                    f"Querying Chroma DB on vector store {self.persist_directory}",
-                )
-                assert (
-                    self.vector_store is not None
-                ), "vector_store not initialized; call set_vector_store first"
-                self.perf_logger.log(
-                    "RAGChatImpl._retrieve", "chat", "start vector similarity_search"
-                )
-                _t_vec = time.perf_counter()
-                hits: list[Any] = self.vector_store.similarity_search_with_score(
-                    mySession.query or "", **(mySession.base_kwargs or {})
-                )
-                vector_docs = self.chatContext.annotate_chunks(hits)
-                self.perf_logger.log(
-                    "RAGChatImpl._retrieve",
-                    "chat",
-                    f"stop  vector similarity_search n={len(vector_docs)} elapsed={time.perf_counter() - _t_vec:.3f}s",
-                )
-                for d in vector_docs:
-                    d.metadata["retriever_sources"] = "Vector"
-
-                # Run an additional vector search for each alternate query and
-                # fold the new hits into vector_docs.  Duplicates (same chunk id)
-                # are skipped; retriever_sources is stamped with the variant index
-                # so it remains traceable in debug tables.
-                if alternate_queries:
-                    existing_ids: set[str] = {
-                        str(d.metadata.get("id", d.page_content)) for d in vector_docs
-                    }
-                    for qi, aq in enumerate(alternate_queries, start=1):
-                        try:
-                            aq_hits: list[Any] = (
-                                self.vector_store.similarity_search_with_score(
-                                    aq, **(mySession.base_kwargs or {})
-                                )
-                            )
-                            aq_docs = self.chatContext.annotate_chunks(aq_hits)
-                            for d in aq_docs:
-                                doc_id = str(d.metadata.get("id", d.page_content))
-                                if doc_id not in existing_ids:
-                                    d.metadata["retriever_sources"] = f"Vector-AQ{qi}"
-                                    vector_docs.append(d)
-                                    existing_ids.add(doc_id)
-                        except Exception as aq_exc:
-                            self.pretty.write(
-                                "W",
-                                "MultiQuery",
-                                f"Alternate query {qi} vector search failed: {aq_exc}",
-                            )
-                if DebugHelper.check_session(mySession, 10):
-                    self._print_chroma_debug(vector_docs)
-                self.pretty.write(
-                    "O",
-                    "Chroma",
-                    f"Querying Chroma DB query returned {len(vector_docs)} chunks",
-                )
-
-            # --- BM25 retrieval ---
-            bm25_docs: list[Any] = []
-            bm25_weight = float(
-                mySession.bm25_weight if mySession.bm25_weight is not None else 1.0
-            )
-            if retrieve_mode in BM25_MODES and bm25_weight != 0.0:
-                self.pretty.write(
-                    "I",
-                    "BM25",
-                    f"Querying BM25 index on collection {self.collection_name}",
-                )
-                assert self.collection is not None
-                assert self.persist_directory is not None
-                self.perf_logger.log(
-                    "RAGChatImpl._retrieve",
-                    "chat",
-                    f"start bm25 block collection={self.collection_name}",
-                )
-                _t_bm25 = time.perf_counter()
-                bm25_dir = self.bm25_retriever.get_bm25_dir(self.collection_name)
-                self.bm25_retriever.load_or_rebuild(
-                    bm25_dir,
-                    self.collection_name,
-                    self.collection,
-                )
-                # Build file filter matching the vector search filter
-                bm25_filter: dict[str, Any] | None = None
-                if mySession.base_kwargs and "filter" in mySession.base_kwargs:
-                    bm25_filter = mySession.base_kwargs["filter"]
-
-                bm25_docs = self.bm25_retriever.query(
-                    bm25_query,
-                    k=mySession.retriever_k or 100,
-                    file_filter=bm25_filter,
-                )
-                for d in bm25_docs:
-                    d.metadata["retriever_sources"] = "BM25"
-                self.pretty.write(
-                    "O",
-                    "BM25",
-                    f"BM25 retrieval returned {len(bm25_docs)} chunks",
-                )
-                self.perf_logger.log(
-                    "RAGChatImpl._retrieve",
-                    "chat",
-                    f"stop  bm25 block n={len(bm25_docs)} elapsed={time.perf_counter() - _t_bm25:.3f}s",
-                )
-                if DebugHelper.check_session(mySession, 10):
-                    self._print_bm25_debug(bm25_docs)
-
-            # --- Graph retrieval ---
-            graph_docs: list[Any] = []
-            graph_weight = float(
-                mySession.graph_weight if mySession.graph_weight is not None else 1.0
-            )
-            if retrieve_mode in GRAPH_MODES and graph_weight != 0.0:
-                self.pretty.write(
-                    "I",
-                    "Graph",
-                    f"Querying graph index on collection {self.collection_name}",
-                )
-                assert self.collection is not None
-                self.perf_logger.log(
-                    "RAGChatImpl._retrieve",
-                    "chat",
-                    f"start graph block collection={self.collection_name}",
-                )
-                _t_graph = time.perf_counter()
-                graph_dir = self.graph_retriever.get_graph_dir(self.collection_name)
-                self.graph_retriever.load_or_rebuild(
-                    graph_dir,
-                    self.collection_name,
-                    self.collection,
-                )
-                graph_filter: dict[str, Any] | None = None
-                if mySession.base_kwargs and "filter" in mySession.base_kwargs:
-                    graph_filter = mySession.base_kwargs["filter"]
-
-                graph_docs = self.graph_retriever.query(
-                    bm25_query,
-                    k=mySession.retriever_k or 100,
-                    file_filter=graph_filter,
-                )
-                for d in graph_docs:
-                    d.metadata["retriever_sources"] = "Graph"
-                self.pretty.write(
-                    "O",
-                    "Graph",
-                    f"Graph retrieval returned {len(graph_docs)} chunks",
-                )
-                self.perf_logger.log(
-                    "RAGChatImpl._retrieve",
-                    "chat",
-                    f"stop  graph block n={len(graph_docs)} elapsed={time.perf_counter() - _t_graph:.3f}s",
-                )
-                if DebugHelper.check_session(mySession, 30):
-                    self._print_graph_debug(graph_docs)
-
-            # --- Web retrieval ---
-            # Triggered by mySession.web_search (user opt-in) OR retrieve_mode="WEB"
-            # (web-only mode, which implicitly activates web search for this query).
-            # Both paths respect the WEB_SEARCH_MODE master switch.
-            web_docs: list[Any] = []
-            web_triggered: bool = mySession.web_search or retrieve_mode == "WEB"
-            if web_triggered:
-                web_mode: str = (
-                    str(os.environ.get("WEB_SEARCH_MODE", "0")).strip().lower()
-                )
-                if web_mode == "0":
-                    if retrieve_mode == "WEB":
-                        self.pretty.write(
-                            "W",
-                            "Web",
-                            'retrieve_mode=WEB requested but WEB_SEARCH_MODE="0" '
-                            "— no results will be returned.",
-                        )
-                    else:
-                        self.pretty.write(
-                            "W",
-                            "Web",
-                            'Web search blocked by administrator (WEB_SEARCH_MODE = "0") — skipping',
-                        )
-                elif web_mode != "1":
-                    self.pretty.write(
-                        "W",
-                        "Web",
-                        f"Web search blocked (WEB_SEARCH_MODE = {web_mode!r}) — skipping",
-                    )
-                else:
-                    label = (
-                        "retrieve_mode=WEB — querying web only..."
-                        if retrieve_mode == "WEB"
-                        else "Querying web search..."
-                    )
-                    self.pretty.write("I", "Web", label)
-                    self.perf_logger.log(
-                        "RAGChatImpl._retrieve", "chat", "start web block"
-                    )
-                    _t_web = time.perf_counter()
-                    web_docs = self.web_retriever.query(
-                        mySession.query or "",
-                        k=self.cfg.get_int("_WEB_SEARCH.max_results") or 5,
-                        fetch_page_content=bool(mySession.fetch_page_content),
-                        original_query=user_query_original,
-                        collection=mySession.collection_name or "",
-                    )
-                    self.pretty.write(
-                        "O",
-                        "Web",
-                        f"Web search returned {len(web_docs)} results",
-                        color=CYAN,
-                    )
-                    self.perf_logger.log(
-                        "RAGChatImpl._retrieve",
-                        "chat",
-                        f"stop  web block n={len(web_docs)} elapsed={time.perf_counter() - _t_web:.3f}s",
-                    )
-                    if DebugHelper.check_session(mySession, 10):
-                        self._print_web_debug(web_docs)
-
-                    # --- Web pre-filters (BM25 and/or cosine against query) ---
-                    # Each filter is a no-op when its threshold is 0.0 (default).
-                    # BM25 runs first (cheap), cosine second (embedding calls).
-                    pre_bm25: float = (
-                        self.cfg.get_float("_WEB_SEARCH.bm25_pre_filter") or 0.0
-                    )
-                    pre_cosine: float = (
-                        self.cfg.get_float("_WEB_SEARCH.cosine_pre_filter") or 0.0
-                    )
-                    if web_docs and (pre_bm25 > 0.0 or pre_cosine > 0.0):
-                        if DebugHelper.check_session(mySession, 30):
-                            self.pretty.write(
-                                "D",
-                                "WebPreFilter",
-                                f"Pre-filtering {len(web_docs)} web result(s) — "
-                                f"bm25_pre_filter={pre_bm25:.3f}, "
-                                f"cosine_pre_filter={pre_cosine:.3f}",
-                                color=CYAN,
-                            )
-                        before_pre = len(web_docs)
-                        if pre_bm25 > 0.0:
-                            docs_before_bm25 = web_docs
-                            web_docs = self.web_pre_filter.bm25_prefilter(
-                                web_docs, mySession.query or ""
-                            )
-                            if DebugHelper.check_session(mySession, 30):
-                                self.pretty.write(
-                                    "D",
-                                    "WebPreFilter",
-                                    f"After BM25 pre-filter: {len(web_docs)}/{before_pre} kept",
-                                    color=CYAN,
-                                )
-                                kept_set = set(id(d) for d in web_docs)
-                                dropped_bm25 = [
-                                    d for d in docs_before_bm25 if id(d) not in kept_set
-                                ]
-                                self._print_web_prefilter_debug(
-                                    web_docs, dropped_bm25, "BM25", pre_bm25
-                                )
-                        if pre_cosine > 0.0 and web_docs:
-                            # Compute query embedding once; reused if vector retrieval
-                            # already ran (avoids a redundant embed_query call).
-                            pre_query_vec: list[float] = self.embedder.embed_query(
-                                mySession.query or ""
-                            )
-                            docs_before_cosine = web_docs
-                            web_docs = self.web_pre_filter.cosine_prefilter(
-                                web_docs,
-                                mySession.query or "",
-                                query_vec=pre_query_vec,
-                            )
-                            if DebugHelper.check_session(mySession, 30):
-                                self.pretty.write(
-                                    "D",
-                                    "WebPreFilter",
-                                    f"After cosine pre-filter: {len(web_docs)}/{before_pre} kept",
-                                    color=CYAN,
-                                )
-                                kept_set = set(id(d) for d in web_docs)
-                                dropped_cosine = [
-                                    d
-                                    for d in docs_before_cosine
-                                    if id(d) not in kept_set
-                                ]
-                                self._print_web_prefilter_debug(
-                                    web_docs, dropped_cosine, "Cosine", pre_cosine
-                                )
-
-            # --- Merge results ---
-            # Local retrievers (Vector, BM25, Graph) are fused via RRF and then
-            # capped to retriever_k.  Web docs are appended AFTER the cap so they
-            # always reach the reranker.  Including web in the same RRF pool caused
-            # them to be pushed off the list: with weight=0.5 and only 5 results
-            # their best RRF score (≈0.008) falls below the 100th local slot (≈0.011).
-            local_sources = [
-                (vector_docs, "Vector"),
-                (bm25_docs, "BM25"),
-                (graph_docs, "Graph"),
-            ]
-            local_active_labeled = [(d, lbl) for d, lbl in local_sources if d]
-            local_active = [d for d, _ in local_active_labeled]
-            local_active_labels = [lbl for _, lbl in local_active_labeled]
-            local_weight_map = {
-                "Vector": float(
-                    mySession.vector_weight
-                    if mySession.vector_weight is not None
-                    else 1.0
-                ),
-                "BM25": float(
-                    mySession.bm25_weight if mySession.bm25_weight is not None else 1.0
-                ),
-                "Graph": float(
-                    mySession.graph_weight
-                    if mySession.graph_weight is not None
-                    else 1.0
-                ),
-            }
-            local_weights = [
-                local_weight_map.get(lbl, 1.0) for lbl in local_active_labels
-            ]
-            if len(local_active) > 1:
-                capped_docs = BM25Retriever.reciprocal_rank_fusion(
-                    *local_active,
-                    k=self.bm25_retriever.rrf_k,
-                    labels=local_active_labels,
-                    weights=local_weights,
-                )
-                capped_docs = capped_docs[: mySession.retriever_k]
-                self.pretty.write(
-                    "O",
-                    "Merge",
-                    f"Reciprocal Rank Fusion (RRF) produced {len(capped_docs)} local chunks",
-                )
-                if DebugHelper.check_session(mySession, 10):
-                    self._print_merged_debug(capped_docs)
-            elif local_active:
-                capped_docs = local_active[0][: mySession.retriever_k]
-                # Stamp retriever_sources so rerank/selection debug prints show the origin
-                src = local_active_labels[0]
-                for doc in capped_docs:
-                    doc.metadata["retriever_sources"] = src
-            else:
-                capped_docs = []
-
-            # Append web docs after the local cap so they always reach the reranker.
-            if web_docs:
-                capped_docs = capped_docs + web_docs
-                self.pretty.write(
-                    "O",
-                    "Merge",
-                    f"Appended {len(web_docs)} web result(s) → reranker pool: {len(capped_docs)} chunks",
-                )
-
-            # --- Chunk near-duplicate removal ---
-            dedup_enabled: bool = self.cfg.get_bool("_CHUNK_DEDUP.enabled")
-            dedup_threshold: float = (
-                self.cfg.get_float("_CHUNK_DEDUP.threshold") or 0.85
-            )
-            if dedup_enabled and capped_docs:
-                before_dedup = len(capped_docs)
-                capped_docs = self._remove_similar_chunks(capped_docs, dedup_threshold)
-                dropped = before_dedup - len(capped_docs)
-                if dropped > 0 and DebugHelper.check_session(mySession, 30):
-                    self.pretty.write(
-                        "I",
-                        "ChunkDedup",
-                        f"Removed {dropped} near-duplicate chunk(s) "
-                        f"(threshold={dedup_threshold:.2f}, kept {len(capped_docs)})",
-                        color=CYAN,
-                    )
-
-            # next—rerank / select if you need:
-            if mySession.rerank == 1:
-                capped_docs = self._rerank(mySession, capped_docs)
-
-            chosen: list[Any] = cast(list[Any], ChunkSelectionService(mySession).select_chunks(capped_docs))  # type: ignore[reportUnknownMemberType]
-
+        # --- Web pre-filters (BM25 and/or cosine against query) ---
+        # Each filter is a no-op when its threshold is 0.0 (default).
+        # BM25 runs first (cheap), cosine second (embedding calls).
+        pre_bm25: float = self.cfg.get_float("_WEB_SEARCH.bm25_pre_filter") or 0.0
+        pre_cosine: float = self.cfg.get_float("_WEB_SEARCH.cosine_pre_filter") or 0.0
+        if web_docs and (pre_bm25 > 0.0 or pre_cosine > 0.0):
             if DebugHelper.check_session(mySession, 30):
                 self.pretty.write(
                     "D",
-                    "ChunkSelect",
-                    f"After chunk selection: {len(chosen)}/{len(capped_docs)} kept",
+                    "WebPreFilter",
+                    f"Pre-filtering {len(web_docs)} web result(s) — "
+                    f"bm25_pre_filter={pre_bm25:.3f}, "
+                    f"cosine_pre_filter={pre_cosine:.3f}",
+                    color=CYAN,
+                )
+            before_pre = len(web_docs)
+            if pre_bm25 > 0.0:
+                docs_before_bm25 = web_docs
+                web_docs = self.web_pre_filter.bm25_prefilter(
+                    web_docs, mySession.query or ""
+                )
+                if DebugHelper.check_session(mySession, 30):
+                    self.pretty.write(
+                        "D",
+                        "WebPreFilter",
+                        f"After BM25 pre-filter: {len(web_docs)}/{before_pre} kept",
+                        color=CYAN,
+                    )
+                    kept_set = set(id(d) for d in web_docs)
+                    dropped_bm25 = [
+                        d for d in docs_before_bm25 if id(d) not in kept_set
+                    ]
+                    self._print_web_prefilter_debug(
+                        web_docs, dropped_bm25, "BM25", pre_bm25
+                    )
+            if pre_cosine > 0.0 and web_docs:
+                pre_query_vec: list[float] = self.embedder.embed_query(
+                    mySession.query or ""
+                )
+                docs_before_cosine = web_docs
+                web_docs = self.web_pre_filter.cosine_prefilter(
+                    web_docs,
+                    mySession.query or "",
+                    query_vec=pre_query_vec,
+                )
+                if DebugHelper.check_session(mySession, 30):
+                    self.pretty.write(
+                        "D",
+                        "WebPreFilter",
+                        f"After cosine pre-filter: {len(web_docs)}/{before_pre} kept",
+                        color=CYAN,
+                    )
+                    kept_set = set(id(d) for d in web_docs)
+                    dropped_cosine = [
+                        d for d in docs_before_cosine if id(d) not in kept_set
+                    ]
+                    self._print_web_prefilter_debug(
+                        web_docs, dropped_cosine, "Cosine", pre_cosine
+                    )
+
+        return web_docs
+
+    def _merge_and_select(
+        self,
+        mySession: Session,
+        vector_docs: list[Any],
+        bm25_docs: list[Any],
+        graph_docs: list[Any],
+        web_docs: list[Any],
+    ) -> list[Any]:
+        """RRF-fuse local docs, cap, append web docs, dedup, rerank, and select.
+
+        Returns the final chosen list.
+        """
+        # Local retrievers (Vector, BM25, Graph) are fused via RRF and then
+        # capped to retriever_k.  Web docs are appended AFTER the cap so they
+        # always reach the reranker.  Including web in the same RRF pool caused
+        # them to be pushed off the list: with weight=0.5 and only 5 results
+        # their best RRF score (≈0.008) falls below the 100th local slot (≈0.011).
+        local_sources = [
+            (vector_docs, "Vector"),
+            (bm25_docs, "BM25"),
+            (graph_docs, "Graph"),
+        ]
+        local_active_labeled = [(d, lbl) for d, lbl in local_sources if d]
+        local_active = [d for d, _ in local_active_labeled]
+        local_active_labels = [lbl for _, lbl in local_active_labeled]
+        local_weight_map = {
+            "Vector": float(
+                mySession.vector_weight if mySession.vector_weight is not None else 1.0
+            ),
+            "BM25": float(
+                mySession.bm25_weight if mySession.bm25_weight is not None else 1.0
+            ),
+            "Graph": float(
+                mySession.graph_weight if mySession.graph_weight is not None else 1.0
+            ),
+        }
+        local_weights = [local_weight_map.get(lbl, 1.0) for lbl in local_active_labels]
+        if len(local_active) > 1:
+            capped_docs = BM25Retriever.reciprocal_rank_fusion(
+                *local_active,
+                k=self.bm25_retriever.rrf_k,
+                labels=local_active_labels,
+                weights=local_weights,
+            )
+            capped_docs = capped_docs[: mySession.retriever_k]
+            self.pretty.write(
+                "O",
+                "Merge",
+                f"Reciprocal Rank Fusion (RRF) produced {len(capped_docs)} local chunks",
+            )
+            if DebugHelper.check_session(mySession, 10):
+                self._print_merged_debug(capped_docs)
+        elif local_active:
+            capped_docs = local_active[0][: mySession.retriever_k]
+            # Stamp retriever_sources so rerank/selection debug prints show the origin.
+            src = local_active_labels[0]
+            for doc in capped_docs:
+                doc.metadata["retriever_sources"] = src
+        else:
+            capped_docs = []
+
+        if web_docs:
+            capped_docs = capped_docs + web_docs
+            self.pretty.write(
+                "O",
+                "Merge",
+                f"Appended {len(web_docs)} web result(s) → reranker pool: {len(capped_docs)} chunks",
+            )
+
+        dedup_enabled: bool = self.cfg.get_bool("_CHUNK_DEDUP.enabled")
+        dedup_threshold: float = self.cfg.get_float("_CHUNK_DEDUP.threshold") or 0.85
+        if dedup_enabled and capped_docs:
+            before_dedup = len(capped_docs)
+            capped_docs = self._remove_similar_chunks(capped_docs, dedup_threshold)
+            dropped = before_dedup - len(capped_docs)
+            if dropped > 0 and DebugHelper.check_session(mySession, 30):
+                self.pretty.write(
+                    "I",
+                    "ChunkDedup",
+                    f"Removed {dropped} near-duplicate chunk(s) "
+                    f"(threshold={dedup_threshold:.2f}, kept {len(capped_docs)})",
                     color=CYAN,
                 )
 
-            # --- Populate grounding list for answer sentence marking (orange) ---
-            # Always set this when chunks are available, independent of visual markers.
-            mySession.chunk_texts_for_grounding = (
-                [
-                    getattr(doc, "page_content", "") or ""
-                    for doc in chosen
-                    if str(
-                        (getattr(doc, "metadata", {}) or {}).get("Source", "")
-                    ).lower()
-                    != "web"
-                ]
-                if chosen
-                else []
+        if mySession.rerank == 1:
+            capped_docs = self._rerank(mySession, capped_docs)
+
+        chosen: list[Any] = cast(list[Any], ChunkSelectionService(mySession).select_chunks(capped_docs))  # type: ignore[reportUnknownMemberType]
+
+        if DebugHelper.check_session(mySession, 30):
+            self.pretty.write(
+                "D",
+                "ChunkSelect",
+                f"After chunk selection: {len(chosen)}/{len(capped_docs)} kept",
+                color=CYAN,
             )
 
-            # Store chosen chunks for later PDF marking (after answer is generated)
-            mySession.last_chosen_chunks = chosen
+        return chosen
 
-            # --- Optional: visually mark retrieved chunks in source documents (yellow) ---
-            # Skip marking here - it will be done in Chatter after the answer is generated
-            # so we can add both yellow (chunks) and orange (grounded sentences) highlights.
-            # if getattr(mySession, "mark_text", False) and chosen:
-            #     try:
-            #         self._mark_sources(mySession, chosen)
-            #     except Exception as exc:
-            #         self.pretty.write(
-            #             "W",
-            #             "VisualMarker",
-            #             f"Visual marking failed: {exc}",
-            #         )
+    def _build_context(self, mySession: Session, chosen: list[Any]) -> Tuple[str, int]:
+        """Populate session grounding fields and format the LLM context string.
 
-            # Pre-compute distinct FileNames/URLs so weak LLMs can't skip sources.
-            # Preserves first-seen order (highest rerank score first).
-            seen_local: set[str] = set()
-            distinct_local: list[str] = []
-            seen_web: set[str] = set()
-            distinct_web: list[str] = []
-            for d in chosen:
-                if d.metadata.get("Source") == "Web":
-                    fp = str(d.metadata.get("FilePath", "")).strip()
-                    if fp and fp not in seen_web:
-                        seen_web.add(fp)
-                        distinct_web.append(fp)
-                else:
-                    fn = str(d.metadata.get("FileName", "")).strip()
-                    if fn and fn not in seen_local:
-                        seen_local.add(fn)
-                        distinct_local.append(fn)
+        Returns (context, len(chosen)), or ("", 0) when chosen is empty.
+        """
+        mySession.chunk_texts_for_grounding = (
+            [
+                getattr(doc, "page_content", "") or ""
+                for doc in chosen
+                if str((getattr(doc, "metadata", {}) or {}).get("Source", "")).lower()
+                != "web"
+            ]
+            if chosen
+            else []
+        )
 
-            header_parts: list[str] = []
-            if distinct_local:
-                header_parts.append(
-                    f"LOCAL SOURCE FILES ({len(distinct_local)} files \u2014 you MUST consider every one of them and MUST include any that contain relevant information in your Sources section):\n"
-                    + "\n".join(f"  - {fn}" for fn in distinct_local)
-                )
-            if distinct_web:
-                header_parts.append(
-                    f"WEB SOURCES ({len(distinct_web)} URLs \u2014 treat as supplementary internet context and MUST include any that contain relevant information in your Sources section):\n"
-                    + "\n".join(f"  - {url}" for url in distinct_web)
-                )
-            header: str = "\n\n".join(header_parts) + "\n\n" if header_parts else ""
+        mySession.last_chosen_chunks = chosen
 
-            # Format the context by combining the formatted adjacent chunks.
-            body: str = "\n\n".join(
-                self.helperInstance.format_document(doc) for doc in chosen  # type: ignore[reportUnknownMemberType]
+        # Pre-compute distinct FileNames/URLs so weak LLMs can't skip sources.
+        seen_local: set[str] = set()
+        distinct_local: list[str] = []
+        seen_web: set[str] = set()
+        distinct_web: list[str] = []
+        for d in chosen:
+            if d.metadata.get("Source") == "Web":
+                fp = str(d.metadata.get("FilePath", "")).strip()
+                if fp and fp not in seen_web:
+                    seen_web.add(fp)
+                    distinct_web.append(fp)
+            else:
+                fn = str(d.metadata.get("FileName", "")).strip()
+                if fn and fn not in seen_local:
+                    seen_local.add(fn)
+                    distinct_local.append(fn)
+
+        header_parts: list[str] = []
+        if distinct_local:
+            header_parts.append(
+                f"LOCAL SOURCE FILES ({len(distinct_local)} files \u2014 you MUST consider every one of them and MUST include any that contain relevant information in your Sources section):\n"
+                + "\n".join(f"  - {fn}" for fn in distinct_local)
             )
-            context: str = header + body
-            if chosen:
-                self.perf_logger.log(
-                    "RAGChatImpl._retrieve", "chat", f"stop  retrieve n={len(chosen)}"
-                )
-                return context, len(chosen)
-            return "", 0
+        if distinct_web:
+            header_parts.append(
+                f"WEB SOURCES ({len(distinct_web)} URLs \u2014 treat as supplementary internet context and MUST include any that contain relevant information in your Sources section):\n"
+                + "\n".join(f"  - {url}" for url in distinct_web)
+            )
+        header: str = "\n\n".join(header_parts) + "\n\n" if header_parts else ""
+
+        body: str = "\n\n".join(
+            self.helperInstance.format_document(doc) for doc in chosen  # type: ignore[reportUnknownMemberType]
+        )
+        context: str = header + body
+        if chosen:
+            self.perf_logger.log(
+                "RAGChatImpl._retrieve", "chat", f"stop  retrieve n={len(chosen)}"
+            )
+            return context, len(chosen)
         return "", 0
 
     def _mark_sources(self, mySession: Session, chosen: list[Any]) -> None:
@@ -1217,10 +1204,10 @@ class RAGChatImpl(SingletonMixin):
                 if isinstance(colors, dict):
                     highlight_color = str(
                         colors.get("highlight", "") or ""
-                    )  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
+                    )  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType, reportUnknownArgumentType]
                     answer_mark_color = str(
                         colors.get("answer_mark", "") or ""
-                    )  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
+                    )  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType, reportUnknownArgumentType]
             if not highlight_color:
                 indirect_get = getattr(self.cfg, "indirect_get", None)
                 if callable(indirect_get):
@@ -1239,8 +1226,6 @@ class RAGChatImpl(SingletonMixin):
     ) -> "dict[str, list[Any]]":
         """Return {file_path: [orange ChunkSnippet, …]} for grounded sentences."""
         from VisualMarkers import ChunkSnippet
-        from VisualMarkers.AnswerGrounder import (
-            find_grounded_sentences, find_grounding_fragments_in_chunk)
 
         grounded: dict[str, list[Any]] = {}
         chunk_texts: list[str] = list(

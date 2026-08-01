@@ -576,8 +576,8 @@ class TestFilterThreshold:
         assert len(result) == 1
 
     def test_local_below_threshold_filtered(self):
-        sel = self._selector(0.40)
-        docs = [_make_doc(0.30, "Local")]
+        sel = self._selector(0.65)
+        docs = [_make_doc(0.30, "Local")]  # sigmoid(0.30)≈0.574 < 0.65 → filtered
         result = sel.filter_threshold(docs)
         assert result == []
 
@@ -607,13 +607,13 @@ class TestFilterThreshold:
     def test_web_doc_filtered_by_explicit_web_threshold(self):
         """Web docs below an explicitly-set web_rerank_threshold are filtered."""
         session = StubSession(threshold=0.40)
-        session.web_rerank_threshold = 0.50
+        session.web_rerank_threshold = 0.60
         from Strategies.HomeBrewChunkSelector import ScoreRankedSelector
 
         sel = ScoreRankedSelector(session)
-        docs = [_make_doc(0.30, "Web")]
+        docs = [_make_doc(0.30, "Web")]  # sigmoid(0.30)≈0.574 < 0.60 → filtered
         result = sel.filter_threshold(docs)
-        assert result == []  # 0.30 < web_rerank_threshold(0.50) → filtered
+        assert result == []  # sigmoid(0.30) < web_rerank_threshold(0.60) → filtered
 
     def test_web_above_threshold_passes(self):
         sel = self._selector(0.40)
@@ -625,11 +625,11 @@ class TestFilterThreshold:
         """Local uses local threshold; web uses web_rerank_threshold (0.0 default).
         Low-score local docs are filtered; low-score web docs pass.
         """
-        sel = self._selector(0.40)
+        sel = self._selector(0.60)
         docs = [
-            _make_doc(0.60, "Local", "good_local.txt"),
-            _make_doc(0.20, "Local", "bad_local.txt"),
-            _make_doc(0.05, "Web", "web_low.html"),  # passes: 0.05 >= 0.0
+            _make_doc(0.60, "Local", "good_local.txt"),  # sigmoid(0.60)≈0.645 ≥ 0.60
+            _make_doc(0.20, "Local", "bad_local.txt"),  # sigmoid(0.20)≈0.550 < 0.60
+            _make_doc(0.05, "Web", "web_low.html"),  # sigmoid(0.05)≈0.512 ≥ 0.0 web_thr
             _make_doc(0.80, "Web", "web_high.html"),
         ]
         result = sel.filter_threshold(docs)

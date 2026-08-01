@@ -19,6 +19,109 @@ there are:
 
 For a quick start read [INSTALL.md](INSTALL.md).
 
+## [Released] — 2026-08-01
+
+### 🔄 Changed — Chunk threshold uses sigmoid-probability space
+
+`HomeBrewChunkSelector.filter_threshold` now compares `sigmoid(raw_rerank_score) >= threshold`
+instead of the raw logit directly.  Threshold values are now true relevance
+probabilities in `[0, 1]` — `threshold = 0.60` means "60 % confidence minimum".
+
+- **`HomeBrewChunkSelector._sigmoid`** (new): shared sigmoid helper used by
+  `filter_threshold` and `_print_final_score`.
+- **Relative-band fallback** updated: guard raised from `<= 0.35` (logit) to
+  `<= 0.60` (probability); fallback threshold converted via
+  `sigmoid(pool_max − margin)`.
+- **`Config_RAGChat.py`** — five strategy thresholds converted to probability
+  space: NARROW `0.75→0.70`, BALANCED_FILE_CAP `0.55→0.65`,
+  DEFAULT/WIDE `0.35→0.60`, ULTRA_WIDE `0.20→0.55`.
+- **`Config_WebSearch.py`** — `rerank_threshold` `0.0→0.50`
+  (sigmoid(0) = 50 % = neutral, equivalent to the old default).
+- **`ChatCompletionHandler`** threshold clamp `[0.0, 1.0]` is now semantically
+  correct for probability values.
+- **Tests** — `test_chunk_selector.py` and `test_web_retriever.py` updated.
+
+### 🔄 Changed — `RAGChatImpl._retrieve` split into focused helper methods
+
+`_retrieve` was a ~700-line method. It has been refactored into an orchestrator
+(~17 lines) that delegates to seven single-responsibility helpers:
+
+| New method | Responsibility |
+|---|---|
+| `_prepare_session` | Reset per-turn flags; handle mode-change and topic-switch resets |
+| `_normalize_query` | Translate → rewrite → re-translate; set `effective_query`; expand alternate queries |
+| `_check_gates` | Retrieval eligibility gate + intent classifier gate |
+| `_fetch_local_docs` | Vector (+ alternate-query expansion), BM25, and Graph retrieval |
+| `_fetch_web_docs` | Web retrieval + BM25/cosine pre-filters |
+| `_merge_and_select` | RRF fusion → cap → append web → dedup → rerank → chunk select |
+| `_build_context` | Populate grounding fields; format LLM context string |
+
+No behaviour change. All 79 tests pass.
+
+**Affected file:** `src/Chat/RAGChatImpl.py`
+
+### ✨ Added — Rerank debug table shows raw logit + sigmoid side by side
+
+The post-rerank threshold table (`Rerank select`) now displays both the raw
+cross-encoder logit and its sigmoid probability in every row:
+
+```
+   Logit [Sigmoid]      Thr     ΔProb         Retrievers  File
+✅   3.7515 [0.977]  (0.6000)  +0.377  ...
+❌  -2.1767+[0.102]  (0.6000)  -0.498  ...  ← + = boosted logit (single-chunk)
+```
+
+- `[0.977]` = `sigmoid(raw_rerank_score)` — the value actually compared against the threshold.
+- `ΔProb` = `sigmoid(eff) − threshold` (probability delta; positive = passed).
+- Boosted rows show `logit+[sig]` (effective/boosted logit) instead of the
+  overflowing `raw→boosted` format.  A note is printed above the table when
+  any boosted chunk is present.
+- The **Selected** table also gains a `[Sigmoid]` column alongside the
+  normalized `rerank_score`.
+- Column headers are aligned to account for emoji display width.
+
+**Affected file:** `src/Strategies/HomeBrewChunkSelector.py`
+
+---
+
+## [Unreleased] — 2026-07-31
+
+### ✨ Added — Web source links displayed in CLI after each answer
+
+Web URLs retrieved by the web search path are now printed to the terminal after
+the answer, as clickable links (🌐), alongside local document links (📄).
+Previously, only the LLM-generated "Sources" section mentioned web URLs — as
+plain partial paths that were not terminal-clickable.
+
+- **`Chatter._show_web_sources()`** (new): collects distinct `FilePath` URLs
+  from web chunks on `last_chosen_chunks` and prints them in rank order.
+- **`Chatter._show_original_sources()`**: no longer returns early when no local
+  files are present; always delegates to `_show_web_sources` at the end.
+- **`Chatter.run()`**: `chosen` is now resolved before the `mark_text` branch so
+  web links are shown in both the `mark_text=True` and `mark_text=False` paths.
+
+### 🐛 Fixed — Reranker score normalisation uses query-relative pool min-max
+
+*Credits: fix suggested by Don Karter (u/donk8r on Reddit).*
+
+Previously, `rerank_score` was computed as `sigmoid(pool_max_raw) × min-max(raw)`.
+The `sigmoid` factor tied the absolute value of `rerank_score` to the best raw
+logit in the current query's pool — the same chunk scored differently on each
+query. Using `rerank_score` for keep/drop threshold decisions therefore produced
+non-deterministic results: a document could pass on one run and fail on another
+with an identical query, depending on what other candidates were in the pool.
+
+**Fix:** The sigmoid multiplier is removed. `rerank_score` is now pure
+min-max over the pool (`(raw − lo) / (hi − lo)`) and used **only** for
+intra-query ordering (best chunk → 1.0, always). Keep/drop threshold
+decisions use `raw_rerank_score` — the raw cross-encoder logit stored on each
+chunk — which is on a query-independent scale. Web chunks are additionally
+scaled by `web_weight` for ordering when local results are also present.
+
+**Affected file:** `src/Chat/RAGChatImpl.py` (`_rerank`)
+
+---
+
 ## [Unreleased] — 2026-07-29
 
 ### 🐛 Fixed — Progress bar output in non-interactive streams
@@ -30,6 +133,7 @@ carriage-return (`\r`) in-place updates don't work correctly in non-interactive
 streams.
 
 **Changes:**
+
 - **`Helpers.show_progress()`** now detects TTY status using `sys.stdout.isatty()`
   - Interactive terminals: preserve the existing in-place progress bar behavior using `\r`
   - Non-interactive streams: emit one full line per update with `\n` to avoid concatenation
@@ -89,11 +193,14 @@ constant (65 chars) pads the detail column so the elapsed column aligns
 across all log lines.
 
 Previous format:
-```
+
+```text
 2026-07-13T14:22:05.145Z | BM25Retriever.query              | stop  bm25 query n=42 elapsed=0.145s  Δ=0.145s
 ```
+
 New format:
-```
+
+```text
 2026-07-13T14:22:05.123Z | BM25Retriever.query              | start bm25 query q='cats'                         |
 2026-07-13T14:22:05.145Z | BM25Retriever.query              | stop  bm25 query n=42 elapsed=0.145s              | Δ=0.145s
 ```

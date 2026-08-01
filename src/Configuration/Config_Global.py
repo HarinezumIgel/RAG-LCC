@@ -10,7 +10,7 @@
 import os
 from typing import Any
 
-_VERSION = "v0.4.2/1395 2026-07-29"
+_VERSION = "v0.4.2.1/1400 2026-08-01"
 
 # -----------------------------------------------------------------------------
 # Adjust these hashes when you changed Config_Models.py, Config_Banned.py,

@@ -1,4 +1,5 @@
 # Local module imports
+import math
 import os
 # Standard library includes
 from abc import ABC, abstractmethod
@@ -6,7 +7,7 @@ from collections import Counter, defaultdict
 from typing import Any
 
 from Globals.Session import Session
-from Gui.Colors import CYAN
+from Gui.Colors import CYAN, YELLOW
 from Gui.FileList import FileList
 from Gui.Symbols import Symbols
 from Helpers.DebugHelper import DebugHelper
@@ -43,6 +44,14 @@ class ChunkSelector(ABC):
             c.metadata.get("rerank_score", c.metadata.get("chroma_score", 0.0))
         )
 
+    def _get_raw_score(self, c: Any) -> float:
+        """Raw cross-encoder logit; falls back to rerank_score when absent."""
+        if hasattr(c, "metadata"):
+            raw = c.metadata.get("raw_rerank_score")
+            if raw is not None:
+                return float(raw)
+        return self._get_score(c)
+
     def _get_path(self, c: Any) -> str:
         if hasattr(c, "file_path"):
             return c.file_path
@@ -53,33 +62,40 @@ class ChunkSelector(ABC):
             return c.file_name
         return c.metadata.get("FileName", c.metadata.get("file_name", ""))
 
+    @staticmethod
+    def _sigmoid(x: float) -> float:
+        return 1.0 / (1.0 + math.exp(-x))
+
     def _print_final_score(
         self,
         misses: list[tuple[Any, float, float, float]],
         hits: list[tuple[Any, float, float, float]],
     ) -> None:
-        """
-        Prints the post-rerank threshold filtering table.
+        """Threshold is sigmoid-probability [0, 1]; raw logit and sigmoid are shown side by side."""
+        header = "{:>3}  {:>16}  {:>8}  {:>9}  {:>17}  {:<40}  {}"
+        row = "{:>2}  {:>8.4f} [{:.3f}]  ({:>6.4f})  {:>+9.4f}  {:>17}  {:<40}  {}"
+        row_b = "{:>2}  {:>8.4f}+[{:.3f}]  ({:>6.4f})  {:>+9.4f}  {:>17}  {:<40}  {}"
 
-        NOTE: `threshold` here applies to the *reranker score* (cross-encoder),
-        not to Chroma cosine distance.  Web chunks use web_rerank_threshold;
-        local chunks use chroma_threshold.  Single-file chunks show
-        ``raw→boosted`` when a single-chunk boost was applied.
-        """
-        header = "{:>2}  {:>8}  {:>8}  {:>9}  {:>17}  {:<40}  {}"
-        row = "{:>2}  {:>8.4f}  ({:>6.4f})  {:>+9.4f}  {:>17}  {:<40}  {}"
-        row_b = "{:>2}  {:>6.4f}→{:.4f}  ({:>6.4f})  {:>+9.4f}  {:>17}  {:<40}  {}"
-
+        has_boosted = any(eff != sc for _, sc, _, eff in misses + hits)
+        if has_boosted:
+            self.pretty.write(
+                "I",
+                "Rerank select",
+                "logit+ = effective logit after single-chunk boost (raw in raw_rerank_score)",
+                color=CYAN,
+            )
         self.pretty.write(
             "A",
             "Rerank select",
-            header.format("", "Score", "Thr", "Δ(score)", "Retrievers", "File", "Text"),
+            header.format(
+                "", "Logit [Sigmoid]", "Thr", "ΔProb", "Retrievers", "File", "Text"
+            ),
             color=CYAN,
         )
-        self.pretty.write("A", "Rerank select", "-" * 110, color=CYAN)
+        self.pretty.write("A", "Rerank select", "-" * 116, color=CYAN)
 
         for c, sc, thr, eff in misses:
-            dev = eff - thr
+            dev = self._sigmoid(eff) - thr
             fn = truncate_for_print(self._get_filename(c) or "<unknown>", 40)
             sources: str = str(
                 c.metadata.get("retriever_sources", "")
@@ -92,21 +108,37 @@ class ChunkSelector(ABC):
                     "A",
                     "Rerank select",
                     row_b.format(
-                        Symbols.sym_fail(), sc, eff, thr, dev, sources, fn, text
+                        Symbols.sym_fail(),
+                        eff,
+                        self._sigmoid(eff),
+                        thr,
+                        dev,
+                        sources,
+                        fn,
+                        text,
                     ),
                 )
             else:
                 self.pretty.write(
                     "A",
                     "Rerank select",
-                    row.format(Symbols.sym_fail(), sc, thr, dev, sources, fn, text),
+                    row.format(
+                        Symbols.sym_fail(),
+                        sc,
+                        self._sigmoid(eff),
+                        thr,
+                        dev,
+                        sources,
+                        fn,
+                        text,
+                    ),
                 )
             if DebugHelper.check_session(self.session, 32):
                 full_text: str = str(getattr(c, "page_content", "") or "")
                 self.pretty.write("A", "Chunk content", full_text)
 
         for c, sc, thr, eff in hits:
-            dev = eff - thr
+            dev = self._sigmoid(eff) - thr
             fn = truncate_for_print(self._get_filename(c) or "<unknown>", 40)
             sources = str(
                 c.metadata.get("retriever_sources", "")
@@ -119,37 +151,40 @@ class ChunkSelector(ABC):
                 self.pretty.write(
                     "A",
                     "Rerank select",
-                    row_b.format(sym, sc, eff, thr, dev, sources, fn, text),
+                    row_b.format(
+                        sym, eff, self._sigmoid(eff), thr, dev, sources, fn, text
+                    ),
                 )
             else:
                 self.pretty.write(
                     "A",
                     "Rerank select",
-                    row.format(sym, sc, thr, dev, sources, fn, text),
+                    row.format(
+                        sym, sc, self._sigmoid(eff), thr, dev, sources, fn, text
+                    ),
                 )
             if DebugHelper.check_session(self.session, 32):
                 full_text = str(getattr(c, "page_content", "") or "")
                 self.pretty.write("A", "Chunk content", full_text)
 
-    # When the cross-encoder gives all-negative logits (pool best < threshold),
-    # a relative band filter is used instead of the absolute threshold.
-    # Accept chunks whose score is within this fraction of the pool's best score.
-    _RELATIVE_THRESHOLD_FACTOR: float = 0.75
+    # Additive logit margin for the relative-band fallback: when the pool's best
+    # raw logit is still below the configured threshold, accept chunks whose raw
+    # logit is within this many units of the pool maximum.
+    _RELATIVE_LOGIT_MARGIN: float = 1.0
 
     def filter_threshold(self, chunks: list[Any]) -> list[Any]:
-        # Count how many candidate chunks each file contributes.
-        # Files with only one chunk in the pool get a score boost so they
-        # are not systematically penalised relative to multi-chunk documents.
+        # Local files with exactly one chunk in the pool get a logit boost so they
+        # are not penalised relative to multi-chunk documents.  Web chunks are
+        # excluded from the boost — their web_rerank_threshold is the gate.
         file_counts: Counter[str] = Counter(self._get_path(c) for c in chunks)
         boost = self.single_chunk_boost
+        logit_boost = math.log(boost) if boost > 1.0 else 0.0
 
-        # When the cross-encoder underscores the entire pool (all raw logits
-        # negative, common with mmarco-style models on technical content), the
-        # absolute threshold rejects every chunk.  Fall back to a relative band:
-        # accept chunks whose score is within _RELATIVE_THRESHOLD_FACTOR of the
-        # pool's best score instead.
-        local_scores = [
-            self._get_score(c)
+        # When the pool's best raw logit is still below the configured threshold
+        # (common with mmarco-style models on technical content), fall back to a
+        # relative band: accept chunks within _RELATIVE_LOGIT_MARGIN of the max.
+        local_raw_scores = [
+            self._get_raw_score(c)
             for c in chunks
             if "Web"
             not in str(
@@ -158,21 +193,22 @@ class ChunkSelector(ABC):
                 else ""
             )
         ]
-        max_local_score = max(local_scores, default=0.0)
+        max_local_raw = max(local_raw_scores, default=0.0)
         use_relative_band = (
-            bool(local_scores)
-            and max_local_score < self.threshold
-            and self.threshold <= 0.35
+            bool(local_raw_scores)
+            and self._sigmoid(max_local_raw) < self.threshold
+            and self.threshold <= 0.60  # sigmoid(0.35 old logit guard) ≈ 0.59
         )
         if use_relative_band:
-            local_threshold = max_local_score * self._RELATIVE_THRESHOLD_FACTOR
+            local_threshold = self._sigmoid(max_local_raw - self._RELATIVE_LOGIT_MARGIN)
             if DebugHelper.check_session(self.session, 10):
                 self.pretty.write(
                     "I",
                     "Rerank select",
-                    f"Pool max {max_local_score:.4f} < threshold {self.threshold:.4f} — "
-                    f"using relative band (×{self._RELATIVE_THRESHOLD_FACTOR}) → "
-                    f"effective threshold {local_threshold:.4f}",
+                    f"Pool max logit {max_local_raw:.4f} → sigmoid {self._sigmoid(max_local_raw):.3f} "
+                    f"< threshold {self.threshold:.4f} — "
+                    f"using relative band (margin {self._RELATIVE_LOGIT_MARGIN:.2f} logit) → "
+                    f"effective threshold {local_threshold:.3f}",
                 )
         else:
             local_threshold = self.threshold
@@ -181,16 +217,21 @@ class ChunkSelector(ABC):
         misses: list[tuple[Any, float, float, float]] = []
 
         for c in chunks:
-            sc = self._get_score(c)
+            raw = self._get_raw_score(c)
             sources = str(
                 c.metadata.get("retriever_sources", "")
                 if hasattr(c, "metadata")
                 else ""
             )
-            thr = self.web_rerank_threshold if "Web" in sources else local_threshold
+            is_web = "Web" in sources
+            thr = self.web_rerank_threshold if is_web else local_threshold
             path = self._get_path(c)
-            eff = sc * boost if (boost > 1.0 and file_counts[path] == 1) else sc
-            (hits if eff >= thr else misses).append((c, sc, thr, eff))
+            eff = (
+                raw + logit_boost
+                if (logit_boost > 0 and not is_web and file_counts[path] == 1)
+                else raw
+            )
+            (hits if self._sigmoid(eff) >= thr else misses).append((c, raw, thr, eff))
 
         misses.sort(key=lambda x: x[3])
         hits.sort(key=lambda x: x[3], reverse=True)
@@ -208,7 +249,7 @@ class ChunkSelector(ABC):
         self.pretty.write(
             "I",
             f"Strategy: {strategy.lower()}",
-            f"{len(hits)} chunks remain after applying threshold {thr_info}{boost_info}",
+            f"{len(hits)} chunks remain after applying sigmoid(raw logit) ≥ threshold  {thr_info}{boost_info}",
             color=CYAN,
         )
         return [c for c, _, _, _ in hits]
@@ -220,10 +261,13 @@ class ChunkSelector(ABC):
         self.pretty.write(
             "I", "Selected", f"{min(len(selected), cap)} chunks selected", color=CYAN
         )
-        header = "{:>2}  {:>8}  {:<40}  {:<70}"
-        row = "{:>2}  {:>8.4f}  {:<40}  {:<70}"
+        header = "{:>2}  {:>16}  {:<40}  {:<70}"
+        row = "{:>2}  {:>8.4f} [{:.3f}]  {:<40}  {:<70}"
         self.pretty.write(
-            "D", "Selected", header.format("#", "Score", "File", "Text"), color=CYAN
+            "D",
+            "Selected",
+            header.format("#", "Score [Sigmoid]", "File", "Text"),
+            color=CYAN,
         )
         self.pretty.write("D", "Selected", "-" * 140, color=CYAN)
         for idx, doc in enumerate(
@@ -231,8 +275,9 @@ class ChunkSelector(ABC):
         ):
             fn = truncate_for_print(self._get_filename(doc) or "<unknown>", 40)
             sc = self._get_score(doc)
+            sig = self._sigmoid(self._get_raw_score(doc))
             text: str = str(getattr(doc, "page_content", "") or "")[:70]
-            self.pretty.write("D", "Selected", row.format(idx, sc, fn, text))
+            self.pretty.write("D", "Selected", row.format(idx, sc, sig, fn, text))
 
     def _print_chunk_content(self, chunks: list[Any]) -> None:
         """Print full chunk text and metadata for each chunk (debug level 31).
@@ -488,6 +533,7 @@ class ChunkSelectionService:
             "I",
             "Chunk selection",
             f"Strategy '{strat.upper()}' → {type(selector).__name__}",
+            color=YELLOW,
         )
         return selector
 

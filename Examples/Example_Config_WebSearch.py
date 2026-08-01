@@ -84,14 +84,12 @@ _WEB_SEARCH: dict[str, Any] = {
     "default_web_weight": 0.5,
     "bm25_pre_filter": 0.10,
     "cosine_pre_filter": 0.30,
-    # rerank_threshold: After reranking, web chunks whose cross-encoder score
-    #   falls below this value are dropped.  Defaults to 0.0 (no additional
-    #   filtering) because bm25_pre_filter and cosine_pre_filter already gate
-    #   quality; cross-encoder scores on short web snippets are structurally
-    #   lower than on local full-text chunks and must not be compared against
-    #   the local chroma_threshold.  Raise if you want stricter post-rerank
-    #   filtering for web results (e.g. 0.05).
-    "rerank_threshold": 0.0,
+    # rerank_threshold: After reranking, web chunks whose sigmoid(raw_rerank_score)
+    #   falls below this probability are dropped.  0.50 = sigmoid(0) = neutral logit
+    #   (50 % relevance probability); the cosine_pre_filter (0.30) is the primary
+    #   admission gate so this default is intentionally permissive.  Lower toward
+    #   0.0 to keep weak-scoring web results; raise toward 1.0 for stricter filtering.
+    "rerank_threshold": 0.50,
 }
 
 # -----------------------------------------------------------------------------
