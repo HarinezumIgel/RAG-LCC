@@ -44,7 +44,6 @@ made by a qualified human operator.
   RAG‑LCC performs automated detection and scoring. It does not make legal,
   regulatory, or contractual determinations.
 
-
 - **Operator control**
   All rules, thresholds, and configurations are defined and controlled by the operator.
 
@@ -80,7 +79,7 @@ RAG‑LCC includes an **optional internet-search feature** which is
 user's query to an external third-party search provider (currently
 DuckDuckGo). For the exact configuration keys and activation paths see
 [INSTALL.md § Enable Internet (Web) Search](INSTALL.md#-enable-internet-web-search-optional)
-and [SECURITY.md](SECURITY.md); this section describes only the
+and [SECURITY.md](SECURITY.md#-web--internet-search); this section describes only the
 privacy / liability implications.
 
 When the feature is active:

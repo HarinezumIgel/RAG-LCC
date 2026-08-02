@@ -144,6 +144,7 @@ $env:HF_XET_HIGH_PERFORMANCE="1"  # Windows PowerShell
 This requires the `xet` package to be installed. The environment variable is automatically enabled in deployed environments via `Config_Internet_Env.py`.
 
 **Benefits:**
+
 - Significantly faster downloads for large models
 - Uses the xet protocol for optimized data transfer
 - Particularly useful for models with multiple files (e.g., sharded checkpoints)
@@ -719,7 +720,7 @@ settings are added specifically for the HTTP listener:
 | --- | --- | --- |
 | `OPENWEBUI_THREAD_POOL_WORKERS` | `2` | `ThreadPoolExecutor` max workers for `chatter.run()`. |
 | `SHOW_CLI_LIKE_ALGO_RESULTS` | `True` | When enabled, filter chain algo results (depth/breadth table and ensemble summary) are appended to the LLM answer in Markdown format, mirroring the terminal output of the CLI version. |
-| `_MARKED_DOCS["enabled"]` | `False` | **Disabled by default in deployed builds** (enforced by `Deploy.ps1`). Set to `True` in `Config_RAGChatService.py` to enable the highlighted-document service. When enabled, RAG-LCC produces in-memory highlighted copies of retrieved PDFs and serves them at short-lived `GET /marked/<token>.pdf` URLs that are injected into the LLM answer. This also starts an in-process HTTP token store; configure `ttl_seconds`, `max_total_mb`, and `cors_origins` in the same block. See [SECURITY.md](SECURITY.md) for the token security model. |
+| `_MARKED_DOCS["enabled"]` | `False` | **Disabled by default in deployed builds** (enforced by `Deploy.ps1`). Set to `True` in `Config_RAGChatService.py` to enable the highlighted-document service. When enabled, RAG-LCC produces in-memory highlighted copies of retrieved PDFs and serves them at short-lived `GET /marked/<token>.pdf` URLs that are injected into the LLM answer. This also starts an in-process HTTP token store; configure `ttl_seconds`, `max_total_mb`, and `cors_origins` in the same block. See [SECURITY.md](SECURITY.md#-architecture-security-relevant-characteristics) for the token security model. |
 
 **RAGChatService Listener Configuration:**
 
@@ -948,7 +949,7 @@ For convenience, these values are displayed at startup.
 Web search is **disabled by default**. When enabled, `RAGChat` / `RAGChatService`
 may issue outbound HTTPS queries to a public search backend and merge the
 results into the retrieval context alongside local ChromaDB chunks. Read
-[LEGAL.md § Web Search](LEGAL.md#-web-search) and [SECURITY.md](SECURITY.md)
+[LEGAL.md § Web / Internet Search](LEGAL.md#-web--internet-search--privacy-warning) and [SECURITY.md](SECURITY.md#-web--internet-search)
 before turning the master switch to "1".
 
 ### 1. Flip the master switch
@@ -1081,7 +1082,7 @@ Same for remaining models.
 - If internet access is disabled, you get:
 
 🔴 INTERNET ACCESS DISABLED       Model 'snowflake/snowflake-arctic-embed-l-v2.0' (revision 'None') was not found in the local cache. Searched cache:
-↳                                 C:\Users\pfm\.cache\huggingface\hub Internet access is disabled (HF_HUB_OFFLINE="1"). Enable internet or place the model in
+↳                                 C:\Users\YOUR_USER\.cache\huggingface\hub Internet access is disabled (HF_HUB_OFFLINE="1"). Enable internet or place the model in
 ↳                                 the cache directory. (Probably change internet access flags in Configuration/Config_Internet_Env.py)
 
 > **Note:** After completing these steps, internet access is typically no longer required,

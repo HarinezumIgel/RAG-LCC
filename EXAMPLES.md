@@ -534,7 +534,7 @@ For compliance chain details, see [Compliance Chain in ARCHITECTURE.md](ARCHITEC
 
 ## 🏗️ Architecture
 
-For an architecture overview refer to the [Architecture Guide](ARCHITECTURE.md).
+For an architecture overview refer to the [Architecture Guide](ARCHITECTURE.md#-system-design).
 
 For details on the extraction and KeyBERT variant configuration, see [Extraction & KeyBERT Variant Configuration in ARCHITECTURE.md](ARCHITECTURE.md#-extraction--keybert-variant-configuration).
 

@@ -287,7 +287,7 @@ RAG‑LCC exposes every significant architectural decision as a configuration sl
 | **Deployment** | Ollama or vLLM backend; `RAGChatService` (OpenAI-compatible REST); OpenWebUI drop-in | Same config and pipeline whether you run CLI, a service, or behind OpenWebUI |
 | **Observability** | 12 named debug levels (`Standard 30` → `Streaming 100`); in-chat toggle; performance event log | Trace every step: retrieval scores, merged chunk pool, prompt text, grounding markers, raw token stream |
 
-Full slot-level details: [CONFIGURATION_REFERENCE.md](CONFIGURATION_REFERENCE.md) · per-file reference: [CONFIGURATION_REFERENCE.md](CONFIGURATION_REFERENCE.md)
+Full slot-level details: [CONFIGURATION_REFERENCE.md](CONFIGURATION_REFERENCE.md#-quick-reference-config-file-and-slot-name) · per-file reference: [CONFIGURATION_REFERENCE.md](CONFIGURATION_REFERENCE.md#-lookup-order)
 
 ---
 
@@ -366,7 +366,7 @@ A `CITATION.cff` file is included for academic or technical reference.
 
 ### TL;DR — try it locally
 
-Read [INSTALL.md](INSTALL.md) before running anything. You get information what will be done during setup.
+Read [INSTALL.md](INSTALL.md#-0-guided-setup-first) before running anything. You get information what will be done during setup.
 
 ```bash
 git clone <this-repo>; cd RAG-LCC
@@ -374,12 +374,11 @@ python -m venv .venv; .\.venv\Scripts\Activate.ps1   # or source .venv/bin/activ
 # Guided setup, recommended
 python src/Scripts/Setup.py                           # guided first-run setup (copies configs, downloads models)
 # Note: License acceptance is required and recorded on startup
-accepted on first start.
 python ./src/Apps/RAGLoad.py  --doc-dir TestDocs
 python ./src/Apps/RAGChat.py  --doc-dir TestDocs
 ```
 
-Read [INSTALL.md](INSTALL.md) before running anything — model licenses must be
+Read [INSTALL.md](INSTALL.md#-required-model-license-consent) before running anything — model licenses must be
 accepted on first start.
 
 ## RAG‑LCC — Disclaimer

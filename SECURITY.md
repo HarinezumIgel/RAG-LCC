@@ -5,7 +5,7 @@ errors, omissions, or outdated information. It does not constitute security advi
 professional advice, or legal advice.
 
 RAG‑LCC is experimental research software provided “as‑is” without warranty of any kind.
-See [LICENSE](LICENSE) and [LEGAL.md](LEGAL.md) for full terms and disclaimers.
+See [LICENSE](LICENSE) and [LEGAL.md](LEGAL.md#-warranty-disclaimer-and-limitation-of-liability) for full terms and disclaimers.
 
 ---
 
