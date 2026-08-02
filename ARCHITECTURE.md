@@ -53,42 +53,159 @@ Four applications share the same core infrastructure:
 ## 🧩 Component Hierarchy
 
 ```text
-├── Applications (Entry Points)
-│   ├── RAGLoad       - Document ingestion pipeline
-│   ├── RAGChat       - Interactive retrieval + conversation
-│   └── DocClassify   - Batch document classification
+src/
 │
-├── Core Systems
-│   ├── Configuration  - Parameter loading and validation
-│   ├── Compliance     - License management and verification
-│   ├── Globals        - Shared state (logging, counters)
-│   └── Session        - User session context
+├── Apps/                          Entry points
+│   ├── RAGLoad.py                 Document ingestion pipeline
+│   ├── RAGChat.py                 Interactive retrieval + multi-turn chat (CLI)
+│   ├── RAGChatService.py          OpenAI-compatible REST API wrapper for RAGChat
+│   ├── DocClassify.py             Batch document classification
+│   └── resources/                 Static assets (favicon, etc.)
 │
-├── Processing Pipelines
-│   ├── Pipeline       - Orchestration (LoadAndClassifyProcessor)
-│   ├── Strategies     - Processing strategies + classification/chunking helpers
-│   ├── Load           - (reserved for future document-loading extensions)
-│   └── Chat           - Conversation and query handling
-│                        · RetrievalGate — blocks underspecified queries and
-│                          returns a ❔ clarification prompt (spaCy morph-based)
+├── Configuration/                 Config files read at startup
+│   ├── Config_Global.py           Shared defaults (paths, hardware, chunking, debug)
+│   ├── Config_Models.py           Model definitions and endpoint metadata
+│   ├── Config_Banned.py           Banned-phrase lists, detection thresholds, masking rules
+│   ├── Config_WebSearch.py        Web search backend and intent-filter settings
+│   ├── Config_Internet_Env.py     Internet access and network-tracing env vars
+│   ├── Config_RAGChat.py          Chat strategies, query rewrite, multi-query, grounding
+│   ├── Config_RAGChatService.py   Service-specific overrides (re-exports Config_RAGChat)
+│   ├── Config_RAGLoad.py          Ingestion-specific settings
+│   └── Config_DocClassify.py      Classification model params and extraction keys
 │
-├── Detection & Algorithms
-│   ├── Algos          - Detection algorithms (regex, Jaccard, cosine, KeyBERT, Levenshtein, BM25)
-│   │                    + ReverseStemmer — stem → original word lookup for classification output
-│   ├── Compliance     - Compliance rule application
-│   └── Shared Helpers - Common detection utilities
+├── Config/                        Config loader
+│   ├── Config.py                  Hierarchical config resolver (lookup-order chain)
+│   └── AddConstantsFromConfigFile.py  Injects config module attributes into a Config instance
 │
-├── Storage & Models
-│   ├── ChromaDBHelper - Vector DB interface
-│   ├── AIHelpers      - Model loading and inference
-│   └── Model License  - License tracking
+├── Pipeline/                      Pipeline orchestration
+│   └── LoadAndClassifyProcessor.py  Drives the load + classify pipeline (RAGLoad / DocClassify)
 │
-└── Utilities
-    ├── Helpers        - General utilities
-    ├── DebugHelper    - Centralised DEBUG_LEVEL evaluation (`on`, `only`, `active`, `parse`, `check`, `check_session`)
-    ├── PrettyWriter   - Output formatting
-    ├── Informer       - System status reporting
-    └── Exceptions     - Error types
+├── Strategies/                    Processing strategies and retrievers
+│   ├── DocumentIngestionStrategy.py  Chunk, embed, and store documents
+│   ├── ClassifyStrategy.py        LLM-based document classification
+│   ├── ClassifyHelper.py          Classification workflow helpers
+│   ├── ProcessingStrategy.py      Base / abstract strategy contract
+│   ├── HomeBrewChunkSelector.py   Custom chunk selection logic (NARROW / WIDE / etc.)
+│   ├── StrategyType.py            Strategy enum and type constants
+│   ├── BM25Retriever.py           Okapi BM25 keyword retrieval
+│   ├── GraphRetriever.py          Entity co-occurrence graph retrieval (spaCy NER + BFS)
+│   ├── WebRetriever.py            DuckDuckGo web search retrieval leg
+│   ├── WebPreFilter.py            Query sanitisation and injection-detection before web calls
+│   ├── WebSearchFilter.py         Intent-classifier gate on web queries
+│   └── Chunkers/                  Chunker implementations
+│       ├── ChunkerStrategy.py     Base class / ABC for all chunkers
+│       ├── RecursiveChunker.py    Fixed-size word chunks with overlap
+│       ├── SemanticChunker.py     Embedding-based semantic boundary detection
+│       ├── SentenceWindowChunker.py  Sentence-packed chunks up to MAX_CHUNK_SIZE
+│       ├── SlidingWindowChunker.py   Overlapping sentence windows
+│       ├── HeadingChunker.py      Heading-aware structural chunking (breadcrumb mode)
+│       ├── PageBasedChunker.py    ABC for page-oriented chunkers
+│       ├── SlideChunker.py        Per-slide chunking (PPTX / PPT)
+│       ├── PdfPageChunker.py      Per-page chunking (PDF)
+│       └── SentenceSplitter.py    Sentence boundary utility used by multiple chunkers
+│
+├── Chat/                          RAGChat conversation layer
+│   ├── RAGChatImpl.py             Core retrieval + generation loop
+│   ├── Chatter.py                 Session shell and turn management
+│   ├── CommandProcessor.py        In-chat command dispatch (strategy!, mode!, debug!, …)
+│   ├── ChatContext.py             Multi-turn context storage and pruning
+│   ├── PromptRewrite.py           Query rewriting / coreference resolution (LLM-based)
+│   ├── QueryParts.py              Query decomposition and session parameter access
+│   ├── RetrievalGate.py           Blocks under-specified queries; returns ❔ clarification
+│   └── MarkedDocsViewer.py        CLI picker for highlighted source documents
+│
+├── Api/                           RAGChatService REST layer
+│   ├── ChatCompletionHandler.py   OpenAI /v1/chat/completions request handler
+│   ├── MarkedDocsService.py       HTTP server for /marked/<token> highlighted-doc links
+│   └── MarkedDocsStore.py         In-memory TTL cache for highlighted document bytes
+│
+├── Algos/                         Detection and scoring algorithms
+│   ├── BM25Scorer.py              Okapi BM25 probabilistic phrase scoring
+│   ├── JaccardScorer.py           Character n-gram Jaccard similarity
+│   ├── RegexScorer.py             Regex + Levenshtein fuzzy matching
+│   ├── LevenshteinScorer.py       Edit-distance scoring
+│   ├── KeyBertScorer.py           KeyBERT semantic keyword detection
+│   ├── CosineScorer.py            Embedding cosine similarity (disabled by default)
+│   ├── Masker.py                  Regex-based span redaction (PII, credentials, etc.)
+│   ├── ReverseStemmer.py          Stem → best-matching original-word lookup
+│   ├── Synonyms.py                WordNet synonym expansion for banned-word lists
+│   ├── UnicodeNormalizer.py       Leet-speak decoding and Unicode confusable normalisation
+│   └── ComplianceAlgoResult.py    Result container shared across all scorers
+│
+├── Compliance/                    Compliance pipeline execution
+│   ├── Compliance.py              Orchestrates per-app detection pipelines
+│   ├── BannedPhraseCollector.py   Loads, translates, and expands banned-phrase lists
+│   ├── SharedHelpers.py           Shared detection utilities (consensus rules, CSV output)
+│   ├── Exclusions.py              Exclusion-list management (previously-flagged files)
+│   ├── HfTranslator.py            M2M100 query translation (HuggingFace, lazy singleton)
+│   ├── ArgosDownloader.py         Argos Translate package download and consent workflow
+│   └── HFDownloader.py            HuggingFace model download, cache scan, and consent
+│
+├── AI/                            Model loading and inference
+│   ├── AIHelpers.py               Embedder and cross-encoder loading (singleton wrappers)
+│   ├── LLMCaller.py               LLM call dispatcher (Ollama / vLLM)
+│   ├── LLMBackendAdapter.py       Protocol adapter (Ollama ↔ vLLM REST differences)
+│   ├── ModelOutputAdapter.py      Normalises raw LLM output to a common response shape
+│   ├── ModelsCache.py             In-process model instance registry
+│   ├── TensorHelpers.py           GPU / CPU tensor utilities
+│   └── TokenBudget.py             Per-model context-window budget allocation
+│
+├── Helpers/                       General-purpose utilities
+│   ├── Helpers.py                 Startup helpers (Tesseract, NLTK, spaCy init)
+│   ├── FileUtils.py               Document extraction (PDF, images, Office, text)
+│   ├── ChromaDBHelper.py          ChromaDB collection interface (HNSW, BM25, graph)
+│   ├── Accumulator.py             Score aggregation across detection algorithms
+│   ├── DebugHelper.py             DEBUG_LEVEL evaluation (`on`, `only`, `active`, `parse`, `check`)
+│   ├── CSVWriter.py               Compliance and classification CSV output
+│   ├── ClassifyCSVReader.py       Reads DocClassify CSV for classify-then-load filtering
+│   ├── ValidExtensions.py         Supported file-type registry and routing
+│   ├── OfficeDocConverter.py      MS Office → text via COM automation (pywin32)
+│   ├── PerfLogger.py              Performance event logging (start/stop timestamps)
+│   ├── PipelineSettingsSummarizer.py  Human-readable pipeline-state summary for the startup banner
+│   └── SourcePathLinkifier.py     Converts file paths to OSC-8 terminal hyperlinks
+│
+├── Globals/                       Shared runtime state
+│   ├── Globals.py                 Global singletons (compliance log, perf log handles)
+│   ├── Session.py                 Per-session state (strategy, debug level, chat context)
+│   └── CounterInstance.py         Thread-safe event counters
+│
+├── Gui/                           Terminal UI components
+│   ├── PrettyWriter.py            Word-wrapped, coloured terminal output
+│   ├── Informer.py                System-status reporter (startup banner, index stats)
+│   ├── Banner.py                  Application header / logo display
+│   ├── Colors.py                  ANSI colour constants (truecolor + 256-color fallback)
+│   ├── CollectionPicker.py        Interactive ChromaDB collection selector
+│   ├── FileList.py                Interactive file-picker for marked documents
+│   ├── HistoryManager.py          Chat history persistence (load / save)
+│   ├── LicensePager.py            License text pager for model consent workflow
+│   └── Symbols.py                 Unicode symbol constants used across the GUI
+│
+├── Commons/                       Cross-cutting infrastructure
+│   ├── Exceptions.py              Custom exception hierarchy
+│   ├── SingletonMixin.py          Thread-safe singleton base class
+│   ├── StartupCommons.py          Shared startup sequence (env vars, config hash checks)
+│   └── NetworkTracer.py           Optional socket-level network activity tracer
+│
+├── VisualMarkers/                 Answer grounding and source highlighting
+│   ├── AnswerGrounder.py          Sentence-level overlap detection (grounded vs ungrounded)
+│   ├── VisualMarker.py            Abstract base for per-format highlight injectors
+│   ├── VisualMarkerFactory.py     Selects the right marker implementation by file type
+│   ├── PdfVisualMarker.py         /Highlight annotations via pdfplumber + pypdf
+│   ├── DocxVisualMarker.py        <w:highlight> XML injection via python-docx
+│   ├── PptxVisualMarker.py        <a:highlight> XML injection via python-pptx + lxml
+│   └── PlainTextVisualMarker.py   <mark>…</mark> wrapping for .md and .txt files
+│
+└── Scripts/                       Operator utilities (run directly, not imported)
+    ├── Setup.py                   Interactive first-run setup wizard
+    ├── CopyExampleConfigs.py      Copies example Config_*.py files into place
+    ├── RecalcConfigHashes.py      Recomputes and updates _*_CONFIG_HASH values
+    ├── ArgosTranslatePackages.py  Install / remove Argos Translate language packages
+    ├── BM25IndexInspector.py      Inspect persisted BM25 index contents
+    ├── GraphIndexInspector.py     Inspect persisted entity-graph index contents
+    ├── NLTK_Stopwords_WordNet.py  Download NLTK stopwords and WordNet corpora
+    ├── PipInstall.py              Offline pip install helper
+    ├── UpdateConfigValues.py      Batch-update config values from the CLI
+    └── VerifySignatures.py        Verify file integrity / signatures
 ```
 
 ## 🔀 Data Flow
@@ -402,7 +519,8 @@ Given a configured `BASE_URL` (e.g., `http://host.docker.internal:11434/api/gene
 - **Timeout:** Hard-coded 2-second timeout per candidate
 - **Headers:** Authentication headers are forwarded to the probe request when applicable
 
-See also: [CONFIGURATION.md § Inference Endpoint Provider Metadata](CONFIGURATION.md#%EF%B8%8F-inference-endpoint-provider-metadata) for BASE_URL configuration examples.
+See also: [CONFIGURATION_REFERENCE.md § Inference Endpoint Provider Metadata](CONFIGURATION_REFERENCE.md#%EF%B8%8F-inference-endpoint-provider-metadata) for BASE_URL configuration examples.
+
 ## �🛡️ Compliance Chain
 
 ### 📦 Processing Layers
@@ -521,7 +639,7 @@ The expanded list is then passed through the existing translation pipeline (`Sha
 
 **Graceful degradation:** If NLTK or the WordNet corpus is not installed, an orange warning is printed and the original (unexpanded) list is used — no functionality is lost.
 
-For installation and configuration details see [README § 8a](README.md#-8a-nltk-wordnet-synonyms-optional--bannedword-expansion).
+For installation and configuration details see [README § 8a](INSTALL.md#-8a-nltk-wordnet-synonyms-optional--banned-word-expansion).
 
 ## 🧮 Detection Algorithm Architecture
 
@@ -862,7 +980,7 @@ See [Internet Access in INSTALL.md](INSTALL.md#-internet-access) for the full en
 RAG‑LCC uses [Argos Translate](https://github.com/argosopentech/argos-translate) to translate the English banned-word list into the detected document language so that compliance checks work across languages. Argos is **only** used for this Compliance EN→X path; user-query translation uses the m2m100 backend (see [User-Query Translation](#user-query-translation) below).
 
 - **Environment variables** — `ARGOS_MODEL_PROVIDER` and `ARGOS_STANZA_DOWNLOAD` (see table above) control provider selection and network access.
-- **Language pairs & code mapping** — configured via the `_ARGOS_DEFINITIONS` slot in `Config_Global.py`. Only EN→X pairs need to be installed. See [Translation configuration (Argos) in CONFIGURATION.md](CONFIGURATION.md#-translation-configuration-argos) for the full reference, available pairs, and install/remove commands.
+- **Language pairs & code mapping** — configured via the `_ARGOS_DEFINITIONS` slot in `Config_Global.py`. Only EN→X pairs need to be installed. See [Translation configuration (Argos) in CONFIGURATION_REFERENCE.md](CONFIGURATION_REFERENCE.md#-translation-configuration-argos) for the full reference, available pairs, and install/remove commands.
 - **Language-detection minimum length** — `_LANGUAGE_DETECTION.MIN_WORDS` (default `3`) sets the minimum word count a text must have before language detection is attempted; shorter texts skip detection and fall back to English, preventing single words from being misclassified.
 - **Language-detection confidence** — `_LANGUAGE_DETECTION.MIN_CONFIDENCE` (default `0.60`) and `_LANGUAGE_DETECTION.CONF_FULL_WORDS` (default `10`) control a word-count-scaled threshold: confidence required starts at 0.90 for short text and decreases linearly to `MIN_CONFIDENCE` at `CONF_FULL_WORDS` words; results below the effective threshold fall back to English, avoiding spurious translation warnings for short queries.
 - **Package management** — `python src/Scripts/ArgosTranslatePackages.py install | remove | status`
@@ -1319,7 +1437,7 @@ chunks are sent to the LLM as context.  Three selector classes in
 ### Selection flow (all strategies)
 
 1. **Candidate retrieval** — determined by `retrieve_mode`
-   (see [Retrieval Stores & Search Modes in CONFIGURATION.md](CONFIGURATION.md#-retrieval-stores--search-modes)
+   (see [Retrieval Stores & Search Modes in CONFIGURATION_REFERENCE.md](CONFIGURATION_REFERENCE.md#-retrieval-stores--search-modes)
    for configuration reference):
    - `VECTOR` — fetch `retriever_k` nearest neighbours from ChromaDB.
    - `BM25` — score all indexed chunks with BM25 Okapi and return the top
@@ -1678,7 +1796,7 @@ Classification results are heuristic and probabilistic — false positives and f
 negatives will occur. The filter does not add, verify, or guarantee any legal,
 regulatory, or compliance status of the ingested documents.
 
-For the full parameter reference, see [📂 Classify‑then‑Load in CONFIGURATION.md](CONFIGURATION.md#-classifythenload).
+For the full parameter reference, see [📂 Classify‑then‑Load in CONFIGURATION_REFERENCE.md](CONFIGURATION_REFERENCE.md#-classifythenload).
 
 ### 🔗 See Also
 
@@ -1888,7 +2006,7 @@ Three-tier logging:
 
 1. **User-Facing** - `PrettyWriter` with colored output
 2. **Operational** - Standard Python logging module
-3. **Debug** - Conditional `DEBUG_LEVEL` output via `DebugHelper` (see [Debug Levels in CONFIGURATION.md](CONFIGURATION.md#-debug-levels) for the full level table and string format)
+3. **Debug** - Conditional `DEBUG_LEVEL` output via `DebugHelper` (see [Debug Levels in CONFIGURATION_REFERENCE.md](CONFIGURATION_REFERENCE.md#-debug-levels) for the full level table and string format)
 
 RAG-LCC does not log raw user queries or LLM responses **unless** `DEBUG_LEVEL` is set to show the network traffic (100).
 

@@ -481,7 +481,7 @@ keyword-extraction passes.  Two independent selectors (`_ACTIVE_EXTRACTION_CONFI
 and `_ACTIVE_KEYBERT_CONFIG`) let you mix and match.
 
 For the full variant matrix and consumer mapping see
-[Extraction & KeyBERT Variant Configuration in ARCHITECTURE.md](ARCHITECTURE.md#extraction--keybert-variant-configuration).
+[Extraction & KeyBERT Variant Configuration in ARCHITECTURE.md](ARCHITECTURE.md#-extraction--keybert-variant-configuration).
 
 ### 🚫 Add banned word
 
@@ -775,7 +775,7 @@ In `Config_Banned.py`, uncomment the Cosine entries in the pipeline and in `ALGO
 
 ### 🧲 13. Enable Open WebUI
 
-- Follow the steps described in [INSTALL.md](INSTALL.md#-6-install-open-webui-optional) to activate Open WebUI integration.
+- Follow the steps described in [INSTALL.md](INSTALL.md#-install-open-webui-optional) to activate Open WebUI integration.
 
 - Open a new chat window and select the collection where you previously loaded the TestDocs
 

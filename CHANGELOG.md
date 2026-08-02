@@ -1,4 +1,4 @@
-<!-- markdownlint-disable MD024 -->
+<!-- markdownlint-disable MD024 MD060 -->
 # Changelog
 
 All notable changes to RAG-LCC are documented in this file.
@@ -6,18 +6,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
-## [Released] — 2026-07-29
+## [Released] — 2026-08-02
 
-This is a major release including last 2 months work. Among bug fixes, small improvements
-there are:
+### 📝 Documentation overhaul
 
-- Web Search mode (combined with local RAG retrieval or Web Search only)
-- Text grounding (marking) in documents
-- vllm  supported as LLM provider
-- Support for devcontainers
-- Install script Setup.py that guides through the installation (Windows + Unix)
+- **README.md** — full rewrite: new narrative introduction grouped by the four apps
+  (DocClassify → RAGLoad → RAGChat → RAGChatService), updated quick mental model
+  diagram now includes RAGChatService and shows all pipeline stages including
+  compliance pre/post-check; added `## 🔑 Feature Highlights` section organised by
+  app; removed legacy verbose sections now covered by CONFIGURATION_REFERENCE.md.
+- **CONFIGURATION_REFERENCE.md** (new) — merged `CONFIGURATION.md` into a single
+  reference document; adds topic-organised quick-reference tables (what to configure
+  and where) as a navigation aid above the per-file deep reference.  `CONFIGURATION.md`
+  deleted; all inbound links updated across `ARCHITECTURE.md`, `INSTALL.md`,
+  `EXAMPLES.md`, `CHANGELOG.md`.
+- **ARCHITECTURE.md** — Component Hierarchy rewritten as a full `src/` directory tree
+  with per-file descriptions; seven previously undocumented modules added (`Api/`,
+  `VisualMarkers/`, `Commons/`, `Gui/`, `Config/`, `Scripts/`, `AI/`).
+- **Broken-link audit** — fixed ~13 broken anchors across six files including
+  wrong leading dashes on emoji-prefixed headings, stale section names in
+  `ARCHITECTURE.md` and `INSTALL.md`, and links to README sections removed during
+  the rewrite.
 
-For a quick start read [INSTALL.md](INSTALL.md).
+---
 
 ## [Released] — 2026-08-01
 
@@ -65,7 +76,7 @@ No behaviour change. All 79 tests pass.
 The post-rerank threshold table (`Rerank select`) now displays both the raw
 cross-encoder logit and its sigmoid probability in every row:
 
-```
+```text
    Logit [Sigmoid]      Thr     ΔProb         Retrievers  File
 ✅   3.7515 [0.977]  (0.6000)  +0.377  ...
 ❌  -2.1767+[0.102]  (0.6000)  -0.498  ...  ← + = boosted logit (single-chunk)
@@ -121,6 +132,19 @@ scaled by `web_weight` for ordering when local results are also present.
 **Affected file:** `src/Chat/RAGChatImpl.py` (`_rerank`)
 
 ---
+
+## [Released] — 2026-07-29
+
+This is a major release including last 2 months work. Among bug fixes, small improvements
+there are:
+
+- Web Search mode (combined with local RAG retrieval or Web Search only)
+- Text grounding (marking) in documents
+- vllm  supported as LLM provider
+- Support for devcontainers
+- Install script Setup.py that guides through the installation (Windows + Unix)
+
+For a quick start read [INSTALL.md](INSTALL.md).
 
 ## [Unreleased] — 2026-07-29
 
@@ -321,7 +345,7 @@ Added the missing parameter.
 
 - **Affected file:** `tests/test_models_cache.py`
 
-### 📝 Documentation — CONFIGURATION.md audit against config files
+### 📝 Documentation — CONFIGURATION_REFERENCE.md audit against config files
 
 - **`RAG_CHAT_SERVICE_LISTENER` default**: Corrected from `127.0.0.1` to `0.0.0.0`
   to match `Config_RAGChatService.py`. Added note that `0.0.0.0` is required
@@ -329,10 +353,10 @@ Added the missing parameter.
 - **`HF_HUB_DISABLE_PROGRESS_BARS` default**: Corrected from `"1"` to `"0"`
   to match updated `Config_Internet_Env.py`.
 
-### 📝 Documentation — CONFIGURATION.md full config-slot audit (2026-07-12)
+### 📝 Documentation — CONFIGURATION_REFERENCE.md full config-slot audit (2026-07-12)
 
 Second-pass two-way audit comparing every key in all `Configuration/Config_*.py`
-files against `CONFIGURATION.md` section 8.
+files against `CONFIGURATION_REFERENCE.md` section 8.
 
 **Corrected defaults (safe/shipping defaults restored in `Config_Internet_Env.py`):**
 
@@ -374,7 +398,7 @@ files against `CONFIGURATION.md` section 8.
 Comprehensive documentation audit identified and corrected multiple discrepancies
 between the markdown documentation and actual configuration file values.
 
-**CONFIGURATION.md corrections:**
+**CONFIGURATION_REFERENCE.md corrections:**
 
 - **`_ACTIVE_ENDPOINT` default**: Corrected from `"ollama"` to `"vllm"` to match
   `Config_Models.py` actual default (`_ACTIVE_ENDPOINT = "vllm"`).
@@ -412,7 +436,7 @@ between the markdown documentation and actual configuration file values.
 **INSTALL.md corrections:**
 
 - **`HF_HUB_OFFLINE` default**: Updated from `"1"` to `"0"` with clarified
-  description matching `Config_Internet_Env.py` and `CONFIGURATION.md`.
+  description matching `Config_Internet_Env.py` and `CONFIGURATION_REFERENCE.md`.
 
 All corrections ensure documentation accurately reflects actual configuration
 file defaults and behavior as of this date.
@@ -1068,7 +1092,7 @@ A third comparison mode `"le"` (less-equal, `<=`) is now accepted everywhere
   a third choice: `<= level  (le — activates this level and all below)`.
 - `debug_mode=le` is now accepted by `QueryParts._set()` and the `ChatCompletionHandler`
   alias field.
-- `_ALLOWED_DEBUG_LEVELS` label descriptions and `CONFIGURATION.md` updated accordingly.
+- `_ALLOWED_DEBUG_LEVELS` label descriptions and `CONFIGURATION_REFERENCE.md` updated accordingly.
 
 ### ✨ Added — Debug level 31 "Chunk Content" — full chunk text + metadata
 
@@ -1107,7 +1131,7 @@ three-value string in `Config_WebSearch.py`:
 `_WEB_SEARCH_MODE` is the **master switch** and overrides all other web-search
 settings, including `_OPENWEB_UI_WEBSEARCH`. All call sites updated
 (`ChatCompletionHandler`, `QueryParts`, `RAGChatImpl`, `Chatter`,
-`CommandProcessor`, `WebRetriever`, `StartupCommons`). `CONFIGURATION.md` updated.
+`CommandProcessor`, `WebRetriever`, `StartupCommons`). `CONFIGURATION_REFERENCE.md` updated.
 
 ### ✨ Added — Startup warning when `_OPENWEB_UI_WEBSEARCH=True` conflicts with `_WEB_SEARCH_MODE`
 
@@ -1311,7 +1335,7 @@ from `StubSession`. All 37 prompt-rewrite tests pass.
   - `INSTALL.md` — prerequisites, cloning, dependencies, Ollama / Open WebUI /
     Argos / NLTK / Tesseract / spaCy / GPU setup, running the test suite,
     first-run walkthrough.
-  - `CONFIGURATION.md` — per-file reference for every `Config_*.py`
+  - `CONFIGURATION_REFERENCE.md` — per-file reference for every `Config_*.py`
     (Global, Models, RAGChat, RAGLoad, DocClassify, Banned, Internet),
     CLI overrides, translation config, troubleshooting, performance tuning.
   - `EXAMPLES.md` — end-to-end terminal sessions for `RAGLoad`, `RAGChat`,
@@ -2292,7 +2316,7 @@ See [LEGAL.md](LEGAL.md) for governance, liability, and responsibility boundarie
 - **KeyBERT** — SBERT-based semantic keyword extraction with phrase relevance scoring.
 - **Cosine** — Embedding-based cosine similarity detection.
 - **Consensus scoring** — Configurable depth and breadth rules combining algorithm
-  outputs. See [ARCHITECTURE.md](ARCHITECTURE.md#consensus-scoring--experimentation).
+  outputs. See [ARCHITECTURE.md](ARCHITECTURE.md#-consensus-scoring--experimentation).
 
 #### 🛡️ Compliance & Governance (Technical)
 
@@ -2300,7 +2324,7 @@ See [LEGAL.md](LEGAL.md) for governance, liability, and responsibility boundarie
   PIPELINE_CHECK and PROMPT_CHECK stages. See [ARCHITECTURE.md](ARCHITECTURE.md#compliance-chain).
 - Model license consent tracking with metadata recording. See [LEGAL.md](LEGAL.md).
 - Hugging Face model download flow with local-first resolution and explicit consent when
-  downloads are required. See [ARCHITECTURE.md](ARCHITECTURE.md#hf-model-downloading--caching).
+  downloads are required. See [ARCHITECTURE.md](ARCHITECTURE.md#-hf-model-downloading--caching).
 - Argos Translate license consent tracking and language package management.
 - Configuration hash acknowledgement: changes to Config_Banned.py or Config_Models.py
   require operator acknowledgement via hash updates in Config_Global.py.

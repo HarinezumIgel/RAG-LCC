@@ -1,10 +1,25 @@
-<!-- markdownlint-disable MD033 -->
+<!-- markdownlint-disable MD033 MD060 -->
 # 🧪 RAG‑LCC — Experimental RAG Under Constraints
 
 <p align="center">
   <img src="Documentation/Pics/AI_Igel.png" alt="RAG-LCC Logo" width="50%" />
 </p>
+
+## 🎯 Who this is for
+
+- 🔬 Researchers and practitioners exploring *why* RAG pipelines succeed or fail
+- 🧠 Engineers working with **large, multilingual, or conflicting document sets**
+- 💬 Anyone debugging **multi‑turn chat‑context failures** in RAG systems
+- 💻 Users running RAG on **constrained or commodity hardware**
+- 🧪 People who want to experiment beyond "embed + cosine + top‑k" — see [Query Output Example](QUERY_OUTPUT_EXAMPLE.md) for what a full pipeline run looks like
+
+---
+
 **RAG‑LCC is an experimental Retrieval‑Augmented Generation (RAG) lab focused on understanding and controlling retrieval and context assembly under real‑world constraints**: limited context windows, modest GPUs, large documents, and multi‑turn chat.
+
+- DocClassify       Document classification - results may be used as input filter for RAGLoad
+- RAGLoad           Text extraction (document formats, pictures, MS Office) and Vector DB ingestion
+- RAGChat           (CLI GUI) and RAGChatService (Open WebUI integration)
 
 <p align="center">
 <img src="Documentation/Pics/GroundedDoc.jpg" alt="RAG-LCC Document grounding" />
@@ -20,23 +35,75 @@ Instead of pushing ever‑larger context sizes, RAG‑LCC treats **classificatio
 
 ---
 
-## 🎯 Who this is for
+## 🧠 What it does — and why it exists
 
-- 🔬 Researchers and practitioners exploring *why* RAG pipelines succeed or fail
-- 🧠 Engineers working with **large or conflicting documents**
-- 💬 Anyone debugging **chat‑context failures** in RAG systems
-- 💻 Users running RAG on **constrained or commodity hardware**
-- 🧪 People who want to experiment beyond “embed + cosine + top‑k”
+Standard RAG is deceptively simple: embed documents, embed query, retrieve by cosine similarity, prompt the LLM. In practice this produces systems that are brittle in exactly the ways that matter most — they hallucinate when the corpus has conflicting information, they drift in multi‑turn chat as pronouns accumulate, they fail silently on minority‑language documents, and they have no principled way to prevent prohibited content from being stored or returned.
+
+**RAG‑LCC** (Retrieval‑Augmented Generation — Local Corpus & Classification) is an experimental lab for studying and addressing these failure modes. Instead of pushing ever‑larger context windows, it treats **classification, chunking, retrieval strategy, and content filtering** as first‑class architectural decisions. Documents are analysed, compressed, filtered, and assembled *before* reaching the LLM — so the model reasons over coherent, non‑contradictory context rather than an arbitrary pile of chunks.
+
+The system is built around four applications that form a deliberate pipeline:
 
 ---
 
-## 🧠 Core idea
+### 🏷️ DocClassify — Know your corpus before you index it
 
-Most RAG examples optimize for scale.
+Before anything enters the retrieval indexes, `DocClassify` runs LLM‑powered keyword extraction and batch classification over your document collection. Every file gets structured metadata — topic, category, language, and any custom fields you define — written to a CSV.
 
-**RAG‑LCC optimizes for constraints and correctness.**
+This is not just labelling. It is **semantic compression**: large documents are reduced to meaning‑dense keyword signals early, before expensive embedding and retrieval. You can then filter that CSV with a plain SQL WHERE clause to decide exactly which documents proceed to indexing:
 
-Documents are analyzed, reduced, filtered, and assembled **before** being shown to an LLM — so that the model reasons over *coherent, non‑contradictory context*, not an arbitrary pile of chunks.
+```python
+# Index only English mammal-related documents classified as Science
+CLASSIFY_CSV_QUERY = "Mammal LIKE '%Yes%' AND Language = 'English'"
+```
+
+Documents that fail your criteria never get indexed — reducing token waste, context noise, and compliance surface area.
+
+---
+
+### 📥 RAGLoad — Index with intent, filter at the gate
+
+`RAGLoad` ingests the documents you selected and builds three parallel indexes simultaneously:
+
+- **ChromaDB** — dense embedding vectors (Snowflake Arctic Embed L v2.0) for semantic search
+- **BM25** — Okapi BM25 keyword index for term‑frequency scoring and lexical recall; complements vector search on precise terminology and rare terms
+- **Entity co‑occurrence graph** — spaCy NER entities and noun phrases extracted from every chunk and linked by document co‑occurrence; enables graph traversal to pull in thematically connected chunks that neither vector nor BM25 search would surface
+
+Before any chunk is stored, it passes through a **multi‑algorithm compliance filter chain** — Regex+Levenshtein, Jaccard, BM25, KeyBERT — that detects and optionally masks prohibited content. Leet‑speak decoding and Unicode confusable normalization run first, so obfuscated phrases are caught before embedding.
+
+Seven chunking strategies handle different document types: semantic boundary detection for free text, heading‑aware chunking for structured documents, per‑page for PDFs, per‑slide for presentations. Chunk boundaries match the document’s natural discourse structure rather than arbitrary token counts.
+
+Files unchanged since the last run are skipped. Files flagged by prior compliance runs can be automatically excluded.
+
+---
+
+### 💬 RAGChat — Retrieval that fights context failures
+
+`RAGChat` is a multi‑turn chat interface backed by the indexes built by RAGLoad. It is designed around the observation that **most RAG failures are not retrieval failures** — they are context assembly failures: semantically similar chunks that reinforce each other’s errors, pronoun references that resolved to the wrong entity two turns ago, or factually contradictory passages delivered side‑by‑side without scoping. See [Query Output Example](QUERY_OUTPUT_EXAMPLE.md) for an annotated full-pipeline run.
+
+Each query runs through a staged pipeline:
+
+1. **[Compliance](LEGAL.md#-definition--compliance-rag-lcc) pre‑check** — the multi‑algorithm filter chain (Regex+Levenshtein, Jaccard, BM25, KeyBERT) runs on the raw query; matched phrases are masked or the request is blocked before anything else happens
+2. **Translation** — non‑English queries normalised to English via M2M100 (100 languages, MIT)
+3. **Query rewriting** — pronouns and referents from prior turns resolved by a dedicated rewrite LLM; prefix with `new:` to hard‑switch topics without clearing history
+4. **Multi‑query expansion** — the LLM generates N alternate phrasings to broaden vocabulary coverage across the retrieval pool
+5. **Hybrid retrieval** — Vector + BM25 + Graph fused via weighted Reciprocal Rank Fusion; optional live DuckDuckGo web leg
+6. **Near‑duplicate removal** — chunks sharing ≥ 85% token overlap collapsed before reranking
+7. **Cross‑encoder reranking** — neural relevance scoring on top‑k candidates
+8. **Strategy‑gated context assembly** — five profiles from `NARROW` (20 chunks, high precision) to `ULTRA_WIDE` (1500 chunks, exhaustive), with per‑file diversity caps
+9. **LLM reasoning** — context assembled above is passed to the generation model
+10. **[Compliance](LEGAL.md#-definition--compliance-rag-lcc) post‑check** — the same filter chain re‑runs on the generated answer; matched spans are masked before the response reaches the user
+
+Answers are **grounded** — every sentence is checked for overlap with retrieved source text and marked visually, in CLI and API output alike. You see exactly which parts of the answer are evidence‑backed and which are not.
+
+---
+
+### 🌐 RAGChatService — OpenAI‑compatible RAG as a service
+
+`RAGChatService` wraps the complete RAGChat pipeline in an **OpenAI‑compatible REST API** (`POST /v1/chat/completions`). Point [OpenWebUI](https://github.com/open-webui/open-webui) at it — or any OpenAI client — and your local RAG pipeline becomes a selectable model with no prompt engineering required on the client side.
+
+ChromaDB collections appear as models in the OpenWebUI dropdown. RAG‑LCC knobs (`strategy`, `retriever_k`, `threshold`, `web_search`, `web_weight`) are exposed as OpenWebUI Advanced Parameters so non‑technical users can tune retrieval without editing config files.
+
+Supports Bearer‑token authentication, optional streaming, configurable host/port, and fully offline operation after initial setup.
 
 ---
 
@@ -46,77 +113,88 @@ Documents are analyzed, reduced, filtered, and assembled **before** being shown 
 Raw documents
         │
         ▼
-┌──────────────────────────────────┐
-│  DocClassify                     │
-│  keyword extraction · LLM labels │
-│  → semantic compression          │
-└──────────────────────────────────┘
-        │  (optional CSV filter
-        |   using SQLite query)
+┌───────────────────────────────────────────┐
+│  DocClassify  (optional first pass)       │
+│  ─────────────────────────────────────    │
+│  KeyBERT keyword extraction               │
+│  LLM classification  →  CSV metadata      │
+│  compliance filter chain (load-time)      │
+│  purpose: semantic compression +          │
+│           domain-scoped ingestion         │
+└───────────────────────────────────────────┘
+        │  optional: filter CSV with
+        │  plain SQL WHERE clause, e.g.
+        │  "Mammal LIKE '%Yes%'"
         ▼
-┌──────────────────────────────────┐
-│  RAGLoad                         │
-│  banned-phrase filter chains     │
-│  chunking strategies             │
-│  → ChromaDB · BM25 index         │
-│  → entity co-occurrence graph    │
-└──────────────────────────────────┘
+┌───────────────────────────────────────────┐
+│  RAGLoad  (indexes the corpus)            │
+│  ─────────────────────────────────────    │
+│  leet-speak + Unicode normalisation       │
+│  compliance filter chain  →  masking      │
+│  7 chunking strategies (per file type)    │
+│  ┌──────────┐ ┌──────────┐ ┌───────────┐  │
+│  │ ChromaDB │ │  BM25    │ │   Graph   │  │
+│  │ vectors  │ │ keyword  │ │  entity   │  │
+│  │ (HNSW)   │ │  index   │ │  co-occur │  │
+│  └──────────┘ └──────────┘ └───────────┘  │
+│  skips unchanged files (hash check)       │
+└───────────────────────────────────────────┘
         │
         ▼
-┌──────────────────────────────────────────────────────┐
-│  RAGChat  (one turn)                                 │
-│                                                      │
-│  user query                                          │
-│      │  (translation · query rewrite)                │
-│      ▼                                               │
-│  multi-query expansion  (alternate phrasings × N)    │
-│      │  (vector-only; merged into the main pool)     │
-│      ▼                                               │
-│  ┌─────────┐  ┌─────────┐  ┌─────────────────────┐   │
-│  │ Vector  │  │  BM25   │  │  Graph              │   │
-│  │ search  │  │ keyword │  │  entity co-occur.   │   │
-│  └────┬────┘  └────┬────┘  └──────────┬──────────┘   │
-│       └────────────┴──────────────────┘              │
-│                           (+ Web if web_search = on) │
-│                    │  weighted RRF fusion            │
-│                    ▼                                 │
-│        near-duplicate chunk removal (Jaccard)        │
-│                    │                                 │
-│                    ▼                                 │
-│            threshold filter                          │
-│                    │                                 │
-│                    ▼                                 │
-│            cross-encoder reranker                    │
-│                    │                                 │
-│                    ▼                                 │
-│            chunk selection strategy                  │
-│            (score-ranked · per-file-cap · narrow)    │
-│                    │                                 │
-│                    ▼                                 │
-│            context assembly                          │
-│                    │                                 │
-│                    ▼                                 │
-│               LLM reasoning                          │
-└──────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────┐
+│  RAGChat  /  RAGChatService                                         │
+│  ─────────────────────────────────────────────────────────────────  │
+│                                                                     │
+│  RAGChat   — interactive CLI                                        │
+│  RAGChatService — OpenAI-compatible REST API  ──► OpenWebUI         │
+│              (same pipeline, same config)                           │
+│                                                                     │
+│  ┌─────────────────────────────────────────────────────────────┐    │
+│  │  per-query pipeline                                         │    │
+│  │                                                             │    │
+│  │  user query                                                 │    │
+│  │    │  ① compliance pre-check  (banned-phrase filter chain)  │    │
+│  │    │  ② M2M100 translation  →  English (if non-English)     │    │
+│  │    │  ③ query rewrite  (coreference resolution via LLM)     │    │
+│  │    ▼                                                        │    │
+│  │  multi-query expansion  (LLM → N alternate phrasings)       │    │
+│  │    │  each variant runs an additional Vector search         │    │
+│  │    ▼                                                        │    │
+│  │  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌───────────┐    │    │
+│  │  │  Vector  │  │   BM25   │  │  Graph   │  │    Web    │    │    │
+│  │  │ (Chroma) │  │ keyword  │  │ entity   │  │ DuckDuckGo│    │    │
+│  │  └────┬─────┘  └────┬─────┘  └────┬─────┘  └─────┬─────┘    │    │
+│  │       └─────────────┴─────────────┴───────────────┘         │    │
+│  │                  weighted RRF fusion                        │    │
+│  │                      │                                      │    │
+│  │                      ▼                                      │    │
+│  │          near-duplicate removal  (Jaccard)                  │    │
+│  │                      │                                      │    │
+│  │                      ▼                                      │    │
+│  │          threshold filter  (sigmoid score ≥ T)              │    │
+│  │                      │                                      │    │
+│  │                      ▼                                      │    │
+│  │          cross-encoder reranker  (mmarco MiniLM)            │    │
+│  │                      │                                      │    │
+│  │                      ▼                                      │    │
+│  │          chunk selection strategy                           │    │
+│  │          NARROW · BALANCED_FILE_CAP · DEFAULT · WIDE        │    │
+│  │                      │                                      │    │
+│  │                      ▼                                      │    │
+│  │          context assembly  →  LLM reasoning                 │    │
+│  │                      │                                      │    │
+│  │                      ▼                                      │    │
+│  │          ④ compliance post-check  (answer validation)       │    │
+│  │                      │                                      │    │
+│  │                      ▼                                      │    │
+│  │          answer grounding  (sentence-level overlap marks)   │    │
+│  └─────────────────────────────────────────────────────────────┘    │
+│                                                                     │
+│  Web leg active only when WEB_SEARCH_MODE="1" and web_search=on     │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
 The goal is **not** to feed the model *more* text — but to feed it **better, safer context**.
-
----
-
-## 🗣️ Why chat context breaks RAG
-
-Many RAG failures are **not retrieval failures**.
-
-They happen when:
-
-- semantically similar chunks enter the same context
-- referents clash across turns (e.g. *“they”*, *“this result”*)
-- old and new facts coexist without ordering or scoping
-
-In these cases, the LLM is forced to silently resolve ambiguity it was never designed to handle.
-
-RAG‑LCC treats **chunking, retrieval strategies, and filtering** as *context‑management mechanisms*, not preprocessing checkboxes.
 
 ---
 
@@ -127,102 +205,89 @@ It provides a quick visual overview of the architecture, the four applications, 
 
 ---
 
-## ✨ Key features
+## 🔑 Feature Highlights
 
-### 🧩 Classify‑then‑Load workflow
+Key capabilities organized by application. Full configuration details, defaults, and code examples in [CONFIGURATION_REFERENCE.md](CONFIGURATION_REFERENCE.md).
 
-- Documents are classified *before* context construction
-- Classification acts as **semantic compression**, not metadata decoration
-- Large documents are reduced to meaning‑dense signals early
-- Token usage is minimized *before* retrieval and chat
+### 🏷️ DocClassify
 
-This workflow is the **architectural core** of RAG‑LCC.
+- **Semantic compression** — KeyBERT keyword extraction + LLM classification produces meaning-dense CSV metadata (topic, category, language, and any custom fields you define)
+- **Classify-then-load** — filter the output CSV with a plain SQL WHERE clause before indexing: `"Mammal LIKE '%Yes%' AND Language = 'English'"`. Documents that fail the filter are never embedded
+- **Compliance filter chain** runs at classification time — detected phrases are masked before any embedding
+- **Customisable extraction keys** — add or remove fields by editing `_YOUR_CLASSIFICATION_KEYS` and the matching prompt template; no code changes needed
+- **Reverse stemming** — classification output values are back-projected to original surface forms before CSV export
+- **`STRICT` / `BALANCED` / `RECALL`** extraction profiles control the LLM's sampling parameters
 
----
+### 📥 RAGLoad
 
-### 🧱 Context‑safe chunking strategies
+- **7 chunking strategies** with per-format routing: PDF→PDF_PAGE, DOCX/MD→heading, PPTX→slide, plain text→sliding window, sentences→sentence window, code/CSV→recursive, default→semantic boundary detection
+- **Three parallel indexes built simultaneously**: ChromaDB HNSW dense vectors, Okapi BM25 keyword index, spaCy entity co-occurrence graph
+- **Compliance filter chain + masking** — Regex+Levenshtein, Jaccard, BM25, and KeyBERT all run before any chunk is stored; matched spans are redacted in place
+- **Obfuscation hardening** — leet-speak decoding (`1→i`, `3→e`, …) and Unicode confusable normalisation (Cyrillic lookalikes, `ß→ss`, …) run before detection
+- **Incremental processing** — SHA-256 hash check skips unchanged files; exclusion CSVs automatically drop previously-flagged documents
+- **Text extraction** — PDF (pdfplumber + pdfminer), MS Office via COM (Word, PowerPoint, Excel), images via Tesseract OCR, plain text and Markdown
+- **Classify-then-load filter** — `LOAD_FROM_CLASSIFY_CSV` + `CLASSIFY_CSV_QUERY` (SQLite WHERE) narrows ingestion to documents that passed DocClassify criteria
 
-- Chunking is treated as a **semantic boundary problem**, not a token problem
-- Designed to reduce:
-  - referential ambiguity (*they / it / this*)
-  - entity collisions across documents
-  - logically incompatible chunks in the same context
+### 💬 RAGChat
 
-Chunkers exist to **preserve discourse coherence**, especially in chat.
+- **8 retrieval modes** — `VECTOR`, `BM25`, `GRAPH`, or any pair/triple fused via weighted Reciprocal Rank Fusion; optional DuckDuckGo web leg as a fourth RRF arm
+- **5 retrieval strategies** from `NARROW` (20 chunks, threshold 0.70, high precision) to `ULTRA_WIDE` (1 500 chunks, exhaustive); `BALANCED_FILE_CAP` enforces per-file diversity caps
+- **Multi-query expansion** — a dedicated LLM generates N alternate phrasings of the query; each variant runs an additional Vector search merged into the main pool before fusion
+- **Query rewriting / coreference resolution** — a second dedicated LLM resolves pronouns and referents from conversation history (`"are they mammals?"` → `"are hedgehogs mammals?"`); prefix with `new:` to hard-switch topics without clearing history
+- **Near-duplicate chunk removal** — Jaccard token-level deduplication of the retrieval pool runs after RRF fusion and before reranking
+- **Cross-encoder reranking** — mmarco MiniLM rescores every candidate; per-strategy sigmoid threshold drops weak matches; relative-band fallback ensures the top chunk always surfaces
+- **Answer grounding** — every answer sentence is checked for overlap with retrieved source chunks and marked visually; CLI uses ANSI highlights, API returns marked source documents as `/marked/<token>` links
+- **Compliance filter chain** runs on queries before retrieval **and** on generated responses before delivery
+- **Multi-turn conversational memory** — rolling topic summary, configurable turn window, batch pruning; `new:` prefix isolates topics without discarding history
+- **Translation** — M2M100 (100 languages, MIT) normalises non-English queries to English before retrieval and rewriting; Argos Translate expands banlists to the document language
+- **Per-session web knobs** — `web_search` (`local_only` / `local_and_web` / `web_only`), `web_weight`, `fetch_page_content` (`snippets only` / `fetch pages`); see [CONFIGURATION_REFERENCE.md § Web Search Admin Knobs](CONFIGURATION_REFERENCE.md#-web-search--admin-knobs)
 
----
+### 🌐 RAGChatService
 
-### 🔗 Configurable retrieval & filter chains
+- **OpenAI-compatible REST API** (`POST /v1/chat/completions`) — any OpenAI client, LiteLLM proxy, or custom integration works without modification
+- **OpenWebUI integration** — ChromaDB collections appear as selectable models in the dropdown; retrieval knobs (`strategy`, `retriever_k`, `threshold`, `web_search`, `web_weight`) surface as Advanced Parameters
+- **In-memory document cache** — highlighted source documents served as short-lived `GET /marked/<token>` links; configurable TTL, total size cap, and CORS origins
+- **Bearer-token authentication**, configurable host/port, optional streaming, automatic streaming downgrade when document grounding is active
+- **`_OPENWEB_UI_WEBSEARCH`** — when `True` (and `WEB_SEARCH_MODE="1"`), the web leg is auto-enabled for every incoming OpenWebUI request that doesn't supply an explicit parameter
 
-- Retrieval is staged, not monolithic
-- Combine lexical, semantic, graph, and heuristic signals
-- Typical chains:
-  - BM25 → KeyBERT → embedding similarity
-  - BM25 + Graph → RRF fusion → rules
-  - Vector + Graph + BM25 → weighted RRF → threshold
-  - Regex / rules → similarity ranking
-- Each stage can be inspected and reasoned about
+### 🔧 Cross-App
 
-Retrieval here is about **conflict avoidance**, not just relevance scores.
-
----
-
-### 🔄 Multi-mode lexical, vector, and graph retrieval
-
-Seven retrieval modes are supported:
-
-| Mode | Stores queried | Fusion |
-| --- | --- | --- |
-| `VECTOR` | ChromaDB (dense embeddings) | — |
-| `BM25` | BM25 keyword index | — |
-| `GRAPH` | Entity co-occurrence graph | — |
-| `VECTOR_BM25` | ChromaDB + BM25 | RRF |
-| `VECTOR_GRAPH` | ChromaDB + Graph | RRF |
-| `BM25_GRAPH` | BM25 + Graph | RRF |
-| `ALL` | ChromaDB + BM25 + Graph | RRF |
-
-**Optional Web leg** — when `web_search` is set to `on` for a session, `WebRetriever` issues a live DuckDuckGo query and adds the results as a fourth RRF leg (weight controlled by `web_weight`, default `0.5`). This is orthogonal to `retrieve_mode` — it adds to whichever local stores are active, not replaces them.
-
-Multi-store modes merge results via **Reciprocal Rank Fusion** (RRF).
-The graph retriever uses [spaCy](https://spacy.io/) (`en_core_web_sm`, **MIT**, Explosion AI) for both named-entity recognition and noun-phrase extraction, so entity-graph retrieval works on encyclopedic content (animals, products, places) without domain-specific NER models.
-
-- Lexical retrievers preserve discourse anchors
-- Vector search generalizes meaning
-- Graph traversal pulls in co-occurrence clusters
-- Combined modes reduce:
-  - pronoun drift
-  - dominance of large documents
-  - accidental contradiction in chat contexts
+- **Compliance pipeline is identical across all apps** — same algorithms (Regex+Levenshtein, Jaccard, BM25, KeyBERT), same banlist, per-app consensus thresholds
+- **12 named debug levels** (0–100) — `Standard 30` shows pipeline flow; `Chunk Content 32` dumps full retrieved text; `Chat Prompt 60` shows the LLM input; all changeable live in-chat with `set debug ge 30`
+- **Config hash verification** — startup rejects runs where `Config_Models.py` or `Config_Banned.py` was edited without updating the stored hash (`python src/Scripts/RecalcConfigHashes.py` to update)
+- **Fully offline after initial setup** — `HF_HUB_OFFLINE="1"`, `TRANSFORMERS_OFFLINE="1"`, `WEB_SEARCH_MODE="0"` in `Config_Internet_Env.py`
+- **License consent workflows** — RAG‑LCC does not bundle any model; consent is recorded per-model in `ModelGovernance/licenses/` before first use
 
 ---
 
-### 📉 Context‑ and hardware‑aware by design
+## 🎛️ Configuration at a Glance
 
-- Explicitly designed for **limited context windows**
-- Practical on **modest GPUs and CPUs**
-- Encourages architectural efficiency over brute‑force scaling
+RAG‑LCC exposes every significant architectural decision as a configuration slot. Nothing is hardwired — chunking boundaries, retrieval algorithm mix, scoring thresholds, model roles, compliance rules, and answer grounding sensitivity are all independently tunable.
 
----
+> **If you have a document corpus and want to optimize retrieval** — start with chunking strategies, retrieval mode and strategy profiles, and BM25/HNSW parameters.
+> **If you're studying RAG failure modes** — every stage from query rewriting to answer grounding can be inspected at named debug levels, disabled, or replaced independently.
+> **If you need to integrate or deploy it** — Ollama or vLLM backend, OpenAI-compatible REST service (`RAGChatService`), OpenWebUI drop-in, fully offline after initial setup.
 
-### 🔍 Transparent & inspectable pipeline
+| Area | What you configure | Why you'd tune it |
+|------|--------------------|-------------------|
+| **Chunking** | 7 strategies (Semantic, Heading, PDF/Page, Sliding Window, Recursive…); per-format routing; chunk size and overlap | Chunking quality determines retrieval precision — wrong boundaries produce noisy embeddings, referential ambiguity, and incoherent context |
+| **Retrieval mode** | `VECTOR`, `BM25`, `GRAPH`, `ALL`, `WEB` — any combination with per-retriever RRF weights | Switch between lexical precision, semantic recall, and entity-graph traversal; tune each store's influence independently |
+| **Retrieval strategy** | 5 profiles (`NARROW` → `ULTRA_WIDE`): chunk count to LLM, score threshold, per-file limits, retriever-k | Dial precision vs recall: 20 chunks for focused Q&A, 1500 for exhaustive exploratory search |
+| **Reranking** | Cross-encoder on/off per strategy; sigmoid score threshold | Neural relevance pass after retrieval — switch off for speed, tune threshold for precision |
+| **Query processing** | Multi-query expansion (N alternate phrasings); context-dependent rewriting; pronoun/referent resolution; meta-descriptor guard | Boost recall via vocabulary diversity; prevent stale chat history from poisoning retrieval |
+| **Chat session** | Turns to keep, history window size, topic summary mode, preferred response language | Control conversational memory budget; isolate topics with `new:` to prevent referential drift |
+| **Models** | Any Ollama or vLLM model; separate roles for generation, query rewriting, and safety checking | Swap models per role — use a large model for generation and a small one for rewriting |
+| **Prompts** | Fully customisable per model and task: chat, classification, safety check, query rewrite, topic detect | Adapt RAG‑LCC to any domain by editing prompts; no code changes needed |
+| **Compliance** | 5-algorithm detection pipeline (Regex+Levenshtein, Jaccard, BM25, KeyBERT); per-app thresholds; masking; consensus count | Fine-tune false-positive/negative tradeoff independently for indexing vs chat |
+| **Content hardening** | Leet-speak and Unicode confusable normalization; WordNet synonym expansion; LLM guard model | Defense-in-depth: obfuscation is neutralized before embedding, LLM gates responses before delivery |
+| **Classification** | Customisable extraction keys; `STRICT`/`BALANCED`/`RECALL` profiles; SQLite filter for selective indexing | Classify first, then load only the documents that match your query's domain |
+| **Language** | 28-language detection (Lingua); M2M100 query translation (100 languages); Argos banlist translation | Retrieve and filter correctly even in multilingual document corpora |
+| **Web search** | DuckDuckGo integration; 3-stage pre-filter (BM25 + cosine + rerank); intent blocking; per-session weight | Augment local retrieval with live web results; configure filtering aggressively enough to suppress noise |
+| **Answer grounding** | Sentence-level overlap detection; configurable match strictness; color markers per output mode | Distinguish grounded sentences from hallucinations at the sentence level, in CLI and API |
+| **Deployment** | Ollama or vLLM backend; `RAGChatService` (OpenAI-compatible REST); OpenWebUI drop-in | Same config and pipeline whether you run CLI, a service, or behind OpenWebUI |
+| **Observability** | 12 named debug levels (`Standard 30` → `Streaming 100`); in-chat toggle; performance event log | Trace every step: retrieval scores, merged chunk pool, prompt text, grounding markers, raw token stream |
 
-- Retrieval decisions remain observable
-- Intermediate results can be reviewed
-- Designed to support *reasoning about RAG behavior*, not just outputs
-
----
-
-### 📄 Document grounding & answer verification
-
-- Answer sentences are marked as **effective** only when they overlap with retrieved source chunks
-- Visual highlighting tracks which parts of the answer are grounded in the provided context
-- Configurable sensitivity for paraphrase detection and fragment matching
-- Helps identify when the LLM is:
-  - synthesizing from actual retrieved content (grounded)
-  - inventing facts not present in the sources (hallucination)
-  - blending training knowledge with retrieved evidence
-
-Grounding metadata is exposed in both CLI and API modes, making it easy to spot when answers drift from the evidence.
+Full slot-level details: [CONFIGURATION_REFERENCE.md](CONFIGURATION_REFERENCE.md) · per-file reference: [CONFIGURATION_REFERENCE.md](CONFIGURATION_REFERENCE.md)
 
 ---
 
@@ -232,7 +297,7 @@ Grounding metadata is exposed in both CLI and API modes, making it easy to spot 
 | --- | --- |
 | 📘 [README.md](README.md) | Project overview · feature summary · quick-start |
 | 🚀 [INSTALL.md](INSTALL.md) | Prerequisites · cloning · dependencies · Ollama / OpenWebUI / Argos / NLTK / Tesseract / spaCy / GPU setup · first-run walkthrough |
-| 📚 [CONFIGURATION.md](CONFIGURATION.md) | Per-file reference for every `Config_*.py` · CLI overrides · translation config · troubleshooting |
+| 📚 [CONFIGURATION_REFERENCE.md](CONFIGURATION_REFERENCE.md) | Per-file reference for every `Config_*.py` · CLI overrides · translation config · troubleshooting |
 | 📸 [EXAMPLES.md](EXAMPLES.md) | End-to-end terminal sessions for `RAGLoad`, `RAGChat`, `DocClassify`, `RAGChatService` |
 | 🏗️ [ARCHITECTURE.md](ARCHITECTURE.md) | Pipeline internals · compliance chain · chunking · query rewrite · graph index |
 | 🧭 [HANDS_ON_TOUR.md](HANDS_ON_TOUR.md) | Curated hands-on session and suggested experiments |
@@ -267,8 +332,6 @@ Some design decisions in RAG‑LCC are motivated by concrete failure analyses:
 - **Lessons Learned Building an Experimental RAG Lab**
   Reddit write‑up on failure modes that only surface with end‑to‑end visibility: retrieval pool size, context poisoning, multilingual gaps, scoring assumptions, and why old workarounds become bugs
   [https://www.reddit.com/r/Rag/comments/1to784v/lessons_learned_building_an_experimental_rag_lab/](https://www.reddit.com/r/Rag/comments/1to784v/lessons_learned_building_an_experimental_rag_lab/)
-
-
 - **Adding Web Search to Our RAG Pipeline: What Broke and Why**
   DEV.to article on integrating internet retrieval into an experimental RAG pipeline — query routing, compliance gating, threshold failures, and the edge cases that only appear in production-like conditions
   [https://dev.to/harinezumigel/adding-web-search-to-our-rag-pipeline-what-broke-and-why-4ge5](https://dev.to/harinezumigel/adding-web-search-to-our-rag-pipeline-what-broke-and-why-4ge5)
@@ -303,389 +366,21 @@ A `CITATION.cff` file is included for academic or technical reference.
 
 ### TL;DR — try it locally
 
+Read [INSTALL.md](INSTALL.md) before running anything. You get information what will be done during setup.
+
 ```bash
 git clone <this-repo>; cd RAG-LCC
 python -m venv .venv; .\.venv\Scripts\Activate.ps1   # or source .venv/bin/activate
-pip install -r requirements.txt
-# Review and copy example configs (see INSTALL.md § "Review the example config files")
+# Guided setup, recommended
+python src/Scripts/Setup.py                           # guided first-run setup (copies configs, downloads models)
+# Note: License acceptance is required and recorded on startup
+accepted on first start.
 python ./src/Apps/RAGLoad.py  --doc-dir TestDocs
 python ./src/Apps/RAGChat.py  --doc-dir TestDocs
 ```
 
 Read [INSTALL.md](INSTALL.md) before running anything — model licenses must be
 accepted on first start.
-
----
-
-## Overview
-
-**RAG‑LCC** (Local Corpus & Classification) is an experimental research environment focused on:
-
-- **Local and offline‑first operation**
-Local and offline‑capable operation
-After the initial setup phase, the system can operate locally without requiring continuous network access, depending on your configuration and environment.
-
-- **Configurable ingestion and detection pipelines**
-  Apply custom heuristics, filters, and classifiers during document processing.
-
-- **Query‑Driven Document Routing**
-  The system can classify and select relevant documents *based on the user’s prompt*.
-  Then selectively load (SQLite query) those documents into a local vector store for downstream retrieval.
-
-- **Hybrid Retrieval Stack**
-  Combine filter algorithms, LLM prompt checking, dense embeddings, rerankers inside a unified chain.
-
-- **OpenWebUI Integration**
-  `RAGChatService.py` exposes the RAG pipeline through an OpenAI‑compatible REST API, allowing [OpenWebUI](https://github.com/open-webui/open-webui) to use RAG‑LCC as a retrieval backend.
-
-- **Operator‑Visible and Operator‑Controlled**
-  Every step in the pipeline is transparent, adjustable, and intended for iterative experimentation.
-
-This project is intended for **research, prototyping, and educational use**.
-It does **not** claim performance guarantees, production readiness, or novel scientific breakthroughs.
-Instead, it provides a flexible sandbox to explore retrieval strategies and classification workflows in a controlled local environment.
-</p>
-
-<p align="center">
-  📥 <code>RAGLoad</code> · Document Ingestion &nbsp;|&nbsp;
-  💬 <code>RAGChat</code> · Retrieval & Chat &nbsp;|&nbsp;
-  🌐 <code>RAGChatService</code> · OpenWebUI REST API &nbsp;|&nbsp;
-  🏷️ <code>DocClassify</code> · Batch Classification
-</p>
-
-<p align="center">
-  For the definition of <em>"Compliance"</em> as used in this project, see
-  <a href="LEGAL.md#-definition--compliance-rag-lcc"><code>LEGAL.md</code></a>.
-</p>
-
-## ✨ High‑Level Features
-
-- [Classify‑then‑Load Workflow](#-classifythenload-workflow) — optionally filter `DocClassify` results with SQL WHERE queries before ingestion
-- Local [document ingestion](ARCHITECTURE.md#-ragload-pipeline) into ChromaDB
-- [Retrieval‑Augmented Generation](ARCHITECTURE.md#-ragchat--ragchatservice-pipeline) (RAG)
-- **Seven retrieval modes** — `VECTOR`, `BM25`, `GRAPH`, `VECTOR_BM25`, `VECTOR_GRAPH`, `BM25_GRAPH`, `ALL` — switchable per strategy or at query time; multi-store modes fused via RRF. See [Multi-mode Retrieval](#-multi-mode-lexical-vector-and-graph-retrieval).
-- **Optional Internet retrieval** — a live web search leg (`WebRetriever` via DuckDuckGo) is additive to any retrieval mode. Enable per session with `web_search=True` (requires `WEB_SEARCH_MODE="1"` in `Config_Internet_Env.py`). Results enter the RRF pool at a configurable weight. See [Internet Retrieval](#-internet-retrieval-optional).
-- **RetrievalGate** — detects underspecified queries (missing entity anchor, vague pronoun, or bare attribute question) using spaCy morphology and returns a ❔ clarification prompt instead of hallucinating an answer.
-- Configurable multi‑algorithm [filter chains](#-filter-chain-detection-pipeline)
-- Prompt and output [validation](ARCHITECTURE.md#-compliance-chain) using LLMs
-- [Human‑review workflows](#-human-review-and-logs) via CSV/XLSX logs
-- [Local‑only operation](#-local-operation-and-internet-access) by default
-- Six document‑aware [chunking strategies](#-chunking-strategies) with configurable per‑file‑type routing
-- [Query rewrite](ARCHITECTURE.md#query-rewrite-coreference-resolution) for coreference resolution in multi‑turn chat — file‑context‑aware, with a dedicated rewrite LLM
-- **Multi-query expansion** — when `_MULTI_QUERY.enabled` is `True`, the retrieval LLM generates `num_variants` semantically distinct phrasings of the query; each phrasing runs an additional VECTOR search whose hits are folded into the RRF pool, broadening recall without changing `retrieve_mode`. Controlled by `_MULTI_QUERY` in `Config_RAGChat.py`.
-- **Chunk near-duplicate removal** — after RRF fusion and before cross-encoder reranking, chunks whose token-level Jaccard similarity exceeds `_CHUNK_DEDUP.threshold` (default `0.85`) are collapsed to one representative, preventing the LLM from seeing the same passage multiple times. Controlled by `_CHUNK_DEDUP` in `Config_RAGChat.py`.
-- **OpenWebUI integration** — `RAGChatService` exposes an OpenAI-compatible REST API (`POST /v1/chat/completions`, `GET /v1/models`, Bearer-token auth, optional streaming). ChromaDB collections appear as selectable "models" in the OpenWebUI dropdown, and RAG-LCC knobs (`strategy`, `retriever_k`, `web_search`, `web_weight`, …) are exposed as OpenWebUI Advanced Parameters. See [Connecting OpenWebUI to RAGChatService](INSTALL.md#-connecting-openwebui-to-ragchatservice).
-
-All outputs and classifications are heuristic and probabilistic.
-
----
-
-## 🔗 Filter Chain (Detection Pipeline)
-
-The framework includes configurable filter chains that apply algorithms such as:
-
-- Jaccard similarity
-- BM25 scoring
-- Regex + Levenshtein matching
-- KeyBERT keyword extraction
-- Optional embedding‑based similarity
-
-Algorithms contribute independent scores which are evaluated using **consensus rules**
-(depth and breadth thresholds).
-
-Detection results:
-
-- do **not** constitute legal or regulatory determinations
-- do **not** guarantee prevention or correctness
-- must always be reviewed by a human before action
-
----
-
-## 📂 Classify‑then‑Load Workflow
-
-`RAGLoad` can optionally consume the classification output produced by
-`DocClassify` so that **only documents classified as relevant** are ingested
-into the vector store.
-
-When a classify CSV path is provided, `RAGLoad` reads the classification
-CSV that `DocClassify` wrote and limits ingestion to the file paths
-listed therein. An optional SQL WHERE clause (`CLASSIFY_CSV_QUERY`) can
-further narrow the allow‑set by filtering the CSV rows through an
-in‑memory SQLite table — for example, ingesting only documents where
-`Animal LIKE '%cat%'` or `Mammal LIKE '%Yes%' AND Language = 'English'`.
-
-![DocClassify CSV output — per-document classification used as the RAGLoad allow-set](Documentation/Pics/DocClassify_CSV_Output.jpg)
-
-## 🧩 Chunking Strategies
-
-RAG‑LCC ships with six [chunking strategies](ARCHITECTURE.md#-chunking-architecture):
-
-| Strategy | Description |
-| --- | --- |
-| Semantic | Splits on topic boundaries using embeddings |
-| Fixed‑Size | Equal‑length token or character chunks |
-| Heading | Splits on document headings; section path stored in `HeadingPath` metadata. Placement of the breadcrumb inside the chunk text is configurable via `_CHUNKERS.HEADING.BREADCRUMB_MODE` (`prefix` / `suffix` (default) / `off`) |
-| Slide | Presentation slide boundaries |
-| Sliding Window | Overlapping fixed‑size windows |
-| Sentence Window | Sentence‑level chunks with surrounding context |
-
-Each file type can be routed to a different strategy via the
-[strategy selection pattern](ARCHITECTURE.md#strategy-selection-pattern).
-
----
-
-## 📋 Human Review and Logs
-
-Documents flagged by detection pipelines are logged to `.csv` and
-`.xlsx` files for **human review**.
-
-Audit and log files:
-
-- are provided for experimental and diagnostic purposes only
-- are not guaranteed to be complete or tamper‑proof
-- must not be relied upon as legally authoritative records
-
----
-
-## 🏠 Local Operation and Internet Access
-
-RAG‑LCC is designed to run **locally**.
-
-- **Web / internet retrieval is off by default** — every session starts with `web_search = 'local_only'`
-- The operator gate `WEB_SEARCH_MODE` (`Config_Internet_Env.py`, default `"0"`) controls whether sessions may use web retrieval. Set `"1"` to enable live web access; `"0"` blocks web access system-wide.
-- ⚠️ `_OPENWEB_UI_WEBSEARCH` (`Config_WebSearch.py`, default `False`) — when set to `True` (and `WEB_SEARCH_MODE = "1"`), web search is auto-enabled for every incoming OpenWebUI request that does not supply an explicit `web_search` parameter
-- No telemetry is collected
-- `RAGChatService.py` will start a network listener to serve RAG Queries (see [Internet Access in INSTALL.md](INSTALL.md#-internet-access))
-- See [Internet Retrieval (Optional)](#-internet-retrieval-optional) below for full configuration details
-
-Actual behavior depends on configuration, environment, and third‑party components.
-
----
-
-## 🌐 Internet Retrieval (Optional)
-
-RAG‑LCC includes an optional **web search leg** (`Strategies/WebRetriever.py`) backed by DuckDuckGo.
-When enabled it adds a fourth RRF arm alongside Vector, BM25, and Graph retrieval.
-Web results bypass the local rerank threshold but are still scored by the cross-encoder and subject to all compliance checks.
-
-![Web search result in RAG-LCC chat](Documentation/Pics/WebSearch.jpg)
-
-### Enabling web search
-
-Three configuration layers control web access:
-
-| Layer | Setting | Location | Default |
-| --- | --- | --- | --- |
-| Operator master switch | `WEB_SEARCH_MODE` (environment variable) | `Config_Internet_Env.py` | `"0"` |
-| Backend & limits | `_WEB_SEARCH` dict | `Config_WebSearch.py` | DuckDuckGo, 10 results |
-| ⚠️ OpenWebUI auto-enable | `_OPENWEB_UI_WEBSEARCH` | `Config_WebSearch.py` | `False` |
-
-`WEB_SEARCH_MODE` accepts two values:
-
-- `"0"` — no internet leg, all web queries blocked.
-- `"1"` — full production path: queries pass the compliance chain and are sent to the configured backend.
-
-See [INSTALL.md § Enable Internet (Web) Search](INSTALL.md#-enable-internet-web-search-optional) for the full step-by-step procedure.
-
-> ⚠️ **`_OPENWEB_UI_WEBSEARCH`** (`Config_WebSearch.py`) — when `True` (and `WEB_SEARCH_MODE = "1"`), every OpenWebUI request that does not carry an explicit `web_search` parameter automatically gets web search enabled. Users never need to add an OpenWebUI Advanced Parameter manually. Has no effect when `WEB_SEARCH_MODE` is `"0"`.
-
-### Per-session switches
-
-The status line `▶ Web:` in the chat console shows the current state:
-
-```text
-▶ Web:  web_search='local_only'  web_weight=None  fetch_page_content='snippets only'
-```
-
-| Switch | Values | Effect |
-| --- | --- | --- |
-| `web_search` | `'local_only'` / `'local_and_web'` / `'web_only'` | Controls web retrieval for this session. `local_only` — local indexes only (default). `local_and_web` — DuckDuckGo + local retrieval. `web_only` — skip local indexes entirely. Requires `WEB_SEARCH_MODE = "1"`. Session-persistent. |
-| `web_weight` | `None` (use config default) / float | RRF weight for web results relative to local retrievers (Vector/BM25/Graph = 1.0). Default `0.5` — every local result naturally outranks any web result. Set to `1.0` for equal influence. Can be pre-set per strategy via `web_weight` in `_STRATEGIES`. |
-| `fetch_page_content` | `'snippets only'` / `'fetch pages'` | `'snippets only'` uses only the DuckDuckGo snippet. `'fetch pages'` fetches the full page body via `httpx` — richer LLM context at higher latency. In both modes the original search-engine snippet is kept in `metadata["snippet"]` and used by the cross-encoder for relevance scoring; the full page (when fetched) goes only to the LLM prompt. Session-persistent. |
-
-### Backend configuration (`_WEB_SEARCH` in `Config_WebSearch.py`)
-
-| Key | Default | Purpose |
-| --- | --- | --- |
-| `backend` | `"duckduckgo"` | Search backend (`"duckduckgo"` requires no API key; `brave`, `tavily`, `bing` are recognised names but currently raise `NotImplementedError`) |
-| `api_key` | `""` | API key for paid backends (Brave, Tavily, Bing) |
-| `max_results` | `10` | Maximum results fetched per query |
-| `max_query_length` | `500` | Queries longer than this are truncated before sending |
-| `block_on_injection` | `True` | Block queries matching prompt-injection / attack patterns |
-| `default_web_weight` | `0.5` | Default RRF weight when `web_weight` is not set per session |
-
-### Query safety pipeline
-
-Every query passes through `_sanitize_query()` in `WebRetriever` before any network call:
-
-1. **Hard-block list** — absolute prohibitions (CSAM, WMD/CBRN materials, automated attack tooling). Blocked queries are logged and rejected regardless of `block_on_injection`.
-2. **Injection-pattern matching** — regex patterns that detect prompt-injection / jailbreak attempts in the query string (`block_on_injection = True`).
-3. **Length truncation** — queries exceeding `max_query_length` characters are truncated.
-4. **LLM compliance pre-check** — the same compliance chain that guards user prompts also runs before web queries are dispatched.
-
-All web query attempts (including blocked ones) are written to the append-only audit log at `_QUERY_LOG` (`logs/RAGChat/queries.log` by default).
-
-### Privacy note
-
-> ⚠️ When `web_search = 'local + internet'` is active, the rewritten query is transmitted to the configured search backend (default: DuckDuckGo). This reveals the query content and your IP address to that third party.
-> See [LEGAL.md — Web / Internet Search](LEGAL.md#-web--internet-search--privacy-warning) and [SECURITY.md — Web / Internet Search](SECURITY.md#-web--internet-search) for full privacy and security guidance.
-
----
-
-## ✏️ Query Rewrite (Coreference Resolution)
-
-Follow-up queries with pronouns ("are they mammals?") are rewritten into self-contained questions before retrieval.
-
-- A dedicated lightweight LLM resolves pronouns using conversation history
-- The embedding model receives explicit entity names instead of unresolved references
-- Every skip or rewrite path logs a diagnostic message with the reason (disabled, no history, LLM error, unchanged, or rewritten)
-- Rewrite model is selected independently via `_ACTIVE_LLM_REWRITE_PROMPT`
-- Parameters are configured in `_QUERY_REWRITE` in `Config_RAGChat.py`
-- Non-English user queries are normalised to English before retrieval by the m2m100 translation backend (`Compliance.HfTranslator` wrapping `facebook/m2m100_1.2B`, MIT, lazy-loaded); a second translation pass runs after the rewrite step in case foreign-language entities were pulled from chat history. The LLM itself is not instructed to reply in any specific language.
-
-### Topic (context) switch
-
-`RAGChat` detects context switches. Here is an example:
-![Context switch](Documentation/Pics/ContextSwitch.jpg)
-
-Hera two prompts were the first was caught by the filter chain algos and the second by the prompt validation LLM:
-
-![User prompts blocked by filter algo chain and LLM used for prompt compliance check](Documentation/Pics/RAG_Chat_NotOkPrompt.jpg)
-
-If you want to start a completely new topic without clearing the chat history or disabling `use_chat_context`, prefix your query with **`new:`** (or `new topic:`):
-
-```text
-new: tell me about fish
-new topic: what is photosynthesis?
-```
-
-### Filter chain (banned word list)
-
-The prefix is stripped before translation and retrieval — the rewriter LLM is skipped for that turn only, so the next turn resumes normal coreference resolution. This is the recommended workaround when the rewriter over-substitutes entities from a previous topic.
-
-See [ARCHITECTURE.md § Query Rewrite](ARCHITECTURE.md#query-rewrite-coreference-resolution) for the full rewrite-flow diagram and worked first-turn / follow-up examples.
-
----
-
-## 🔁 Incremental Processing and Human‑Review Exclusions
-
-RAG‑LCC supports optional efficiency and review‑awareness features:
-
-- **Skip unchanged documents** — files whose content hash has not changed since the last run can be detected and skipped automatically.
-- **Exclude flagged documents** — files previously flagged for human review can be excluded from further processing.
-
----
-
-## 🔍 Network Activity Observation (Optional)
-
-RAG‑LCC includes an optional Python‑level socket activity tracer that can log certain DNS
-and connection attempts when explicitly enabled.
-
-This mechanism:
-
-- may assist in observing some Python‑level network activity
-- does **not** guarantee full visibility
-- does **not** prevent network access
-- is **not a security control**
-
-See `SECURITY.md` for details and limitations.
-
----
-
-## � Further reading
-
-- Architecture overview: `ARCHITECTURE.md`
-- Legal and governance notes: `LEGAL.md`
-- Security considerations: `SECURITY.md`
-- Hands‑on examples: `HANDS_ON_TOUR.md`
-
----
-
-## 📄 Text Extraction
-
-The framework extracts text from common file types and applies Unicode normalization and masking to the extracted text before downstream processing.
-
-## 📎 Microsoft Office document extraction
-
-Text from Office formats (.doc(x), .ppt(x), .xls(x)) is extracted if a local Office installation is available. See [Office Document Extraction in CONFIGURATION.md](CONFIGURATION.md#-office-document-extraction) for configuration options.
-
-> **Note:** Microsoft Office is **not** included with or distributed by RAG‑LCC. Users must obtain and license Microsoft Office independently. The Python bridge library `pywin32` (included in the project's dependency list) provides COM automation access to a locally installed Office suite but does not replace or include Office itself.
-
----
-
-## 💾 Caching
-
-For details, see [Caching in ARCHITECTURE.md](ARCHITECTURE.md#caching).
-
----
-
-## 🌐 Translation
-
-Banned-word lists can be translated to the document language for detection using [Argos Translate](https://www.argosopentech.com/) (local, offline neural machine translation).
-For details see [7. Install Argos Translate in INSTALL.md](INSTALL.md#-7-install-argos-translate).
-
----
-
-## 🔄 Reverse Stemming
-
-Extracted classification keys can be reverse-stemmed optionally (best effort).
-
----
-
-## 📜 Model and License Consent
-
-RAG‑LCC does **not** bundle or redistribute:
-
-- LLMs
-- embedding models
-- cross‑encoders
-- translation packages
-- OCR engines
-
-All models and dependencies are obtained independently by the operator.
-
-Where applicable, RAG‑LCC includes **consent workflows** that record that a license text
-was fetched and acknowledged.
-
-**Important:**
-RAG‑LCC does **not** verify the legal validity, completeness, or applicability of any
-license text and does **not** guarantee that recorded consent is sufficient for any
-particular use case or jurisdiction.
-
----
-
-## 📦 Third‑Party Dependencies
-
-All third‑party software is obtained directly from upstream sources.
-
-RAG‑LCC:
-
-- does not control dependency code or supply chains
-- does not audit third‑party security
-- does not guarantee license compatibility
-
-Operators are solely responsible for reviewing, accepting, and complying with all
-third‑party licenses and obligations.
-
----
-
-## ⚙️ Configuration and Experimentation
-
-RAG‑LCC exposes extensive configuration options, including:
-
-- algorithm selection and thresholds
-- retrieval strategies
-- [chunking strategies](ARCHITECTURE.md#-chunking-architecture) — six built-in chunkers
-  (**Semantic**, **Fixed‑Size**, **Heading**, **Slide**, **Sliding Window**,
-  **Sentence Window**) with per-file-type `AUTO` routing so each document format
-  is split at its natural boundaries
-- model selection
-- masking rules
-
-Configuration defaults reflect values used in this repository for experimentation and
-are **not recommendations** for any specific environment or risk profile.
-
----
 
 ## RAG‑LCC — Disclaimer
 

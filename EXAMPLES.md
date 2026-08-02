@@ -1,7 +1,7 @@
 <!-- markdownlint-disable MD033 -->
 # 📸 RAG‑LCC — Examples & Walkthroughs
 
-← Back to [README](README.md) · See also: [INSTALL.md](INSTALL.md) · [CONFIGURATION.md](CONFIGURATION.md) · [ARCHITECTURE.md](ARCHITECTURE.md) · [HANDS_ON_TOUR.md](HANDS_ON_TOUR.md)
+← Back to [README](README.md) · See also: [INSTALL.md](INSTALL.md) · [CONFIGURATION_REFERENCE.md](CONFIGURATION_REFERENCE.md) · [ARCHITECTURE.md](ARCHITECTURE.md) · [HANDS_ON_TOUR.md](HANDS_ON_TOUR.md)
 
 This document collects sample sessions and screenshots showing how `RAGLoad`,
 `RAGChat`, `RAGChatService`, and `DocClassify` behave in practice. The terminal
@@ -522,7 +522,7 @@ For configuration details, see [Config_RAGChatService.py — HTTP Listener for O
 A summary of the enabled check algorithms is shown at startup:
 ![Filter chain algos enabled](Documentation/Pics/FilterChainConfiguration.jpg)
 
-For details on filter chains, see [Consensus Scoring & Experimentation in ARCHITECTURE.md](ARCHITECTURE.md#consensus-scoring--experimentation).
+For details on filter chains, see [Consensus Scoring & Experimentation in ARCHITECTURE.md](ARCHITECTURE.md#-consensus-scoring--experimentation).
 
 ---
 
@@ -536,9 +536,9 @@ For compliance chain details, see [Compliance Chain in ARCHITECTURE.md](ARCHITEC
 
 For an architecture overview refer to the [Architecture Guide](ARCHITECTURE.md).
 
-For details on the extraction and KeyBERT variant configuration, see [Extraction & KeyBERT Variant Configuration in ARCHITECTURE.md](ARCHITECTURE.md#extraction--keybert-variant-configuration).
+For details on the extraction and KeyBERT variant configuration, see [Extraction & KeyBERT Variant Configuration in ARCHITECTURE.md](ARCHITECTURE.md#-extraction--keybert-variant-configuration).
 
-For a summary of all selector + variant dictionary patterns used across the configuration files, see [Selector Pattern Overview in ARCHITECTURE.md](ARCHITECTURE.md#️-selector-pattern-overview) and [Strategy Selection Pattern](ARCHITECTURE.md#strategy-selection-pattern).
+For a summary of all selector + variant dictionary patterns used across the configuration files, see [Selector Pattern Overview in ARCHITECTURE.md](ARCHITECTURE.md#-selector-pattern-overview) and [Strategy Selection Pattern](ARCHITECTURE.md#strategy-selection-pattern).
 
 ## 📂 Project Structure
 

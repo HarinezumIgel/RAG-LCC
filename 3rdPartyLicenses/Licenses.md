@@ -201,7 +201,7 @@ This overview is provided for informational purposes only. Signing attests only 
 | tzdata | 2026.3 | Apache-2.0 | Python Software Foundation |
 | urllib3 | 2.7.0 | MIT | Andrey Petrov <andrey.petrov@shazow.net> |
 | uuid_utils | 0.17.0 | BSD-3-Clause | Amin Alaee <mohammadamin.alaee@gmail.com> |
-| uvicorn | 0.52.0 | BSD-3-Clause | Tom Christie <tom@tomchristie.com> |
+| uvicorn | 0.52.1 | BSD-3-Clause | Tom Christie <tom@tomchristie.com> |
 | wasabi | 1.1.3 | MIT | Explosion |
 | watchfiles | 1.2.0 | MIT License | Samuel Colvin <s@muelcolvin.com> |
 | wcwidth | 0.8.2 | MIT | Jeff Quast <contact@jeffquast.com> |
@@ -18936,7 +18936,7 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### uvicorn 0.52.0
+### uvicorn 0.52.1
 
 **License:** BSD-3-Clause
 

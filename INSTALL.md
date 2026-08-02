@@ -1,7 +1,7 @@
 <!-- markdownlint-disable MD033 -->
 # 🚀 RAG‑LCC — Installation & First Run
 
-← Back to [README](README.md) · See also: [EXAMPLES.md](EXAMPLES.md) · [CONFIGURATION.md](CONFIGURATION.md) · [HANDS_ON_TOUR.md](HANDS_ON_TOUR.md)
+← Back to [README](README.md) · See also: [EXAMPLES.md](EXAMPLES.md) · [CONFIGURATION_REFERENCE.md](CONFIGURATION_REFERENCE.md) · [HANDS_ON_TOUR.md](HANDS_ON_TOUR.md)
 
 This guide helps you set up RAG-LCC, an **experimental lab environment**.
 
@@ -31,7 +31,7 @@ Before performing an action, the script requires 3rd party license consents.
 
 Use the other docs for detail after (or during) setup:
 
-- [CONFIGURATION.md](CONFIGURATION.md) for all config keys and tuning
+- [CONFIGURATION_REFERENCE.md](CONFIGURATION_REFERENCE.md) for all config keys and tuning
 - [EXAMPLES.md](EXAMPLES.md) for end-to-end usage examples
 - [HANDS_ON_TOUR.md](HANDS_ON_TOUR.md) for guided walkthrough scenarios
 
@@ -401,7 +401,7 @@ python src\Scripts\ArgosTranslatePackages.py install
 python src\Scripts\ArgosTranslatePackages.py remove
 ```
 
-Enable the languages you need, see [Translation configuration (Argos)](CONFIGURATION.md#-translation-configuration-argos).
+Enable the languages you need, see [Translation configuration (Argos)](CONFIGURATION_REFERENCE.md#-translation-configuration-argos).
 
 For license consent details, see [Argos](#-argos).
 
@@ -567,7 +567,7 @@ pip install spacy
 python -m spacy download en_core_web_sm
 ```
 
-Entity types, BFS depth, and noise-filter thresholds are configured in the `_GRAPH_INDEX` slot in `Config_Global.py`. See [Retrieval Stores & Search Modes](README.md#-multi-mode-lexical-vector-and-graph-retrieval) for details.
+Entity types, BFS depth, and noise-filter thresholds are configured in the `_GRAPH_INDEX` slot in `Config_Global.py`. See [Retrieval Stores & Search Modes](ARCHITECTURE.md#-retrieval-stores) for details.
 
 ## 🎮 GPU Setup
 
@@ -887,7 +887,7 @@ files and updates `_MODELS_CONFIG_HASH`, `_BANNED_CONFIG_HASH`, and
 ./src/apps/RAGLoad.py
 ```
 
-If you see a `RequestsDependencyWarning` see [Troubleshooting](CONFIGURATION.md#-troubleshooting).
+If you see a `RequestsDependencyWarning` see [Troubleshooting](CONFIGURATION_REFERENCE.md#-troubleshooting).
 
 ## 📝 License consent
 
@@ -1040,8 +1040,8 @@ without editing that file by populating `WEB_SEARCH_INTENT_EXTENSIONS` in
 `threshold_overrides`). After editing, rerun
 `python src\Scripts\RecalcConfigHashes.py` to refresh `_BANNED_CONFIG_HASH`.
 
-See also: [Web Search — Admin Knobs in CONFIGURATION.md](CONFIGURATION.md#-web-search--admin-knobs)
-and [Web-Search Intent Filter Extensions in CONFIGURATION.md](CONFIGURATION.md#-web-search-intent-filter-extensions).
+See also: [Web Search — Admin Knobs in CONFIGURATION_REFERENCE.md](CONFIGURATION_REFERENCE.md#-web-search--admin-knobs)
+and [Web-Search Intent Filter Extensions in CONFIGURATION_REFERENCE.md](CONFIGURATION_REFERENCE.md#-web-search-intent-filter-extensions).
 
 ## �🔌 Socket-Level Network Tracing
 
