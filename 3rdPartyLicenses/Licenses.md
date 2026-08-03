@@ -106,7 +106,7 @@ This overview is provided for informational purposes only. Signing attests only 
 | nbconvert | 7.17.1 | BSD License | Jupyter Development Team <jupyter@googlegroups.com> |
 | nbformat | 5.10.4 | BSD License | Jupyter Development Team <jupyter@googlegroups.com> |
 | networkx | 3.6.1 | BSD-3-Clause | Aric Hagberg <hagberg@lanl.gov> |
-| nltk | 3.10.1 | Apache Software License | NLTK Team |
+| nltk | 3.9.2 | Apache Software License | NLTK Team |
 | numpy | 2.5.1 | BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0 | Travis E. Oliphant et al. |
 | oauthlib | 3.3.1 | BSD-3-Clause | The OAuthlib Community |
 | onnxruntime | 1.28.0 | MIT License | Microsoft Corporation |
@@ -193,9 +193,9 @@ This overview is provided for informational purposes only. Signing attests only 
 | torch | 2.13.0 | Apache-2.0 AND Apache-2.0 WITH LLVM-exception AND BSD-2-Clause AND BSD-3-Clause AND BSL-1.0 AND MIT | PyTorch Team <packages@pytorch.org> |
 | tornado | 6.5.7 | Apache Software License | Facebook |
 | tqdm | 4.70.0 | MPL-2.0 AND MIT | UNKNOWN |
-| traitlets | 5.16.0 | BSD License | IPython Development Team <ipython-dev@python.org> |
+| traitlets | 5.16.1 | BSD License | IPython Development Team <ipython-dev@python.org> |
 | transformers | 5.14.1 | Apache 2.0 License | The Hugging Face team (past and future) with the help of all our contributors (https://github.com/huggingface/transformers/graphs/contributors) |
-| typer | 0.27.0 | MIT | =?utf-8?q?Sebasti=C3=A1n_Ram=C3=ADrez?= <tiangolo@gmail.com> |
+| typer | 0.27.1 | MIT | =?utf-8?q?Sebasti=C3=A1n_Ram=C3=ADrez?= <tiangolo@gmail.com> |
 | typing-inspection | 0.4.2 | MIT | Victorien Plot <contact@vctrn.dev> |
 | typing_extensions | 4.16.0 | PSF-2.0 | "Guido van Rossum, Jukka Lehtosalo, Łukasz Langa, Michael Lee" <levkivskyi@gmail.com> |
 | tzdata | 2026.3 | Apache-2.0 | Python Software Foundation |
@@ -8182,7 +8182,7 @@ NetworkX is distributed with the 3-clause BSD license.
 
 ```
 
-### nltk 3.10.1
+### nltk 3.9.2
 
 **License:** Apache Software License
 
@@ -18239,7 +18239,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ```
 
-### traitlets 5.16.0
+### traitlets 5.16.1
 
 **License:** BSD License
 
@@ -18492,7 +18492,7 @@ Copyright 2018- The Hugging Face team. All rights reserved.
 
 ```
 
-### typer 0.27.0
+### typer 0.27.1
 
 **License:** MIT
 

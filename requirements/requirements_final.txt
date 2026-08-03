@@ -20,7 +20,7 @@ langchain_text_splitters
 langdetect
 lingua
 lxml
-nltk
+nltk==3.9.2
 numpy
 openpyxl
 pandas

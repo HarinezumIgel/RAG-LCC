@@ -297,7 +297,7 @@ def _record_consent(
 
 
 _END_OF_LICENSE = (
-    "\n\n" + "─" * 70 + "\n" "  >>>>>  End of license  <<<<<\n" + "─" * 70 + "\n"
+    "\n\n" + "-" * 70 + "\n" "  >>>>>  End of license  <<<<<\n" + "-" * 70 + "\n"
 )
 
 
@@ -369,11 +369,11 @@ def _download_corpus(
 ) -> None:
     w = 70
     print()
-    print(f"{_CYAN}{'─' * w}{_RESET}")
+    print(f"{_CYAN}{'-' * w}{_RESET}")
     print(f"{_BOLD}{_WHITE}  {display}{_RESET}")
     print(f"{_DIM}  Version     : {license_version}{_RESET}")
     print(f"{_DIM}  License URL : {license_url}{_RESET}")
-    print(f"{_CYAN}{'─' * w}{_RESET}")
+    print(f"{_CYAN}{'-' * w}{_RESET}")
     print()
 
     print(f"{_DIM}  Fetching license...{_RESET}")

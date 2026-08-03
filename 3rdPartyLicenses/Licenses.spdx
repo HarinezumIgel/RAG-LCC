@@ -4,7 +4,7 @@ SPDXID: SPDXRef-DOCUMENT
 DocumentName: RAG-LCC-DEPLOY-Licenses
 DocumentNamespace: http://example.org/spdxdocs/RAG-LCC-DEPLOY-Licenses
 Creator: pip-licenses
-Created: 2026-08-03T08:31:13+02:00
+Created: 2026-08-03T18:22:02+02:00
 
 #####
 PackageName: Jinja2
@@ -873,7 +873,7 @@ PackageLicenseDeclared: BSD-3-Clause
 #####
 PackageName: nltk
 SPDXID: SPDXRef-Package-nltk
-PackageVersion: 3.10.1
+PackageVersion: 3.9.2
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: Apache Software License
@@ -1656,7 +1656,7 @@ PackageLicenseDeclared: MPL-2.0 AND MIT
 #####
 PackageName: traitlets
 SPDXID: SPDXRef-Package-traitlets
-PackageVersion: 5.16.0
+PackageVersion: 5.16.1
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: BSD License
@@ -1674,7 +1674,7 @@ PackageLicenseDeclared: Apache 2.0 License
 #####
 PackageName: typer
 SPDXID: SPDXRef-Package-typer
-PackageVersion: 0.27.0
+PackageVersion: 0.27.1
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: MIT

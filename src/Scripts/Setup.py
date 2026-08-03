@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Packages are installed from official package managers; licensing obligations remain with the original distributors and user environment.
 
@@ -12,6 +12,11 @@ Execution order:
   Preamble – Verify cache directory ownership
              Check that /home/vscode/.cache/ is owned by vscode user.
              Ask for permission and fix recursively if needed.
+
+  Preamble – Install cryptography module (required for signature verification)
+
+  Preamble – Verify file signatures
+             Confirm shipped files have not been tampered with.
 
   Preamble – Display bundled third-party license information from
              3rdPartyLicenses/ before dependency installation.
@@ -254,11 +259,11 @@ def _print_execution_plan() -> None:
     """Show exactly what the setup will do before execution starts."""
     w = 70
     print()
-    print(f"{_CYAN}{'─' * w}{_RESET}")
+    print(f"{_CYAN}{'-' * w}{_RESET}")
     print(f"{_BOLD}{_WHITE}  What Will Happen In Each Step{_RESET}")
-    print(f"{_CYAN}{'─' * w}{_RESET}")
+    print(f"{_CYAN}{'-' * w}{_RESET}")
     print(
-        f"{_DIM}  Preamble:{_RESET} Bootstrap pip if missing, then install cryptography module (required for signature verification)."
+        f"{_DIM}  Preamble:{_RESET} Check pip availability, then install cryptography module (required for signature verification)."
     )
     print(
         f"{_DIM}  Preamble:{_RESET} Verify file signatures to confirm shipped files have not been tampered with."
@@ -287,7 +292,7 @@ def _print_execution_plan() -> None:
     print(
         f"{_DIM}  Step 6:{_RESET} Recalculate and write critical config hashes in Config_Global.py."
     )
-    print(f"{_CYAN}{'─' * w}{_RESET}")
+    print(f"{_CYAN}{'-' * w}{_RESET}")
 
 
 def _ensure_project_root() -> None:
@@ -316,10 +321,17 @@ def _ensure_venv() -> None:
         )
         print()
         print(f"{_DIM}  Creating virtual environment at {venv_dir} ...{_RESET}")
+        # On Windows, use CREATE_NO_WINDOW to prevent console window flashing.
+        # Use explicit PIPE instead of capture_output to avoid buffering hangs.
+        creation_flags = 0
+        if _is_windows() and hasattr(subprocess, "CREATE_NO_WINDOW"):
+            creation_flags = subprocess.CREATE_NO_WINDOW
         result = subprocess.run(
             [sys.executable, "-m", "venv", str(venv_dir)],
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
+            creationflags=creation_flags,
         )
         if result.returncode != 0 and "Permission denied" in result.stderr:
             print(
@@ -338,10 +350,15 @@ def _ensure_venv() -> None:
                 )
                 sys.exit(1)
             print(f"{_GREEN}  ✔  Ownership fixed. Retrying venv creation...{_RESET}")
+            creation_flags = 0
+            if _is_windows() and hasattr(subprocess, "CREATE_NO_WINDOW"):
+                creation_flags = subprocess.CREATE_NO_WINDOW
             result = subprocess.run(
                 [sys.executable, "-m", "venv", str(venv_dir)],
-                capture_output=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
                 text=True,
+                creationflags=creation_flags,
             )
         if result.returncode != 0:
             print(f"{_RED}  ✖  Failed to create virtual environment:{_RESET}")
@@ -411,9 +428,9 @@ def _ensure_cache_ownership() -> None:
 
         w = 70
         print()
-        print(f"{_CYAN}{'─' * w}{_RESET}")
+        print(f"{_CYAN}{'-' * w}{_RESET}")
         print(f"{_BOLD}{_YELLOW}  Cache Directory Ownership Issue Detected{_RESET}")
-        print(f"{_CYAN}{'─' * w}{_RESET}")
+        print(f"{_CYAN}{'-' * w}{_RESET}")
         print()
         print(f"{_WHITE}  Directory: {cache_dir}{_RESET}")
         print(f"{_WHITE}  Current owner: {owner}{_RESET}")
@@ -495,12 +512,17 @@ def _file_sha256(path: Path) -> str:
 def _confirm(prompt: str) -> bool:
     """Ask the user a y/n question. Returns True for yes."""
     while True:
-        answer = input(f"{_ORANGE}  {prompt} [y/n]: {_RESET}").strip().lower()
-        if answer in ("y", "yes"):
-            return True
-        if answer in ("n", "no"):
-            return False
-        print("  Please answer y or n.")
+        try:
+            answer = input(f"{_ORANGE}  {prompt} [y/n]: {_RESET}").strip().lower()
+            if answer in ("y", "yes"):
+                return True
+            if answer in ("n", "no"):
+                return False
+            print("  Please answer y or n.")
+        except KeyboardInterrupt:
+            print()
+            print(f"{_YELLOW}  Setup cancelled by user.{_RESET}")
+            sys.exit(130)  # Standard exit code for Ctrl+C
 
 
 def _test_endpoint_connectivity(endpoint: str) -> None:
@@ -666,7 +688,7 @@ def _print_setting_context(
 
 def _print_next_action_block(title: str, lines: list[tuple[str, str]]) -> None:
     """Print a framed next-action block in a consistent layout."""
-    rule = "─" * 70
+    rule = "-" * 70
     print(rule)
     print(f"  {title}")
     for label, value in lines:
@@ -923,9 +945,9 @@ def _run_setup_questions() -> None:
     """Ask interactive runtime questions and update config files."""
     w = 70
     print()
-    print(f"{_CYAN}{'─' * w}{_RESET}")
+    print(f"{_CYAN}{'-' * w}{_RESET}")
     print(f"{_BOLD}{_WHITE}  Runtime configuration questions{_RESET}")
-    print(f"{_CYAN}{'─' * w}{_RESET}")
+    print(f"{_CYAN}{'-' * w}{_RESET}")
     print()
     print(f"{_BOLD}{_YELLOW}  ⚠️  Default settings implications:{_RESET}")
     print(
@@ -979,7 +1001,7 @@ def _run_setup_questions() -> None:
     )
 
     print()
-    print(f"{_CYAN}{'─' * w}{_RESET}")
+    print(f"{_CYAN}{'-' * w}{_RESET}")
     input(
         f"{_BOLD}{_ORANGE}  Press Enter to start the interactive configuration...{_RESET}"
     )
@@ -1007,9 +1029,9 @@ def _run_setup_questions() -> None:
     network_tracer = False
 
     while True:
-        # ──────────────────────────────────────────────────────────────
+        # --------------------------------------------------------------
         # Group 1: Model endpoint configuration
-        # ──────────────────────────────────────────────────────────────
+        # --------------------------------------------------------------
         _print_setting_context(
             "Config_Models.py",
             "src/Configuration/Config_Models.py",
@@ -1159,9 +1181,9 @@ def _run_setup_questions() -> None:
             correction_value=openwebui_api_key if correction_mode else None,
         )
 
-        # ──────────────────────────────────────────────────────────────
+        # --------------------------------------------------------------
         # Group 2: Hugging Face model hub configuration
-        # ──────────────────────────────────────────────────────────────
+        # --------------------------------------------------------------
         _print_setting_context(
             "Config_Internet_Env.py",
             "src/Configuration/Config_Internet_Env.py",
@@ -1189,9 +1211,9 @@ def _run_setup_questions() -> None:
             correction_value=hf_api_key if correction_mode else None,
         )
 
-        # ──────────────────────────────────────────────────────────────
+        # --------------------------------------------------------------
         # Group 3: Language resources and corpus downloads
-        # ──────────────────────────────────────────────────────────────
+        # --------------------------------------------------------------
         _print_setting_context(
             "Config_Internet_Env.py",
             "src/Configuration/Config_Internet_Env.py",
@@ -1214,9 +1236,9 @@ def _run_setup_questions() -> None:
             correction_value=nltk_stopwords_download if correction_mode else None,
         )
 
-        # ──────────────────────────────────────────────────────────────
+        # --------------------------------------------------------------
         # Group 4: Network and compliance settings
-        # ──────────────────────────────────────────────────────────────
+        # --------------------------------------------------------------
         print()
         print(
             f"{_ORANGE}⚠️  WARNING: Enabling LICENSE_DOWNLOAD will fetch license files at every app run.{_RESET}"
@@ -1264,9 +1286,9 @@ def _run_setup_questions() -> None:
                 f"{_YELLOW}  WEB_SEARCH_MODE is 0, so _OPENWEB_UI_WEBSEARCH is forced to False.{_RESET}"
             )
 
-        # ──────────────────────────────────────────────────────────────
+        # --------------------------------------------------------------
         # Group 5: Service endpoints
-        # ──────────────────────────────────────────────────────────────
+        # --------------------------------------------------------------
         _print_setting_context(
             "Config_Internet_Env.py",
             "src/Configuration/Config_Internet_Env.py",
@@ -1294,9 +1316,9 @@ def _run_setup_questions() -> None:
                 correction_value=serve_in_memory_docs if correction_mode else None,
             )
 
-        # ──────────────────────────────────────────────────────────────
+        # --------------------------------------------------------------
         # Group 6: Debug and tracing
-        # ──────────────────────────────────────────────────────────────
+        # --------------------------------------------------------------
         _print_setting_context(
             "Config_Internet_Env.py",
             "src/Configuration/Config_Internet_Env.py",
@@ -1309,9 +1331,9 @@ def _run_setup_questions() -> None:
         )
 
         print()
-        print(f"{_CYAN}{'─' * w}{_RESET}")
+        print(f"{_CYAN}{'-' * w}{_RESET}")
         print(f"{_BOLD}{_TURQUOISE}  Review your selected runtime settings{_RESET}")
-        print(f"{_CYAN}{'─' * w}{_RESET}")
+        print(f"{_CYAN}{'-' * w}{_RESET}")
         print(f"{_WHITE}  _ACTIVE_ENDPOINT:{_RESET} {endpoint}")
         print(f"{_WHITE}  {endpoint.upper()} BASE_URL:{_RESET} {endpoint_url}")
         print(
@@ -1347,7 +1369,7 @@ def _run_setup_questions() -> None:
             f"{_WHITE}  _MODELS.ragchatservice._RAGCHATSERVICE.API_KEY:{_RESET} {'<set>' if openwebui_api_key else '<empty>'}"
         )
         print(f"{_WHITE}  RAG_LCC_NW_TRACE:{_RESET} {'1' if network_tracer else '0'}")
-        print(f"{_CYAN}{'─' * w}{_RESET}")
+        print(f"{_CYAN}{'-' * w}{_RESET}")
 
         next_action = _prompt_choice(
             "Choose: 1=Continue, 2=Correct a value, 3=Start again",
@@ -1476,16 +1498,16 @@ def _run_setup_questions() -> None:
         print()
 
     print()
-    print(f"{_CYAN}{'─' * w}{_RESET}")
+    print(f"{_CYAN}{'-' * w}{_RESET}")
     print(f"{_BOLD}{_WHITE}  Values written to config{_RESET}")
-    print(f"{_CYAN}{'─' * w}{_RESET}")
+    print(f"{_CYAN}{'-' * w}{_RESET}")
     for _u in updates:
         _conf = _u.get("conf", "")
         _key = _u.get("slot_name", "")
         _val = _u.get("value", "")
         _display = "<redacted>" if _SECRET_FIELD_RE.search(_key) else _val
         print(f"{_DIM}    {_conf:<30}  {_key:<45}  = {_display}{_RESET}")
-    print(f"{_CYAN}{'─' * w}{_RESET}")
+    print(f"{_CYAN}{'-' * w}{_RESET}")
     _write_setup_log(
         "runtime_questions_applied",
         active_endpoint=endpoint,
@@ -1757,7 +1779,7 @@ def _collect_license_text() -> str:
 
 
 _END_OF_LICENSE = (
-    "\n\n" + "─" * 70 + "\n" "  >>>>>  End of license  <<<<<\n" + "─" * 70 + "\n"
+    "\n\n" + "-" * 70 + "\n" "  >>>>>  End of license  <<<<<\n" + "-" * 70 + "\n"
 )
 
 
@@ -1768,8 +1790,15 @@ def _page_text(text: str, *, end_marker: bool = False) -> None:
 
     if os.name == "nt":
         # `more` is a built-in cmd console pager — handles paging natively on Windows.
+        # Set code page to UTF-8 (65001) before piping to `more` to avoid garbled output.
         try:
-            subprocess.run("more", input=text, text=True, shell=True, encoding="utf-8")
+            subprocess.run(
+                "chcp 65001 >nul & more",
+                input=text,
+                text=True,
+                shell=True,
+                encoding="utf-8",
+            )
             # Drain any keystroke `more` left in the input buffer.
             try:
                 import msvcrt  # type: ignore[import]
@@ -1880,9 +1909,9 @@ def _display_example_files_table(files: list[tuple[str, str, Path]]) -> None:
     w = 70
 
     print()
-    print(f"{_CYAN}{'─' * w}{_RESET}")
+    print(f"{_CYAN}{'-' * w}{_RESET}")
     print(f"{_BOLD}{_WHITE}  Example Configuration Files Review{_RESET}")
-    print(f"{_CYAN}{'─' * w}{_RESET}")
+    print(f"{_CYAN}{'-' * w}{_RESET}")
     print()
     print(f"{_DIM}  The following configuration files will be installed:{_RESET}")
     print()
@@ -1897,7 +1926,7 @@ def _display_example_files_table(files: list[tuple[str, str, Path]]) -> None:
         print(f"  [{idx}] {filename:<33}{status_display:<15}")
 
     print()
-    print(f"{_CYAN}{'─' * w}{_RESET}")
+    print(f"{_CYAN}{'-' * w}{_RESET}")
 
 
 def _review_example_files_interactive(files: list[tuple[str, str, Path]]) -> bool:
@@ -1928,9 +1957,9 @@ def _review_example_files_interactive(files: list[tuple[str, str, Path]]) -> boo
             # Open in pager
             print(f"{_DIM}  Opening files in pager...{_RESET}")
             for filename, _, path in files:
-                print(f"\n{_CYAN}{'─' * w}{_RESET}")
+                print(f"\n{_CYAN}{'-' * w}{_RESET}")
                 print(f"{_BOLD}{_WHITE}  File: {filename}{_RESET}")
-                print(f"{_CYAN}{'─' * w}{_RESET}")
+                print(f"{_CYAN}{'-' * w}{_RESET}")
                 try:
                     content = path.read_text(encoding="utf-8", errors="replace")
                     _page_text(content)
@@ -1947,9 +1976,9 @@ def _review_example_files_interactive(files: list[tuple[str, str, Path]]) -> boo
         elif choice == "a":
             # Show all sequentially without pager
             for filename, _, path in files:
-                print(f"\n{_CYAN}{'─' * w}{_RESET}")
+                print(f"\n{_CYAN}{'-' * w}{_RESET}")
                 print(f"{_BOLD}{_WHITE}  File: {filename}{_RESET}")
-                print(f"{_CYAN}{'─' * w}{_RESET}")
+                print(f"{_CYAN}{'-' * w}{_RESET}")
                 try:
                     content = path.read_text(encoding="utf-8", errors="replace")
                     print(content)
@@ -1972,9 +2001,9 @@ def _review_example_files_interactive(files: list[tuple[str, str, Path]]) -> boo
 
     # Final confirmation
     print()
-    print(f"{_CYAN}{'─' * w}{_RESET}")
+    print(f"{_CYAN}{'-' * w}{_RESET}")
     print(f"{_BOLD}{_WHITE}  Configuration Files Review Complete{_RESET}")
-    print(f"{_CYAN}{'─' * w}{_RESET}")
+    print(f"{_CYAN}{'-' * w}{_RESET}")
     print()
 
     return _confirm("I have reviewed the configuration files and wish to continue")
@@ -1993,10 +2022,10 @@ def _show_licenses_pager() -> bool:
         ],
     )
     print()
-    print(f"{_CYAN}{_BOLD}{'─' * w}{_RESET}")
+    print(f"{_CYAN}{_BOLD}{'-' * w}{_RESET}")
     print(f"{_BOLD}{_WHITE}  Third-party Python dependency licenses{_RESET}")
     print(f"{_DIM}  File: 3rdPartyLicenses/Licenses.txt{_RESET}")
-    print(f"{_CYAN}{'─' * w}{_RESET}")
+    print(f"{_CYAN}{'-' * w}{_RESET}")
     print(
         f"{_DIM}  Please review the bundled license information before proceeding.{_RESET}"
     )
@@ -2184,7 +2213,7 @@ def _install_apt_packages() -> None:
     w = 70
 
     print()
-    print(f"{_CYAN}{'─' * w}{_RESET}")
+    print(f"{_CYAN}{'-' * w}{_RESET}")
     print(
         f"{_BOLD}{_WHITE}  Step {step}/{_TOTAL_STEPS}  ·  Install system packages{_RESET}"
     )
@@ -2196,7 +2225,7 @@ def _install_apt_packages() -> None:
     print(
         f"{_DIM}  Purpose : Install OCR engine via {_installer_label}; license fetched for the candidate version.{_RESET}"
     )
-    print(f"{_CYAN}{'─' * w}{_RESET}")
+    print(f"{_CYAN}{'-' * w}{_RESET}")
     print()
     print(f"{_DIM}  Compliance note:{_RESET}")
     print(
@@ -2466,11 +2495,11 @@ def _step_header(step: int, label: str, script: str, description: str) -> None:
     w = 70
 
     print()
-    print(f"{_CYAN}{'─' * w}{_RESET}")
+    print(f"{_CYAN}{'-' * w}{_RESET}")
     print(f"{_BOLD}{_WHITE}  Step {step}/{_TOTAL_STEPS}  ·  {label}{_RESET}")
     print(f"{_DIM}  Script : src/Scripts/{script}{_RESET}")
     print(f"{_DIM}  Purpose: {description}{_RESET}")
-    print(f"{_CYAN}{'─' * w}{_RESET}")
+    print(f"{_CYAN}{'-' * w}{_RESET}")
     print()
 
 
@@ -2571,7 +2600,7 @@ def _run_step(
 
 def _print_gpu_notice(w: int = 70) -> None:
     """Print a hardware-specific GPU support reminder after all steps complete."""
-    print(f"{_CYAN}{'─' * w}{_RESET}")
+    print(f"{_CYAN}{'-' * w}{_RESET}")
     print(
         f"{_BOLD}{_WHITE}  GPU / hardware acceleration — manual step required{_RESET}"
     )
@@ -2582,13 +2611,13 @@ def _print_gpu_notice(w: int = 70) -> None:
         f"{_DIM}  To enable GPU acceleration, reinstall PyTorch for your hardware after setup:{_RESET}"
     )
     print()
-    print(f"{_CYAN}{'─' * w}{_RESET}")
+    print(f"{_CYAN}{'-' * w}{_RESET}")
     print()
 
 
 def _print_setup_notice(w: int = 70) -> None:
     """Print endpoint/model configuration reminders after setup."""
-    print(f"{_TURQUOISE}{'─' * w}{_RESET}")
+    print(f"{_TURQUOISE}{'-' * w}{_RESET}")
     print(
         f"{_WHITE}    3) Make sure required models are installed and available on that endpoint:{_RESET}"
     )
@@ -2619,7 +2648,7 @@ def _print_setup_notice(w: int = 70) -> None:
     print(f"{_WHITE}    or{_RESET}")
     print(f"{_BOLD}{_WHITE}    python ./src/Apps/DocClassify.py{_RESET}")
     print()
-    print(f"{_TURQUOISE}{'─' * w}{_RESET}")
+    print(f"{_TURQUOISE}{'-' * w}{_RESET}")
 
 
 # ---------------------------------------------------------------------------
@@ -2719,10 +2748,10 @@ def main() -> None:
     # ------------------------------------------------------------------
     w = 70
     print()
-    print(f"{_CYAN}{'─' * w}{_RESET}")
+    print(f"{_CYAN}{'-' * w}{_RESET}")
     print(f"{_BOLD}{_WHITE}  Preamble  ·  Install cryptography module{_RESET}")
     print(f"{_DIM}  Purpose: Required for signature verification{_RESET}")
-    print(f"{_CYAN}{'─' * w}{_RESET}")
+    print(f"{_CYAN}{'-' * w}{_RESET}")
     print()
 
     # Ensure pip is available before trying to use it.
@@ -2730,27 +2759,19 @@ def main() -> None:
         [sys.executable, "-m", "pip", "--version"], capture_output=True, text=True
     )
     if pip_check.returncode != 0:
-        print(f"{_DIM}  pip not found — bootstrapping via ensurepip...{_RESET}")
-        bootstrap = subprocess.run(
-            [sys.executable, "-m", "ensurepip", "--upgrade"],
-            capture_output=True,
-            text=True,
+        print()
+        print(f"{_RED}  ✖  pip is not available in the current environment.{_RESET}")
+        print()
+        print(f"{_YELLOW}  Solution options:{_RESET}")
+        print(f"{_WHITE}     1. Install pip in your Python installation{_RESET}")
+        print(f"{_WHITE}     2. Create a new venv with pip included:{_RESET}")
+        print(f"{_DIM}        python -m venv .venv{_RESET}")
+        print(
+            f"{_WHITE}     3. If you need system packages, use --system-site-packages:{_RESET}"
         )
-        if bootstrap.returncode != 0:
-            print()
-            print(f"{_RED}  ✖  Failed to bootstrap pip.{_RESET}")
-            print(f"{_RED}     Error: {bootstrap.stderr.strip()}{_RESET}")
-            print(
-                f"{_YELLOW}     Activate a virtual environment that includes pip, or install pip manually.{_RESET}"
-            )
-            print()
-            sys.exit(bootstrap.returncode)
-        # Upgrade pip after bootstrap.
-        subprocess.run(
-            [sys.executable, "-m", "pip", "install", "--upgrade", "pip"],
-            capture_output=True,
-            text=True,
-        )
+        print(f"{_DIM}        python -m venv --system-site-packages .venv{_RESET}")
+        print()
+        sys.exit(1)
 
     print(f"{_DIM}  Installing cryptography module...{_RESET}")
     pip_cmd = [sys.executable, "-m", "pip", "install", "cryptography"]
@@ -2790,13 +2811,13 @@ def main() -> None:
     else:
         w = 70
         print()
-        print(f"{_CYAN}{'─' * w}{_RESET}")
+        print(f"{_CYAN}{'-' * w}{_RESET}")
         print(f"{_BOLD}{_WHITE}  Preamble  ·  Verify file signatures{_RESET}")
         print(f"{_DIM}  Script : src/Scripts/VerifySignatures.py{_RESET}")
         print(
             f"{_DIM}  Purpose: Confirm shipped files have not been tampered with.{_RESET}"
         )
-        print(f"{_CYAN}{'─' * w}{_RESET}")
+        print(f"{_CYAN}{'-' * w}{_RESET}")
         print()
 
         verify_script = _SCRIPTS_DIR / "VerifySignatures.py"
@@ -3113,4 +3134,9 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print()
+        print(f"{_YELLOW}  Setup cancelled by user.{_RESET}")
+        sys.exit(130)  # Standard exit code for Ctrl+C

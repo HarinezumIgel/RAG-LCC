@@ -13,7 +13,7 @@ from typing import Any
 from Gui.Colors import RESET, YELLOW
 
 _END_OF_LICENSE = (
-    "\n\n" + "─" * 70 + "\n" "  >>>>>  End of license  <<<<<\n" + "─" * 70 + "\n"
+    "\n\n" + "-" * 70 + "\n" "  >>>>>  End of license  <<<<<\n" + "-" * 70 + "\n"
 )
 
 

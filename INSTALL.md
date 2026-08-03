@@ -20,14 +20,16 @@ python ./src/Scripts/Setup.py
 
 The script guides you through:
 
-- Bootstrap pip if missing and install the `cryptography` module (required for signature verification)
-- File signature verification
-- System package/license consent flow (for OCR dependencies)
-- Python dependency license review and install
-- Example config copy confirmation
-- Optional NLTK and Argos download/consent steps
-- Runtime config questions (endpoint, internet toggles, API keys)
-- Final config hash recalculation
+- **Preamble:** Install the `cryptography` module (required for signature verification)
+- **Preamble:** File signature verification
+- **Step 1:** Install system packages (tesseract-ocr) with license consent flow
+- **Preamble:** Show Python dependency licenses from 3rdPartyLicenses/Licenses.txt and require explicit consent
+- **Step 2:** Install Python dependencies from requirements/requirements_final.txt
+- **Step 3:** Copy Example_*.py files from Examples/ to src/Configuration/ (with interactive review)
+- **Step 4:** Download NLTK stopwords and WordNet with consent flow
+- **Step 5:** Optionally install Argos Translate language packages after explicit confirmation
+- **Runtime questions:** Ask for endpoint, internet-mode, and service settings (API keys masked in output)
+- **Step 6:** Recalculate and write SHA-256 config hashes in Config_Global.py
 
 Before performing an action, the script requires 3rd party license consents.
 
