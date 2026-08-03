@@ -20,6 +20,8 @@ python ./src/Scripts/Setup.py
 
 The script guides you through:
 
+- Bootstrap pip if missing and install the `cryptography` module (required for signature verification)
+- File signature verification
 - System package/license consent flow (for OCR dependencies)
 - Python dependency license review and install
 - Example config copy confirmation

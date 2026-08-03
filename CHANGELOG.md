@@ -6,6 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [Released] — 2026-08-03
+
+### 🖥️ Cross-platform license pager & pip bootstrap in setup scripts
+
+- **`Setup.py` / `NLTK_Stopwords_WordNet.py`** — `_page_text` now supports a
+  native Windows pager: on `nt` it pipes the license text through the built-in
+  `more` command and drains any leftover keystrokes from the console buffer via
+  `msvcrt`, falling back to `less` (Unix) and then to the built-in terminal
+  pager. The `less` branch no longer requires `os.name != "nt"`.
+- **Fallback pager** — page height clamped to `max(5, min(lines − 2, 40))` so
+  very tall or very short terminals still paginate sensibly, and the
+  `[Enter]/[q]` prompt now catches `EOFError` to exit cleanly on closed stdin.
+- **`Setup.py`** — cryptography preamble now bootstraps pip via
+  `python -m ensurepip --upgrade` (then upgrades pip) when pip is missing,
+  before installing the `cryptography` module used for signature verification;
+  aborts with a clear message if bootstrap fails. Execution plan updated with a
+  matching preamble line; error output uses `stderr.strip()`.
+- **`Setup.py`** — Black formatting reflow of the connectivity `curl` examples
+  and the interactive-configuration prompt.
+
 ## [Released] — 2026-08-02
 
 ### 📝 Documentation overhaul

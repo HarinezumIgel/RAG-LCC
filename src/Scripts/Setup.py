@@ -80,10 +80,14 @@ import json
 import os
 import re
 
-try:
-    import readline  # type: ignore  # noqa: F401  # Side-effect import: enables line editing in input()
-except ImportError:
-    pass  # readline is not available on Windows
+# NOTE: Do not import readline on Windows. pyreadline3 (if installed) hijacks
+# input() in the interactive console and fails to render truecolor ANSI
+# prompts and mishandles the cursor. On POSIX, readline gives line editing.
+if os.name != "nt":
+    try:
+        import readline  # type: ignore  # noqa: F401  # Side-effect import: enables line editing in input()
+    except ImportError:
+        pass
 import runpy
 import shutil
 import socket
@@ -94,6 +98,35 @@ import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, TypedDict, cast
+
+
+def _enable_windows_ansi() -> None:
+    """Enable ANSI/VT processing on the Windows console.
+
+    Without this, 24-bit truecolor escapes (used for the orange prompts) are
+    not interpreted and cursor movement misbehaves. colorama is avoided here
+    because it strips truecolor and is not installed during the early steps.
+    """
+    if os.name != "nt":
+        return
+    try:
+        import ctypes
+
+        kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
+        ENABLE_VIRTUAL_TERMINAL_PROCESSING = 0x0004
+        for handle_id in (-11, -12):  # STDOUT, STDERR
+            handle = kernel32.GetStdHandle(handle_id)
+            mode = ctypes.c_uint32()
+            if kernel32.GetConsoleMode(handle, ctypes.byref(mode)):
+                kernel32.SetConsoleMode(
+                    handle, mode.value | ENABLE_VIRTUAL_TERMINAL_PROCESSING
+                )
+    except Exception:
+        pass  # Best-effort; on unsupported consoles colors may be absent.
+
+
+_enable_windows_ansi()
+
 
 # ---------------------------------------------------------------------------
 # Ensure src/ is on sys.path so child scripts can import project modules.
@@ -224,6 +257,9 @@ def _print_execution_plan() -> None:
     print(f"{_CYAN}{'─' * w}{_RESET}")
     print(f"{_BOLD}{_WHITE}  What Will Happen In Each Step{_RESET}")
     print(f"{_CYAN}{'─' * w}{_RESET}")
+    print(
+        f"{_DIM}  Preamble:{_RESET} Bootstrap pip if missing, then install cryptography module (required for signature verification)."
+    )
     print(
         f"{_DIM}  Preamble:{_RESET} Verify file signatures to confirm shipped files have not been tampered with."
     )
@@ -744,7 +780,7 @@ def _prompt_secret_masked(
         while True:
             ch = msvcrt.getwch()
             if ch in ("\r", "\n"):
-                sys.stdout.write("\n")
+                sys.stdout.write("\r\n")  # CR+LF so cursor returns to column 0
                 break
             if ch == "\003":
                 raise KeyboardInterrupt
@@ -1726,9 +1762,26 @@ _END_OF_LICENSE = (
 
 
 def _page_text(text: str, *, end_marker: bool = False) -> None:
-    """Display text using less if available, otherwise a small fallback pager."""
+    """Display text using more (Windows), less (Unix), or a fallback terminal pager."""
     if end_marker:
         text = text + _END_OF_LICENSE
+
+    if os.name == "nt":
+        # `more` is a built-in cmd console pager — handles paging natively on Windows.
+        try:
+            subprocess.run("more", input=text, text=True, shell=True, encoding="utf-8")
+            # Drain any keystroke `more` left in the input buffer.
+            try:
+                import msvcrt  # type: ignore[import]
+
+                while msvcrt.kbhit():
+                    msvcrt.getch()
+            except Exception:
+                pass
+            return
+        except Exception:
+            pass  # Fall through to terminal pager.
+
     if shutil.which("less"):
         env = {**os.environ, "LESS": "FRX"}
         try:
@@ -1738,7 +1791,7 @@ def _page_text(text: str, *, end_marker: bool = False) -> None:
             pass
 
     try:
-        rows = shutil.get_terminal_size().lines - 2
+        rows = max(5, min(shutil.get_terminal_size().lines - 2, 40))
     except Exception:
         rows = 20
 
@@ -1750,11 +1803,16 @@ def _page_text(text: str, *, end_marker: bool = False) -> None:
         idx += rows
 
         if idx < len(lines):
-            key = (
-                input(f"{_ORANGE}[Enter] next page  [q] quit view: {_RESET}")
-                .strip()
-                .lower()
-            )
+            sys.stdout.write("\r\n")  # ensure column 0 if last line wrapped
+            sys.stdout.flush()
+            try:
+                key = (
+                    input(f"{_ORANGE}[Enter] next page  [q] quit view: {_RESET}")
+                    .strip()
+                    .lower()
+                )
+            except EOFError:
+                break
             if key == "q":
                 break
 
@@ -2667,6 +2725,33 @@ def main() -> None:
     print(f"{_CYAN}{'─' * w}{_RESET}")
     print()
 
+    # Ensure pip is available before trying to use it.
+    pip_check = subprocess.run(
+        [sys.executable, "-m", "pip", "--version"], capture_output=True, text=True
+    )
+    if pip_check.returncode != 0:
+        print(f"{_DIM}  pip not found — bootstrapping via ensurepip...{_RESET}")
+        bootstrap = subprocess.run(
+            [sys.executable, "-m", "ensurepip", "--upgrade"],
+            capture_output=True,
+            text=True,
+        )
+        if bootstrap.returncode != 0:
+            print()
+            print(f"{_RED}  ✖  Failed to bootstrap pip.{_RESET}")
+            print(f"{_RED}     Error: {bootstrap.stderr.strip()}{_RESET}")
+            print(
+                f"{_YELLOW}     Activate a virtual environment that includes pip, or install pip manually.{_RESET}"
+            )
+            print()
+            sys.exit(bootstrap.returncode)
+        # Upgrade pip after bootstrap.
+        subprocess.run(
+            [sys.executable, "-m", "pip", "install", "--upgrade", "pip"],
+            capture_output=True,
+            text=True,
+        )
+
     print(f"{_DIM}  Installing cryptography module...{_RESET}")
     pip_cmd = [sys.executable, "-m", "pip", "install", "cryptography"]
     result = subprocess.run(pip_cmd, capture_output=True, text=True)
@@ -2674,13 +2759,14 @@ def main() -> None:
     if result.returncode != 0:
         print()
         print(f"{_RED}  ✖  Failed to install cryptography module.{_RESET}")
-        print(f"{_RED}     Error: {result.stderr}{_RESET}")
+        print(f"{_RED}     Error: {result.stderr.strip()}{_RESET}")
         print(
             f"{_RED}     Signature verification requires the cryptography module.{_RESET}"
         )
         print(
             f"{_YELLOW}     You can bypass verification with --skip-signature-verification{_RESET}"
         )
+        print()
         sys.exit(result.returncode)
 
     print(f"{_GREEN}  ✔  cryptography module installed successfully.{_RESET}")

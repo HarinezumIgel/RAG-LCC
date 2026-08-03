@@ -304,6 +304,21 @@ _END_OF_LICENSE = (
 def _page_text(text: str, *, end_marker: bool = False) -> None:
     if end_marker:
         text = text + _END_OF_LICENSE
+
+    if os.name == "nt":
+        try:
+            subprocess.run("more", input=text, text=True, shell=True, encoding="utf-8")
+            try:
+                import msvcrt  # type: ignore[import]
+
+                while msvcrt.kbhit():
+                    msvcrt.getch()
+            except Exception:
+                pass
+            return
+        except Exception:
+            pass
+
     if shutil.which("less"):
         env = {**os.environ, "LESS": "FRX"}
         try:
@@ -311,8 +326,9 @@ def _page_text(text: str, *, end_marker: bool = False) -> None:
             return
         except OSError:
             pass
+
     try:
-        rows = shutil.get_terminal_size().lines - 2
+        rows = max(5, min(shutil.get_terminal_size().lines - 2, 40))
     except Exception:
         rows = 20
     lines = text.splitlines()
@@ -321,11 +337,14 @@ def _page_text(text: str, *, end_marker: bool = False) -> None:
         print("\n".join(lines[idx : idx + rows]))
         idx += rows
         if idx < len(lines):
-            q = (
-                input(f"{_ORANGE}[Enter] next page  [q] quit view: {_RESET}")
-                .strip()
-                .lower()
-            )
+            try:
+                q = (
+                    input(f"{_ORANGE}[Enter] next page  [q] quit view: {_RESET}")
+                    .strip()
+                    .lower()
+                )
+            except EOFError:
+                break
             if q == "q":
                 break
 
