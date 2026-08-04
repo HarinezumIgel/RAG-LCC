@@ -2,7 +2,7 @@
 Deployment Manifest
 ================================================================================
 
-Generated      : 2026-08-04T16:22:18.028939+00:00
+Generated      : 2026-08-04T17:35:51.995288+00:00
 Python         : 3.12.10 (CPython)
 Platform       : Windows-11-10.0.26200-SP0
 Git commit     : unavailable
@@ -20,9 +20,9 @@ License Generation Tool
 SHA-256 Integrity Hashes
 ────────────────────────────────────────────────────────────────────────────────
   requirements_final.txt : 646ef0ad5ed7ef905951efb400296e96614a98348d210370d6e30d6218751c3a
-  Licenses.json          : 2ea0997ab8a706764d5ab77ef7e1c0fd8a4b35d11d9215c141d32f692dd6189d
-  Licenses.txt           : dcf87165feb0aced0c5ded0d532799ccd03fcab4988464c3f47c214b4784975e
-  Licenses.spdx          : 1099dd4ec65d196945b3ca290af4e0ded04b4cf1719e2ef884a73aa1a8a9966a
+  Licenses.json          : 8b3b8a799f56d2b4613a2d4b6a81f4abd8de206daaaa00229838abd4abe879cc
+  Licenses.txt           : 649f5a59b8627f7b29e4773fa7345ddf5ef840ff27e4945f65ae7b2472ef477f
+  Licenses.spdx          : c8a9978aa57fc189b6c44fcbda0de9aebd283bf158a45de96668bf80b86b9bc1
 
 ────────────────────────────────────────────────────────────────────────────────
 Installed Packages  (requirements_final.txt)
@@ -88,7 +88,7 @@ This overview is provided for informational purposes only. Signing attests only 
 this document, not to the legal validity, authorship, or completeness of any third-party licenses
 referenced herein. Users are responsible for reviewing and complying with all third-party terms.
 
-Generated : 2026-08-04T18:22:17.990679
+Generated : 2026-08-04T19:35:51.956584
 Packages  : 206
 
 ----------------------------------------------------------------------------------------------------------------------------------------------

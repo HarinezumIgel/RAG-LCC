@@ -18,7 +18,7 @@ from Compliance.SharedHelpers import SharedHelpers
 from Config.Config import Config
 from Globals.CounterInstance import HumanReviewCount, ProcessedCount
 from Globals.Globals import Globals
-from Gui.Colors import CYAN, RESET
+from Gui.Colors import CYAN, MAGENTA, RESET
 from Gui.PrettyWriter import PrettyWriter
 from Helpers.Accumulator import Accumulator
 from Helpers.ChromaDBHelper import ChromaDBHelper
