@@ -32,7 +32,7 @@ This overview is provided for informational purposes only. Signing attests only 
 | build | 1.5.0 | MIT | Filipe Laíns <lains@riseup.net>, Bernát Gábor <gaborjbernat@gmail.com>, layday <layday@protonmail.com>, Henry Schreiner <henryschreineriii@gmail.com> |
 | catalogue | 2.0.10 | MIT License | Explosion |
 | certifi | 2026.7.22 | Mozilla Public License 2.0 (MPL 2.0) | Kenneth Reitz |
-| cffi | 2.1.0 | MIT-0 | Armin Rigo, Maciej Fijalkowski |
+| cffi | 2.1.1 | MIT-0 | Armin Rigo, Maciej Fijalkowski |
 | chardet | 7.4.3 | 0BSD | Dan Blanchard <dan.blanchard@gmail.com> |
 | charset-normalizer | 3.4.9 | MIT | "Ahmed R. TAHRI" <tahri.ahmed@proton.me> |
 | chromadb | 1.5.9 | Apache Software License | Jeff Huber <jeff@trychroma.com>, Anton Troynikov <anton@trychroma.com> |
@@ -61,7 +61,7 @@ This overview is provided for informational purposes only. Signing attests only 
 | googleapis-common-protos | 1.75.0 | Apache Software License | Google LLC <googleapis-packages@google.com> |
 | grpcio | 1.83.0 | Apache-2.0 | The gRPC Authors <grpc-io@googlegroups.com> |
 | h11 | 0.16.0 | MIT License | Nathaniel J. Smith |
-| hf-xet | 1.5.2 | Apache-2.0 | UNKNOWN |
+| hf-xet | 1.6.0 | Apache-2.0 | UNKNOWN |
 | html2text | 2025.4.15 | GPL-3.0-or-later | Aaron Swartz <me@aaronsw.com> |
 | httpcore | 1.0.9 | BSD-3-Clause | Tom Christie <tom@tomchristie.com> |
 | httptools | 0.8.0 | MIT | Yury Selivanov <yury@magic.io> |
@@ -2103,7 +2103,7 @@ one at http://mozilla.org/MPL/2.0/.
 
 ```
 
-### cffi 2.1.0
+### cffi 2.1.1
 
 **License:** MIT-0
 
@@ -4587,7 +4587,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ```
 
-### hf-xet 1.5.2
+### hf-xet 1.6.0
 
 **License:** Apache-2.0
 

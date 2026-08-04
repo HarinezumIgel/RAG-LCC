@@ -225,10 +225,9 @@ class SemanticChunker(ChunkerStrategy):
             print()  # newline after progress bar
         return all_embeddings
 
-    @staticmethod
-    def _split_sentences(text: str) -> list[str]:
+    def _split_sentences(self, text: str) -> list[str]:
         """Split text into sentences using shared boundary detection."""
-        return SentenceSplitter.split_sentences(text)
+        return SentenceSplitter().split_sentences(text)
 
     def _consolidate_short(self, sentences: list[str]) -> list[str]:
         """Merge consecutive short fragments into fewer, denser sentences.
@@ -269,8 +268,7 @@ class SemanticChunker(ChunkerStrategy):
 
         return merged
 
-    @staticmethod
-    def _cosine_similarities(embeddings: list[list[float]]) -> list[float]:
+    def _cosine_similarities(self, embeddings: list[list[float]]) -> list[float]:
         """Cosine similarity between each consecutive pair of embeddings."""
         vecs = np.array(embeddings)
         norms = np.linalg.norm(vecs, axis=1, keepdims=True)
@@ -289,8 +287,9 @@ class SemanticChunker(ChunkerStrategy):
         )
         return [i + 1 for i, sim in enumerate(similarities) if sim < threshold]
 
-    @staticmethod
-    def _group_sentences(sentences: list[str], breakpoints: list[int]) -> list[str]:
+    def _group_sentences(
+        self, sentences: list[str], breakpoints: list[int]
+    ) -> list[str]:
         """Merge sentences between breakpoints into chunk texts."""
         groups: list[str] = []
         start = 0
@@ -304,9 +303,8 @@ class SemanticChunker(ChunkerStrategy):
             groups.append(tail)
         return groups
 
-    @staticmethod
     def _group_ranges(
-        n_sentences: int, breakpoints: list[int]
+        self, n_sentences: int, breakpoints: list[int]
     ) -> list[tuple[int, int]]:
         """Return (start, end) index ranges for sentence groups.
 
@@ -360,8 +358,9 @@ class SemanticChunker(ChunkerStrategy):
         )
         return [d.page_content for d in splitter.create_documents([text])]
 
-    @staticmethod
-    def _to_docs(texts: list[str], metadata: dict[str, Any]) -> list[langchainDoc]:
+    def _to_docs(
+        self, texts: list[str], metadata: dict[str, Any]
+    ) -> list[langchainDoc]:
         """Wrap text segments into langchainDocs with UUIDs and MyChunk index."""
         docs: list[langchainDoc] = []
         for i, text in enumerate(texts):

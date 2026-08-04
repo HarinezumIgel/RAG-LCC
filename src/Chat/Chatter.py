@@ -314,6 +314,9 @@ class Chatter:
 
         if apiChunkHandler is None:
             chosen = getattr(session, "last_chosen_chunks", [])
+            meta_md = self.helpers.build_document_metadata_md(chosen)
+            if meta_md:
+                print(meta_md)
             if mark_text_enabled:
                 marked: list[tuple[str, bytes]] = list(
                     getattr(session, "marked_documents", []) or []

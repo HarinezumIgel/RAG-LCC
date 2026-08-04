@@ -125,6 +125,29 @@ class RAGChatImpl(SingletonMixin):
         with self._lock:
             return self._set_vector_store(mySession)
 
+    @staticmethod
+    def _chroma_where(flt: "dict[str, Any] | None") -> "dict[str, Any] | None":
+        """Normalise a flat multi-field filter into ChromaDB ``where`` form.
+
+        ChromaDB requires an explicit ``$and`` when more than one field is
+        present. BM25/graph matchers AND flat multi-key dicts directly, so the
+        shared ``base_kwargs`` filter stays flat and is converted only here for
+        the vector query.
+        """
+        if not flt:
+            return flt
+        # Single field or an existing logical operator ($and/$or) — pass through.
+        if len(flt) <= 1:
+            return flt
+        return {"$and": [{k: v} for k, v in flt.items()]}
+
+    def _vector_kwargs(self, mySession: Session) -> "dict[str, Any]":
+        """Return base_kwargs with the filter normalised for the Chroma query."""
+        kwargs: dict[str, Any] = dict(mySession.base_kwargs or {})
+        if "filter" in kwargs:
+            kwargs["filter"] = self._chroma_where(kwargs["filter"])
+        return kwargs
+
     def _set_vector_store(self, mySession: Session) -> bool:
         self.collection_name, self.persist_directory = (
             self.chromaDBHelper.change_chroma_collection(
@@ -681,8 +704,9 @@ class RAGChatImpl(SingletonMixin):
                 "RAGChatImpl._retrieve", "chat", "start vector similarity_search"
             )
             _t_vec = time.perf_counter()
+            vector_kwargs = self._vector_kwargs(mySession)
             hits: list[Any] = self.vector_store.similarity_search_with_score(
-                mySession.query or "", **(mySession.base_kwargs or {})
+                mySession.query or "", **vector_kwargs
             )
             vector_docs = self.chatContext.annotate_chunks(hits)
             self.perf_logger.log(
@@ -701,7 +725,7 @@ class RAGChatImpl(SingletonMixin):
                     try:
                         aq_hits: list[Any] = (
                             self.vector_store.similarity_search_with_score(
-                                aq, **(mySession.base_kwargs or {})
+                                aq, **vector_kwargs
                             )
                         )
                         aq_docs = self.chatContext.annotate_chunks(aq_hits)
@@ -1331,13 +1355,25 @@ class RAGChatImpl(SingletonMixin):
                         )
 
             seen = seen_by_file.setdefault(file_path, set())
+            # Confine the answer highlight to the source chunk's physical page so a
+            # fragment that also occurs earlier (TOC/front matter) is not marked there.
+            try:
+                page_int: int | None = (
+                    int(meta.get("PageNumber"))
+                    if meta.get("PageNumber") is not None
+                    else None
+                )
+            except (TypeError, ValueError):
+                page_int = None
             for text in pdf_texts:
                 key = " ".join(text.lower().split())
                 if key in seen:
                     continue
                 seen.add(key)
                 grounded.setdefault(file_path, []).append(
-                    ChunkSnippet(text=text, page_number=None, color=answer_mark_color)
+                    ChunkSnippet(
+                        text=text, page_number=page_int, color=answer_mark_color
+                    )
                 )
         return grounded
 

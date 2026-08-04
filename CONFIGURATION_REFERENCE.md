@@ -29,7 +29,7 @@ This reference covers both a **quick-scan overview** (tables by topic and by con
 
 | **Component** | **Options/Values** | **Purpose** |
 |---------------|-------------------|-------------|
-| **Retrieval Strategies** | `NARROW`, `BALANCED_FILE_CAP`, `DEFAULT`, `WIDE`, `ULTRA_WIDE` | Pre-configured retrieval profiles balancing precision/recall. Control final_chunks_to_llm (20-1500), retriever_k (60-3000), threshold (0.55-0.70), and per-file limits. |
+| **Retrieval Strategies** | `NARROW`, `BALANCED_FILE_CAP`, `DEFAULT`, `WIDE`, `ULTRA_WIDE` | Pre-configured retrieval profiles balancing precision/recall. Control final_chunks_to_llm (20-1500), retriever_k (60-3000), threshold (0.45-0.60), and per-file limits. |
 | **Retrieval Modes** | `VECTOR`, `BM25`, `GRAPH`, `VECTOR_BM25`, `VECTOR_GRAPH`, `BM25_GRAPH`, `ALL`, `WEB` | Select retrieval algorithms. VECTOR uses embeddings; BM25 uses keyword matching; GRAPH uses entity co-occurrence; combined modes use RRF fusion. WEB adds internet search results. |
 | **Final Chunks to LLM** | 20-1500 chunks (strategy-dependent) | How many chunks are sent to the LLM after retrieval and selection. Directly affects context window usage and answer quality. |
 | **Retriever K** | 60-3000 candidates (strategy-dependent) | How many candidates each retriever fetches before fusion/reranking. Higher = better recall but slower. |
@@ -40,7 +40,7 @@ This reference covers both a **quick-scan overview** (tables by topic and by con
 | **Graph Index** | Entity types: `PERSON`, `ORG`, `GPE`, `PRODUCT`, `WORK_OF_ART`, `LAW`, `NOUN_CHUNK` | Configures entity extraction for graph-based retrieval. Entities are extracted with spaCy NER during indexing and linked by co-occurrence. NOUN_CHUNK captures domain terminology. |
 | **Graph Traversal** | `max_hops`: 2, `max_candidates`: 50, `min_edge_weight`: 1 | Controls graph query expansion. max_hops limits BFS depth; max_candidates caps results before top-k; min_edge_weight filters weak co-occurrences. |
 | **Reranking** | `rerank`: 0/1, Cross-encoder model | Enables/disables neural reranking of candidates. When enabled, uses cross-encoder (mmarco-mMiniLMv2-L12) to rescore query-chunk pairs for relevance. |
-| **Rerank Threshold** | 0.50-0.70 (sigmoid probability) | Minimum reranking score to keep a chunk. Applied after cross-encoder scoring. Lower = more permissive; higher = stricter filtering. |
+| **Rerank Threshold** | 0.45-0.60 (sigmoid probability) | Cross-encoder confidence floor to keep a chunk. Applied after cross-encoder scoring. Lower = more permissive; higher = stricter filtering. If no chunk clears the floor, reranking is skipped and chunks fall back to retrieval (RRF) order. |
 | **RRF Weights** | `vector_weight`, `bm25_weight`, `graph_weight`, `web_weight`: 0.0-1.0+ | Per-retriever weights for Reciprocal Rank Fusion. 1.0 = full weight; 0.0 = disabled. Controls relative influence of each retrieval method. |
 
 ### 🌐 Web Search
@@ -170,9 +170,10 @@ This reference covers both a **quick-scan overview** (tables by topic and by con
 | **Chunkers - Sliding Window** | `Config_Global.py` | `_CHUNKERS["SLIDING_WINDOW"]` | MAX_CHUNK_SIZE, OVERLAP_SENTENCES |
 | **Chunkers - Sentence Window** | `Config_Global.py` | `_CHUNKERS["SENTENCE_WINDOW"]` | MAX_CHUNK_SIZE |
 | **Chunkers - Slide** | `Config_Global.py` | `_CHUNKERS["SLIDE"]` | MAX_CHUNK_SIZE (PowerPoint slides) |
-| **Chunkers - PDF Page** | `Config_Global.py` | `_CHUNKERS["PDF_PAGE"]` | MAX_CHUNK_SIZE (per-page chunking) |
+| **Chunkers - PDF Page** | `Config_Global.py` | `_CHUNKERS["PDF_PAGE"]` | MAX_CHUNK_SIZE, PRESERVE_NEWLINES, DETECT_PRINTED_LABEL (per-page chunking) |
 | **Active Chunker Config** | `Config_Global.py` | `_ACTIVE_CHUNKER_CONFIG` | "DETAILED" or "FAST" |
 | **Chunker Strategy Routing** | `Config_Global.py` | `_CHUNK_STRATEGY[profile][extension]` | Maps file extensions to chunkers per profile |
+| **Metadata Extraction** | `Config_Global.py` | `_METADATA_EXTRACTION` | ENABLED master switch; DOC_INFO_FIELDS (canonical field → source-property synonyms, PDF + Office); GENERIC_FIELDS (filesystem fallback for other types); PDF_PAGE_LABEL_FIELD (printed page label field name); SHOW_IN_ANSWER (append metadata section to answers) |
 | **Office Extraction Toggles** | `Config_Global.py` | `_OFFICE_DOC_EXTRACTION["Word"]`, `["Power Point"]`, `["Excel"]` | Per-format extraction enable |
 | **Text File Extensions** | `Config_Global.py` | `_CONSIDER_AS_TEXT_FILE` | List of extensions treated as plain text |
 | **Tesseract Path** | `Config_Internet_Env.py` | `os.environ["TESSERACT_PATH"]` | OCR executable location |
@@ -562,6 +563,31 @@ The `PDF_PAGE` chunker (used when `_CHUNK_STRATEGY` maps `"pdf"` to `"PDF_PAGE"`
 | --- | --- | --- |
 | `MAX_CHUNK_SIZE` | `200` | Maximum words per page chunk. Dense pages are split at sentence boundaries until every sub-chunk is at or below this limit. Reducing this value improves retrieval precision for documents where multiple unrelated topics are packed onto a single page (e.g. safety notices followed immediately by environmental specifications). |
 | `PRESERVE_NEWLINES` | `False` | When `True`, newlines in the extracted PDF text are kept, which can help tables and bulleted lists stay legible in the chunk. |
+| `DETECT_PRINTED_LABEL` | `True` | When `True`, the chunker recovers the **printed** page number from each page's footer/header text (numeric or Roman, e.g. `iii`, `12`) when the PDF's `/PageLabels` metadata does not declare it, and stores it in `PageLabel`. Detection is language-aware — the "page"/"of" keywords are translated for non-English documents via the cached translator. Set `False` to trust `/PageLabels` only. |
+
+### 🏷️ Document Metadata Extraction
+
+The `_METADATA_EXTRACTION` slot in `Config_Global.py` controls extra metadata harvested from source files at load time and attached to **every** chunk of that file. Extraction runs once in the ingestion pipeline via the singleton `DocumentMetadataExtractor` (in `src/Strategies/Chunkers/`), so all chunkers benefit regardless of file type. Formats with readable document properties — PDF (pypdf) and the modern Office XML formats docx, pptx, xlsx — yield the rich `DOC_INFO_FIELDS`; **every other type** (images, text, csv, code, legacy Office, …) falls back to the generic filesystem `GENERIC_FIELDS`. Because chunk metadata is baked into the ChromaDB collection, changing any value requires a reload (`RETRIEVAL_STORES_KEEP = False`). ChromaDB only accepts scalar metadata, so all extracted values are coerced to strings and empty/missing fields are skipped.
+
+| Key | Default | Purpose |
+| --- | --- | --- |
+| `ENABLED` | `True` | Master switch. `False` restores legacy behaviour (no extra metadata, physical page numbers only). |
+| `DOC_INFO_FIELDS` | Author, DocTitle, Subject, Creator, Producer, DocCreated, DocModified, LastModifiedBy, Keywords | Maps each **canonical** chunk-metadata field to an ordered list of raw source-property **synonyms** searched across formats (case-insensitive; first non-empty wins). Different formats name the same concept differently — e.g. `DocCreated` resolves from PDF `creation_date` **or** Office `created`. Truly ambiguous names are pre-normalised in `DocumentMetadataExtractor` (e.g. openpyxl's `creator`, which means *author*, is emitted as `author`). Remove a key to skip that field. |
+| `GENERIC_FIELDS` | FileSizeBytes→`size`, FileModified→`modified` | Fallback fields for file types **without** a document-info reader. Sourced from the filesystem: `size` (bytes) and `modified` (mtime). Applied to images, plain text, csv, source code, legacy Office, etc. |
+| `PDF_PAGE_LABEL_FIELD` | `PageLabel` | Field name under which the PDF's **printed** page label (e.g. `i`, `ii`, `1`, `2`) is stored. The physical 1-based page index always remains in `PageNumber`. Source citations and the LLM context header display this label when present, so front-matter pages (Roman numerals) cite correctly. Empty string disables label capture. |
+| `SHOW_IN_ANSWER` | `True` | Append a **Document metadata** section (per source file: FilePath, harvested fields, and the page labels referenced) to the end of CLI (RAGChat) and HTTP (RAGChatService) answers. Set `False` to rely only on the LLM-generated Sources section. |
+
+A `Pages` field (integer page/slide count) is also attached for PDFs and PPTX decks (`0`, and therefore skipped, for formats without pages such as images). At **load** time, `Config_RAGLoad.py` → `SHOW_EXTRACTED_METADATA` (default `True`) prints the harvested fields for each ingested file in magenta so you can verify extraction.
+
+**Filtering on metadata at query time.** In `RAGChat` the harvested fields double as retrieval filters (applied as an extra ChromaDB `where` condition, and honoured by the BM25 and graph retrievers too):
+
+| Command | Effect |
+| --- | --- |
+| `metadata!` | Opens an interactive picker (`MetadataPicker`) listing every field that actually has a value in the collection, with its distinct values, to select one or more field/value pairs. |
+| `metadata=Field:Value` | Assigns a single filter directly (e.g. `metadata=Author:python-docx`). |
+| `metadata-` | Clears all active metadata filters. |
+
+When any file or metadata filter is active it is printed in turquoise before each query runs.
 
 ### 🔗 Retrieval Stores & Search Modes
 
@@ -1224,7 +1250,7 @@ Strategy parameters explained:
 | --- | --- |
 | `final_chunks_to_llm` | Maximum number of chunks passed to the LLM after reranking and threshold filtering. |
 | `retriever_k` | Number of candidate chunks each retriever fetches before filtering and reranking. |
-| `threshold` | Minimum `sigmoid(raw_rerank_score)` probability to keep a chunk. Values are in `[0, 1]` — `0.60` means 60 % relevance confidence. The comparison is `sigmoid(raw_logit) ≥ threshold`; the raw logit is query-independent while the normalized `rerank_score` is used only for intra-query ordering. `0.50` = neutral (sigmoid(0)); below `0.50` is permissive, above is increasingly strict. **Relative-band fallback:** when the pool's best sigmoid score is still below the threshold (common with mmarco-style models on technical content), the selector accepts chunks whose raw logit is within `_RELATIVE_LOGIT_MARGIN` (1.0 logit unit) of the pool maximum, so the top-ranked chunk is always surfaced. A diagnostic message is logged at debug level ≥ 10 when the fallback fires. |
+| `threshold` | Minimum `sigmoid(raw_rerank_score)` probability to keep a chunk. Values are in `[0, 1]` — `0.50` means the neutral logit (sigmoid(0)). The comparison is `sigmoid(raw_logit) ≥ threshold`; the raw logit is query-independent while the normalized `rerank_score` is used only for intra-query ordering. Below `0.50` is permissive, above is increasingly strict. **Rerank-skip fallback:** when the pool's best sigmoid score is still below the threshold (common with mmarco-style models on technical/tabular content, where the correct chunk can be demoted to last), reranking is skipped entirely — every chunk is kept and the selector orders them by retrieval (RRF) score instead of the cross-encoder logit. An orange `Rerank skipped` message is emitted when this fires. |
 | `max_output_tokens` | Output token ceiling for this strategy (may be further reduced by the token budget). |
 | `temperature` | LLM sampling temperature. Lower = more deterministic. |
 | `top_k` | Limit sampling to the top-k most likely next tokens. |

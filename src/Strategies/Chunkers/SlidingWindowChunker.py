@@ -63,7 +63,7 @@ class SlidingWindowChunker(ChunkerStrategy):
         )
         _t0 = time.perf_counter()
 
-        sentences: list[str] = SentenceSplitter.split_sentences(content)
+        sentences: list[str] = SentenceSplitter().split_sentences(content)
 
         if not sentences:
             return [], None
@@ -138,8 +138,9 @@ class SlidingWindowChunker(ChunkerStrategy):
         )
         return [d.page_content for d in splitter.create_documents([text])]
 
-    @staticmethod
-    def _to_docs(texts: list[str], metadata: dict[str, Any]) -> list[langchainDoc]:
+    def _to_docs(
+        self, texts: list[str], metadata: dict[str, Any]
+    ) -> list[langchainDoc]:
         """Wrap text segments into langchainDocs with UUIDs and MyChunk index."""
         docs: list[langchainDoc] = []
         for i, text in enumerate(texts):

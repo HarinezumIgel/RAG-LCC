@@ -194,6 +194,12 @@ Raw documents
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
+A few refinements to keep in mind when reading the pipeline above:
+
+- **Confidence-gated reranking** — the per-strategy threshold is a cross-encoder *confidence floor*. When no chunk clears it (the reranker is unconfident about the whole pool, common on technical/tabular content), reranking is **skipped** and chunks fall back to retrieval (RRF) order instead of being dropped — with an orange `Rerank skipped` notice.
+- **Metadata filtering** — harvested document metadata (author, title, dates, page labels, …) can be used as retrieval filters via the `metadata!` picker or `metadata=Field:Value`, narrowing all three local retrievers.
+- **Correct source pages** — citations and highlighted source documents use the document's *printed* page label (e.g. front-matter `iii`), while highlighting is placed on the true physical page.
+
 The goal is **not** to feed the model *more* text — but to feed it **better, safer context**.
 
 ---
@@ -235,7 +241,7 @@ Key capabilities organized by application. Full configuration details, defaults,
 - **Multi-query expansion** — a dedicated LLM generates N alternate phrasings of the query; each variant runs an additional Vector search merged into the main pool before fusion
 - **Query rewriting / coreference resolution** — a second dedicated LLM resolves pronouns and referents from conversation history (`"are they mammals?"` → `"are hedgehogs mammals?"`); prefix with `new:` to hard-switch topics without clearing history
 - **Near-duplicate chunk removal** — Jaccard token-level deduplication of the retrieval pool runs after RRF fusion and before reranking
-- **Cross-encoder reranking** — mmarco MiniLM rescores every candidate; per-strategy sigmoid threshold drops weak matches; relative-band fallback ensures the top chunk always surfaces
+- **Cross-encoder reranking** — mmarco MiniLM rescores every candidate; per-strategy sigmoid threshold drops weak matches; when no chunk clears the threshold, reranking is skipped and chunks fall back to retrieval (RRF) order so the top chunk always surfaces
 - **Answer grounding** — every answer sentence is checked for overlap with retrieved source chunks and marked visually; CLI uses ANSI highlights, API returns marked source documents as `/marked/<token>` links
 - **Compliance filter chain** runs on queries before retrieval **and** on generated responses before delivery
 - **Multi-turn conversational memory** — rolling topic summary, configurable turn window, batch pruning; `new:` prefix isolates topics without discarding history

@@ -88,10 +88,9 @@ class SentenceWindowChunker(ChunkerStrategy):
 
     # -- Internal helpers ---------------------------------------------------
 
-    @staticmethod
-    def _split_sentences(text: str) -> list[str]:
+    def _split_sentences(self, text: str) -> list[str]:
         """Split text into sentences using shared boundary detection."""
-        return SentenceSplitter.split_sentences(text)
+        return SentenceSplitter().split_sentences(text)
 
     def _pack_sentences(self, sentences: list[str]) -> list[str]:
         """Greedily pack sentences into chunks up to ``_max_chunk_size`` words."""
@@ -128,8 +127,9 @@ class SentenceWindowChunker(ChunkerStrategy):
         )
         return [d.page_content for d in splitter.create_documents([text])]
 
-    @staticmethod
-    def _to_docs(texts: list[str], metadata: dict[str, Any]) -> list[langchainDoc]:
+    def _to_docs(
+        self, texts: list[str], metadata: dict[str, Any]
+    ) -> list[langchainDoc]:
         """Wrap text segments into langchainDocs with UUIDs and MyChunk index."""
         docs: list[langchainDoc] = []
         for i, text in enumerate(texts):

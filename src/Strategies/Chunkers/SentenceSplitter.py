@@ -47,12 +47,11 @@ class SentenceSplitter:
         r"|\n(?=[A-Z])"  # newline before uppercase only
     )
 
-    @staticmethod
-    def split_sentences(text: str) -> list[str]:
+    def split_sentences(self, text: str) -> list[str]:
         """Split *text* into sentence-like segments.
 
         Works for both clean prose and messy PDF-extracted text.
         Returns a list of non-empty, stripped strings.
         """
-        parts: list[str] = SentenceSplitter._SENTENCE_RE.split(text)
+        parts: list[str] = self._SENTENCE_RE.split(text)
         return [s.strip() for s in parts if s.strip()]

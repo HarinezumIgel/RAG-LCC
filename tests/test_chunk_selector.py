@@ -11,7 +11,7 @@ Covers:
   * filter_threshold        — boost == 1.0 disables promotion
   * filter_threshold        — boosted chunk in hits list (original score preserved)
   * filter_threshold        — non-boosted multi-chunk file stays below threshold
-  * filter_threshold        — relative-band fallback when pool max < threshold
+  * filter_threshold        — rerank-skip fallback when pool max < threshold
   * _print_final_score      — called when debug_level >= 10 (smoke test, no crash)
 """
 
@@ -325,57 +325,51 @@ class TestPrintFinalScore:
 # ===========================================================================
 
 
-class TestFilterThresholdRelativeBand:
-    """When the pool's best local raw logit is below the threshold the selector
-    falls back to a relative band: accept chunks within _RELATIVE_LOGIT_MARGIN
-    (1.0 logit unit) of the pool maximum."""
+class TestFilterThresholdRerankSkip:
+    """When the pool's best local raw logit is below the threshold the
+    cross-encoder is unconfident about the whole pool.  In that case reranking
+    is skipped: every chunk is kept (``filter_threshold`` returns all of them)
+    and the selector orders them by retrieval score instead of the logit.  An
+    orange ``Rerank skipped`` message is emitted."""
 
-    # threshold=0.60, pool max=0.047 → sigmoid(0.047)≈0.512 < 0.60 → fallback fires
-    # relative_thr (logit) = 0.047 - 1.0 = -0.953 → effective prob = sigmoid(-0.953)≈0.279
+    # threshold=0.60, pool max=0.047 → sigmoid(0.047)≈0.512 < 0.60 → skip fires
     _THRESHOLD = 0.60
     _POOL_MAX = 0.047
-    _MARGIN = ScoreRankedSelector._RELATIVE_LOGIT_MARGIN  # 1.0
 
-    def _relative_thr(self) -> float:
-        return self._POOL_MAX - self._MARGIN
-
-    def test_top_ranked_chunk_passes_relative_band(self):
-        """The best chunk in a below-threshold pool must be kept."""
+    def test_all_chunks_kept_when_pool_below_threshold(self):
+        """When nothing clears the threshold, every chunk survives."""
         session = _StubSession(threshold=self._THRESHOLD, boost=1.0)
         sel = _make_selector(session)
         best = _make_chunk(score=self._POOL_MAX, path="/docs/a.pdf")
         worst = _make_chunk(score=0.010, path="/docs/b.pdf")
         result = sel.filter_threshold([best, worst])
         assert best in result
+        assert worst in result
 
-    def test_chunk_just_above_relative_thr_passes(self):
-        """A chunk above the relative threshold should pass."""
-        # relative_thr = 0.047 - 1.0 = -0.953; chunk at -0.952 > -0.953 → pass
+    def test_rerank_skipped_flag_set(self):
+        """The _rerank_skipped flag is set when the fallback fires."""
         session = _StubSession(threshold=self._THRESHOLD, boost=1.0)
         sel = _make_selector(session)
-        thr = self._relative_thr()  # -0.953
-        chunk = _make_chunk(score=thr + 0.001, path="/docs/a.pdf")  # -0.952
-        pool_max = _make_chunk(score=self._POOL_MAX, path="/docs/b.pdf")
-        result = sel.filter_threshold([chunk, pool_max])
-        assert chunk in result
+        chunk = _make_chunk(score=self._POOL_MAX, path="/docs/a.pdf")
+        sel.filter_threshold([chunk])
+        assert sel._rerank_skipped is True
 
-    def test_chunk_below_relative_thr_misses(self):
-        """A chunk below the relative threshold must still be dropped."""
-        # relative_thr = 0.047 - 1.0 = -0.953; chunk at -0.955 < -0.953 → miss
+    def test_low_scoring_chunk_kept_in_skip_mode(self):
+        """A chunk far below the pool max is still kept once rerank is skipped."""
         session = _StubSession(threshold=self._THRESHOLD, boost=1.0)
         sel = _make_selector(session)
-        thr = self._relative_thr()  # -0.953
-        low = _make_chunk(score=thr - 0.002, path="/docs/a.pdf")  # -0.955
+        low = _make_chunk(score=-5.0, path="/docs/a.pdf")
         pool_max = _make_chunk(score=self._POOL_MAX, path="/docs/b.pdf")
         result = sel.filter_threshold([low, pool_max])
-        assert low not in result
+        assert low in result
 
     def test_empty_pool_no_crash(self):
-        """An empty pool must not raise."""
+        """An empty pool must not raise and does not trigger the skip."""
         session = _StubSession(threshold=self._THRESHOLD, boost=1.0)
         sel = _make_selector(session)
         result = sel.filter_threshold([])
         assert result == []
+        assert sel._rerank_skipped is False
 
     def test_absolute_threshold_used_when_pool_max_exceeds_threshold(self):
         """When pool max sigmoid >= threshold the normal absolute path must be used."""
@@ -390,38 +384,51 @@ class TestFilterThresholdRelativeBand:
         result = sel.filter_threshold([above, below])
         assert above in result
         assert below not in result
+        assert sel._rerank_skipped is False
 
-    def test_debug_message_emitted_when_fallback_active(self):
-        """At debug_level >= 10, a message about the relative band should appear."""
-        session = _StubSession(threshold=self._THRESHOLD, boost=1.0, debug_level=10)
+    def test_orange_skip_message_emitted(self):
+        """An orange 'Rerank skipped' message is emitted when the fallback fires."""
+        session = _StubSession(threshold=self._THRESHOLD, boost=1.0)
         sel = _make_selector(session)
         chunk = _make_chunk(score=self._POOL_MAX, path="/docs/a.pdf")
         sel.filter_threshold([chunk])
-        messages = " ".join(str(c[0]) for c in session.pretty.calls)
-        assert "relative band" in messages.lower() or "relative" in messages.lower()
+        messages = " ".join(str(c[0]) for c in session.pretty.calls).lower()
+        assert "rerank skipped" in messages
 
-    def test_no_debug_message_below_debug_level(self):
-        """At debug_level=0 no relative-band message should appear."""
-        session = _StubSession(threshold=self._THRESHOLD, boost=1.0, debug_level=0)
+    def test_no_skip_message_when_confident(self):
+        """No skip message appears when the pool clears the threshold."""
+        session = _StubSession(threshold=0.55, boost=1.0)
         sel = _make_selector(session)
-        chunk = _make_chunk(score=self._POOL_MAX, path="/docs/a.pdf")
+        chunk = _make_chunk(
+            score=0.60, path="/docs/a.pdf"
+        )  # sigmoid(0.60)≈0.645 ≥ 0.55
         sel.filter_threshold([chunk])
-        messages = " ".join(str(c[0]) for c in session.pretty.calls)
-        assert "relative band" not in messages.lower()
+        messages = " ".join(str(c[0]) for c in session.pretty.calls).lower()
+        assert "rerank skipped" not in messages
 
-    def test_web_chunks_excluded_from_relative_band_calculation(self):
-        """Web chunks must not influence max_local_score used in the fallback."""
-        # Local chunks all below threshold; web chunk has high score — but
-        # local_scores should still trigger the fallback.
+    def test_web_chunks_excluded_from_skip_calculation(self):
+        """Web chunks must not influence the local-max used to decide the skip."""
+        # Local chunk below threshold triggers the skip; both chunks are then kept.
         session = _StubSession(threshold=0.60, web_threshold=0.10, boost=1.0)
         sel = _make_selector(session)
         local = _make_chunk(score=0.040, path="/docs/a.pdf", sources="Vector")
         web = _make_chunk(score=0.90, path="/web/page.html", sources="Web")
         result = sel.filter_threshold([local, web])
-        # local: sigmoid(0.040)≈0.510 > sigmoid(-0.960)≈0.277 relative_thr → passes
-        # web: sigmoid(0.90)≈0.711 >= 0.10 → passes
         assert local in result
         assert web in result
+        assert sel._rerank_skipped is True
+
+    def test_retrieval_order_used_in_skip_mode(self):
+        """In skip mode the selector orders by retrieval (RRF) score, not logit."""
+        session = _StubSession(threshold=self._THRESHOLD, boost=1.0)
+        sel = _make_selector(session)
+        # Low logit but high RRF → must rank first once rerank is skipped.
+        winner = _make_chunk(score=-2.0, path="/docs/winner.pdf")
+        winner.metadata["rrf_score"] = 0.99
+        loser = _make_chunk(score=self._POOL_MAX, path="/docs/loser.pdf")
+        loser.metadata["rrf_score"] = 0.01
+        selected = sel.select([winner, loser])
+        assert selected[0] is winner
 
 
 # ===========================================================================

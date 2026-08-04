@@ -10,7 +10,7 @@
 import os
 from typing import Any
 
-_VERSION = "v0.4.2.3/1414 2026-08-03"
+_VERSION = "v0.4.4.0/1420 2026-08-04"
 
 # -----------------------------------------------------------------------------
 # Adjust these hashes when you changed Config_Models.py, Config_Banned.py,
@@ -18,10 +18,10 @@ _VERSION = "v0.4.2.3/1414 2026-08-03"
 # Run:  python src/Scripts/RecalcConfigHashes.py  to update automatically.
 # -----------------------------------------------------------------------------
 _CRITICAL_CONFIG_HASHES = {
-    "Config_Models": "",
-    "Config_Banned": "",
-    "Config_WebSearch": "",
-    "Config_Internet_Env": "",
+    "Config_Models": "9e0de6cc3b95dae9d322d5b8ee4307384b658923b46927c4dbf96b66c5f9023a",
+    "Config_Banned": "502e0a49c6aeeedaed42d6f4f6a410f2a0648b03558ee57d274fbb10c982d5c3",
+    "Config_WebSearch": "b1f8424bc12425e7fac0e870f060380f59be344e87990ea79c56ac0f1068dd9b",
+    "Config_Internet_Env": "ddad6b809599f1f0ae23b7487842907bc0f9d236e315ce6303aa181cdf7845c6",
 }
 
 # -----------------------------------------------------------------------------
@@ -327,7 +327,63 @@ _CHUNKERS: dict[str, dict[str, float | int | bool | str]] = {
     "PDF_PAGE": {
         "MAX_CHUNK_SIZE": 200,  # Max words per page chunk; dense pages are split
         "PRESERVE_NEWLINES": False,
+        # Best-effort: recover the printed page number (e.g. roman "iii") from
+        # each page's footer/header text when the PDF's /PageLabels metadata
+        # does not declare it. Heuristic — set False to trust /PageLabels only.
+        "DETECT_PRINTED_LABEL": True,
     },
+}
+
+# =============================================================================
+# Document metadata extraction
+# =============================================================================
+# Extra metadata harvested from source files at load time and attached to
+# EVERY chunk of that file (all chunkers benefit — extraction happens once in
+# the ingestion pipeline via DocumentMetadataExtractor). Formats with readable
+# document properties (PDF, docx, pptx, xlsx) yield the rich DOC_INFO_FIELDS;
+# every other type (images, text, csv, code, legacy Office, …) falls back to
+# the generic filesystem GENERIC_FIELDS. Chunk metadata is baked into the
+# ChromaDB collection, so changing anything here requires a reload
+# (RETRIEVAL_STORES_KEEP = False).
+#
+# ChromaDB only accepts scalar metadata (str/int/float/bool) — every value is
+# coerced to a string; missing/empty fields are skipped.
+# =============================================================================
+_METADATA_EXTRACTION: dict[str, Any] = {
+    # Master switch. False = attach nothing extra (legacy behaviour).
+    "ENABLED": True,
+    # Canonical chunk-metadata field name → ordered list of raw source-property
+    # synonyms searched across formats (case-insensitive; first non-empty wins).
+    # Different formats name the same concept differently — e.g. PDFs expose a
+    # "creation_date" while Office core-properties use "created". Format quirks
+    # that are truly ambiguous are pre-normalised inside DocumentMetadataExtractor
+    # (e.g. the xlsx "creator" property, which actually means *author*, is
+    # emitted as "author"), so the synonyms below stay simple.
+    "DOC_INFO_FIELDS": {
+        "Author": ["author"],
+        "DocTitle": ["title"],
+        "Subject": ["subject"],
+        "Creator": ["creator"],  # authoring application (PDF)
+        "Producer": ["producer"],  # producing application (PDF)
+        "DocCreated": ["creation_date", "created"],
+        "DocModified": ["modification_date", "modified"],
+        "LastModifiedBy": ["last_modified_by"],
+        "Keywords": ["keywords"],
+    },
+    # Generic fallback fields for every OTHER file type (images, text, csv,
+    # code, legacy Office, …) that has no readable document properties. Sourced
+    # from the filesystem: "size" (bytes) and "modified" (mtime).
+    "GENERIC_FIELDS": {
+        "FileSizeBytes": ["size"],
+        "FileModified": ["modified"],
+    },
+    # Printed per-page page label (e.g. "i", "ii", "1", "2") captured by the
+    # PDF page chunker and written under this field. Empty string = disabled.
+    # The physical 1-based page index always stays in "PageNumber".
+    "PDF_PAGE_LABEL_FIELD": "PageLabel",
+    # Append a "Document metadata" section (author/dates/pages per source
+    # file) to CLI and RAGChatService answers, built from the harvested fields.
+    "SHOW_IN_ANSWER": True,
 }
 
 # -----------------------------------------------------------------------------

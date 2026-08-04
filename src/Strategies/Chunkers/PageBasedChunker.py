@@ -7,7 +7,6 @@ from langchain_core.documents.base import Document as langchainDoc
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from Config.Config import Config
-from Gui.Colors import ORANGE
 from Gui.PrettyWriter import PrettyWriter
 from Helpers.FileUtils import FileUtils
 from Helpers.Helpers import Helpers
@@ -62,6 +61,8 @@ class PageBasedChunker(ChunkerStrategy, ABC):
             f"{chunker_slot}.MAX_CHUNK_SIZE", 256
         )
         self._separators: list[Any] = self._cfg.get_list("_SEPARATORS")
+        # Detected document language (ISO code), set per-document in chunk().
+        self._doc_language: str = ""
 
     # -- ChunkerStrategy interface ------------------------------------------
 
@@ -79,10 +80,11 @@ class PageBasedChunker(ChunkerStrategy, ABC):
 
         file_type: str = str(metadata.get("FileType", "")).lower()
         file_path: str = str(metadata.get("FilePath", ""))
+        self._doc_language = str(metadata.get("Language", "")).strip().lower()
 
         pages: list[PageData] = self._parse_pages(file_type, file_path, content)
         if not pages:
-            result = [], None
+            result: ChunkResult = [], None
             elapsed = time.perf_counter() - _t0
             self.perf_logger.log(
                 "PageBasedChunker.chunk",
@@ -181,9 +183,8 @@ class PageBasedChunker(ChunkerStrategy, ABC):
 
     # -- Doc assembly -------------------------------------------------------
 
-    @staticmethod
     def _to_docs(
-        page_texts: list[_PageText], metadata: dict[str, Any]
+        self, page_texts: list[_PageText], metadata: dict[str, Any]
     ) -> list[langchainDoc]:
         docs: list[langchainDoc] = []
         for i, (text, extra) in enumerate(page_texts):

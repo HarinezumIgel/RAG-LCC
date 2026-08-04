@@ -18,7 +18,7 @@ from Compliance.SharedHelpers import SharedHelpers
 from Config.Config import Config
 from Globals.CounterInstance import HumanReviewCount, ProcessedCount
 from Globals.Globals import Globals
-from Gui.Colors import MAGENTA, RESET
+from Gui.Colors import CYAN, RESET
 from Gui.PrettyWriter import PrettyWriter
 from Helpers.Accumulator import Accumulator
 from Helpers.ChromaDBHelper import ChromaDBHelper
@@ -28,6 +28,8 @@ from Helpers.Helpers import Helpers
 from Helpers.PerfLogger import PerfLogger
 from Strategies.BM25Retriever import BM25Retriever
 from Strategies.Chunkers.ChunkerStrategy import ChunkerStrategy
+from Strategies.Chunkers.DocumentMetadataExtractor import \
+    DocumentMetadataExtractor
 from Strategies.Chunkers.HeadingChunker import HeadingChunker
 from Strategies.Chunkers.PdfPageChunker import PdfPageChunker
 from Strategies.Chunkers.RecursiveChunker import RecursiveChunker
@@ -66,6 +68,7 @@ class DocumentIngestionStrategy(SingletonMixin):
         self.pretty: PrettyWriter = pretty or PrettyWriter()
         self.helpers: Helpers = helpers or Helpers()
         self.fileUtils: FileUtils = FileUtils()
+        self.metadataExtractor: DocumentMetadataExtractor = DocumentMetadataExtractor()
         self.cfg: Config = cfg or Config()
         self.csvWriter: CSVWriter = CSVWriter()
         self.chromaDBHelper: ChromaDBHelper = ChromaDBHelper()
@@ -155,16 +158,29 @@ class DocumentIngestionStrategy(SingletonMixin):
         if self.content:
             self.wordCount = self.fileUtils.count_words(self.content)
 
+        meta: dict[str, Any] = {
+            "FileName": self.file,
+            "FilePath": self.escapedFilePath,
+            "CreationDate": self.creation_date,
+            "FileType": self.fileType,
+            "Language": self.language,
+            "WordCount": self.wordCount,
+            "FileHash": self.fileHash,
+        }
+        # Attach configurable extra metadata (e.g. author/dates) to every
+        # chunk — the chunker copies this dict into each chunk's metadata.
+        extra: dict[str, Any] = self.metadataExtractor.extract(
+            self.escapedFilePath or "", self.fileType or ""
+        )
+        for key, value in extra.items():
+            meta.setdefault(key, value)
+
+        if extra and self.cfg.get_bool("SHOW_EXTRACTED_METADATA", False, silent=True):
+            details = "  ".join(f"{k}={v}" for k, v in extra.items())
+            self.pretty.write("I", "Metadata", f"{self.file}: {details}", color=MAGENTA)
+
         self.doc = {
-            "meta": {
-                "FileName": self.file,
-                "FilePath": self.escapedFilePath,
-                "CreationDate": self.creation_date,
-                "FileType": self.fileType,
-                "Language": self.language,
-                "WordCount": self.wordCount,
-                "FileHash": self.fileHash,
-            },
+            "meta": meta,
             "content": self.content,
         }
         return self.doc
@@ -210,7 +226,7 @@ class DocumentIngestionStrategy(SingletonMixin):
         self.pretty.write(
             "I",
             "Chunker",
-            f"{MAGENTA}{chunker_label} defined as chunker for extension: {self.fileType}{RESET}",
+            f"{CYAN}{chunker_label} defined as chunker for extension: {self.fileType}{RESET}",
         )
 
         # 4) Prepare chunks

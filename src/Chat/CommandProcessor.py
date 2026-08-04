@@ -6,7 +6,7 @@ from Chat.QueryParts import QueryParts
 from Chat.RAGChatImpl import RAGChatImpl
 from Config.Config import Config
 from Globals.Session import Session
-from Gui.Colors import BOLD, MAGENTA, ORANGE, RED, RESET, YELLOW
+from Gui.Colors import BOLD, MAGENTA, ORANGE, RED, RESET, TURQUOISE, YELLOW
 from Gui.HistoryManager import HistoryManager
 from Helpers.ChromaDBHelper import ChromaDBHelper
 
@@ -100,8 +100,30 @@ class CommandProcessor:
                 else ""
             )
         )
+        # File/path filter and metadata filter are independent notices.
+        file_prefix = ""
+        if self.session.file_name or self.session.file_path:
+            if self.session.file_path_select == "path":
+                file_prefix = (
+                    f"{TURQUOISE}{BOLD}🔍 Path filter ON: "
+                    f"{self.session.file_path}{RESET}  "
+                )
+            else:
+                file_prefix = (
+                    f"{TURQUOISE}{BOLD}🔍 File filter ON: "
+                    f"{self.session.file_name}{RESET}  "
+                )
+        meta_prefix = ""
+        if self.session.metadata_filters:
+            pairs = "  ".join(
+                f"{k}={v}" for k, v in self.session.metadata_filters.items()
+            )
+            meta_prefix = f"{TURQUOISE}{BOLD}🔍 Metadata filter ON: {pairs}{RESET}  "
+        # Notices (web / file / metadata) share one line; query prompt goes below.
+        notices = f"{web_prefix}{file_prefix}{meta_prefix}".rstrip()
+        notice_line = f"{notices}\n" if notices else ""
         query = self.hist.prompt(
-            f"{web_prefix}{YELLOW}{BOLD}💬 Your actual query>{RESET}  "
+            f"{notice_line}{YELLOW}{BOLD}💬 Your actual query>{RESET}  "
         ).strip()
         print()
         self.hist.save(

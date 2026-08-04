@@ -62,8 +62,7 @@ class SlideChunker(PageBasedChunker):
 
     # -- PPTX parser --------------------------------------------------------
 
-    @staticmethod
-    def _parse_pptx(file_path: str) -> list[PageData]:
+    def _parse_pptx(self, file_path: str) -> list[PageData]:
         """Extract per-slide title + body from a PPTX file."""
         from pptx import Presentation  # type: ignore[import-untyped]
 

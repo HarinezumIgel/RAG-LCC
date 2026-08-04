@@ -637,6 +637,21 @@ async def _streamGenerator(
                     f'"finish_reason":null}}]}}'
                 )
                 yield f"data: {marked_chunk}\n\n"
+            metadata_helper = getattr(chatter, "helpers", None)
+            metadata_block = (
+                metadata_helper.build_document_metadata_md(
+                    getattr(session, "last_chosen_chunks", [])
+                )
+                if metadata_helper is not None
+                else ""
+            )
+            if metadata_block:
+                metadata_chunk = (
+                    f'{{"id":"{req_id}","object":"chat.completion.chunk","created":{created},'
+                    f'"model":"{model}","choices":[{{"index":0,"delta":{{"content":{_json_str(metadata_block)}}},'
+                    f'"finish_reason":null}}]}}'
+                )
+                yield f"data: {metadata_chunk}\n\n"
             final_chunk = (
                 f'{{"id":"{req_id}","object":"chat.completion.chunk","created":{created},'
                 f'"model":"{model}","choices":[{{"index":0,"delta":{{}},'
@@ -1423,6 +1438,17 @@ async def handleRequest(
         )
         if marked_block:
             answer_out += marked_block
+
+        metadata_helper = getattr(rag, "helperInstance", None)
+        metadata_block = (
+            metadata_helper.build_document_metadata_md(
+                getattr(session, "last_chosen_chunks", [])
+            )
+            if metadata_helper is not None
+            else ""
+        )
+        if metadata_block:
+            answer_out += metadata_block
 
         # Log HTTP links to the server terminal so the admin can open them directly.
         url_map: dict[str, str] = getattr(session, "marked_docs_url_map", {})

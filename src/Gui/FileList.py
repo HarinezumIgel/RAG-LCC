@@ -81,6 +81,11 @@ class FileList(SingletonMixin):
             return ("N/A", "N/A")
         return (self.cur.file, self.cur.path)
 
+    def clear_current(self) -> None:
+        """Drop the active file selection so get_current() reports nothing."""
+        self.cur = None
+        self.current_store = None
+
     def select_filename_inline(
         self, store: Optional[str] = None
     ) -> Optional[FileEntry]:

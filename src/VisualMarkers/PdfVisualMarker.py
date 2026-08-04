@@ -28,8 +28,8 @@ from typing import Any, Sequence
 from VisualMarkers.VisualMarker import ChunkSnippet, VisualMarker
 
 # Strip a leading "Page N" header inserted by PdfPageChunker before
-# searching the actual page text.
-_PAGE_PREFIX_RX = re.compile(r"^\s*Page\s+\d+\s*\n+", re.IGNORECASE)
+# searching the actual page text. The label may be numeric or roman ("iii").
+_PAGE_PREFIX_RX = re.compile(r"^\s*Page\s+\S+\s*\n+", re.IGNORECASE)
 # Minimum length of a fallback line/sentence to bother searching for.
 _MIN_FRAGMENT_LEN = 12
 # Used to normalise text before token comparison.
@@ -118,6 +118,33 @@ class PdfVisualMarker(VisualMarker):
         with pdfplumber.open(io.BytesIO(pdf_bytes)) as plumber_doc:
             num_pages = len(plumber_doc.pages)
 
+            # Cache each touched page's extracted words + token index so that
+            # extract_words() runs at most once per page regardless of how many
+            # snippets (and fragments) target it. Dominant cost on large docs.
+            page_cache: dict[
+                int,
+                tuple[
+                    float,
+                    list[dict[str, Any]],
+                    list[tuple[str, int]],
+                    dict[str, list[int]],
+                ],
+            ] = {}
+
+            def _page_data(idx: int):
+                data = page_cache.get(idx)
+                if data is None:
+                    plumber_page = plumber_doc.pages[idx]
+                    page_height = float(plumber_page.height)
+                    words = plumber_page.extract_words(
+                        keep_blank_chars=False,
+                        use_text_flow=True,
+                    )
+                    flat = _flatten(words)
+                    data = (page_height, words, flat, _build_first_index(flat))
+                    page_cache[idx] = data
+                return data
+
             for snippet in snippets:
                 text = _PAGE_PREFIX_RX.sub("", snippet.text or "").strip()
                 if not text:
@@ -137,13 +164,8 @@ class PdfVisualMarker(VisualMarker):
                     page_indices = list(range(num_pages))
 
                 for page_idx in page_indices:
-                    plumber_page = plumber_doc.pages[page_idx]
-                    page_height = float(plumber_page.height)
-                    words = plumber_page.extract_words(
-                        keep_blank_chars=False,
-                        use_text_flow=True,
-                    )
-                    rects = _find_rects(words, page_height, text)
+                    page_height, words, flat, first_index = _page_data(page_idx)
+                    rects = _find_rects(words, page_height, text, flat, first_index)
                     if rects:
                         for x0, y0, x1, y1 in rects:
                             # QuadPoints per PDF spec: UL, UR, LL, LR
@@ -188,38 +210,112 @@ def _find_rects(
     words: list[dict[str, Any]],
     page_height: float,
     text: str,
+    flat: "list[tuple[str, int]] | None" = None,
+    first_index: "dict[str, list[int]] | None" = None,
 ) -> list[tuple[float, float, float, float]]:
-    """Return PDF-coordinate rects for all matches of *text* on the page."""
-    rects = _match_word_sequence(words, page_height, text)
+    """Return PDF-coordinate rects for all matches of *text* on the page.
+
+    ``flat`` and ``first_index`` may be supplied by the caller (see the per-page
+    cache in ``mark_to_bytes``) to avoid recomputing them for every snippet and
+    every fragment on the same page.
+    """
+    if flat is None:
+        flat = _flatten(words)
+    if first_index is None:
+        first_index = _build_first_index(flat)
+    rects = _match_word_sequence(words, page_height, text, flat, first_index)
     if rects:
         return rects
     for fragment in _iter_fragments(text):
-        rects.extend(_match_word_sequence(words, page_height, fragment))
-    return rects
+        rects.extend(
+            _match_word_sequence(words, page_height, fragment, flat, first_index)
+        )
+    if rects:
+        return rects
+    # Last resort for tables/blocks with neither newlines nor sentence
+    # punctuation (e.g. numbered connector legends): match short fixed-size
+    # token windows so the source region is still marked even when the full
+    # token order differs from the page's reading order.
+    return _match_token_windows(words, page_height, text, flat, first_index)
+
+
+def _flatten(words: list[dict[str, Any]]) -> "list[tuple[str, int]]":
+    """Flatten page words into ``(token, word_index)`` pairs (one per token)."""
+    flat: list[tuple[str, int]] = []
+    for wi, w in enumerate(words):
+        for tok in _tokenize(w["text"]):
+            flat.append((tok, wi))
+    return flat
+
+
+def _build_first_index(flat: "list[tuple[str, int]]") -> "dict[str, list[int]]":
+    """Map each token to the ascending flat-positions where it occurs.
+
+    Used to jump straight to candidate match starts instead of scanning every
+    position — a large win on long pages with many short fragment/window probes.
+    """
+    idx: dict[str, list[int]] = {}
+    for i, (tok, _) in enumerate(flat):
+        idx.setdefault(tok, []).append(i)
+    return idx
+
+
+def _match_token_windows(
+    words: list[dict[str, Any]],
+    page_height: float,
+    text: str,
+    flat: "list[tuple[str, int]]",
+    first_index: "dict[str, list[int]]",
+    window: int = 4,
+) -> list[tuple[float, float, float, float]]:
+    """Match consecutive ``window``-token slices of *text*, deduping rects."""
+    tokens = _tokenize(text)
+    if len(tokens) <= window:
+        return []
+    seen: set[tuple[float, float, float, float]] = set()
+    out: list[tuple[float, float, float, float]] = []
+    for start in range(0, len(tokens) - window + 1, window):
+        fragment = " ".join(tokens[start : start + window])
+        for rect in _match_word_sequence(
+            words, page_height, fragment, flat, first_index
+        ):
+            if rect not in seen:
+                seen.add(rect)
+                out.append(rect)
+    return out
 
 
 def _match_word_sequence(
     words: list[dict[str, Any]],
     page_height: float,
     text: str,
+    flat: "list[tuple[str, int]] | None" = None,
+    first_index: "dict[str, list[int]] | None" = None,
 ) -> list[tuple[float, float, float, float]]:
-    """Sliding-window token search; returns merged bboxes in PDF coords."""
+    """Token-sequence search; returns merged bboxes in PDF coords.
+
+    Candidate start positions are looked up via ``first_index`` (positions of the
+    first target token) so only plausible windows are compared.
+    """
     target = _tokenize(text)
     if not target:
         return []
-
-    # Flatten page words into (token, word_index) pairs.
-    flat: list[tuple[str, int]] = []
-    for wi, w in enumerate(words):
-        for tok in _tokenize(w["text"]):
-            flat.append((tok, wi))
+    if flat is None:
+        flat = _flatten(words)
+    if first_index is None:
+        first_index = _build_first_index(flat)
 
     n = len(target)
+    flat_len = len(flat)
     rects: list[tuple[float, float, float, float]] = []
-    i = 0
-    while i <= len(flat) - n:
-        if [t for t, _ in flat[i : i + n]] == target:
-            involved = sorted({wi for _, wi in flat[i : i + n]})
+    last_end = -1
+    for start in first_index.get(target[0], ()):
+        if start < last_end:  # keep matches non-overlapping (as before)
+            continue
+        if start + n > flat_len:  # positions are ascending → no later fit either
+            break
+        if [t for t, _ in flat[start : start + n]] == target:
+            involved = sorted({wi for _, wi in flat[start : start + n]})
             ws = [words[wi] for wi in involved]
             x0 = min(w["x0"] for w in ws)
             x1 = max(w["x1"] for w in ws)
@@ -227,9 +323,7 @@ def _match_word_sequence(
             y0 = page_height - max(w["bottom"] for w in ws)
             y1 = page_height - min(w["top"] for w in ws)
             rects.append((x0, y0, x1, y1))
-            i += n
-        else:
-            i += 1
+            last_end = start + n
     return rects
 
 

@@ -85,29 +85,27 @@ class TestABCContract:
 
 class TestSplitSentences:
     def test_split_on_period(self):
-        result = SentenceWindowChunker._split_sentences("Hello world. Foo bar.")
+        result = _make_chunker()._split_sentences("Hello world. Foo bar.")
         assert result == ["Hello world.", "Foo bar."]
 
     def test_split_on_question_mark(self):
-        result = SentenceWindowChunker._split_sentences("What? Why?")
+        result = _make_chunker()._split_sentences("What? Why?")
         assert result == ["What?", "Why?"]
 
     def test_split_on_exclamation(self):
-        result = SentenceWindowChunker._split_sentences("Wow! Amazing!")
+        result = _make_chunker()._split_sentences("Wow! Amazing!")
         assert result == ["Wow!", "Amazing!"]
 
     def test_split_on_newlines(self):
-        result = SentenceWindowChunker._split_sentences(
-            "Line one\nLine two\nLine three"
-        )
+        result = _make_chunker()._split_sentences("Line one\nLine two\nLine three")
         assert result == ["Line one", "Line two", "Line three"]
 
     def test_empty_text(self):
-        result = SentenceWindowChunker._split_sentences("")
+        result = _make_chunker()._split_sentences("")
         assert result == []
 
     def test_no_boundaries_returns_single(self):
-        result = SentenceWindowChunker._split_sentences(
+        result = _make_chunker()._split_sentences(
             "just one long sentence without punctuation"
         )
         assert result == ["just one long sentence without punctuation"]

@@ -23,6 +23,10 @@ class Session:
         self.file_path_select: Optional[str | None] = (
             None  # Internal flag only, will not be shown to user
         )
+        # Interactive metadata filters ({field: value}) applied as an extra
+        # ChromaDB `where` condition during retrieval (metadata! / metadata= /
+        # metadata- in-chat commands).
+        self.metadata_filters: dict[str, str] = {}
         self.query: str | None = None
         self.strategy: str | None = None
         self.retriever_k: int | None = None

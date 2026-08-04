@@ -684,3 +684,47 @@ def test_md_marker_does_not_modify_source(tmp_path):
     before = work.read_bytes()
     PlainTextVisualMarker().mark_to_bytes(work, [ChunkSnippet(text="cats")])
     assert work.read_bytes() == before
+
+
+# ---------------------------------------------------------------------------
+# PdfVisualMarker._find_rects — token-window fallback for tables/blocks
+# ---------------------------------------------------------------------------
+
+
+def _word(text: str, x0: float) -> dict:
+    """Synthetic pdfplumber word box on a single line."""
+    return {"text": text, "x0": x0, "x1": x0 + 10.0, "top": 0.0, "bottom": 5.0}
+
+
+def test_find_rects_token_window_fallback_for_tablelike_text():
+    """A block with no newlines/sentence punctuation whose full token order is
+    broken on the page still yields rects via the fixed-size window fallback."""
+    from VisualMarkers.PdfVisualMarker import _find_rects
+
+    # "zulu" splits the target's tokens so the full sequence never matches, but
+    # each contiguous 4-token window does.
+    page_words = [
+        _word("alpha", 0),
+        _word("bravo", 10),
+        _word("charlie", 20),
+        _word("delta", 30),
+        _word("zulu", 40),
+        _word("echo", 50),
+        _word("foxtrot", 60),
+        _word("golf", 70),
+        _word("hotel", 80),
+    ]
+    target = "alpha bravo charlie delta echo foxtrot golf hotel"
+    rects = _find_rects(page_words, page_height=100.0, text=target)
+    assert len(rects) == 2
+
+
+def test_find_rects_prefers_full_match_over_windows():
+    """When the full sequence matches, a single merged rect is returned."""
+    from VisualMarkers.PdfVisualMarker import _find_rects
+
+    page_words = [
+        _word(t, i * 10) for i, t in enumerate(["one", "two", "three", "four"])
+    ]
+    rects = _find_rects(page_words, page_height=100.0, text="one two three four")
+    assert len(rects) == 1

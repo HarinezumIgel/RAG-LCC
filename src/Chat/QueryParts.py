@@ -19,6 +19,7 @@ from Gui.CollectionPicker import CollectionPicker
 from Gui.Colors import BRIGHT_BLUE, CYAN, ORANGE, RESET, YELLOW
 from Gui.FileList import FileList
 from Gui.HistoryManager import HistoryManager
+from Gui.MetadataPicker import MetadataPicker
 from Gui.PrettyWriter import PrettyWriter
 from Helpers.DebugHelper import DebugHelper
 from Helpers.Helpers import Helpers
@@ -312,6 +313,18 @@ class QueryParts(SingletonMixin):
             "type": "string",
             "attr": "path_name",
         },
+        "metadata": {
+            "section": "File Input",
+            "prompt": (
+                "Filters retrieval to chunks whose metadata matches selected "
+                "field=value pairs (author, dates, page label, file size, …). "
+                "metadata! opens a picker to select multiple fields/values; "
+                "metadata=Field:Value assigns one directly; metadata- clears all."
+            ),
+            "mode": "metadata",
+            "type": "string",
+            "attr": "metadata_filters",
+        },
         "file_cap": {
             "section": "File Input",
             "prompt": (
@@ -465,7 +478,7 @@ class QueryParts(SingletonMixin):
             r"temperature|top_p|top_k|"
             r"rerank|vector_weight|bm25_weight|graph_weight|"
             r"web_search|web_weight|web_rerank_threshold|fetch_page_content|"
-            r"file_cap|collection|chat_name|context|"
+            r"file_cap|collection|chat_name|context|metadata|"
             r"history_keep|history_prune|rewrite_context|topic_summary|"
             r"retrieve_mode|debug_level|debug_mode|help|show|"
             r"mark_text"
@@ -479,6 +492,7 @@ class QueryParts(SingletonMixin):
         self.session: Session = Session()
         self.ragChatImpl: RAGChatImpl = RAGChatImpl()
         self.fileList: FileList = FileList()
+        self.metadataPicker: MetadataPicker = MetadataPicker()
         self.cfg: Config = cfg or Config()
         self.helpers: Helpers = helpers or Helpers()
         self.pretty: PrettyWriter = pretty or PrettyWriter()
@@ -574,6 +588,13 @@ class QueryParts(SingletonMixin):
             ),
             "file": getattr(s, "file_name", None),
             "path": getattr(s, "file_path", None),
+            "metadata": (
+                "  ".join(
+                    f"{k}={v}"
+                    for k, v in (getattr(s, "metadata_filters", {}) or {}).items()
+                )
+                or None
+            ),
             "file_cap": getattr(s, "per_file_limit", None),
             "use_chat_context": getattr(s, "use_chat_context", None),
             "history_keep": getattr(s, "turns", None),
@@ -708,6 +729,13 @@ class QueryParts(SingletonMixin):
         spec = self.COMMAND_SPECS.get(tok, {})
 
         mode = spec.get("mode", "normal")
+
+        if mode == "metadata":
+            s.metadata_filters = self.metadataPicker.pick(
+                s.collection_name, dict(s.metadata_filters or {})
+            )
+            self._print_metadata_filters()
+            return
 
         if mode in ("file", "path"):
             entry = self.fileList.select(
@@ -1074,6 +1102,8 @@ class QueryParts(SingletonMixin):
         elif tok == "path":
             _, fp = self.fileList.get_current()
             print(f"[path] Path: {fp}")
+        elif tok == "metadata":
+            self._print_metadata_filters()
         elif tok == "strategy":
             print(f"[strategy] {s.strategy}")
         elif tok == "chat_name":
@@ -1167,11 +1197,25 @@ class QueryParts(SingletonMixin):
 
     # ——— Resetting on collection change ———
 
+    def _print_metadata_filters(self) -> None:
+        mf = self.session.metadata_filters or {}
+        if not mf:
+            print("[metadata] (none)")
+        else:
+            pairs = "  ".join(f"{k}={v}" for k, v in mf.items())
+            print(f"[metadata] {pairs}")
+
     def reset_things(self):
         if self.session.file_name or self.session.file_path:
-            print(f"⚠ Clearing current file name / file path")
+            print("⚠ File / path filter cleared")
             self.session.file_name, self.session.file_path = None, None
             self.session.file_path_select = None
+        # Drop the FileList pointer too, otherwise `file`/`path` would still
+        # report the previous collection's selection after a switch.
+        self.fileList.clear_current()
+        if self.session.metadata_filters:
+            print("⚠ Metadata filters cleared")
+            self.session.metadata_filters = {}
         self.hist.load(
             f"{self.session.collection_name}_{self.session.chat_name}", "Query"
         )
@@ -1196,6 +1240,22 @@ class QueryParts(SingletonMixin):
             self.session.file_name = fn if tok == "file" else None
             self.session.file_path = fp if tok == "path" else None
             self.session.file_path_select = tok.lower()
+            return
+
+        if tok == "metadata":
+            sep = ":" if ":" in p else ("=" if "=" in p else "")
+            if not sep:
+                print(
+                    "⚠ metadata expects Field:Value (e.g. metadata=Author:python-docx)"
+                )
+                return
+            field, _, value = p.partition(sep)
+            field, value = field.strip(), value.strip().strip("'\"")
+            if not field or not value:
+                print("⚠ metadata expects a non-empty Field and Value")
+                return
+            self.session.metadata_filters[field] = value
+            self._print_metadata_filters()
             return
 
         if tok == "strategy":
@@ -1307,6 +1367,9 @@ class QueryParts(SingletonMixin):
         if tok in ("file", "path"):
             s.file_name, s.file_path = None, None
             s.file_path_select = None
+        elif tok == "metadata":
+            s.metadata_filters = {}
+            print("[metadata] all metadata filters cleared")
         elif tok == "max_output_tokens":
             s.max_output_tokens_override = None
             print("[max_output_tokens] override cleared — dynamic budget will be used")

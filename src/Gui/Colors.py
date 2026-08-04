@@ -12,6 +12,7 @@ CYAN = "\033[36m"
 WHITE = "\033[37m"
 ORANGE = "\033[38;2;255;165;0m"
 VIOLET = "\033[38;2;138;43;226m"
+TURQUOISE = "\033[38;2;64;224;208m"
 
 # bright/high-intensity
 BRIGHT_BLACK = "\033[90m"

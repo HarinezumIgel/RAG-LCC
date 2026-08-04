@@ -11,7 +11,12 @@ SOURCE = os.path.join(ROOT, "src")
 if SOURCE not in sys.path:
     sys.path.insert(0, SOURCE)
 
-from Strategies.Chunkers.SentenceSplitter import SentenceSplitter
+from Strategies.Chunkers.SentenceSplitter import SentenceSplitter as _SentenceSplitter
+
+# split_sentences is now an instance method; use a shared singleton instance so
+# the existing static-style call sites below keep working unchanged.
+SentenceSplitter = _SentenceSplitter()
+
 
 # ── Classic prose boundaries ──────────────────────────────────────────────
 

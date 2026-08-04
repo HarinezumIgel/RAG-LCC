@@ -133,38 +133,38 @@ class TestSemanticChunkerABC:
 
 class TestSentenceSplitting:
     def test_splits_on_period(self):
-        sents = SemanticChunker._split_sentences("Hello world. How are you? Fine!")
+        sents = _make_chunker()._split_sentences("Hello world. How are you? Fine!")
         assert len(sents) == 3
 
     def test_splits_on_newline(self):
-        sents = SemanticChunker._split_sentences("Line one\nLine two\nLine three")
+        sents = _make_chunker()._split_sentences("Line one\nLine two\nLine three")
         assert len(sents) == 3
 
     def test_empty_string(self):
-        sents = SemanticChunker._split_sentences("")
+        sents = _make_chunker()._split_sentences("")
         assert sents == []
 
     def test_single_sentence(self):
-        sents = SemanticChunker._split_sentences("Just one sentence")
+        sents = _make_chunker()._split_sentences("Just one sentence")
         assert len(sents) == 1
 
 
 class TestCosineSimilarities:
     def test_identical_vectors_give_one(self):
         embs = [[1.0, 0.0], [1.0, 0.0], [1.0, 0.0]]
-        sims = SemanticChunker._cosine_similarities(embs)
+        sims = _make_chunker()._cosine_similarities(embs)
         assert len(sims) == 2
         assert all(abs(s - 1.0) < 1e-6 for s in sims)
 
     def test_orthogonal_vectors_give_zero(self):
         embs = [[1.0, 0.0], [0.0, 1.0]]
-        sims = SemanticChunker._cosine_similarities(embs)
+        sims = _make_chunker()._cosine_similarities(embs)
         assert len(sims) == 1
         assert abs(sims[0]) < 1e-6
 
     def test_length_is_n_minus_one(self):
         embs = [[1.0, 0.0]] * 5
-        sims = SemanticChunker._cosine_similarities(embs)
+        sims = _make_chunker()._cosine_similarities(embs)
         assert len(sims) == 4
 
 
@@ -190,7 +190,7 @@ class TestBreakpoints:
 class TestGrouping:
     def test_groups_sentences_at_breakpoints(self):
         sentences = ["A", "B", "C", "D", "E"]
-        groups = SemanticChunker._group_sentences(sentences, [2, 4])
+        groups = _make_chunker()._group_sentences(sentences, [2, 4])
         assert len(groups) == 3
         assert groups[0] == "A B"
         assert groups[1] == "C D"
@@ -198,7 +198,7 @@ class TestGrouping:
 
     def test_no_breakpoints_single_group(self):
         sentences = ["A", "B", "C"]
-        groups = SemanticChunker._group_sentences(sentences, [])
+        groups = _make_chunker()._group_sentences(sentences, [])
         assert len(groups) == 1
         assert groups[0] == "A B C"
 

@@ -40,6 +40,9 @@ def _make_chunker(max_chunk_size: int = 100) -> PdfPageChunker:
 
     cfg.get_int.side_effect = get_int
     cfg.get_list.return_value = ["\n\n", "\n", " "]
+    # Metadata page-label capture off by default → prefix stays "Page N".
+    cfg.get_bool.return_value = False
+    cfg.get_str.return_value = ""
     file_utils.count_words.side_effect = lambda t: len(t.split())
 
     return PdfPageChunker(cfg=cfg, helpers=helpers, file_utils=file_utils)
@@ -367,6 +370,64 @@ class TestPdfStructuredParsing:
             c.chunk("", meta)
 
         mock_parse.assert_called_once_with(str(pdf_file))
+
+
+# ---------------------------------------------------------------------------
+# Printed page-label detection (footer/header parsing)
+# ---------------------------------------------------------------------------
+
+
+class TestPrintedLabelDetection:
+    def test_roman_trailing_footer(self):
+        c = _make_chunker()
+        assert (
+            c._detect_printed_label("Contents\n© Copyright Lenovo 2020, 2021 i") == "i"
+        )
+
+    def test_roman_leading_header(self):
+        c = _make_chunker()
+        assert c._detect_printed_label("iv P620 User Guide\nAbout this") == "iv"
+
+    def test_arabic_trailing_footer(self):
+        c = _make_chunker()
+        assert c._detect_printed_label("Rear\nChapter 1 . Meet your computer 3") == "3"
+
+    def test_arabic_leading_header(self):
+        c = _make_chunker()
+        assert c._detect_printed_label("2 P620 User Guide\nbody") == "2"
+
+    def test_standalone_number(self):
+        c = _make_chunker()
+        assert c._detect_printed_label("body text\n12") == "12"
+
+    def test_page_of_pattern(self):
+        c = _make_chunker()
+        assert c._detect_printed_label("Intro\nPage 5 of 118") == "5"
+
+    def test_no_number_returns_empty(self):
+        c = _make_chunker()
+        assert c._detect_printed_label("P620\nUser Guide") == ""
+
+    def test_list_label_not_mistaken_for_page(self):
+        c = _make_chunker()
+        # A numbered list item ("7.") must not be read as a page number.
+        assert c._detect_printed_label("7. Headset connector\nsome body text") == ""
+
+    def test_language_aware_page_of(self, monkeypatch):
+        # The German "Seite 3 von 118" footer is matched once "page"/"of" are
+        # translated via the shared cached translator (stubbed here).
+        import Compliance.SharedHelpers as sh_mod
+
+        def _fake_translate(self, text, target_lang, source_lang="en"):
+            return {"page": "Seite", "of": "von"}.get(text, text)
+
+        monkeypatch.setattr(
+            sh_mod.SharedHelpers, "translate_text", _fake_translate, raising=True
+        )
+        c = _make_chunker()
+        _token_re, of_re = c._build_page_patterns("de")
+        m = of_re.search("Kapitel 1  Seite 3 von 118")
+        assert m is not None and m.group(1) == "3"
 
 
 # ---------------------------------------------------------------------------

@@ -6,9 +6,96 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [Released] — 2026-08-04
+
+### 🖍️ PDF source marking — correct page, tables, and speed
+
+- **Source-page confinement** — answer-grounding (orange) snippets now carry the
+  source chunk's physical `PageNumber` (`RAGChatImpl._build_grounded_snippets`).
+  Previously they were created with `page_number=None`, so the marker scanned the
+  whole document and highlighted the **first** page where a fragment appeared —
+  marking front-matter / table-of-contents pages instead of the real source page.
+- **Token-window fallback** — `PdfVisualMarker._find_rects` gained a third matching
+  tier (`_match_token_windows`): consecutive 4-token slices are matched when the
+  full sequence and line/sentence fragments do not. This finally highlights
+  multi-column tables and numbered legends (no newlines, no sentence punctuation,
+  page word order ≠ stored order) that were previously left unmarked.
+- **Performance** — `mark_to_bytes` now caches each touched page's
+  `extract_words()`, flattened token list, and a **first-token position index**,
+  computed once per page and reused across all snippets, fragments, and windows.
+  `_match_word_sequence` uses the index to jump to plausible match starts instead
+  of scanning every offset. Marking touches only the selected source pages, so a
+  realistic multi-chunk answer on a large document no longer re-extracts pages.
+- **Tests** — `test_visual_markers.py` extended with token-window fallback cases.
+
+### 🏷️ Document metadata extraction, display & filtering
+
+- **`DocumentMetadataExtractor`** (new singleton, `src/Strategies/Chunkers/`) —
+  harvests document-info fields (author, title, subject, creator, producer,
+  created/modified dates, keywords) from PDF (pypdf) and modern Office formats
+  (docx/pptx/xlsx), with per-concept **synonym** resolution across formats;
+  every other file type falls back to generic filesystem fields. A `Pages`
+  count is attached where meaningful. Controlled by `_METADATA_EXTRACTION` in
+  `Config_Global.py` (`ENABLED`, `DOC_INFO_FIELDS`, `GENERIC_FIELDS`,
+  `PDF_PAGE_LABEL_FIELD`, `SHOW_IN_ANSWER`).
+- **Answer display** — `Helpers.build_document_metadata_md` appends a
+  **Document metadata** section (per file, empty fields skipped) to CLI and
+  HTTP answers; source citations prefer the printed page label.
+- **Load-time visibility** — `Config_RAGLoad.py` → `SHOW_EXTRACTED_METADATA`
+  (default `True`) prints harvested fields per ingested file.
+- **Interactive filtering** — new `metadata!` picker (`Gui/MetadataPicker.py`,
+  lists only fields that actually have values), `metadata=Field:Value`, and
+  `metadata-` commands set a `{field: value}` filter applied as a flat ChromaDB
+  `where` condition and honoured by the BM25 and graph retrievers. Active file /
+  metadata filters are printed in turquoise before each query.
+
+### 🖨️ PDF printed page-label detection
+
+- **`PdfPageChunker`** now recovers the **printed** page number from each page's
+  footer/header text (numeric or Roman) when the PDF's `/PageLabels` metadata
+  omits it, storing it in `PageLabel` while the physical index stays in
+  `PageNumber`. Detection is language-aware — the "page"/"of" keywords are
+  translated for non-English documents via the cached translator (no banlist
+  side effects). New knob `_CHUNKERS.PDF_PAGE.DETECT_PRINTED_LABEL` (default
+  `True`).
+
+### 🧹 Chunker refactor
+
+- The `@staticmethod` helpers across the chunkers (`HeadingChunker`,
+  `SemanticChunker`, `SentenceSplitter`, `SentenceWindowChunker`, `SlideChunker`,
+  `SlidingWindowChunker`, `PdfPageChunker`/`PageBasedChunker`) were converted to
+  instance methods so they participate in the singleton pattern and can read
+  per-document state (e.g. detected language). Tests updated accordingly.
+
+---
+
+### � Changed — Reranking skipped when the whole pool is unconfident
+
+`HomeBrewChunkSelector.filter_threshold` now detects when **no** local chunk's
+`sigmoid(raw_rerank_score)` reaches the configured threshold. In that case the
+cross-encoder is unconfident about the entire pool (common with mmarco-style
+rerankers on technical/tabular content, where the correct chunk can be demoted
+to last), so reranking is **skipped**: every chunk is kept and the selector
+orders them by retrieval (RRF) score instead of the logit.
+
+- **Rerank-skip fallback** replaces the previous relative-band fallback. When it
+  fires an orange `Rerank skipped` message is emitted.
+- **`ChunkSelector._get_retrieval_score` / `_rank_key`** (new): retrieval-score
+  ordering used by all three selectors (`ScoreRankedSelector`,
+  `PerFileCapSelector`, `SingleDocumentSelector`) while rerank is skipped.
+- **`_RELATIVE_LOGIT_MARGIN`** and the relative-band branch removed. The
+  score-evaluation math (`sigmoid(raw_logit) ≥ threshold`) is unchanged.
+- **`Config_RAGChat.py`** — five strategy thresholds recalibrated around the
+  neutral logit (sigmoid(0) = 0.50): NARROW `0.70→0.60`,
+  BALANCED_FILE_CAP `0.65→0.55`, DEFAULT/WIDE `0.60→0.50`,
+  ULTRA_WIDE `0.55→0.45`.
+- **Docs** — `CONFIGURATION_REFERENCE.md` threshold description updated.
+- **Tests** — `test_chunk_selector.py` and `test_web_retriever.py` updated for
+  the rerank-skip behaviour.
+
 ## [Released] — 2026-08-03
 
-### 🖥️ Cross-platform license pager & pip bootstrap in setup scripts
+### �🖥️ Cross-platform license pager & pip bootstrap in setup scripts
 
 - **`Setup.py` / `NLTK_Stopwords_WordNet.py`** — `_page_text` now supports a
   native Windows pager: on `nt` it pipes the license text through the built-in

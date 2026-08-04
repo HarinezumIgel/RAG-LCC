@@ -1125,7 +1125,32 @@ Each highlighter returns `bytes` — the annotated document as an in-memory byte
 4. Stores `(source_path, highlighted_bytes)` tuples on `session.marked_documents`.
 5. Stores raw chunk texts on `session.chunk_texts_for_grounding` for the CLI answer-grounding step.
 
-### 📬 Delivery — CLI (`RAGChat`)
+### � PDF text matching, page confinement & performance
+
+`PdfVisualMarker` locates each snippet's text on the page with a three-tier
+strategy (`_find_rects`), applied in order until one produces bounding boxes:
+
+1. **Full token sequence** — the whole snippet matched as one contiguous run of tokens.
+2. **Line / sentence fragments** — each newline- or sentence-delimited fragment (≥ `_MIN_FRAGMENT_LEN` chars) matched independently.
+3. **Fixed token windows** — consecutive 4-token slices matched individually. This last resort covers tables and numbered legends that have neither newlines nor sentence punctuation and whose token order on the page differs from the stored chunk text (e.g. multi-column connector tables), which would otherwise be left unmarked.
+
+**Source-page confinement.** Both the yellow chunk snippets and the orange
+answer-grounding snippets carry the source chunk's physical `PageNumber`, so the
+highlight is placed on that exact page. This prevents a grounded fragment that
+also appears earlier (table of contents, front matter) from being marked on the
+wrong page. A snippet is only scanned across all pages when it has no valid page
+number.
+
+**Performance (large documents).** Marking a document touches only the pages
+that actually carry a snippet. For each touched page, `pdfplumber.extract_words()`,
+the flattened `(token, word_index)` list, and a first-token position index are
+computed **once** and cached for the duration of the call, so multiple snippets
+(and every fragment/window probe) on the same page reuse them instead of
+re-extracting. The first-token index lets the matcher jump straight to plausible
+start positions rather than scanning every offset. `extract_words()` dominates
+the cost, so confining work to the selected source pages is the primary speed-up.
+
+### �📬 Delivery — CLI (`RAGChat`)
 
 `Chatter._open_marked_documents()` → `MarkedDocsViewer.open_marked_documents()`:
 

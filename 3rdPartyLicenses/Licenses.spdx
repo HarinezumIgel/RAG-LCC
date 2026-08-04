@@ -4,7 +4,7 @@ SPDXID: SPDXRef-DOCUMENT
 DocumentName: RAG-LCC-DEPLOY-Licenses
 DocumentNamespace: http://example.org/spdxdocs/RAG-LCC-DEPLOY-Licenses
 Creator: pip-licenses
-Created: 2026-08-03T18:22:02+02:00
+Created: 2026-08-04T18:22:18+02:00
 
 #####
 PackageName: Jinja2
@@ -207,7 +207,7 @@ PackageLicenseDeclared: Mozilla Public License 2.0 (MPL 2.0)
 #####
 PackageName: cffi
 SPDXID: SPDXRef-Package-cffi
-PackageVersion: 2.1.0
+PackageVersion: 2.1.1
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: MIT-0
@@ -468,7 +468,7 @@ PackageLicenseDeclared: MIT License
 #####
 PackageName: hf-xet
 SPDXID: SPDXRef-Package-hf-xet
-PackageVersion: 1.5.2
+PackageVersion: 1.6.0
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: Apache-2.0

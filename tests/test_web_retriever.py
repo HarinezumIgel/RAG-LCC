@@ -576,10 +576,19 @@ class TestFilterThreshold:
         assert len(result) == 1
 
     def test_local_below_threshold_filtered(self):
+        """A below-threshold local doc is dropped only when the pool is confident
+        (a sibling clears the threshold, so reranking is not skipped)."""
         sel = self._selector(0.65)
-        docs = [_make_doc(0.30, "Local")]  # sigmoid(0.30)≈0.574 < 0.65 → filtered
+        docs = [
+            _make_doc(
+                0.80, "Local", "good.txt"
+            ),  # sigmoid(0.80)≈0.690 ≥ 0.65 → confident
+            _make_doc(0.30, "Local", "bad.txt"),  # sigmoid(0.30)≈0.574 < 0.65 → dropped
+        ]
         result = sel.filter_threshold(docs)
-        assert result == []
+        names = {d.metadata["FileName"] for d in result}
+        assert "good.txt" in names
+        assert "bad.txt" not in names
 
     def test_local_at_threshold_passes(self):
         """Score equal to threshold is accepted (>= comparison)."""
@@ -640,8 +649,9 @@ class TestFilterThreshold:
         assert "bad_local.txt" not in filenames
 
     def test_local_below_threshold_filtered_web_passes(self):
-        """Local docs below threshold are filtered; web docs pass with default
-        web_rerank_threshold=0.0 regardless of the local threshold.
+        """When the only local doc is below threshold the cross-encoder is
+        unconfident about the whole pool: reranking is skipped and every doc
+        (local + web) is retained for retrieval-order selection.
         """
         sel = self._selector(0.90)
         docs = [
@@ -649,9 +659,8 @@ class TestFilterThreshold:
             _make_doc(0.10, "Web"),
         ]
         result = sel.filter_threshold(docs)
-        # local 0.10 < 0.90 → filtered; web 0.10 >= 0.0 → passes
-        assert len(result) == 1
-        assert result[0].metadata["Source"] == "Web"
+        # local 0.10 → sigmoid 0.525 < 0.90 → pool unconfident → rerank skipped → all kept
+        assert len(result) == 2
 
     def test_empty_input_returns_empty(self):
         sel = self._selector()

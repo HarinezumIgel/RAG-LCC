@@ -85,7 +85,7 @@ _STRATEGIES: dict[str, dict[str, int | float | bool | str]] = {
     "NARROW": {  # Precision-oriented — only strong semantic matches
         "final_chunks_to_llm": 20,  # Max chunks after selection — small for focused answers
         "retriever_k": 80,  # Retriever candidates fetched per store before fusion/reranking
-        "threshold": 0.70,  # sigmoid probability ≥ 0.70 (70 % confidence); only strong matches survive
+        "threshold": 0.60,  # cross-encoder confidence floor; sigmoid(logit) ≥ 0.60 needs a clearly positive logit (precision). If no chunk clears it, rerank is skipped and chunks fall back to retrieval (RRF) order
         "max_output_tokens": 8192,  # Upper bound on generated output tokens
         "temperature": 0.1,  # Low temperature — near-deterministic output
         "top_k": 20,  # Narrow token sampling — focused word choices
@@ -106,7 +106,7 @@ _STRATEGIES: dict[str, dict[str, int | float | bool | str]] = {
     "BALANCED_FILE_CAP": {  # Balanced precision / recall with per-file chunk cap
         "final_chunks_to_llm": 40,  # Moderate selection window
         "retriever_k": 60,  # Retriever candidates fetched per store before fusion/reranking
-        "threshold": 0.65,  # sigmoid probability ≥ 0.65 (65 % confidence); balances relevance and breadth
+        "threshold": 0.55,  # cross-encoder confidence floor; sigmoid(logit) ≥ 0.55 (slightly positive logit). If no chunk clears it, rerank is skipped and chunks fall back to retrieval (RRF) order
         "max_output_tokens": 14366,  # Upper bound on generated output tokens
         "temperature": 0.1,  # Low temperature — near-deterministic output
         "top_k": 40,  # Moderate token sampling — some variety
@@ -127,7 +127,7 @@ _STRATEGIES: dict[str, dict[str, int | float | bool | str]] = {
     "DEFAULT": {  # General-purpose balanced retrieval
         "final_chunks_to_llm": 50,  # Moderate selection window
         "retriever_k": 100,  # Retriever candidates fetched per store before fusion/reranking
-        "threshold": 0.60,  # sigmoid probability ≥ 0.60 (60 % confidence); cuts tail while keeping good chunks
+        "threshold": 0.50,  # cross-encoder confidence floor at the neutral logit (sigmoid(0)=0.50). If no chunk clears it the rerank is skipped and chunks fall back to retrieval (RRF) order
         "max_output_tokens": 14366,  # Upper bound on generated output tokens
         "temperature": 0.1,  # Low temperature — near-deterministic output
         "top_k": 40,  # Moderate token sampling — some variety
@@ -148,7 +148,7 @@ _STRATEGIES: dict[str, dict[str, int | float | bool | str]] = {
     "WIDE": {  # Recall-oriented — exploratory search across many chunks
         "final_chunks_to_llm": 60,  # Large selection window — more context for the LLM
         "retriever_k": 160,  # Retriever candidates fetched per store before fusion/reranking
-        "threshold": 0.60,  # sigmoid probability ≥ 0.60 (60 % confidence); favors recall over precision
+        "threshold": 0.50,  # cross-encoder confidence floor at the neutral logit (sigmoid(0)=0.50); favors recall. If no chunk clears it the rerank is skipped and chunks fall back to retrieval (RRF) order
         "max_output_tokens": 14366,  # Upper bound on generated output tokens
         "temperature": 0.1,  # Low temperature — near-deterministic output
         "top_k": 100,  # Broad token sampling — 100 candidates per step
@@ -169,7 +169,7 @@ _STRATEGIES: dict[str, dict[str, int | float | bool | str]] = {
     "ULTRA_WIDE": {  # Diagnostic / exploratory — very high recall, high cost
         "final_chunks_to_llm": 1500,  # Very large selection window (high computational cost)
         "retriever_k": 3000,  # Retriever candidates fetched per store before fusion/reranking
-        "threshold": 0.55,  # sigmoid probability ≥ 0.55 (55 % confidence); includes weak matches
+        "threshold": 0.45,  # cross-encoder confidence floor below the neutral logit; keeps weak (slightly negative logit) matches and rarely falls back to retrieval order
         "max_output_tokens": 14366,  # Upper bound on generated output tokens
         "temperature": 0.1,  # Low temperature — near-deterministic output
         "top_k": 100,  # Broad token sampling — 100 candidates per step
@@ -291,7 +291,7 @@ A bullet list of the metadata fields for EVERY distinct FileName you used to ans
 (one bullet group per distinct FileName — do not repeat the same FileName):
   - FileName
   - FilePath
-  - PageNumber (if available)
+  - Page (use the printed page label shown in the source header, if available)
 
 Query:
 {input}

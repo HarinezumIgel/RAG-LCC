@@ -121,6 +121,7 @@ press enter
 ```
 
 List the available files and select Dogs.png and the narrow strategy since we work upon one file now.
+For a folder-based scope, use `path!` (picker) or `path=<absolute_path>`.
 There are 5 predefined strategies: ultra_wide, wide, balanced_file_cap, narrow and default. The predefined settings can be found in `Configuration/Config_RAGChat.py`. The wider strategies are configured to retrieve more chunks and use higher thresholds. The narrow strategies are configured to retrieve fewer chunks and use lower thresholds.
 **See the session parameters change in the ▶ output**
 
@@ -132,6 +133,27 @@ press enter
 ```
 
 Now you are "fixed" upon the Dogs.png file: ▶ File Input: file='Dogs.png' path='.....'
+At the query prompt you also see a turquoise notice:
+
+```text
+🔍 File filter ON: Dogs.png
+```
+
+Alternative path-based scope (instead of `file`):
+
+```text
+🛠️  > path! select the folder path from the list
+press enter
+```
+
+At the query prompt this appears:
+
+```text
+🔍 Path filter ON: D:\\...\\YourFolder
+```
+
+The metadata picker intentionally excludes `FileName` and `FilePath`.
+Use `file`/`path` commands for file-system scoping and `metadata` commands for all other metadata fields.
 
 Query
 
@@ -140,12 +162,34 @@ Query
 press enter
 ```
 
-Clear the file filter so all documents are searched again and choose DEFAULT strategy:
+Clear the file/path filter so all documents are searched again (`file-` or `path-`) and choose DEFAULT strategy:
 
 ```text
 🛠️  > file-
 press enter
 🛠️  > strategy=default
+```
+
+Now apply a metadata filter (example: only chunks with Language=English).
+
+```text
+🛠️  > metadata!
+select field "Language"
+select value "English"
+press enter
+```
+
+At the query prompt you see:
+
+```text
+🔍 Metadata filter ON: Language=English
+```
+
+Clear metadata filters:
+
+```text
+🛠️  > metadata-
+press enter
 ```
 
 Set threshold to 0.9:
@@ -273,6 +317,13 @@ Select the collection (if not passed as `--collection` parameter). We use the UL
 🛠️  > collection! and choose My2ndCollection
 🛠️  > strategy! or strategy=ultra_wide
 press enter
+```
+
+When switching collections, active file/path and metadata filters are cleared:
+
+```text
+⚠ File / path filter cleared
+⚠ Metadata filters cleared
 ```
 
 When `FileHash: [SECRET]` appears in the query output, the Masker has matched configured patterns and replaced the corresponding text in this example.

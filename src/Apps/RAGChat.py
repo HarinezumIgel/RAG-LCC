@@ -36,7 +36,7 @@ from Compliance.HFDownloader import HFDownloader
 from Config.Config import Config
 from Globals.Globals import Globals
 from Globals.Session import Session
-from Gui.Colors import CYAN, GREEN, RESET
+from Gui.Colors import CYAN, GREEN, RESET, TURQUOISE
 from Gui.Informer import Informer
 from Gui.PrettyWriter import PrettyWriter
 from Helpers.CSVWriter import CSVWriter
@@ -169,7 +169,33 @@ class RAGChat:
                 self.pretty.write("E", "", f"Invalid path or filename: {fn}{fp}")
                 return True
 
+        # Merge interactive metadata filters as additional flat conditions.
+        # Kept flat (multi-key) so BM25/graph AND them directly; the vector
+        # path normalises to ChromaDB's $and form in RAGChatImpl._vector_kwargs.
+        meta_filters = self.session.metadata_filters or {}
+        if meta_filters:
+            combined: Dict[str, Any] = dict(base_kwargs.get("filter", {}) or {})
+            for key, value in meta_filters.items():
+                combined[key] = {"$eq": value}
+            base_kwargs["filter"] = combined
+            self.pretty.write(
+                "I",
+                "Modified query:",
+                "Filtering on metadata: "
+                + "  ".join(f"{k}={v}" for k, v in meta_filters.items()),
+                color=CYAN,
+            )
+
         self.session.base_kwargs = base_kwargs
+        # Show the effective retrieval filter (file and/or metadata) before the
+        # query runs so the user sees exactly what retrieval is restricted to.
+        active_filter = base_kwargs.get("filter")
+        if active_filter:
+            filter_desc = "  ".join(
+                f"{k}={v.get('$eq') if isinstance(v, dict) else v}"
+                for k, v in active_filter.items()
+            )
+            self.pretty.write("I", "Active filter", filter_desc, color=TURQUOISE)
         stage = "PROMPT_CHECK"
         # Check user provided prompt
         assert self.session.query is not None

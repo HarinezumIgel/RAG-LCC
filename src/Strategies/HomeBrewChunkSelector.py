@@ -7,7 +7,7 @@ from collections import Counter, defaultdict
 from typing import Any
 
 from Globals.Session import Session
-from Gui.Colors import CYAN, YELLOW
+from Gui.Colors import CYAN, ORANGE, YELLOW
 from Gui.FileList import FileList
 from Gui.Symbols import Symbols
 from Helpers.DebugHelper import DebugHelper
@@ -21,6 +21,10 @@ class ChunkSelector(ABC):
         self.session: Session = session
         self.threshold: float = self.session.chroma_threshold or 0.0
         self.per_file_limit: int = self.session.per_file_limit or 10
+        # Set by filter_threshold: True when no chunk cleared the confidence
+        # threshold and the cross-encoder ranking was skipped in favour of the
+        # retrieval (RRF) order.  Consulted by _rank_key during selection.
+        self._rerank_skipped: bool = False
         self.pretty: Any = self.session.pretty
         self.cfg: Any = self.session.cfg
         self.fileHist: FileList = FileList()
@@ -51,6 +55,25 @@ class ChunkSelector(ABC):
             if raw is not None:
                 return float(raw)
         return self._get_score(c)
+
+    def _get_retrieval_score(self, c: Any) -> float:
+        """Retrieval fusion score (higher = better) used to order chunks when the
+        cross-encoder rerank is skipped.  Prefers the fused RRF score, then the
+        individual retriever scores, and finally the rerank/chroma score."""
+        if hasattr(c, "metadata"):
+            for key in ("rrf_score", "chroma_score", "bm25_score", "graph_score"):
+                v = c.metadata.get(key)
+                if v is not None:
+                    return float(v)
+        return self._get_score(c)
+
+    def _rank_key(self, c: Any) -> float:
+        """Selection sort key.  When reranking was skipped (no chunk reached the
+        confidence threshold) chunks are ordered by their retrieval score;
+        otherwise the cross-encoder rerank score is used."""
+        return (
+            self._get_retrieval_score(c) if self._rerank_skipped else self._get_score(c)
+        )
 
     def _get_path(self, c: Any) -> str:
         if hasattr(c, "file_path"):
@@ -167,11 +190,6 @@ class ChunkSelector(ABC):
                 full_text = str(getattr(c, "page_content", "") or "")
                 self.pretty.write("A", "Chunk content", full_text)
 
-    # Additive logit margin for the relative-band fallback: when the pool's best
-    # raw logit is still below the configured threshold, accept chunks whose raw
-    # logit is within this many units of the pool maximum.
-    _RELATIVE_LOGIT_MARGIN: float = 1.0
-
     def filter_threshold(self, chunks: list[Any]) -> list[Any]:
         # Local files with exactly one chunk in the pool get a logit boost so they
         # are not penalised relative to multi-chunk documents.  Web chunks are
@@ -180,9 +198,11 @@ class ChunkSelector(ABC):
         boost = self.single_chunk_boost
         logit_boost = math.log(boost) if boost > 1.0 else 0.0
 
-        # When the pool's best raw logit is still below the configured threshold
-        # (common with mmarco-style models on technical content), fall back to a
-        # relative band: accept chunks within _RELATIVE_LOGIT_MARGIN of the max.
+        # When no local chunk clears the confidence threshold the cross-encoder
+        # is unconfident about the whole pool (common with mmarco-style rerankers
+        # on technical/tabular content, where the correct answer can be demoted
+        # to last).  In that case skip reranking entirely: keep every chunk and
+        # let the selector order them by retrieval (RRF) score instead.
         local_raw_scores = [
             self._get_raw_score(c)
             for c in chunks
@@ -194,24 +214,19 @@ class ChunkSelector(ABC):
             )
         ]
         max_local_raw = max(local_raw_scores, default=0.0)
-        use_relative_band = (
-            bool(local_raw_scores)
-            and self._sigmoid(max_local_raw) < self.threshold
-            and self.threshold <= 0.60  # sigmoid(0.35 old logit guard) ≈ 0.59
+        self._rerank_skipped = (
+            bool(local_raw_scores) and self._sigmoid(max_local_raw) < self.threshold
         )
-        if use_relative_band:
-            local_threshold = self._sigmoid(max_local_raw - self._RELATIVE_LOGIT_MARGIN)
-            if DebugHelper.check_session(self.session, 10):
-                self.pretty.write(
-                    "I",
-                    "Rerank select",
-                    f"Pool max logit {max_local_raw:.4f} → sigmoid {self._sigmoid(max_local_raw):.3f} "
-                    f"< threshold {self.threshold:.4f} — "
-                    f"using relative band (margin {self._RELATIVE_LOGIT_MARGIN:.2f} logit) → "
-                    f"effective threshold {local_threshold:.3f}",
-                )
-        else:
-            local_threshold = self.threshold
+        if self._rerank_skipped:
+            self.pretty.write(
+                "W",
+                "Rerank skipped",
+                f"No chunk reached the confidence threshold "
+                f"(best sigmoid {self._sigmoid(max_local_raw):.3f} < {self.threshold:.2f}) — "
+                f"ranking by retrieval score instead of the cross-encoder.",
+                color=ORANGE,
+            )
+            return list(chunks)
 
         hits: list[tuple[Any, float, float, float]] = []
         misses: list[tuple[Any, float, float, float]] = []
@@ -224,7 +239,7 @@ class ChunkSelector(ABC):
                 else ""
             )
             is_web = "Web" in sources
-            thr = self.web_rerank_threshold if is_web else local_threshold
+            thr = self.web_rerank_threshold if is_web else self.threshold
             path = self._get_path(c)
             eff = (
                 raw + logit_boost
@@ -372,7 +387,7 @@ class ScoreRankedSelector(ChunkSelector):
 
     def select(self, chunks: list[Any]) -> list[Any]:
         filtered = self.filter_threshold(chunks)
-        ordered = sorted(filtered, key=lambda c: self._get_score(c), reverse=True)
+        ordered = sorted(filtered, key=lambda c: self._rank_key(c), reverse=True)
         selected = ordered[: self.session.final_chunks_to_llm]
         for c in selected:
             path = self._get_path(c)
@@ -426,7 +441,7 @@ class PerFileCapSelector(ChunkSelector):
                 )
 
             group = [c for c in filtered if self._get_path(c) == path]
-            group.sort(key=lambda c: self._get_score(c), reverse=True)
+            group.sort(key=lambda c: self._rank_key(c), reverse=True)
 
             take = min(self.per_file_limit, final_chunks_to_llm - len(selected))
             if self.session.debug_level == 30:
@@ -460,7 +475,7 @@ class SingleDocumentSelector(ChunkSelector):
             by_path[self._get_path(c)].append(c)
 
         def _best_score(path: str) -> float:
-            return max(self._get_score(c) for c in by_path[path])
+            return max(self._rank_key(c) for c in by_path[path])
 
         # find highest‐score path vs. highest‐count path
         top_path = max(by_path, key=_best_score)
@@ -491,7 +506,7 @@ class SingleDocumentSelector(ChunkSelector):
             chosen = count_path
 
         best_chunks = sorted(
-            by_path[chosen], key=lambda c: self._get_score(c), reverse=True
+            by_path[chosen], key=lambda c: self._rank_key(c), reverse=True
         )
         base = os.path.basename(chosen)
         self.fileHist.set(

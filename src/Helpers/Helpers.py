@@ -240,11 +240,19 @@ class Helpers:
         page_num: Any = md.get("PageNumber")
         url: str = str(md.get("FilePath", "")).strip()
 
+        # Prefer the printed page label (e.g. "iii") over the physical index.
+        label_field: str = self.cfg.get_str(
+            "_METADATA_EXTRACTION.PDF_PAGE_LABEL_FIELD", "", silent=True
+        )
+        page_display: Any = (
+            md.get(label_field) if label_field and md.get(label_field) else page_num
+        )
+
         # Build a concise source label placed BEFORE the content.
         if file_name:
             label = (
                 f"(Source: {file_name}"
-                + (f" | Page {page_num}" if page_num is not None else "")
+                + (f" | Page {page_display}" if page_display is not None else "")
                 + ")"
             )
         elif url:
@@ -257,6 +265,81 @@ class Helpers:
             if key not in self._INTERNAL_METADATA_KEYS:
                 formatted_doc += f"  {key}: {value}\n"
         return formatted_doc
+
+    def build_document_metadata_md(self, chosen: list[Any]) -> str:
+        """Build a Markdown "Document metadata" section for local source files.
+
+        Lists, per distinct local file (in first-seen order), the harvested
+        metadata fields (author, dates, …) and the page labels referenced.
+        Returns ``""`` when disabled, when there are no local sources, or when
+        no harvested fields are present.
+        """
+        if not self.cfg.get_bool(
+            "_METADATA_EXTRACTION.ENABLED", False, silent=True
+        ) or not self.cfg.get_bool(
+            "_METADATA_EXTRACTION.SHOW_IN_ANSWER", False, silent=True
+        ):
+            return ""
+        if not chosen:
+            return ""
+
+        doc_info_map: dict[str, Any] = self.cfg.get_dict(
+            "_METADATA_EXTRACTION.DOC_INFO_FIELDS", {}, silent=True
+        )
+        generic_map: dict[str, Any] = self.cfg.get_dict(
+            "_METADATA_EXTRACTION.GENERIC_FIELDS", {}, silent=True
+        )
+        # Canonical field names (config keys), doc-info first then generic.
+        doc_fields: list[str] = [str(k) for k in doc_info_map.keys()] + [
+            str(k) for k in generic_map.keys()
+        ]
+        label_field: str = self.cfg.get_str(
+            "_METADATA_EXTRACTION.PDF_PAGE_LABEL_FIELD", "", silent=True
+        )
+
+        order: list[str] = []
+        meta_by_file: dict[str, dict[str, Any]] = {}
+        pages_by_file: dict[str, list[str]] = {}
+        for doc in chosen:
+            meta: dict[str, Any] = getattr(doc, "metadata", {}) or {}
+            if str(meta.get("Source", "")).lower() == "web":
+                continue
+            file_name: str = str(meta.get("FileName", "")).strip()
+            if not file_name:
+                continue
+            if file_name not in meta_by_file:
+                meta_by_file[file_name] = meta
+                pages_by_file[file_name] = []
+                order.append(file_name)
+            page: Any = (
+                meta.get(label_field)
+                if label_field and meta.get(label_field) not in (None, "")
+                else meta.get("PageNumber")
+            )
+            if page is not None:
+                page_str = str(page)
+                if page_str not in pages_by_file[file_name]:
+                    pages_by_file[file_name].append(page_str)
+
+        emitted: list[str] = []
+        for file_name in order:
+            meta = meta_by_file[file_name]
+            emitted.append(f"- **{file_name}**")
+            file_path = str(meta.get("FilePath", "")).strip()
+            if file_path:
+                emitted.append(f"    - FilePath: {file_path}")
+            # Only show attributes that actually carry content (skip empties).
+            for field in doc_fields:
+                value = meta.get(field)
+                if value not in (None, ""):
+                    emitted.append(f"    - {field}: {value}")
+            pages = pages_by_file.get(file_name, [])
+            if pages:
+                emitted.append(f"    - Pages: {', '.join(pages)}")
+
+        if not emitted:
+            return ""
+        return "\n\n---\n### Document metadata\n\n" + "\n".join(emitted)
 
     def normalize_base_url(self, url: str, default_scheme: str = "http") -> str:
         """

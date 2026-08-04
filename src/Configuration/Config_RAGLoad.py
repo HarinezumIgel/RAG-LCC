@@ -45,6 +45,14 @@ _PROCESS_IF_UNCHANGED = True
 # -----------------------------------------------------------------------------
 
 # -----------------------------------------------------------------------------
+# Print the document metadata harvested by DocumentMetadataExtractor
+# (author/dates for PDF & Office, filesystem size/mtime for other types)
+# for each file as it is ingested.
+# -----------------------------------------------------------------------------
+SHOW_EXTRACTED_METADATA = True
+# -----------------------------------------------------------------------------
+
+# -----------------------------------------------------------------------------
 # Text splitting
 # -----------------------------------------------------------------------------
 _SEPARATORS = ["\n", " ", "."]  # Order matters: first match is used

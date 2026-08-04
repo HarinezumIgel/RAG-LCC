@@ -127,8 +127,7 @@ class HeadingChunker(ChunkerStrategy):
 
     # -- Parsers ------------------------------------------------------------
 
-    @staticmethod
-    def _parse_md(content: str) -> list[_Section]:
+    def _parse_md(self, content: str) -> list[_Section]:
         """Split Markdown content on ``#``-style headings."""
         sections: list[_Section] = []
         lines = content.split("\n")
@@ -156,8 +155,7 @@ class HeadingChunker(ChunkerStrategy):
 
         return sections
 
-    @staticmethod
-    def _parse_docx(file_path: str) -> list[_Section]:
+    def _parse_docx(self, file_path: str) -> list[_Section]:
         """Re-read a DOCX file and split on Heading styles."""
         from docx import \
             Document as DocxDocument  # type: ignore[import-untyped]
@@ -276,9 +274,8 @@ class HeadingChunker(ChunkerStrategy):
 
     # -- Doc assembly -------------------------------------------------------
 
-    @staticmethod
     def _to_docs(
-        pairs: list[tuple[str, str]], metadata: dict[str, Any]
+        self, pairs: list[tuple[str, str]], metadata: dict[str, Any]
     ) -> list[langchainDoc]:
         docs: list[langchainDoc] = []
         for i, (text, breadcrumb) in enumerate(pairs):
