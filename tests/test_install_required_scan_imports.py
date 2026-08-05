@@ -1,6 +1,9 @@
 import subprocess
 from pathlib import Path
 
+import pytest
+
+pytest.importorskip("deploy")
 import deploy.scripts.install_required as install_required
 import deploy.scripts.show_3rd_party_licenses as show_licenses
 
@@ -24,22 +27,14 @@ def test_scan_imports_uses_target_python(monkeypatch, tmp_path: Path) -> None:
     assert calls == [[str(target_python), str(scan_script), str(src_dir)]]
 
 
-def test_generate_license_report_delegates_to_license_helper(
-    monkeypatch, tmp_path: Path
-) -> None:
+def test_generate_license_report_delegates_to_license_helper(monkeypatch, tmp_path: Path) -> None:
     calls = []
 
-    def fake_generate_license_report(
-        *, project_path, venv_name, containing_license_directory_name
-    ):
+    def fake_generate_license_report(*, project_path, venv_name, containing_license_directory_name):
         calls.append((project_path, venv_name, containing_license_directory_name))
 
-    monkeypatch.setattr(
-        show_licenses, "generate_license_report", fake_generate_license_report
-    )
+    monkeypatch.setattr(show_licenses, "generate_license_report", fake_generate_license_report)
 
-    install_required.generate_license_report(
-        tmp_path, tmp_path / "venv", tmp_path / "licenses"
-    )
+    install_required.generate_license_report(tmp_path, tmp_path / "venv", tmp_path / "licenses")
 
     assert calls == [(tmp_path, "venv", "licenses")]

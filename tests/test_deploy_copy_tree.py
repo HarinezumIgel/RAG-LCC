@@ -1,11 +1,12 @@
 from pathlib import Path
 
+import pytest
+
+pytest.importorskip("deploy")
 import deploy.scripts.deploy as deploy
 
 
-def test_copy_tree_copies_files_without_treating_directories_as_files(
-    tmp_path: Path,
-) -> None:
+def test_copy_tree_copies_files_without_treating_directories_as_files(tmp_path: Path) -> None:
     source = tmp_path / "source"
     destination = tmp_path / "dest"
 
