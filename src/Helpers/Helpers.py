@@ -42,11 +42,12 @@ from pdf2image import \
 from pptx import Presentation  # type: ignore[reportUnusedImport]
 
 from Commons.Exceptions import (ConfigurationError, DeviceConfigurationError,
-                                NoVirtualEnvError, TesseractPathError)
+                                DriveRootExecutionError, NoVirtualEnvError,
+                                TesseractPathError)
 from Config.Config import Config
 from Globals.CounterInstance import FailedCount, ProcessedCount
 from Globals.Globals import Globals
-from Gui.Colors import ORANGE, RED, RESET, VIOLET
+from Gui.Colors import BRIGHT_RED, ORANGE, RED, RESET, VIOLET
 from Gui.PrettyWriter import PrettyWriter
 
 
@@ -921,6 +922,33 @@ class Helpers:
             raise NoVirtualEnvError(msg)
 
         return False
+
+    def is_in_drive_root(self, required: bool = True) -> bool:
+        """Detect whether the project root (``_ABSOLUTE_PATH``) resolves to a
+        drive/filesystem root (e.g. ``C:\\`` on Windows, ``/`` on POSIX).
+
+        Installing at a drive root collapses ``_ABSOLUTE_PATH`` to the root,
+        which makes the deletion path-guards refuse every store rebuild. If
+        ``required=True``, emits an uppercase bright-red error and raises
+        ``DriveRootExecutionError``.
+
+        Returns:
+            bool: True if running from a drive/filesystem root, False otherwise.
+        """
+        raw_root: str = self.cfg.get_str("_ABSOLUTE_PATH")
+        project_root: str = (
+            os.path.normpath(os.path.abspath(raw_root)) if raw_root else ""
+        )
+
+        from Commons.DriveRootGuard import drive_root_message, is_drive_root
+
+        in_drive_root: bool = is_drive_root(project_root)
+        if required and in_drive_root:
+            msg = drive_root_message(project_root)
+            self.pretty.write("E", "Drive root", msg, color=BRIGHT_RED)
+            raise DriveRootExecutionError(msg)
+
+        return in_drive_root
 
     def bit_to_dtype(self, bits: int = 32) -> Any:
         """

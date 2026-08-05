@@ -1,8 +1,10 @@
+import ntpath
 import os
 import sys
-import types
 import importlib
 import warnings
+from collections.abc import Iterator
+from typing import Any
 
 import pytest
 
@@ -16,6 +18,16 @@ warnings.filterwarnings(
 
 # Ensure `src/` is on sys.path so imports like `Algos.*` resolve during tests.
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+
+# Refuse to run from a drive/filesystem root ('C:\' or '/'). Mirrors the
+# production guard (len(tail) <= 2, ntpath + posixpath) so deletion tests that
+# exercise real rmtree within the repo can never target a root by accident.
+if len(ntpath.splitdrive(ROOT)[1]) <= 2 or len(os.path.splitdrive(ROOT)[1]) <= 2:
+    raise RuntimeError(
+        f"REFUSING TO RUN TESTS FROM A DRIVE OR FILESYSTEM ROOT: '{ROOT}'. "
+        "Install RAG-LCC inside a named subdirectory and re-run."
+    )
+
 SOURCE = os.path.join(ROOT, "src")
 if SOURCE not in sys.path:
     sys.path.insert(0, SOURCE)
@@ -24,15 +36,15 @@ if ROOT not in sys.path:
 
 
 class StubScorer:
-    def __init__(self, *a, **k):
+    def __init__(self, *a: Any, **k: Any) -> None:
         pass
 
-    def verify(self, *args, **kwargs):
+    def verify(self, *args: Any, **kwargs: Any) -> list[Any]:
         return []
 
 
 @pytest.fixture(autouse=False)
-def stub_algos(monkeypatch):
+def stub_algos(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     """Patch common Algos classes to lightweight stubs."""
     mods = [
         "Algos.RegexScorer",
@@ -50,13 +62,13 @@ def stub_algos(monkeypatch):
 
 
 @pytest.fixture(autouse=False)
-def fake_config(monkeypatch):
+def fake_config(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     """Provide a FakeConfig class that returns deterministic values for keys used in tests."""
     import Config.Config as cfg_mod
 
     class FakeConfig(cfg_mod.Config):
-        def get(self, key, *a, **k):
-            mapping = {
+        def get(self, key: str, *a: Any, **k: Any) -> Any:
+            mapping: dict[str, Any] = {
                 "_KEYBERT": "KEYBERT",
                 "_JACCARD": "JACCARD",
                 "_REGEX": "REGEX",
@@ -75,19 +87,19 @@ def fake_config(monkeypatch):
 
 
 @pytest.fixture(autouse=False)
-def patch_helpers(monkeypatch):
+def patch_helpers(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     import Gui.PrettyWriter as pw_mod
     import Helpers.Accumulator as acc_mod
 
     class PW:
-        def write(self, *a, **k):
+        def write(self, *a: Any, **k: Any) -> None:
             return None
 
     class Acc:
-        def add_results(self, results, stage):
+        def add_results(self, results: Any, stage: Any) -> tuple[bool, list[Any]]:
             return (False, [])
 
-        def show_accumulated(self, stage):
+        def show_accumulated(self, stage: Any) -> tuple[bool, list[Any]]:
             return (False, [])
 
     monkeypatch.setattr(pw_mod, "PrettyWriter", PW)

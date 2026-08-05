@@ -23,6 +23,16 @@ class NoVirtualEnvError(RAGLCCException):
     pass
 
 
+class DriveRootExecutionError(RAGLCCException):
+    """
+    Raised when the project root resolves to a drive/filesystem root
+    (e.g. 'C:\\' on Windows or '/' on POSIX), which would disable the
+    deletion path-guards.
+    """
+
+    pass
+
+
 class RerankError(RAGLCCException):
     """
     Raised when reranking fails or is not possible.

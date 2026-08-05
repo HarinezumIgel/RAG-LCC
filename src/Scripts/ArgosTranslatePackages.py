@@ -27,6 +27,11 @@ if _SRC_DIR not in sys.path:
     sys.path.insert(0, _SRC_DIR)
 _PROJECT_ROOT = os.path.abspath(os.path.join(_SRC_DIR, ".."))
 
+# Refuse to run from a drive/filesystem root before any heavy imports
+from Commons.DriveRootGuard import assert_not_drive_root  # noqa: E402
+
+assert_not_drive_root(__file__)
+
 import Configuration.Config_Internet_Env  # type: ignore[reportUnusedImport]  # noqa: E402,F401 — side-effect import
 from Config.Config import Config  # noqa: E402
 from Gui.Symbols import Symbols  # noqa: E402

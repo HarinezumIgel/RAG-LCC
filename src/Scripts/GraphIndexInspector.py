@@ -31,6 +31,12 @@ from typing import Any, Dict, List
 _SCRIPT_DIR = os.path.abspath(os.path.dirname(__file__))
 _PROJECT_ROOT = os.path.abspath(os.path.join(_SCRIPT_DIR, "..", ".."))
 
+# Refuse to run from a drive/filesystem root before doing anything
+sys.path.insert(0, os.path.dirname(_SCRIPT_DIR))
+from Commons.DriveRootGuard import assert_not_drive_root  # noqa: E402
+
+assert_not_drive_root(__file__)
+
 # ---------------------------------------------------------------------------
 # Register a lightweight stub so pickle can deserialise _GraphIndexData
 # without importing the full application (avoids heavy dependency chain).

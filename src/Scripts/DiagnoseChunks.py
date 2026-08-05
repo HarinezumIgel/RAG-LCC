@@ -25,6 +25,11 @@ from typing import Any
 # Add project src directory to path (script is in scripts_posh/private/)
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 
+# Refuse to run from a drive/filesystem root before any heavy imports
+from Commons.DriveRootGuard import assert_not_drive_root
+
+assert_not_drive_root(__file__)
+
 from chromadb.config import Settings
 
 import chromadb

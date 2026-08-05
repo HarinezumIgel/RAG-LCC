@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """
 Packages are installed from official package managers; licensing obligations remain with the original distributors and user environment.
 
@@ -140,6 +140,11 @@ _enable_windows_ansi()
 _SRC_DIR = Path(__file__).resolve().parent.parent
 if str(_SRC_DIR) not in sys.path:
     sys.path.insert(0, str(_SRC_DIR))
+
+# Refuse to run from a drive/filesystem root before any heavy imports
+from Commons.DriveRootGuard import assert_not_drive_root  # noqa: E402
+
+assert_not_drive_root(__file__)
 
 _SCRIPTS_DIR = Path(__file__).resolve().parent
 _PROJECT_ROOT = _SRC_DIR.parent

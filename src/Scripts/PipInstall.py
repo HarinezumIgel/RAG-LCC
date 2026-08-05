@@ -33,6 +33,11 @@ _SRC_DIR = Path(__file__).resolve().parent.parent
 if str(_SRC_DIR) not in sys.path:
     sys.path.insert(0, str(_SRC_DIR))
 
+# Refuse to run from a drive/filesystem root before any heavy imports
+from Commons.DriveRootGuard import assert_not_drive_root  # noqa: E402
+
+assert_not_drive_root(__file__)
+
 _PROJECT_ROOT = _SRC_DIR.parent
 _REQUIREMENTS = _PROJECT_ROOT / "requirements" / "requirements_final.txt"
 _SETUP_REPORT_DIR = _PROJECT_ROOT / "ModelGovernance" / "consents"

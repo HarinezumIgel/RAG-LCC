@@ -299,6 +299,17 @@ class ArgosDownloader:
                 "I", "Argos", "No packages installed — nothing to remove."
             )
             return
+        self.pretty.write(
+            "W",
+            "Argos",
+            f"About to uninstall {len(installed)} language package(s):",
+            color=YELLOW,
+        )
+        for pkg in installed:
+            print(f"    {pkg.from_code} \u2192 {pkg.to_code}")
+        if input("Uninstall all of these? [y/N] ").strip().lower() != "y":
+            self.pretty.write("I", "Argos", "Removal cancelled.")
+            return
         for pkg in installed:
             print(f"  Removing {pkg.from_code} \u2192 {pkg.to_code} ...")
             argostranslate.package.uninstall(pkg)
@@ -322,10 +333,13 @@ class ArgosDownloader:
         """Remove the stanza_resources directory (outside project root)."""
         abs_path = self.stanza_models_dir
 
-        # Minimal safety: block drive roots (e.g. 'C:\\' on Windows, or '/').
-        win_drive, win_tail = ntpath.splitdrive(abs_path)
+        # Minimal safety: block drive/filesystem roots and absurdly short paths
+        # (e.g. 'C:\\' or 'C:' on Windows, '/' on POSIX). Uses len(tail) <= 2 for
+        # parity with FileUtils.delete_file_or_dir. Project-root containment is
+        # intentionally NOT applied — the stanza dir lives outside the project.
+        _, win_tail = ntpath.splitdrive(abs_path)
         _, posix_tail = os.path.splitdrive(abs_path)
-        if (win_drive and win_tail in ("\\", "/")) or (posix_tail in ("/", "\\")):
+        if len(win_tail) <= 2 or len(posix_tail) <= 2:
             self.pretty.write(
                 "E",
                 "Path Guard",
@@ -335,6 +349,15 @@ class ArgosDownloader:
             return
 
         if os.path.isdir(abs_path):
+            self.pretty.write(
+                "W",
+                "Stanza",
+                f"About to permanently delete directory: {abs_path}",
+                color=YELLOW,
+            )
+            if input("Delete this directory? [y/N] ").strip().lower() != "y":
+                self.pretty.write("I", "Stanza", "Removal cancelled.")
+                return
             shutil.rmtree(abs_path)
             self.pretty.write("O", "Stanza", f"Removed {abs_path}", color=GREEN)
         else:

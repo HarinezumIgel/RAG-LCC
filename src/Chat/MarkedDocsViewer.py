@@ -214,6 +214,15 @@ def _cleanup_dir(path: str, project_root: str = "") -> None:
             f"_cleanup_dir: project_root is not set; refusing to delete '{abs_path}'."
         )
     abs_root = os.path.normpath(os.path.abspath(project_root))
+    # Refuse drive/filesystem roots ("C:\" or "/"): rmtree there is catastrophic
+    # and the abs_path == abs_root branch below would otherwise pass the guard.
+    for candidate in (abs_root, abs_path):
+        _, tail = os.path.splitdrive(candidate)
+        if len(tail) <= 2:
+            raise RuntimeError(
+                f"_cleanup_dir: refusing to operate on drive/filesystem root "
+                f"'{candidate}'."
+            )
     # Jailbreak guard: refuse to delete anything outside the project root.
     if not (abs_path.startswith(abs_root + os.sep) or abs_path == abs_root):
         raise RuntimeError(

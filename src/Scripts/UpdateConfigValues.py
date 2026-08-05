@@ -5,10 +5,17 @@ from __future__ import annotations
 
 import argparse
 import json
+# Refuse to run from a drive/filesystem root before doing anything
+import os
 import re
 import sys
 from pathlib import Path
 from typing import Any
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from Commons.DriveRootGuard import assert_not_drive_root  # noqa: E402
+
+assert_not_drive_root(__file__)
 
 
 def _parse_args() -> argparse.Namespace:

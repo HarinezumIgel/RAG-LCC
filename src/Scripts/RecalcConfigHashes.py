@@ -24,6 +24,12 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 # Default: script lives at <root>/src/Scripts/ → config is at <root>/src/Configuration/
 _DEFAULT_CFG_DIR = os.path.normpath(os.path.join(_HERE, "..", "Configuration"))
 
+# Refuse to run from a drive/filesystem root before doing anything
+sys.path.insert(0, os.path.dirname(_HERE))
+from Commons.DriveRootGuard import assert_not_drive_root  # noqa: E402
+
+assert_not_drive_root(__file__)
+
 
 def _sha256_file(path: str, chunk_size: int = 8_192) -> str:
     h = hashlib.sha256()

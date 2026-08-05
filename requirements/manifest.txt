@@ -2,7 +2,7 @@
 Deployment Manifest
 ================================================================================
 
-Generated      : 2026-08-04T17:35:51.995288+00:00
+Generated      : 2026-08-05T20:43:57.978748+00:00
 Python         : 3.12.10 (CPython)
 Platform       : Windows-11-10.0.26200-SP0
 Git commit     : unavailable
@@ -20,9 +20,9 @@ License Generation Tool
 SHA-256 Integrity Hashes
 ────────────────────────────────────────────────────────────────────────────────
   requirements_final.txt : 646ef0ad5ed7ef905951efb400296e96614a98348d210370d6e30d6218751c3a
-  Licenses.json          : 8b3b8a799f56d2b4613a2d4b6a81f4abd8de206daaaa00229838abd4abe879cc
-  Licenses.txt           : 649f5a59b8627f7b29e4773fa7345ddf5ef840ff27e4945f65ae7b2472ef477f
-  Licenses.spdx          : c8a9978aa57fc189b6c44fcbda0de9aebd283bf158a45de96668bf80b86b9bc1
+  Licenses.json          : 1105d7917ff1addfd1fce7e272c4c9b27b8990da2cdfe43ecb7cce3f7ea33f0c
+  Licenses.txt           : f7dab4cb274e52f22e5fb9b7d3daf77cae3ef76510744deb8acde45ebaa3098d
+  Licenses.spdx          : f130d1f2090a39cdff0dffeb00c3df8b2897ea2af6c677f8c45a90dbe7dd92b9
 
 ────────────────────────────────────────────────────────────────────────────────
 Installed Packages  (requirements_final.txt)
@@ -88,7 +88,7 @@ This overview is provided for informational purposes only. Signing attests only 
 this document, not to the legal validity, authorship, or completeness of any third-party licenses
 referenced herein. Users are responsible for reviewing and complying with all third-party terms.
 
-Generated : 2026-08-04T19:35:51.956584
+Generated : 2026-08-05T22:43:57.942201
 Packages  : 206
 
 ----------------------------------------------------------------------------------------------------------------------------------------------
@@ -174,7 +174,7 @@ langchain-huggingface                    1.2.2         MIT License              
 langchain-protocol                       0.0.18        MIT License                                        UNKNOWN
 langchain-text-splitters                 1.1.2         MIT License                                        UNKNOWN
 langdetect                               1.0.9         Apache Software License                            Michal Mimino Danilak
-langsmith                                0.10.15       MIT                                                LangChain <support@langchain.dev>
+langsmith                                0.10.16       MIT                                                LangChain <support@langchain.dev>
 lingua                                   4.16.2        BSD License; DFSG approved                         Wichert Akkerman
 lxml                                     6.1.1         BSD-3-Clause                                       lxml dev team
 markdown-it-py                           4.2.0         MIT License                                        Chris Sewell <chrisj_sewell@hotma...
@@ -204,7 +204,7 @@ opentelemetry-sdk                        1.44.0        Apache-2.0               
 opentelemetry-semantic-conventions       0.65b0        Apache-2.0                                         OpenTelemetry Authors <cncf-opent...
 orjson                                   3.11.9        MPL-2.0 AND (Apache-2.0 OR MIT)                    UNKNOWN
 overrides                                7.7.0         Apache License, Version 2.0                        Mikko Korpela
-packaging                                26.2          Apache-2.0 OR BSD-2-Clause                         Donald Stufft <donald@stufft.io>
+packaging                                26.3          Apache-2.0 OR BSD-2-Clause                         Donald Stufft <donald@stufft.io>
 pandas                                   3.0.5         BSD License                                        The Pandas Development Team <pand...
 pandocfilters                            1.5.1         BSD License                                        John MacFarlane
 parso                                    0.8.7         MIT License                                        David Halter
@@ -214,7 +214,7 @@ pdfplumber                               0.11.10       MIT License              
 pfzy                                     0.3.4         MIT License                                        Kevin Zhuang
 pickleshare                              0.7.5         MIT License                                        Ville Vainio
 pillow                                   12.3.0        MIT-CMU                                            Jeffrey 'Alex' Clark <aclark@acla...
-pip                                      26.2          MIT                                                The pip developers <distutils-sig...
+pip                                      26.2.1        MIT                                                The pip developers <distutils-sig...
 pip-licenses                             5.5.5         MIT                                                Mr. Walls
 pip-review                               1.3.0         BSD License                                        Julian Gonggrijp, Vincent Driessen
 pipreqs                                  0.5.0         Apache Software License                            Vadim Kravcenko
@@ -268,7 +268,7 @@ spacy-loggers                            1.0.5         MIT                      
 srsly                                    2.5.3         MIT License                                        Explosion
 stack-data                               0.6.3         MIT License                                        Alex Hall
 stanza                                   1.10.1        Apache License 2.0                                 Stanford Natural Language Process...
-starlette                                1.3.1         BSD-3-Clause                                       Tom Christie <tom@tomchristie.com>
+starlette                                1.4.1         BSD-3-Clause                                       Tom Christie <tom@tomchristie.com>
 sympy                                    1.14.0        BSD License                                        SymPy development team
 tenacity                                 9.1.4         Apache Software License                            Julien Danjou
 thinc                                    8.3.13        MIT License                                        Explosion

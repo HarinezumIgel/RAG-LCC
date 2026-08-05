@@ -468,3 +468,34 @@ class TestCleanupDir:
         (d / "file.pdf").write_bytes(b"data")
         _mdv._cleanup_dir(str(d), project_root=str(project_root))
         assert not d.exists()
+
+    def test_raises_when_target_is_drive_root(self, monkeypatch):
+        import Chat.MarkedDocsViewer as _mdv
+
+        # rmtree is mocked so a drive/fs root is never actually deleted; if the
+        # guard is bypassed the AssertionError fails the test loudly.
+        def _fail_rmtree(*a: Any, **kw: Any) -> None:
+            raise AssertionError(
+                "shutil.rmtree reached with drive root — guard failed!"
+            )
+
+        monkeypatch.setattr("shutil.rmtree", _fail_rmtree)
+
+        root = os.path.splitdrive(os.path.abspath(os.sep))[0] + os.sep
+        with pytest.raises(RuntimeError, match="drive/filesystem root"):
+            _mdv._cleanup_dir(root, project_root=root)
+
+    def test_raises_when_project_root_is_drive_root(self, monkeypatch):
+        import Chat.MarkedDocsViewer as _mdv
+
+        def _fail_rmtree(*a: Any, **kw: Any) -> None:
+            raise AssertionError(
+                "shutil.rmtree reached with drive root — guard failed!"
+            )
+
+        monkeypatch.setattr("shutil.rmtree", _fail_rmtree)
+
+        root = os.path.splitdrive(os.path.abspath(os.sep))[0] + os.sep
+        child = os.path.join(root, "tmp", "rag_marked_x")
+        with pytest.raises(RuntimeError, match="drive/filesystem root"):
+            _mdv._cleanup_dir(child, project_root=root)

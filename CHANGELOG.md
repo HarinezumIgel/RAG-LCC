@@ -6,6 +6,36 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [Released] — 2026-08-05
+
+### 🛡️ Startup safeguards — drive-root and working-directory checks
+
+- **`DriveRootExecutionError`** (new, `src/Commons/Exceptions.py`) — raised when
+  the project root resolves to a drive or filesystem root (`C:\` / `/`).
+- **`Helpers.is_in_drive_root()`** (new) — detects drive/filesystem-root installs
+  via `os.path.splitdrive` (`len(tail) <= 2`); emits an **UPPERCASE message in
+  `BRIGHT_RED`** and raises `DriveRootExecutionError` when `required=True`.
+- **`StartupCommons.common_start`** now wires `Helpers().is_in_drive_root(required=True)`
+  directly after the existing venv check, blocking all apps on drive-root installs.
+- **`StartupCommons._ensure_started_from_project_root`** (new) — verifies
+  `cwd == _ABSOLUTE_PATH` at startup; exits with a red `Startup` error message
+  if the app is launched from a different directory.
+
+### 🔒 Defense-in-depth — guarded deletions
+
+- **`_cleanup_dir`** (`src/Chat/MarkedDocsViewer.py`) — explicit `len(tail) <= 2`
+  drive-root guard applied to **both** `abs_root` and `abs_path`, closing the
+  edge-case where `C:` (no trailing slash) could slip past `abs_path == abs_root`.
+- **`ArgosDownloader.remove_stanza_models`** — guard tightened to `len(tail) <= 2`
+  parity with `FileUtils`; now names the target directory and requires `y`
+  confirmation before deletion.
+- **`ArgosDownloader.remove_all`** — lists all packages to be uninstalled and
+  requires `y` confirmation before proceeding.
+- **Tests** — `TestCleanupDir` extended with mocked drive-root cases (`C:\` and
+  `/`); `TestRemoveStanzaModels` extended with removal confirmation and cancel cases.
+
+---
+
 ## [Released] — 2026-08-04
 
 ### 🖍️ PDF source marking — correct page, tables, and speed

@@ -396,11 +396,23 @@ class TestRemoveStanzaModels:
         os.makedirs(stanza_dir)
         (tmp_path / "stanza_resources" / "en").mkdir()
         monkeypatch.setenv("STANZA_RESOURCES_DIR", stanza_dir)
+        monkeypatch.setattr("builtins.input", lambda *a: "y")
 
         dl = _build(tmp_path)
         dl.remove_stanza_models()
 
         assert not os.path.isdir(stanza_dir)
+
+    def test_cancel_keeps_directory(self, tmp_path, monkeypatch):
+        stanza_dir = str(tmp_path / "stanza_resources")
+        os.makedirs(stanza_dir)
+        monkeypatch.setenv("STANZA_RESOURCES_DIR", stanza_dir)
+        monkeypatch.setattr("builtins.input", lambda *a: "")  # decline
+
+        dl = _build(tmp_path)
+        dl.remove_stanza_models()
+
+        assert os.path.isdir(stanza_dir)
 
     def test_noop_when_directory_missing(self, tmp_path, monkeypatch):
         stanza_dir = str(tmp_path / "stanza_resources_nonexistent")
@@ -410,6 +422,14 @@ class TestRemoveStanzaModels:
         # Just check it doesn't crash
 
     def test_blocks_drive_root(self, tmp_path, monkeypatch):
+        # rmtree is mocked so a drive/fs root is never actually deleted; if the
+        # guard is bypassed the AssertionError fails the test loudly.
+        def _fail_rmtree(*a, **kw):
+            raise AssertionError(
+                "shutil.rmtree reached with drive root — guard failed!"
+            )
+
+        monkeypatch.setattr("shutil.rmtree", _fail_rmtree)
         monkeypatch.setenv("STANZA_RESOURCES_DIR", "C:\\")
         dl = _build(tmp_path)
         dl.remove_stanza_models()

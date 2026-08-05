@@ -163,6 +163,9 @@ class StartupCommons:
             # Ensure we are running inside a virtual environment
             Helpers().is_in_venv(required=True)
 
+            # Refuse to run from a drive/filesystem root ('C:\' or '/')
+            Helpers().is_in_drive_root(required=True)
+
             # Load configuration and writer
             pretty = PrettyWriter(always_on=True)
 

@@ -23,8 +23,16 @@ Options
 from __future__ import annotations
 
 import argparse
+# Refuse to run from a drive/filesystem root before doing anything
+import os
 import shutil
+import sys
 from pathlib import Path
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from Commons.DriveRootGuard import assert_not_drive_root  # noqa: E402
+
+assert_not_drive_root(__file__)
 
 _EXAMPLES_DIR = Path(__file__).resolve().parents[2] / "Examples"
 _CONFIG_DIR = Path(__file__).resolve().parent.parent / "Configuration"

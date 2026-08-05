@@ -4,7 +4,7 @@ SPDXID: SPDXRef-DOCUMENT
 DocumentName: RAG-LCC-DEPLOY-Licenses
 DocumentNamespace: http://example.org/spdxdocs/RAG-LCC-DEPLOY-Licenses
 Creator: pip-licenses
-Created: 2026-08-04T19:35:51+02:00
+Created: 2026-08-05T22:43:57+02:00
 
 #####
 PackageName: Jinja2
@@ -720,7 +720,7 @@ PackageLicenseDeclared: Apache Software License
 #####
 PackageName: langsmith
 SPDXID: SPDXRef-Package-langsmith
-PackageVersion: 0.10.15
+PackageVersion: 0.10.16
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: MIT
@@ -990,7 +990,7 @@ PackageLicenseDeclared: Apache License, Version 2.0
 #####
 PackageName: packaging
 SPDXID: SPDXRef-Package-packaging
-PackageVersion: 26.2
+PackageVersion: 26.3
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: Apache-2.0 OR BSD-2-Clause
@@ -1080,7 +1080,7 @@ PackageLicenseDeclared: MIT-CMU
 #####
 PackageName: pip
 SPDXID: SPDXRef-Package-pip
-PackageVersion: 26.2
+PackageVersion: 26.2.1
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: MIT
@@ -1566,7 +1566,7 @@ PackageLicenseDeclared: Apache License 2.0
 #####
 PackageName: starlette
 SPDXID: SPDXRef-Package-starlette
-PackageVersion: 1.3.1
+PackageVersion: 1.4.1
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: BSD-3-Clause

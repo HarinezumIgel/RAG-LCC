@@ -89,7 +89,7 @@ This overview is provided for informational purposes only. Signing attests only 
 | langchain-protocol | 0.0.18 | MIT License | UNKNOWN |
 | langchain-text-splitters | 1.1.2 | MIT License | UNKNOWN |
 | langdetect | 1.0.9 | Apache Software License | Michal Mimino Danilak |
-| langsmith | 0.10.15 | MIT | LangChain <support@langchain.dev> |
+| langsmith | 0.10.16 | MIT | LangChain <support@langchain.dev> |
 | lingua | 4.16.2 | BSD License; DFSG approved | Wichert Akkerman |
 | lxml | 6.1.1 | BSD-3-Clause | lxml dev team |
 | markdown-it-py | 4.2.0 | MIT License | Chris Sewell <chrisj_sewell@hotmail.com> |
@@ -119,7 +119,7 @@ This overview is provided for informational purposes only. Signing attests only 
 | opentelemetry-semantic-conventions | 0.65b0 | Apache-2.0 | OpenTelemetry Authors <cncf-opentelemetry-contributors@lists.cncf.io> |
 | orjson | 3.11.9 | MPL-2.0 AND (Apache-2.0 OR MIT) | UNKNOWN |
 | overrides | 7.7.0 | Apache License, Version 2.0 | Mikko Korpela |
-| packaging | 26.2 | Apache-2.0 OR BSD-2-Clause | Donald Stufft <donald@stufft.io> |
+| packaging | 26.3 | Apache-2.0 OR BSD-2-Clause | Donald Stufft <donald@stufft.io> |
 | pandas | 3.0.5 | BSD License | The Pandas Development Team <pandas-dev@python.org> |
 | pandocfilters | 1.5.1 | BSD License | John MacFarlane |
 | parso | 0.8.7 | MIT License | David Halter |
@@ -129,7 +129,7 @@ This overview is provided for informational purposes only. Signing attests only 
 | pfzy | 0.3.4 | MIT License | Kevin Zhuang |
 | pickleshare | 0.7.5 | MIT License | Ville Vainio |
 | pillow | 12.3.0 | MIT-CMU | Jeffrey 'Alex' Clark <aclark@aclark.net> |
-| pip | 26.2 | MIT | The pip developers <distutils-sig@python.org> |
+| pip | 26.2.1 | MIT | The pip developers <distutils-sig@python.org> |
 | pip-licenses | 5.5.5 | MIT | Mr. Walls |
 | pip-review | 1.3.0 | BSD License | Julian Gonggrijp, Vincent Driessen |
 | pipreqs | 0.5.0 | Apache Software License | Vadim Kravcenko |
@@ -183,7 +183,7 @@ This overview is provided for informational purposes only. Signing attests only 
 | srsly | 2.5.3 | MIT License | Explosion |
 | stack-data | 0.6.3 | MIT License | Alex Hall |
 | stanza | 1.10.1 | Apache License 2.0 | Stanford Natural Language Processing Group |
-| starlette | 1.3.1 | BSD-3-Clause | Tom Christie <tom@tomchristie.com> |
+| starlette | 1.4.1 | BSD-3-Clause | Tom Christie <tom@tomchristie.com> |
 | sympy | 1.14.0 | BSD License | SymPy development team |
 | tenacity | 9.1.4 | Apache Software License | Julien Danjou |
 | thinc | 8.3.13 | MIT License | Explosion |
@@ -6957,7 +6957,7 @@ UNKNOWN
 
 ```
 
-### langsmith 0.10.15
+### langsmith 0.10.16
 
 **License:** MIT
 
@@ -11108,7 +11108,7 @@ limitations under the License.
 
 ```
 
-### packaging 26.2
+### packaging 26.3
 
 **License:** Apache-2.0 OR BSD-2-Clause
 
@@ -13057,7 +13057,7 @@ freely, subject to the following restrictions:
 
 ```
 
-### pip 26.2
+### pip 26.2.1
 
 **License:** MIT
 
@@ -17350,7 +17350,7 @@ limitations under the License.
 
 ```
 
-### starlette 1.3.1
+### starlette 1.4.1
 
 **License:** BSD-3-Clause
 
