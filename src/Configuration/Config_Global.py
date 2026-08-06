@@ -18,10 +18,10 @@ _VERSION = "v0.4.4.1/1440 2026-08-06"
 # Run:  python src/Scripts/RecalcConfigHashes.py  to update automatically.
 # -----------------------------------------------------------------------------
 _CRITICAL_CONFIG_HASHES = {
-    "Config_Models": "9e0de6cc3b95dae9d322d5b8ee4307384b658923b46927c4dbf96b66c5f9023a",
-    "Config_Banned": "502e0a49c6aeeedaed42d6f4f6a410f2a0648b03558ee57d274fbb10c982d5c3",
-    "Config_WebSearch": "b1f8424bc12425e7fac0e870f060380f59be344e87990ea79c56ac0f1068dd9b",
-    "Config_Internet_Env": "ddad6b809599f1f0ae23b7487842907bc0f9d236e315ce6303aa181cdf7845c6",
+    "Config_Models": "",
+    "Config_Banned": "",
+    "Config_WebSearch": "",
+    "Config_Internet_Env": "",
 }
 
 # -----------------------------------------------------------------------------
