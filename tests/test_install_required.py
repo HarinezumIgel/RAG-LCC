@@ -8,7 +8,10 @@ import deploy.scripts.install_required as install_required
 
 
 def test_resolve_install_spec_uses_windows_marker_for_win32com() -> None:
-    assert install_required.resolve_install_spec("win32com") == 'pywin32; sys_platform == "win32"'
+    assert (
+        install_required.resolve_install_spec("win32com")
+        == 'pywin32; sys_platform == "win32"'
+    )
 
 
 def test_resolve_package_name_keeps_plain_name_for_requirements() -> None:
@@ -30,4 +33,6 @@ def test_install_packages_streams_output(monkeypatch, tmp_path: Path) -> None:
 
     install_required.install_packages(python_exe, ["argostranslate"])
 
-    assert calls == [([str(python_exe), "-m", "pip", "install", "argostranslate"], False)]
+    assert calls == [
+        ([str(python_exe), "-m", "pip", "install", "argostranslate"], False)
+    ]

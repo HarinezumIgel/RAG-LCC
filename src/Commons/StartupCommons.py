@@ -62,14 +62,30 @@ def suppress_argos_logging(debug_level: int = 0) -> None:
 
 class StartupCommons:
     @staticmethod
-    def _ensure_started_from_project_root(cfg: Config) -> None:
+    def _resolve_project_root(cfg: Config) -> Path:
         configured_root = cfg.get("_ABSOLUTE_PATH", None)
         if configured_root:
-            project_root = Path(str(configured_root)).expanduser().resolve()
-        else:
-            project_root = Path(__file__).resolve().parents[2]
-        cwd = Path.cwd().resolve()
+            return Path(str(configured_root)).expanduser().resolve()
+        return Path(__file__).resolve().parents[2]
 
+    @staticmethod
+    def _ensure_not_drive_root(project_root: Path) -> None:
+        from Commons.DriveRootGuard import drive_root_message, is_drive_root
+
+        project_root_norm = os.path.normcase(str(project_root))
+        if is_drive_root(project_root_norm):
+            pretty = PrettyWriter(always_on=True)
+            pretty.write(
+                "E",
+                "Startup",
+                drive_root_message(str(project_root)),
+                color=RED,
+            )
+            StartupCommons._die()
+
+    @staticmethod
+    def _ensure_cwd_matches_project_root(project_root: Path) -> None:
+        cwd = Path.cwd().resolve()
         project_root_norm = os.path.normcase(str(project_root))
         cwd_norm = os.path.normcase(str(cwd))
 
@@ -82,6 +98,19 @@ class StartupCommons:
                 color=RED,
             )
             StartupCommons._die()
+
+    @staticmethod
+    def _ensure_started_from_project_root(cfg: Config) -> None:
+        """Ensure cwd matches the configured project root path."""
+        project_root = StartupCommons._resolve_project_root(cfg)
+        StartupCommons._ensure_cwd_matches_project_root(project_root)
+
+    @staticmethod
+    def _ensure_safe_startup_root(cfg: Config) -> None:
+        """Ensure project root is not drive/filesystem root and cwd matches it."""
+        project_root = StartupCommons._resolve_project_root(cfg)
+        StartupCommons._ensure_not_drive_root(project_root)
+        StartupCommons._ensure_cwd_matches_project_root(project_root)
 
     @staticmethod
     def _validate_collection_config(cfg: Config) -> None:
@@ -144,7 +173,7 @@ class StartupCommons:
             args = parser.parse_args()
             cfg = Config(args)
             emoji_ok: bool = Symbols.store_emoji_preference(cfg)
-            StartupCommons._ensure_started_from_project_root(cfg)
+            StartupCommons._ensure_safe_startup_root(cfg)
             StartupCommons._validate_collection_config(cfg)
 
             banner = Banner(cfg)

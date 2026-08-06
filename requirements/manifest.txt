@@ -2,7 +2,7 @@
 Deployment Manifest
 ================================================================================
 
-Generated      : 2026-08-05T20:43:57.978748+00:00
+Generated      : 2026-08-06T05:29:31.590553+00:00
 Python         : 3.12.10 (CPython)
 Platform       : Windows-11-10.0.26200-SP0
 Git commit     : unavailable
@@ -20,9 +20,9 @@ License Generation Tool
 SHA-256 Integrity Hashes
 ────────────────────────────────────────────────────────────────────────────────
   requirements_final.txt : 646ef0ad5ed7ef905951efb400296e96614a98348d210370d6e30d6218751c3a
-  Licenses.json          : 1105d7917ff1addfd1fce7e272c4c9b27b8990da2cdfe43ecb7cce3f7ea33f0c
-  Licenses.txt           : f7dab4cb274e52f22e5fb9b7d3daf77cae3ef76510744deb8acde45ebaa3098d
-  Licenses.spdx          : f130d1f2090a39cdff0dffeb00c3df8b2897ea2af6c677f8c45a90dbe7dd92b9
+  Licenses.json          : 8f9fcadca352982f9e52b8ff577c117356af1e5eb67d777df1f1c6cc435f65eb
+  Licenses.txt           : 3574973ffedb745afea13eca02ebb7b2d1d30a443a3cafa873131e96cce8a3c3
+  Licenses.spdx          : f27f8b181153ca516b0a33f7ffcebd7d9e0dd63ac3bd2d80cbf6b259c63bfbdd
 
 ────────────────────────────────────────────────────────────────────────────────
 Installed Packages  (requirements_final.txt)
@@ -88,7 +88,7 @@ This overview is provided for informational purposes only. Signing attests only 
 this document, not to the legal validity, authorship, or completeness of any third-party licenses
 referenced herein. Users are responsible for reviewing and complying with all third-party terms.
 
-Generated : 2026-08-05T22:43:57.942201
+Generated : 2026-08-06T07:29:31.536006
 Packages  : 206
 
 ----------------------------------------------------------------------------------------------------------------------------------------------
@@ -118,7 +118,7 @@ build                                    1.5.0         MIT                      
 catalogue                                2.0.10        MIT License                                        Explosion
 certifi                                  2026.7.22     Mozilla Public License 2.0 (MPL 2.0)               Kenneth Reitz
 cffi                                     2.1.1         MIT-0                                              Armin Rigo, Maciej Fijalkowski
-chardet                                  7.4.3         0BSD                                               Dan Blanchard <dan.blanchard@gmai...
+chardet                                  7.5.1         0BSD                                               Dan Blanchard <dan.blanchard@gmai...
 charset-normalizer                       3.4.9         MIT                                                "Ahmed R. TAHRI" <tahri.ahmed@pro...
 chromadb                                 1.5.9         Apache Software License                            Jeff Huber <jeff@trychroma.com>, ...
 click                                    8.4.2         BSD-3-Clause                                       UNKNOWN

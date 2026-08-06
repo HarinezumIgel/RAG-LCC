@@ -5,7 +5,7 @@ This overview is provided for informational purposes only. Signing attests only 
 this document, not to the legal validity, authorship, or completeness of any third-party licenses
 referenced herein. Users are responsible for reviewing and complying with all third-party terms.
 
-Generated : 2026-08-05T22:43:57.942201
+Generated : 2026-08-06T07:29:31.536006
 Packages  : 206
 
 ----------------------------------------------------------------------------------------------------------------------------------------------
@@ -35,7 +35,7 @@ build                                    1.5.0         MIT                      
 catalogue                                2.0.10        MIT License                                        Explosion
 certifi                                  2026.7.22     Mozilla Public License 2.0 (MPL 2.0)               Kenneth Reitz
 cffi                                     2.1.1         MIT-0                                              Armin Rigo, Maciej Fijalkowski
-chardet                                  7.4.3         0BSD                                               Dan Blanchard <dan.blanchard@gmai...
+chardet                                  7.5.1         0BSD                                               Dan Blanchard <dan.blanchard@gmai...
 charset-normalizer                       3.4.9         MIT                                                "Ahmed R. TAHRI" <tahri.ahmed@pro...
 chromadb                                 1.5.9         Apache Software License                            Jeff Huber <jeff@trychroma.com>, ...
 click                                    8.4.2         BSD-3-Clause                                       UNKNOWN

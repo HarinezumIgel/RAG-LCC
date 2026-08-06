@@ -16,16 +16,30 @@ warnings.filterwarnings(
     "ignore", message=r"builtin type [Ss]wig", category=DeprecationWarning
 )
 
+
 # Ensure `src/` is on sys.path so imports like `Algos.*` resolve during tests.
-ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+def _normalized_root(path: str) -> str:
+    """Return a canonical absolute root path for guard checks.
+
+    On POSIX, collapse accidental leading double slashes (``//foo``) to
+    ``/foo`` to avoid confusing traceback path handling.
+    """
+    root = os.path.realpath(os.path.abspath(path))
+    if os.name != "nt" and root.startswith("//"):
+        root = "/" + root.lstrip("/")
+    return root
+
+
+ROOT = _normalized_root(os.path.join(os.path.dirname(__file__), ".."))
 
 # Refuse to run from a drive/filesystem root ('C:\' or '/'). Mirrors the
 # production guard (len(tail) <= 2, ntpath + posixpath) so deletion tests that
 # exercise real rmtree within the repo can never target a root by accident.
 if len(ntpath.splitdrive(ROOT)[1]) <= 2 or len(os.path.splitdrive(ROOT)[1]) <= 2:
-    raise RuntimeError(
+    pytest.exit(
         f"REFUSING TO RUN TESTS FROM A DRIVE OR FILESYSTEM ROOT: '{ROOT}'. "
-        "Install RAG-LCC inside a named subdirectory and re-run."
+        "Install RAG-LCC inside a named subdirectory and re-run.",
+        returncode=2,
     )
 
 SOURCE = os.path.join(ROOT, "src")

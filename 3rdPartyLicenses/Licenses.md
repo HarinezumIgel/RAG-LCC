@@ -33,7 +33,7 @@ This overview is provided for informational purposes only. Signing attests only 
 | catalogue | 2.0.10 | MIT License | Explosion |
 | certifi | 2026.7.22 | Mozilla Public License 2.0 (MPL 2.0) | Kenneth Reitz |
 | cffi | 2.1.1 | MIT-0 | Armin Rigo, Maciej Fijalkowski |
-| chardet | 7.4.3 | 0BSD | Dan Blanchard <dan.blanchard@gmail.com> |
+| chardet | 7.5.1 | 0BSD | Dan Blanchard <dan.blanchard@gmail.com> |
 | charset-normalizer | 3.4.9 | MIT | "Ahmed R. TAHRI" <tahri.ahmed@proton.me> |
 | chromadb | 1.5.9 | Apache Software License | Jeff Huber <jeff@trychroma.com>, Anton Troynikov <anton@trychroma.com> |
 | click | 8.4.2 | BSD-3-Clause | UNKNOWN |
@@ -2136,7 +2136,7 @@ documentation is licensed as follows:
 
 ```
 
-### chardet 7.4.3
+### chardet 7.5.1
 
 **License:** 0BSD
 

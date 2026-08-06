@@ -7,7 +7,9 @@ pytest.importorskip("deploy")
 import deploy.scripts.deploy as deploy
 
 
-def test_copy_tree_falls_back_when_copy2_is_not_permitted(monkeypatch, tmp_path: Path) -> None:
+def test_copy_tree_falls_back_when_copy2_is_not_permitted(
+    monkeypatch, tmp_path: Path
+) -> None:
     source = tmp_path / "source"
     destination = tmp_path / "dest"
     source.mkdir()

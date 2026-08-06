@@ -19,8 +19,12 @@ _RESET = "\033[0m"
 
 def is_drive_root(project_root: str) -> bool:
     """Return True when *project_root* is empty/unresolved or resolves to a
-    drive/filesystem root (a ``os.path.splitdrive`` tail of <= 2 chars, e.g.
-    ``C:\\`` or ``/``)."""
+    drive/filesystem root.
+
+    The check inspects only the tail returned by ``os.path.splitdrive``
+    (the part after the drive, e.g. ``"\\"`` for ``"C:\\"`` or ``"/"``
+    for POSIX root). Root tails are at most 2 characters long.
+    """
     if not project_root:
         return True
     _, tail = os.path.splitdrive(project_root)
@@ -43,8 +47,9 @@ def assert_not_drive_root(script_file: str) -> None:
 
     The project root is taken as two levels above ``script_file`` — every
     script lives at ``src/Scripts/X.py``, so ``..\\..`` is the project root.
-    A resolved tail of <= 2 chars (e.g. ``C:\\`` or ``/``), or an unresolved
-    path, is treated as a drive/filesystem root.
+    A resolved splitdrive tail of <= 2 chars (e.g. ``"\\"`` from
+    ``"C:\\"`` or ``"/"``), or an unresolved path, is treated as a
+    drive/filesystem root.
     """
     script_dir = os.path.dirname(os.path.abspath(script_file))
     project_root = os.path.normpath(os.path.join(script_dir, "..", ".."))

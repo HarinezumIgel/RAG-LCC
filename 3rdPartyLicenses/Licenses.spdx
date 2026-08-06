@@ -4,7 +4,7 @@ SPDXID: SPDXRef-DOCUMENT
 DocumentName: RAG-LCC-DEPLOY-Licenses
 DocumentNamespace: http://example.org/spdxdocs/RAG-LCC-DEPLOY-Licenses
 Creator: pip-licenses
-Created: 2026-08-05T22:43:57+02:00
+Created: 2026-08-06T07:29:31+02:00
 
 #####
 PackageName: Jinja2
@@ -216,7 +216,7 @@ PackageLicenseDeclared: MIT-0
 #####
 PackageName: chardet
 SPDXID: SPDXRef-Package-chardet
-PackageVersion: 7.4.3
+PackageVersion: 7.5.1
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: 0BSD

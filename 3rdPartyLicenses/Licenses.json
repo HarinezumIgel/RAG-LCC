@@ -1,6 +1,6 @@
 {
   "disclaimer": "This overview is provided for informational purposes only. Signing attests only to the integrity of this document, not to the legal validity, authorship, or completeness of any third-party licenses referenced herein. Users are responsible for reviewing and complying with all third-party terms.",
-  "generated": "2026-08-05T22:43:57.942201",
+  "generated": "2026-08-06T07:29:31.536006",
   "packages": [
     {
       "Author": "UNKNOWN",
@@ -212,11 +212,11 @@
     {
       "Author": "Dan Blanchard <dan.blanchard@gmail.com>",
       "License": "0BSD",
-      "LicenseFile": "<your-venv>/Lib/site-packages/chardet-7.4.3.dist-info/licenses/LICENSE",
+      "LicenseFile": "<your-venv>/Lib/site-packages/chardet-7.5.1.dist-info/licenses/LICENSE",
       "LicenseText": "Copyright (c) 2026 Dan Blanchard\n\nPermission to use, copy, modify, and/or distribute this software for any\npurpose with or without fee is hereby granted.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH\nREGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND\nFITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,\nINDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS\nOF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER\nTORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF\nTHIS SOFTWARE.\n",
       "Name": "chardet",
       "URL": "https://github.com/chardet/chardet",
-      "Version": "7.4.3"
+      "Version": "7.5.1"
     },
     {
       "Author": "\"Ahmed R. TAHRI\" <tahri.ahmed@proton.me>",

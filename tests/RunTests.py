@@ -10,16 +10,48 @@ Usage:
     python tests/RunTests.py -k pattern   # Run tests matching pattern
 """
 
+import os
+import ntpath
 import sys
 import subprocess
 from pathlib import Path
 
 
+def _normalize_abs_path(path: Path) -> Path:
+    """Return an absolute normalized path.
+
+    On POSIX, collapse accidental leading double slashes (``//foo``) to
+    ``/foo`` so downstream tools report stable paths.
+    """
+    normalized = path.resolve()
+    normalized_str = str(normalized)
+    if os.name != "nt" and normalized_str.startswith("//"):
+        normalized = Path("/" + normalized_str.lstrip("/"))
+    return normalized
+
+
+def _is_drive_root(path: Path) -> bool:
+    """Return True when path resolves to a drive/filesystem root."""
+    path_str = str(path)
+    return (
+        len(ntpath.splitdrive(path_str)[1]) <= 2
+        or len(os.path.splitdrive(path_str)[1]) <= 2
+    )
+
+
 def main():
     """Run the test suite with pytest."""
     # Get the project root (parent of tests/)
-    tests_dir = Path(__file__).parent
-    project_root = tests_dir.parent
+    tests_dir = _normalize_abs_path(Path(__file__).parent)
+    project_root = _normalize_abs_path(tests_dir.parent)
+
+    if _is_drive_root(project_root):
+        print(
+            f"REFUSING TO RUN TESTS FROM A DRIVE OR FILESYSTEM ROOT: '{project_root}'. "
+            "Install RAG-LCC inside a named subdirectory and re-run.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
 
     # Build pytest command
     pytest_args = [
