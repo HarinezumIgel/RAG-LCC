@@ -85,10 +85,14 @@ class QueryParts(SingletonMixin):
                 "VECTOR: embedding-based only. "
                 "BM25: keyword-based only. "
                 "GRAPH: entity co-occurrence graph only. "
+                "REGEX: content verb/noun retrieval only. "
                 "VECTOR_BM25: vector + BM25 via RRF. "
                 "VECTOR_GRAPH: vector + graph via RRF. "
                 "BM25_GRAPH: BM25 + graph via RRF. "
-                "ALL: vector + BM25 + graph fused via RRF (all retrieval algorithms). "
+                "VECTOR_REGEX: vector + regex via RRF. "
+                "BM25_REGEX: BM25 + regex via RRF. "
+                "GRAPH_REGEX: graph + regex via RRF. "
+                "ALL: vector + BM25 + graph + regex fused via RRF (all local retrieval algorithms). "
                 "WEB: web search only — skips all local indexes; requires WEB_SEARCH_MODE=1."
             ),
             "mode": "retrieve_mode",
@@ -111,7 +115,7 @@ class QueryParts(SingletonMixin):
             "prompt": (
                 "Weight applied to vector (embedding) retrieval scores before RRF fusion. "
                 "Set to 0.0 to effectively disable vector retrieval in the merged ranking. "
-                "Relative to bm25_weight and graph_weight."
+                "Relative to bm25_weight, graph_weight, and regex_weight."
             ),
             "mode": "normal",
             "type": "float",
@@ -122,7 +126,7 @@ class QueryParts(SingletonMixin):
             "prompt": (
                 "Weight applied to BM25 keyword retrieval scores before RRF fusion. "
                 "Set to 0.0 to effectively disable BM25 in the merged ranking. "
-                "Relative to vector_weight and graph_weight."
+                "Relative to vector_weight, graph_weight, and regex_weight."
             ),
             "mode": "normal",
             "type": "float",
@@ -133,11 +137,22 @@ class QueryParts(SingletonMixin):
             "prompt": (
                 "Weight applied to graph (entity co-occurrence) retrieval scores before RRF fusion. "
                 "Set to 0.0 to effectively disable graph retrieval in the merged ranking. "
-                "Relative to vector_weight and bm25_weight."
+                "Relative to vector_weight, bm25_weight, and regex_weight."
             ),
             "mode": "normal",
             "type": "float",
             "attr": "graph_weight",
+        },
+        "regex_weight": {
+            "section": "Retrieval",
+            "prompt": (
+                "Weight applied to regex (content verb/noun) retrieval scores before RRF fusion. "
+                "Set to 0.0 to effectively disable regex retrieval in the merged ranking. "
+                "Relative to vector_weight, bm25_weight, and graph_weight."
+            ),
+            "mode": "normal",
+            "type": "float",
+            "attr": "regex_weight",
         },
         "web_search": {
             "section": "Retrieval",
@@ -157,7 +172,7 @@ class QueryParts(SingletonMixin):
             "prompt": (
                 "Weight applied to web search results before RRF fusion. "
                 "Set to 0.0 to exclude web results from the merged ranking. "
-                "Relative to vector_weight, bm25_weight, and graph_weight. "
+                "Relative to vector_weight, bm25_weight, graph_weight, and regex_weight. "
                 "Can be set permanently for a model via OpenWebUI → Admin → Models → Advanced Parameters (e.g. web_weight=0.5)."
             ),
             "mode": "normal",
@@ -192,7 +207,7 @@ class QueryParts(SingletonMixin):
         "fetch_k": {
             "section": "Retrieval",
             "prompt": (
-                "Defines how many chunks each retriever (vector, BM25, graph) fetches before filtering and fusion. "
+                "Defines how many chunks each retriever (vector, BM25, graph, regex) fetches before filtering and fusion. "
                 "Higher values increase recall but may introduce noise. "
                 "Lower values improve precision but risk missing relevant context."
             ),
@@ -476,7 +491,7 @@ class QueryParts(SingletonMixin):
             r"context_chunks|treshold|threshold|"
             r"max_output_tokens|context_size|terminal_line_size|"
             r"temperature|top_p|top_k|"
-            r"rerank|vector_weight|bm25_weight|graph_weight|"
+            r"rerank|vector_weight|bm25_weight|graph_weight|regex_weight|"
             r"web_search|web_weight|web_rerank_threshold|fetch_page_content|"
             r"file_cap|collection|chat_name|context|metadata|"
             r"history_keep|history_prune|rewrite_context|topic_summary|"
@@ -573,6 +588,7 @@ class QueryParts(SingletonMixin):
             "vector_weight": getattr(s, "vector_weight", None),
             "bm25_weight": getattr(s, "bm25_weight", None),
             "graph_weight": getattr(s, "graph_weight", None),
+            "regex_weight": getattr(s, "regex_weight", None),
             "web_search": (
                 "web_only"
                 if getattr(s, "retrieve_mode", None) == "WEB"
@@ -663,6 +679,7 @@ class QueryParts(SingletonMixin):
         vw = getattr(s, "vector_weight", None)
         bw = getattr(s, "bm25_weight", None)
         gw = getattr(s, "graph_weight", None)
+        rw = getattr(s, "regex_weight", None)
         ww = getattr(s, "web_weight", None)
         bm25_pf = self.cfg.get_float("_WEB_SEARCH.bm25_pre_filter") or 0.0
         cos_pf = self.cfg.get_float("_WEB_SEARCH.cosine_pre_filter") or 0.0
@@ -685,6 +702,7 @@ class QueryParts(SingletonMixin):
                 ("vector_weight", vw),
                 ("bm25_weight", bw),
                 ("graph_weight", gw),
+                ("regex_weight", rw),
             )
         )
         print(
@@ -974,6 +992,7 @@ class QueryParts(SingletonMixin):
             "vector_weight",
             "bm25_weight",
             "graph_weight",
+            "regex_weight",
             "web_weight",
             "web_rerank_threshold",
             "use_chat_context",
@@ -1145,6 +1164,8 @@ class QueryParts(SingletonMixin):
             print(f"[bm25_weight] {s.bm25_weight}")
         elif tok == "graph_weight":
             print(f"[graph_weight] {s.graph_weight}")
+        elif tok == "regex_weight":
+            print(f"[regex_weight] {s.regex_weight}")
         elif tok == "web_search":
             _ws_display = (
                 "web_only"
@@ -1342,6 +1363,7 @@ class QueryParts(SingletonMixin):
             "vector_weight",
             "bm25_weight",
             "graph_weight",
+            "regex_weight",
             "web_search",
             "web_weight",
             "web_rerank_threshold",
@@ -1403,6 +1425,7 @@ class QueryParts(SingletonMixin):
         vw = self.cfg.get_float(f"_STRATEGIES.{key}.vector_weight")
         bw = self.cfg.get_float(f"_STRATEGIES.{key}.bm25_weight")
         gw = self.cfg.get_float(f"_STRATEGIES.{key}.graph_weight")
+        rw = self.cfg.get_float(f"_STRATEGIES.{key}.regex_weight")
         ww = self.cfg.get_float(f"_STRATEGIES.{key}.web_weight")
         if self.cfg.get("COLLECTION") is not None:
             cn = self.cfg.get_str("COLLECTION")
@@ -1424,13 +1447,14 @@ class QueryParts(SingletonMixin):
         s.top_p = top_p
         s.top_k = top_k
         s.rerank = bool(rer)
-        s.vector_weight = vw or 1.0
-        s.bm25_weight = bw or 1.0
-        s.graph_weight = gw or 1.0
+        s.vector_weight = vw if vw is not None else 1.0
+        s.bm25_weight = bw if bw is not None else 1.0
+        s.graph_weight = gw if gw is not None else 1.0
+        s.regex_weight = rw if rw is not None else 1.0
         # web_weight can be pre-set per-strategy; web_search and fetch_page_content
         # are session-persistent knobs set deliberately by the user or via OpenWebUI
         # Advanced Parameters — strategy loading does not reset them.
-        if ww:
+        if ww is not None:
             s.web_weight = ww
         s.per_file_limit = fl
         s.use_chat_context = use_ctx

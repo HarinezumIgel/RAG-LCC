@@ -62,11 +62,12 @@ Documents that fail your criteria never get indexed — reducing token waste, co
 
 ### 📥 RAGLoad — Index with intent, filter at the gate
 
-`RAGLoad` ingests the documents you selected and builds three parallel indexes simultaneously:
+`RAGLoad` ingests the documents you selected and builds four parallel indexes simultaneously:
 
 - **ChromaDB** — dense embedding vectors (Snowflake Arctic Embed L v2.0) for semantic search
 - **BM25** — Okapi BM25 keyword index for term‑frequency scoring and lexical recall; complements vector search on precise terminology and rare terms
 - **Entity co‑occurrence graph** — spaCy NER entities and noun phrases extracted from every chunk and linked by document co‑occurrence; enables graph traversal to pull in thematically connected chunks that neither vector nor BM25 search would surface
+- **Regex verb/noun index** — spaCy lemma/POS extraction of content verbs and nouns with strict + fallback matching; boosts lexical precision for action/object queries that are under-expressed in dense embeddings
 
 Before any chunk is stored, it passes through a **multi‑algorithm compliance filter chain** — Regex+Levenshtein, Jaccard, BM25, KeyBERT — that detects and optionally masks prohibited content. Leet‑speak decoding and Unicode confusable normalization run first, so obfuscated phrases are caught before embedding.
 
@@ -83,10 +84,10 @@ Files unchanged since the last run are skipped. Files flagged by prior complianc
 Each query runs through a staged pipeline:
 
 1. **[Compliance](LEGAL.md#-definition--compliance-rag-lcc) pre‑check** — the multi‑algorithm filter chain (Regex+Levenshtein, Jaccard, BM25, KeyBERT) runs on the raw query; matched phrases are masked or the request is blocked before anything else happens
-2. **Translation** — non‑English queries normalised to English via M2M100 (100 languages, MIT)
+2. **Translation** — non‑English queries normalised to English via Argos Translate (configured source→English pairs)
 3. **Query rewriting** — pronouns and referents from prior turns resolved by a dedicated rewrite LLM; prefix with `new:` to hard‑switch topics without clearing history
 4. **Multi‑query expansion** — the LLM generates N alternate phrasings to broaden vocabulary coverage across the retrieval pool
-5. **Hybrid retrieval** — Vector + BM25 + Graph fused via weighted Reciprocal Rank Fusion; optional live DuckDuckGo web leg
+5. **Hybrid retrieval** — Vector + BM25 + Graph + Regex fused via weighted Reciprocal Rank Fusion; optional live DuckDuckGo web leg
 6. **Near‑duplicate removal** — chunks sharing ≥ 85% token overlap collapsed before reranking
 7. **Cross‑encoder reranking** — neural relevance scoring on top‑k candidates
 8. **Strategy‑gated context assembly** — five profiles from `NARROW` (20 chunks, high precision) to `ULTRA_WIDE` (1500 chunks, exhaustive), with per‑file diversity caps
@@ -126,19 +127,19 @@ Raw documents
         │  plain SQL WHERE clause, e.g.
         │  "Mammal LIKE '%Yes%'"
         ▼
-┌───────────────────────────────────────────┐
-│  RAGLoad  (indexes the corpus)            │
-│  ─────────────────────────────────────    │
-│  leet-speak + Unicode normalisation       │
-│  compliance filter chain  →  masking      │
-│  7 chunking strategies (per file type)    │
-│  ┌──────────┐ ┌──────────┐ ┌───────────┐  │
-│  │ ChromaDB │ │  BM25    │ │   Graph   │  │
-│  │ vectors  │ │ keyword  │ │  entity   │  │
-│  │ (HNSW)   │ │  index   │ │  co-occur │  │
-│  └──────────┘ └──────────┘ └───────────┘  │
-│  skips unchanged files (hash check)       │
-└───────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────┐
+│  RAGLoad  (indexes the corpus)                         │
+│  ─────────────────────────────────────                 │
+│  leet-speak + Unicode normalisation                    │
+│  compliance filter chain  →  masking                   │
+│  7 chunking strategies (per file type)                 │
+│  ┌──────────┐ ┌──────────┐ ┌───────────┐ ┌──────────┐  │
+│  │ ChromaDB │ │  BM25    │ │   Graph   │ │  Regex   │  │
+│  │ vectors  │ │ keyword  │ │  entity   │ │verb/noun │  │
+│  │ (HNSW)   │ │  index   │ │  co-occur │ │  index   │  │
+│  └──────────┘ └──────────┘ └───────────┘ └──────────┘  │
+│  skips unchanged files (hash check)                    │
+└────────────────────────────────────────────────────────┘
         │
         ▼
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -154,17 +155,16 @@ Raw documents
 │  │                                                             │    │
 │  │  user query                                                 │    │
 │  │    │  ① compliance pre-check  (banned-phrase filter chain)  │    │
-│  │    │  ② M2M100 translation  →  English (if non-English)     │    │
+│  │    │  ② Argos translation   →  English (if non-English)     │    │
 │  │    │  ③ query rewrite  (coreference resolution via LLM)     │    │
 │  │    ▼                                                        │    │
 │  │  multi-query expansion  (LLM → N alternate phrasings)       │    │
 │  │    │  each variant runs an additional Vector search         │    │
 │  │    ▼                                                        │    │
-│  │  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌───────────┐    │    │
-│  │  │  Vector  │  │   BM25   │  │  Graph   │  │    Web    │    │    │
-│  │  │ (Chroma) │  │ keyword  │  │ entity   │  │ DuckDuckGo│    │    │
-│  │  └────┬─────┘  └────┬─────┘  └────┬─────┘  └─────┬─────┘    │    │
-│  │       └─────────────┴─────────────┴───────────────┘         │    │
+│  │  local arms: Vector (Chroma) · BM25 · Graph · Regex         │    │
+│  │  optional web arm: DuckDuckGo (web_search=on)               │    │
+│  │                      │                                      │    │
+│  │                      ▼                                      │    │
 │  │                  weighted RRF fusion                        │    │
 │  │                      │                                      │    │
 │  │                      ▼                                      │    │
@@ -197,7 +197,7 @@ Raw documents
 A few refinements to keep in mind when reading the pipeline above:
 
 - **Confidence-gated reranking** — the per-strategy threshold is a cross-encoder *confidence floor*. When no chunk clears it (the reranker is unconfident about the whole pool, common on technical/tabular content), reranking is **skipped** and chunks fall back to retrieval (RRF) order instead of being dropped — with an orange `Rerank skipped` notice.
-- **Metadata filtering** — harvested document metadata (author, title, dates, page labels, …) can be used as retrieval filters via the `metadata!` picker or `metadata=Field:Value`, narrowing all three local retrievers.
+- **Metadata filtering** — harvested document metadata (author, title, dates, page labels, …) can be used as retrieval filters via the `metadata!` picker or `metadata=Field:Value`, narrowing all four local retrievers.
 - **Correct source pages** — citations and highlighted source documents use the document's *printed* page label (e.g. front-matter `iii`), while highlighting is placed on the true physical page.
 
 The goal is **not** to feed the model *more* text — but to feed it **better, safer context**.
@@ -227,7 +227,7 @@ Key capabilities organized by application. Full configuration details, defaults,
 ### 📥 RAGLoad
 
 - **7 chunking strategies** with per-format routing: PDF→PDF_PAGE, DOCX/MD→heading, PPTX→slide, plain text→sliding window, sentences→sentence window, code/CSV→recursive, default→semantic boundary detection
-- **Three parallel indexes built simultaneously**: ChromaDB HNSW dense vectors, Okapi BM25 keyword index, spaCy entity co-occurrence graph
+- **Four parallel indexes built simultaneously**: ChromaDB HNSW dense vectors, Okapi BM25 keyword index, spaCy entity co-occurrence graph, and a regex verb/noun lemma index
 - **Compliance filter chain + masking** — Regex+Levenshtein, Jaccard, BM25, and KeyBERT all run before any chunk is stored; matched spans are redacted in place
 - **Obfuscation hardening** — leet-speak decoding (`1→i`, `3→e`, …) and Unicode confusable normalisation (Cyrillic lookalikes, `ß→ss`, …) run before detection
 - **Incremental processing** — SHA-256 hash check skips unchanged files; exclusion CSVs automatically drop previously-flagged documents
@@ -236,7 +236,7 @@ Key capabilities organized by application. Full configuration details, defaults,
 
 ### 💬 RAGChat
 
-- **8 retrieval modes** — `VECTOR`, `BM25`, `GRAPH`, or any pair/triple fused via weighted Reciprocal Rank Fusion; optional DuckDuckGo web leg as a fourth RRF arm
+- **12 retrieval modes** — `VECTOR`, `BM25`, `GRAPH`, `REGEX`, six pairwise combinations, `ALL` (all four local retrievers), and `WEB` (web only)
 - **5 retrieval strategies** from `NARROW` (20 chunks, threshold 0.70, high precision) to `ULTRA_WIDE` (1 500 chunks, exhaustive); `BALANCED_FILE_CAP` enforces per-file diversity caps
 - **Multi-query expansion** — a dedicated LLM generates N alternate phrasings of the query; each variant runs an additional Vector search merged into the main pool before fusion
 - **Query rewriting / coreference resolution** — a second dedicated LLM resolves pronouns and referents from conversation history (`"are they mammals?"` → `"are hedgehogs mammals?"`); prefix with `new:` to hard-switch topics without clearing history
@@ -245,7 +245,7 @@ Key capabilities organized by application. Full configuration details, defaults,
 - **Answer grounding** — every answer sentence is checked for overlap with retrieved source chunks and marked visually; CLI uses ANSI highlights, API returns marked source documents as `/marked/<token>` links
 - **Compliance filter chain** runs on queries before retrieval **and** on generated responses before delivery
 - **Multi-turn conversational memory** — rolling topic summary, configurable turn window, batch pruning; `new:` prefix isolates topics without discarding history
-- **Translation** — M2M100 (100 languages, MIT) normalises non-English queries to English before retrieval and rewriting; Argos Translate expands banlists to the document language
+- **Translation** — Argos Translate normalises non-English queries to English before retrieval and rewriting; the same Argos runtime translates banlists for document-language compliance checks
 - **Per-session web knobs** — `web_search` (`local_only` / `local_and_web` / `web_only`), `web_weight`, `fetch_page_content` (`snippets only` / `fetch pages`); see [CONFIGURATION_REFERENCE.md § Web Search Admin Knobs](CONFIGURATION_REFERENCE.md#-web-search--admin-knobs)
 
 ### 🌐 RAGChatService
@@ -277,7 +277,7 @@ RAG‑LCC exposes every significant architectural decision as a configuration sl
 | Area | What you configure | Why you'd tune it |
 |------|--------------------|-------------------|
 | **Chunking** | 7 strategies (Semantic, Heading, PDF/Page, Sliding Window, Recursive…); per-format routing; chunk size and overlap | Chunking quality determines retrieval precision — wrong boundaries produce noisy embeddings, referential ambiguity, and incoherent context |
-| **Retrieval mode** | `VECTOR`, `BM25`, `GRAPH`, `ALL`, `WEB` — any combination with per-retriever RRF weights | Switch between lexical precision, semantic recall, and entity-graph traversal; tune each store's influence independently |
+| **Retrieval mode** | `VECTOR`, `BM25`, `GRAPH`, `REGEX`, pairwise combinations, `ALL`, `WEB` — with per-retriever RRF weights | Switch between semantic recall, lexical precision, entity-graph traversal, and verb/noun pattern recall; tune each store's influence independently |
 | **Retrieval strategy** | 5 profiles (`NARROW` → `ULTRA_WIDE`): chunk count to LLM, score threshold, per-file limits, retriever-k | Dial precision vs recall: 20 chunks for focused Q&A, 1500 for exhaustive exploratory search |
 | **Reranking** | Cross-encoder on/off per strategy; sigmoid score threshold | Neural relevance pass after retrieval — switch off for speed, tune threshold for precision |
 | **Query processing** | Multi-query expansion (N alternate phrasings); context-dependent rewriting; pronoun/referent resolution; meta-descriptor guard | Boost recall via vocabulary diversity; prevent stale chat history from poisoning retrieval |
@@ -287,7 +287,7 @@ RAG‑LCC exposes every significant architectural decision as a configuration sl
 | **Compliance** | 5-algorithm detection pipeline (Regex+Levenshtein, Jaccard, BM25, KeyBERT); per-app thresholds; masking; consensus count | Fine-tune false-positive/negative tradeoff independently for indexing vs chat |
 | **Content hardening** | Leet-speak and Unicode confusable normalization; WordNet synonym expansion; LLM guard model | Defense-in-depth: obfuscation is neutralized before embedding, LLM gates responses before delivery |
 | **Classification** | Customisable extraction keys; `STRICT`/`BALANCED`/`RECALL` profiles; SQLite filter for selective indexing | Classify first, then load only the documents that match your query's domain |
-| **Language** | 28-language detection (Lingua); M2M100 query translation (100 languages); Argos banlist translation | Retrieve and filter correctly even in multilingual document corpora |
+| **Language** | 28-language detection (Lingua); Argos query translation (installed source→EN pairs); Argos banlist translation | Retrieve and filter correctly even in multilingual document corpora |
 | **Web search** | DuckDuckGo integration; 3-stage pre-filter (BM25 + cosine + rerank); intent blocking; per-session weight | Augment local retrieval with live web results; configure filtering aggressively enough to suppress noise |
 | **Answer grounding** | Sentence-level overlap detection; configurable match strictness; color markers per output mode | Distinguish grounded sentences from hallucinations at the sentence level, in CLI and API |
 | **Deployment** | Ollama or vLLM backend; `RAGChatService` (OpenAI-compatible REST); OpenWebUI drop-in | Same config and pipeline whether you run CLI, a service, or behind OpenWebUI |

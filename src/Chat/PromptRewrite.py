@@ -92,13 +92,14 @@ class PromptRewrite(SingletonMixin):
                     f"Run: python -m spacy download {spacy_model}"
                 ) from exc
 
-    def rewrite(self, session: Session) -> str:
+    def rewrite(self, session: Session, *, strict_english: bool = False) -> str:
         """Detect topic continuity and rewrite the user query for retrieval.
 
         Returns contextual_rewrite when the LLM determines the current
         utterance depends on the previous turn with sufficient confidence,
         standalone_rewrite otherwise. Falls back to the original query on
-        parse failure or LLM error.
+        parse failure or LLM error. When ``strict_english`` is True, appends
+        an additional enforcement block to force English retrieval output.
         """
         # Performance logging
         self.perf_logger.log(
@@ -224,11 +225,24 @@ class PromptRewrite(SingletonMixin):
         current_ctx = "[File filter active]" if file_tag else "[No file filter]"
         current_user_utterance = f"{current_ctx} {original_query}"
         # EXAMPLE: current_user_utterance = "[No file filter] does it have spines"
+        retrieval_language: str = (
+            getattr(session, "retrieval_language", None) or "english"
+        )
         formatted: str = self.prompt_template.format(
             previous_user_utterance=previous_user_utterance,
             rolling_topic_summary=rolling_topic_summary,
             current_user_utterance=current_user_utterance,
+            output_language=retrieval_language,
+            strict_rewrite_mode=("strict" if strict_english else "standard"),
         )
+        if strict_english:
+            formatted += (
+                "\n\nSTRICT ENFORCEMENT (retry mode):\n"
+                "- Output BOTH rewrites in English only.\n"
+                "- Keep named entities, product names, policy IDs, document titles, acronyms,\n"
+                "  and quoted strings unchanged.\n"
+                "- Translate only the surrounding retrieval intent into English.\n"
+            )
 
         effective_ctx: int = self.tokenBudget.get_effective_context_limit(
             self.llm_model, session

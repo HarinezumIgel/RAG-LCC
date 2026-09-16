@@ -4,8 +4,9 @@ Thin CLI wrapper around ArgosDownloader.
 
 Installs / removes the Argos Translate language packages used by the
 Compliance pipeline to translate the English banlist into the target
-languages (EN→X). User-query translation no longer uses Argos — that
-path is handled by the m2m100 backend (see Compliance/HfTranslator.py).
+languages (EN→X). When query translation is configured as
+"argos", source-language→English pairs are also
+required for user-query normalization.
 The set of pairs to install is defined by
 ``_ARGOS_DEFINITIONS.ARGOS_LANGUAGES`` in Config_Global.py.
 

@@ -25,11 +25,14 @@ from Gui.PrettyWriter import PrettyWriter
 from Helpers.ChromaDBHelper import ChromaDBHelper
 from Helpers.DebugHelper import DebugHelper
 from Helpers.FileUtils import FileUtils
-from Helpers.Helpers import Helpers, truncate_for_print
+from Helpers.Helpers import (Helpers, align_retriever_sources_for_print,
+                             truncate_for_print)
 from Helpers.PerfLogger import PerfLogger
 from Strategies.BM25Retriever import BM25Retriever
 from Strategies.GraphRetriever import GraphRetriever
 from Strategies.HomeBrewChunkSelector import ChunkSelectionService
+from Strategies.RegexRetriever import RegexRetriever
+from Strategies.RetrieverProtocol import RetrieverProtocol
 from Strategies.WebPreFilter import WebPreFilter
 from Strategies.WebRetriever import WebRetriever
 from Strategies.WebSearchFilter import WebSearchFilter
@@ -84,6 +87,7 @@ class RAGChatImpl(SingletonMixin):
         self.tokenBudget: TokenBudget = TokenBudget()
         self.bm25_retriever: BM25Retriever = BM25Retriever()
         self.graph_retriever: GraphRetriever = GraphRetriever()
+        self.regex_retriever: RegexRetriever = RegexRetriever()
         self.web_retriever: WebRetriever = WebRetriever()
         self.perf_logger: PerfLogger = PerfLogger()
         self.web_pre_filter: WebPreFilter = WebPreFilter(
@@ -106,13 +110,13 @@ class RAGChatImpl(SingletonMixin):
         self._shared: SharedHelpers = SharedHelpers()
         self._fileUtils: FileUtils = FileUtils()
         # Resolve the translation backend for user-query normalisation.
-        # Allowed values: "argos" | "m2m100" | "off".
+        # Allowed values: "argos" | "off".
         cfg_backend: str = (
             (self.cfg.get_str("_QUERY_REWRITE.TRANSLATION_BACKEND") or "off")
             .strip()
             .lower()
         )
-        if cfg_backend not in ("argos", "m2m100", "off"):
+        if cfg_backend not in ("argos", "off"):
             cfg_backend = "off"
         self._translation_backend: str = cfg_backend
         self.persist_directory: str | None = None
@@ -170,31 +174,31 @@ class RAGChatImpl(SingletonMixin):
             self.pretty.write("E", "Collection", msg, color=RED)
             raise CollectionNotFoundError(msg)
 
-        # Validate BM25 index exists for this collection
-        bm25_dir = self.bm25_retriever.get_bm25_dir(self.collection_name)
-        bm25_index_path = os.path.join(bm25_dir, BM25Retriever.INDEX_FILENAME)
-        if not os.path.isfile(bm25_index_path):
-            msg = (
-                f"BM25 index for collection '{self.collection_name}' not found at "
-                f"{bm25_index_path}. "
-                f"Re-run RAGLoad with RETRIEVAL_STORES_KEEP = False to rebuild "
-                f"the collection and all its retrieval indexes."
-            )
-            self.pretty.write("E", "BM25 index", msg, color=RED)
-            raise CollectionNotFoundError(msg)
-
-        # Validate graph index exists for this collection
-        graph_dir = self.graph_retriever.get_graph_dir(self.collection_name)
-        graph_index_path = os.path.join(graph_dir, GraphRetriever.INDEX_FILENAME)
-        if not os.path.isfile(graph_index_path):
-            msg = (
-                f"Graph index for collection '{self.collection_name}' not found at "
-                f"{graph_index_path}. "
-                f"Re-run RAGLoad with RETRIEVAL_STORES_KEEP = False to rebuild "
-                f"the collection and all its retrieval indexes."
-            )
-            self.pretty.write("E", "Graph index", msg, color=RED)
-            raise CollectionNotFoundError(msg)
+        local_retrievers: list[tuple[str, RetrieverProtocol]] = [
+            ("BM25", self.bm25_retriever),
+            ("Graph", self.graph_retriever),
+            ("Regex", self.regex_retriever),
+        ]
+        for label, retriever in local_retrievers:
+            index_dir = retriever.get_index_dir(self.collection_name)
+            index_filename = str(getattr(retriever, "INDEX_FILENAME", "")).strip()
+            if not index_filename:
+                msg = (
+                    f"{label} retriever does not expose INDEX_FILENAME. "
+                    f"Cannot validate persisted index for collection '{self.collection_name}'."
+                )
+                self.pretty.write("E", f"{label} index", msg, color=RED)
+                raise CollectionNotFoundError(msg)
+            index_path = os.path.join(index_dir, index_filename)
+            if not os.path.isfile(index_path):
+                msg = (
+                    f"{label} index for collection '{self.collection_name}' not found at "
+                    f"{index_path}. "
+                    f"Re-run RAGLoad with RETRIEVAL_STORES_KEEP = False to rebuild "
+                    f"the collection and all its retrieval indexes."
+                )
+                self.pretty.write("E", f"{label} index", msg, color=RED)
+                raise CollectionNotFoundError(msg)
 
         # Load Chroma client and collection from persisted directory
         self.client, self.collection = (
@@ -330,8 +334,8 @@ class RAGChatImpl(SingletonMixin):
 
         # debug print
         if DebugHelper.check_session(mySession, 10):
-            header = "{:>6}  {:>10}  {:>10}  {:>17}  {:<40}  {}"
-            row = "{:>6}  {:>10.4f}  {:>10.4f}  {:>17}  {:<40}  {}"
+            header = "{:>6}  {:>10}  {:>10}  {:>24}  {:<40}  {}"
+            row = "{:>6}  {:>10.4f}  {:>10.4f}  {:>24}  {:<40}  {}"
 
             # Print header row — RawScore is the cross-encoder output; AdjScore is
             # the pool-normalized value (web docs also scaled by web_weight).
@@ -350,7 +354,9 @@ class RAGChatImpl(SingletonMixin):
                 file_name: str = truncate_for_print(
                     str(d.metadata.get("FileName", d.metadata.get("source", ""))), 40
                 )
-                sources: str = str(d.metadata.get("retriever_sources", ""))
+                sources: str = align_retriever_sources_for_print(
+                    str(d.metadata.get("retriever_sources", "")), 24
+                )
                 # Show the text actually fed to the cross-encoder: snippet for
                 # web docs (prefixed [S]), page_content for all others.
                 scoring_text: str = (
@@ -398,8 +404,8 @@ class RAGChatImpl(SingletonMixin):
         #    return
 
         # column formats: add position column first
-        header = "{:>6}  {:>12}  {:>9}  {:>8}  {:>17}   {}"
-        row = "{:>6}  {:>12.4f}  {:>9.4f}  {:>8.4f}  {:>17}   {}"
+        header = "{:>6}  {:>12}  {:>9}  {:>8}  {:>24}   {}"
+        row = "{:>6}  {:>12.4f}  {:>9.4f}  {:>8.4f}  {:>24}   {}"
 
         # print header + separator once
         self.pretty.write(
@@ -418,7 +424,9 @@ class RAGChatImpl(SingletonMixin):
             score: Any = md.get("chroma_score", 0.0)
             sim: Any = md.get("chroma_sim", 0.0)
             dist: Any = md.get("dist", sim)
-            sources: str = str(md.get("retriever_sources", ""))
+            sources: str = align_retriever_sources_for_print(
+                str(md.get("retriever_sources", "")), 24
+            )
             fn: Any = md.get("FileName", "<unknown>")
 
             self.pretty.write(
@@ -426,7 +434,11 @@ class RAGChatImpl(SingletonMixin):
             )
 
     def _get_translator(self, backend: str) -> Any:
-        """Return the translator for *backend* (``"argos"``, ``"m2m100"``, ``"off"``).
+        """Return translator for *backend*.
+
+        Supported values:
+        - ``"argos"``
+        - ``"off"``
 
         Unknown or ``"off"`` values return ``None`` so callers can skip
         translation with a simple ``if translator is not None`` guard.
@@ -434,10 +446,6 @@ class RAGChatImpl(SingletonMixin):
         b = (backend or "off").lower()
         if b == "argos":
             return self._shared
-        if b == "m2m100":
-            from Compliance.HfTranslator import HfTranslator
-
-            return HfTranslator()
         return None
 
     def retrieve(self, mySession: Session) -> Tuple[str, int]:
@@ -457,12 +465,27 @@ class RAGChatImpl(SingletonMixin):
             return "", 0
         retrieve_mode: str = (mySession.retrieve_mode or "VECTOR").upper()
         bm25_query: str = mySession.query or ""
-        vector_docs, bm25_docs, graph_docs = self._fetch_local_docs(
-            mySession, retrieve_mode, bm25_query, alternate_queries
+        orig_translated_query_en: str = (
+            getattr(mySession, "orig_translated_query_en", None)
+            or getattr(mySession, "seed_retrieval_query", None)
+            or getattr(mySession, "t1_query", None)
+            or ""
+        )
+        vector_docs, bm25_docs, graph_docs, regex_docs = self._fetch_local_docs(
+            mySession,
+            retrieve_mode,
+            bm25_query,
+            alternate_queries,
+            orig_translated_query_en,
         )
         web_docs = self._fetch_web_docs(mySession, retrieve_mode, user_query_original)
         chosen = self._merge_and_select(
-            mySession, vector_docs, bm25_docs, graph_docs, web_docs
+            mySession,
+            vector_docs,
+            bm25_docs,
+            graph_docs,
+            regex_docs,
+            web_docs,
         )
         return self._build_context(mySession, chosen)
 
@@ -474,6 +497,22 @@ class RAGChatImpl(SingletonMixin):
         mySession.force_skip_rewrite = False
         mySession.effective_query = None
         mySession.effective_query_reason = None
+        mySession.user_language = None
+        mySession.retrieval_language = "english"
+        mySession.orig_translated_query_en = None
+        mySession.seed_retrieval_query = None
+        mySession.t1_query = None
+        mySession.rewritten_query = None
+        mySession.rewrite_language = None
+        mySession.post_rewrite_query_en = None
+        mySession.final_retrieval_query = None
+        mySession.t2_query = None
+        mySession.retrieval_top_k_orig_query_en = None
+        mySession.retrieval_top_k_post_rewrite_query_en = None
+        mySession.retrieval_top_k_seed_query = None
+        mySession.retrieval_top_k_final_query = None
+        mySession.retrieval_top_k_before_t2 = None
+        mySession.retrieval_top_k_after_t2 = None
 
         if (
             mySession.last_web_search is not None
@@ -524,80 +563,181 @@ class RAGChatImpl(SingletonMixin):
         )
         return user_query_original
 
-    def _normalize_query(
-        self, mySession: Session, user_query_original: str
-    ) -> tuple[str, list[str]]:
-        """Translate → rewrite → re-translate; set effective_query; expand alternate queries.
-
-        Returns (final_query, alternate_queries).
-        """
+    def _resolve_turn_translation_backend(self, mySession: Session) -> tuple[str, Any]:
+        """Resolve the per-turn translation backend and translator instance."""
         backend: str = (
             getattr(mySession, "translation_backend", None)
             or self._translation_backend
             or "off"
         ).lower()
-        translator = self._get_translator(backend)
-        was_translated: bool = False
+        return backend, self._get_translator(backend)
 
-        if translator is not None and mySession.query:
-            original_query: str = mySession.query
-            detected_lang: str = self._fileUtils.get_user_text_language(
-                original_query,
+    def _detect_raw_query_language(self, mySession: Session, raw_query: str) -> str:
+        """Detect and persist the user query language for this turn."""
+        raw_query_language: str = (
+            self._fileUtils.get_user_text_language(
+                raw_query,
                 output="nltk",
-                native_lang=None,
+                native_lang=mySession.preferred_response_language,
             )
-            # Tag the session so ChatContext can filter turns by language.
-            mySession.current_query_lang = detected_lang
+            if raw_query
+            else "english"
+        )
+        # Keep chat-history language filtering on the user language, not the
+        # retrieval language, so language-specific contexts remain isolated.
+        mySession.user_language = raw_query_language
+        mySession.current_query_lang = raw_query_language
+        mySession.retrieval_language = "english"
+        return raw_query_language
 
-            if detected_lang != "english":
-                translated: str = translator.translate_text(
-                    original_query,
-                    target_lang="en",
-                    source_lang=detected_lang,
-                )
-                if translated and translated != original_query:
-                    self.pretty.write(
-                        "I",
-                        "QueryNorm",
-                        f"Normalized user query [{detected_lang}\u2192english, "
-                        f"backend={backend}]: "
-                        f"{original_query!r} \u2192 {translated!r}",
-                    )
-                    mySession.query = translated
-                    was_translated = True
+    def _translate_query_to_english(
+        self,
+        query_text: str,
+        source_language: str,
+        translator: Any,
+        backend: str,
+        log_prefix: str,
+    ) -> tuple[str, bool]:
+        """Translate query_text to English when required; return (text, translated?)."""
+        if translator is None or not query_text or source_language == "english":
+            return query_text, False
 
+        translated: str = translator.translate_text(
+            query_text,
+            target_lang="en",
+            source_lang=source_language,
+        )
+        if translated and translated != query_text:
+            self.pretty.write(
+                "I",
+                "QueryNorm",
+                f"{log_prefix} [{source_language}→english, "
+                f"backend={backend}]: "
+                f"{query_text!r} → {translated!r}",
+            )
+            return translated, True
+        return query_text, False
+
+    def _rewrite_query_with_strict_retry(
+        self,
+        mySession: Session,
+    ) -> tuple[str, bool]:
+        """Rewrite the query and retry once with strict-English instructions."""
         pre_rewrite_query: str = mySession.query or ""
         if mySession.use_chat_context:
             mySession.query = self.promptRewrite.rewrite(mySession)
-        was_rewritten: bool = (mySession.query or "") != pre_rewrite_query
 
-        # Post-rewrite re-normalisation: rewriter may introduce non-English names.
-        if translator is not None and mySession.query:
-            rewritten_query: str = mySession.query
-            detected_after_rewrite: str = self._fileUtils.get_user_text_language(
+        rewritten_query: str = mySession.query or ""
+        was_rewritten: bool = rewritten_query != pre_rewrite_query
+
+        rewrite_language: str = (
+            self._fileUtils.get_user_text_language(
                 rewritten_query,
                 output="nltk",
                 native_lang=None,
             )
-            if detected_after_rewrite != "english":
-                translated_after: str = translator.translate_text(
-                    rewritten_query,
-                    target_lang="en",
-                    source_lang=detected_after_rewrite,
+            if rewritten_query
+            else "english"
+        )
+        mySession.rewritten_query = rewritten_query
+        mySession.rewrite_language = rewrite_language
+
+        # If rewrite drifted out of English, retry with stricter instructions
+        # before falling back to translation.
+        if (
+            rewrite_language != "english"
+            and mySession.use_chat_context
+            and not mySession.force_skip_rewrite
+        ):
+            strict_candidate: str = (
+                self.promptRewrite.rewrite(mySession, strict_english=True) or ""
+            ).strip()
+            if strict_candidate:
+                strict_lang: str = self._fileUtils.get_user_text_language(
+                    strict_candidate,
+                    output="nltk",
+                    native_lang=None,
                 )
-                if translated_after and translated_after != rewritten_query:
+                if strict_lang == "english":
+                    mySession.query = strict_candidate
+                    rewritten_query = strict_candidate
+                    rewrite_language = strict_lang
+                    mySession.rewritten_query = rewritten_query
+                    mySession.rewrite_language = rewrite_language
+                    was_rewritten = rewritten_query != pre_rewrite_query
                     self.pretty.write(
                         "I",
                         "QueryNorm",
-                        f"Normalized rewritten query "
-                        f"[{detected_after_rewrite}\u2192english, "
-                        f"backend={backend}]: "
-                        f"{rewritten_query!r} \u2192 {translated_after!r}",
+                        "Strict English rewrite retry succeeded.",
                     )
-                    mySession.query = translated_after
-                    was_translated = True
 
-        final_query: str = mySession.query or ""
+        return rewrite_language, was_rewritten
+
+    def _apply_post_rewrite_translation(
+        self,
+        mySession: Session,
+        rewrite_language: str,
+        translator: Any,
+        backend: str,
+    ) -> bool:
+        """Enforce English after rewrite; return whether a translation happened."""
+        if rewrite_language == "english":
+            return False
+
+        if translator is not None and mySession.query:
+            translated_after, translated_flag = self._translate_query_to_english(
+                mySession.query,
+                rewrite_language,
+                translator,
+                backend,
+                "Normalized rewritten query",
+            )
+            if translated_flag:
+                mySession.query = translated_after
+            return translated_flag
+
+        self.pretty.write(
+            "W",
+            "QueryNorm",
+            "Rewrite language is non-English but no translator is active; "
+            "retrieval query may stay cross-lingual.",
+        )
+        return False
+
+    def _log_query_language_drift(
+        self,
+        mySession: Session,
+        raw_query_language: str,
+        orig_translated_query_en: str,
+    ) -> None:
+        """Emit standardized language-drift debug lines for retrieval stages."""
+        self.pretty.write(
+            "I",
+            "LangDrift",
+            f"raw_query_language={raw_query_language}  "
+            f"orig_translated_query_en={orig_translated_query_en!r}",
+        )
+        self.pretty.write(
+            "I",
+            "LangDrift",
+            f"rewrite_language={mySession.rewrite_language}  "
+            f"rewritten_query={mySession.rewritten_query!r}",
+        )
+        self.pretty.write(
+            "I",
+            "LangDrift",
+            f"post_rewrite_query_en={mySession.post_rewrite_query_en!r}",
+        )
+
+    def _set_effective_query_metadata(
+        self,
+        mySession: Session,
+        final_query: str,
+        user_query_original: str,
+        was_translated: bool,
+        was_rewritten: bool,
+    ) -> None:
+        """Persist effective-query fields and emit the FinalQuery log line."""
         if final_query != user_query_original:
             mySession.effective_query = final_query
             if was_translated and was_rewritten:
@@ -615,13 +755,187 @@ class RAGChatImpl(SingletonMixin):
                 f"(was: {user_query_original!r})",
                 color=CYAN,
             )
+            return
+
+        self.pretty.write(
+            "I",
+            "FinalQuery",
+            f"Final query for retrieval: {final_query!r} (unchanged)",
+            color=CYAN,
+        )
+
+    def _normalize_query(
+        self, mySession: Session, user_query_original: str
+    ) -> tuple[str, list[str]]:
+        """Apply the retrieval-language contract and produce alternate queries.
+
+        Pipeline:
+          1) Detect raw user language (user_language)
+          2) Build orig_translated_query_en in retrieval_language (English)
+          3) Rewrite in retrieval language
+          4) Enforce retrieval language after rewrite
+          5) Generate alternate retrieval queries
+
+        Returns (final_query, alternate_queries).
+        """
+        # Some unit tests dynamically load only this method into a minimal shell
+        # object. Keep behavior identical by falling back to local logic when
+        # split helper methods are not present on `self`.
+        if hasattr(self, "_resolve_turn_translation_backend"):
+            backend, translator = self._resolve_turn_translation_backend(mySession)
         else:
-            self.pretty.write(
-                "I",
-                "FinalQuery",
-                f"Final query for retrieval: {final_query!r} (unchanged)",
-                color=CYAN,
+            backend = (
+                getattr(mySession, "translation_backend", None)
+                or getattr(self, "_translation_backend", "off")
+                or "off"
+            ).lower()
+            translator = self._get_translator(backend)
+
+        was_translated: bool = False
+        raw_query: str = mySession.query or ""
+
+        if hasattr(self, "_detect_raw_query_language"):
+            raw_query_language: str = self._detect_raw_query_language(
+                mySession,
+                raw_query,
             )
+        else:
+            raw_query_language = (
+                self._fileUtils.get_user_text_language(
+                    raw_query,
+                    output="nltk",
+                    native_lang=mySession.preferred_response_language,
+                )
+                if raw_query
+                else "english"
+            )
+            # Keep chat-history language filtering on the user language, not
+            # the retrieval language, so language-specific contexts remain
+            # isolated.
+            mySession.user_language = raw_query_language
+            mySession.current_query_lang = raw_query_language
+            mySession.retrieval_language = "english"
+
+        # Build the original translated retrieval query before rewrite.
+        if hasattr(self, "_translate_query_to_english"):
+            orig_translated_query_en, translated_orig_query = (
+                self._translate_query_to_english(
+                    raw_query,
+                    raw_query_language,
+                    translator,
+                    backend,
+                    "Normalized user query",
+                )
+            )
+        else:
+            orig_translated_query_en = raw_query
+            translated_orig_query = False
+            if translator is not None and raw_query and raw_query_language != "english":
+                translated: str = translator.translate_text(
+                    raw_query,
+                    target_lang="en",
+                    source_lang=raw_query_language,
+                )
+                if translated and translated != raw_query:
+                    orig_translated_query_en = translated
+                    self.pretty.write(
+                        "I",
+                        "QueryNorm",
+                        f"Normalized user query [{raw_query_language}→english, "
+                        f"backend={backend}]: "
+                        f"{raw_query!r} → {orig_translated_query_en!r}",
+                    )
+                    translated_orig_query = True
+
+        was_translated = was_translated or translated_orig_query
+
+        mySession.orig_translated_query_en = orig_translated_query_en
+        mySession.seed_retrieval_query = orig_translated_query_en
+        mySession.t1_query = orig_translated_query_en
+        mySession.query = orig_translated_query_en
+
+        if hasattr(self, "_rewrite_query_with_strict_retry"):
+            rewrite_language, was_rewritten = self._rewrite_query_with_strict_retry(
+                mySession
+            )
+        else:
+            pre_rewrite_query: str = mySession.query or ""
+            if mySession.use_chat_context:
+                mySession.query = self.promptRewrite.rewrite(mySession)
+
+            rewritten_query: str = mySession.query or ""
+            was_rewritten = rewritten_query != pre_rewrite_query
+
+            rewrite_language = (
+                self._fileUtils.get_user_text_language(
+                    rewritten_query,
+                    output="nltk",
+                    native_lang=None,
+                )
+                if rewritten_query
+                else "english"
+            )
+            mySession.rewritten_query = rewritten_query
+            mySession.rewrite_language = rewrite_language
+
+            # If rewrite drifted out of English, retry with stricter instructions
+            # before falling back to translation.
+            if (
+                rewrite_language != "english"
+                and mySession.use_chat_context
+                and not mySession.force_skip_rewrite
+            ):
+                strict_candidate: str = (
+                    self.promptRewrite.rewrite(mySession, strict_english=True) or ""
+                ).strip()
+                if strict_candidate:
+                    strict_lang: str = self._fileUtils.get_user_text_language(
+                        strict_candidate,
+                        output="nltk",
+                        native_lang=None,
+                    )
+                    if strict_lang == "english":
+                        mySession.query = strict_candidate
+                        rewritten_query = strict_candidate
+                        rewrite_language = strict_lang
+                        mySession.rewritten_query = rewritten_query
+                        mySession.rewrite_language = rewrite_language
+                        was_rewritten = rewritten_query != pre_rewrite_query
+                        self.pretty.write(
+                            "I",
+                            "QueryNorm",
+                            "Strict English rewrite retry succeeded.",
+                        )
+
+        # Build the post-rewrite English retrieval query.
+        translated_post_rewrite = self._apply_post_rewrite_translation(
+            mySession,
+            rewrite_language,
+            translator,
+            backend,
+        )
+
+        was_translated = translated_post_rewrite or was_translated
+
+        final_query: str = mySession.query or ""
+        mySession.post_rewrite_query_en = final_query
+        mySession.final_retrieval_query = final_query
+        mySession.t2_query = final_query
+
+        if DebugHelper.check_session(mySession, 29):
+            self._log_query_language_drift(
+                mySession,
+                raw_query_language,
+                orig_translated_query_en,
+            )
+
+        self._set_effective_query_metadata(
+            mySession,
+            final_query,
+            user_query_original,
+            was_translated,
+            was_rewritten,
+        )
 
         alternate_queries: list[str] = self._generate_alternate_queries(
             final_query, mySession
@@ -677,21 +991,41 @@ class RAGChatImpl(SingletonMixin):
         retrieve_mode: str,
         bm25_query: str,
         alternate_queries: list[str],
-    ) -> tuple[list[Any], list[Any], list[Any]]:
-        """Run Vector (+ alternate-query expansion), BM25, and Graph retrievers.
+        orig_translated_query_en: str = "",
+    ) -> tuple[list[Any], list[Any], list[Any], list[Any]]:
+        """Run Vector/BM25/Graph/Regex retrievers with seed/final guardrail fusion.
 
-        Returns (vector_docs, bm25_docs, graph_docs).
+        Local retrieval runs on `post_rewrite_query_en` (primary query) and,
+        when distinct, also on `orig_translated_query_en` (guardrail query).
+        The two result sets are
+        fused per retriever via RRF to avoid single-point failures from a bad
+        rewrite or bad post-rewrite translation.
+
+        Returns (vector_docs, bm25_docs, graph_docs, regex_docs).
         """
-        VECTOR_MODES = ("VECTOR", "ALL", "VECTOR_GRAPH", "VECTOR_BM25")
-        BM25_MODES = ("BM25", "ALL", "BM25_GRAPH", "VECTOR_BM25")
-        GRAPH_MODES = ("GRAPH", "ALL", "VECTOR_GRAPH", "BM25_GRAPH")
+        mode_upper = (retrieve_mode or "VECTOR").upper()
+        mode_parts = set(mode_upper.split("_"))
+        mode_all = mode_upper == "ALL"
+
+        vector_enabled = mode_all or "VECTOR" in mode_parts
+        bm25_enabled = mode_all or "BM25" in mode_parts
+        graph_enabled = mode_all or "GRAPH" in mode_parts
+        regex_enabled = mode_all or "REGEX" in mode_parts
+
+        primary_query: str = bm25_query or ""
+        guardrail_query: str = (orig_translated_query_en or "").strip()
+        use_guardrail: bool = bool(
+            guardrail_query and guardrail_query.lower() != primary_query.strip().lower()
+        )
+        top_k_orig_query_en: int = 0
+        top_k_post_rewrite_query_en: int = 0
 
         # --- VECTOR retrieval ---
         vector_docs: list[Any] = []
         vector_weight = float(
             mySession.vector_weight if mySession.vector_weight is not None else 1.0
         )
-        if retrieve_mode in VECTOR_MODES and vector_weight != 0.0:
+        if vector_enabled and vector_weight != 0.0:
             self.pretty.write(
                 "I",
                 "Chroma",
@@ -705,17 +1039,47 @@ class RAGChatImpl(SingletonMixin):
             )
             _t_vec = time.perf_counter()
             vector_kwargs = self._vector_kwargs(mySession)
-            hits: list[Any] = self.vector_store.similarity_search_with_score(
-                mySession.query or "", **vector_kwargs
+            hits_final: list[Any] = self.vector_store.similarity_search_with_score(
+                primary_query, **vector_kwargs
             )
-            vector_docs = self.chatContext.annotate_chunks(hits)
+            vector_docs_final = self.chatContext.annotate_chunks(hits_final)
+            for d in vector_docs_final:
+                d.metadata["retriever_sources"] = "Vector"
+            top_k_post_rewrite_query_en += len(vector_docs_final)
+
+            vector_docs = vector_docs_final
+            if use_guardrail:
+                try:
+                    hits_seed: list[Any] = (
+                        self.vector_store.similarity_search_with_score(
+                            guardrail_query,
+                            **vector_kwargs,
+                        )
+                    )
+                    vector_docs_seed = self.chatContext.annotate_chunks(hits_seed)
+                    for d in vector_docs_seed:
+                        d.metadata["retriever_sources"] = "Vector"
+                    top_k_orig_query_en += len(vector_docs_seed)
+                    if vector_docs_seed:
+                        vector_docs = BM25Retriever.reciprocal_rank_fusion(
+                            vector_docs_final,
+                            vector_docs_seed,
+                            k=self.bm25_retriever.rrf_k,
+                            labels=["Vector", "Vector"],
+                            weights=[1.0, 1.0],
+                        )
+                except Exception as t1_exc:
+                    self.pretty.write(
+                        "W",
+                        "MultiQuery",
+                        f"Seed-query vector search failed: {t1_exc}",
+                    )
+
             self.perf_logger.log(
                 "RAGChatImpl._retrieve",
                 "chat",
                 f"stop  vector similarity_search n={len(vector_docs)} elapsed={time.perf_counter() - _t_vec:.3f}s",
             )
-            for d in vector_docs:
-                d.metadata["retriever_sources"] = "Vector"
 
             if alternate_queries:
                 existing_ids: set[str] = {
@@ -732,7 +1096,7 @@ class RAGChatImpl(SingletonMixin):
                         for d in aq_docs:
                             doc_id = str(d.metadata.get("id", d.page_content))
                             if doc_id not in existing_ids:
-                                d.metadata["retriever_sources"] = f"Vector-AQ{qi}"
+                                d.metadata["retriever_sources"] = "Vector"
                                 vector_docs.append(d)
                                 existing_ids.add(doc_id)
                     except Exception as aq_exc:
@@ -754,7 +1118,7 @@ class RAGChatImpl(SingletonMixin):
         bm25_weight = float(
             mySession.bm25_weight if mySession.bm25_weight is not None else 1.0
         )
-        if retrieve_mode in BM25_MODES and bm25_weight != 0.0:
+        if bm25_enabled and bm25_weight != 0.0:
             self.pretty.write(
                 "I",
                 "BM25",
@@ -768,7 +1132,7 @@ class RAGChatImpl(SingletonMixin):
                 f"start bm25 block collection={self.collection_name}",
             )
             _t_bm25 = time.perf_counter()
-            bm25_dir = self.bm25_retriever.get_bm25_dir(self.collection_name)
+            bm25_dir = self.bm25_retriever.get_index_dir(self.collection_name)
             self.bm25_retriever.load_or_rebuild(
                 bm25_dir,
                 self.collection_name,
@@ -778,13 +1142,34 @@ class RAGChatImpl(SingletonMixin):
             if mySession.base_kwargs and "filter" in mySession.base_kwargs:
                 bm25_filter = mySession.base_kwargs["filter"]
 
-            bm25_docs = self.bm25_retriever.query(
-                bm25_query,
+            bm25_docs_final = self.bm25_retriever.query(
+                primary_query,
                 k=mySession.retriever_k or 100,
                 file_filter=bm25_filter,
             )
-            for d in bm25_docs:
+            for d in bm25_docs_final:
                 d.metadata["retriever_sources"] = "BM25"
+            top_k_post_rewrite_query_en += len(bm25_docs_final)
+
+            bm25_docs = bm25_docs_final
+            if use_guardrail:
+                bm25_docs_seed = self.bm25_retriever.query(
+                    guardrail_query,
+                    k=mySession.retriever_k or 100,
+                    file_filter=bm25_filter,
+                )
+                for d in bm25_docs_seed:
+                    d.metadata["retriever_sources"] = "BM25"
+                top_k_orig_query_en += len(bm25_docs_seed)
+                if bm25_docs_seed:
+                    bm25_docs = BM25Retriever.reciprocal_rank_fusion(
+                        bm25_docs_final,
+                        bm25_docs_seed,
+                        k=self.bm25_retriever.rrf_k,
+                        labels=["BM25", "BM25"],
+                        weights=[1.0, 1.0],
+                    )
+
             self.pretty.write(
                 "O",
                 "BM25",
@@ -803,7 +1188,7 @@ class RAGChatImpl(SingletonMixin):
         graph_weight = float(
             mySession.graph_weight if mySession.graph_weight is not None else 1.0
         )
-        if retrieve_mode in GRAPH_MODES and graph_weight != 0.0:
+        if graph_enabled and graph_weight != 0.0:
             self.pretty.write(
                 "I",
                 "Graph",
@@ -816,7 +1201,7 @@ class RAGChatImpl(SingletonMixin):
                 f"start graph block collection={self.collection_name}",
             )
             _t_graph = time.perf_counter()
-            graph_dir = self.graph_retriever.get_graph_dir(self.collection_name)
+            graph_dir = self.graph_retriever.get_index_dir(self.collection_name)
             self.graph_retriever.load_or_rebuild(
                 graph_dir,
                 self.collection_name,
@@ -826,13 +1211,34 @@ class RAGChatImpl(SingletonMixin):
             if mySession.base_kwargs and "filter" in mySession.base_kwargs:
                 graph_filter = mySession.base_kwargs["filter"]
 
-            graph_docs = self.graph_retriever.query(
-                bm25_query,
+            graph_docs_final = self.graph_retriever.query(
+                primary_query,
                 k=mySession.retriever_k or 100,
                 file_filter=graph_filter,
             )
-            for d in graph_docs:
+            for d in graph_docs_final:
                 d.metadata["retriever_sources"] = "Graph"
+            top_k_post_rewrite_query_en += len(graph_docs_final)
+
+            graph_docs = graph_docs_final
+            if use_guardrail:
+                graph_docs_seed = self.graph_retriever.query(
+                    guardrail_query,
+                    k=mySession.retriever_k or 100,
+                    file_filter=graph_filter,
+                )
+                for d in graph_docs_seed:
+                    d.metadata["retriever_sources"] = "Graph"
+                top_k_orig_query_en += len(graph_docs_seed)
+                if graph_docs_seed:
+                    graph_docs = BM25Retriever.reciprocal_rank_fusion(
+                        graph_docs_final,
+                        graph_docs_seed,
+                        k=self.bm25_retriever.rrf_k,
+                        labels=["Graph", "Graph"],
+                        weights=[1.0, 1.0],
+                    )
+
             self.pretty.write(
                 "O",
                 "Graph",
@@ -846,7 +1252,92 @@ class RAGChatImpl(SingletonMixin):
             if DebugHelper.check_session(mySession, 30):
                 self._print_graph_debug(graph_docs)
 
-        return vector_docs, bm25_docs, graph_docs
+        # --- Regex retrieval ---
+        regex_docs: list[Any] = []
+        regex_weight = float(
+            mySession.regex_weight if mySession.regex_weight is not None else 1.0
+        )
+        if regex_enabled and regex_weight != 0.0:
+            self.pretty.write(
+                "I",
+                "Regex",
+                f"Querying regex index on collection {self.collection_name}",
+            )
+            assert self.collection is not None
+            self.perf_logger.log(
+                "RAGChatImpl._retrieve",
+                "chat",
+                f"start regex block collection={self.collection_name}",
+            )
+            _t_regex = time.perf_counter()
+            regex_dir = self.regex_retriever.get_index_dir(self.collection_name)
+            self.regex_retriever.load_or_rebuild(
+                regex_dir,
+                self.collection_name,
+                self.collection,
+            )
+            regex_filter: dict[str, Any] | None = None
+            if mySession.base_kwargs and "filter" in mySession.base_kwargs:
+                regex_filter = mySession.base_kwargs["filter"]
+
+            regex_docs_final = self.regex_retriever.query(
+                primary_query,
+                k=mySession.retriever_k or 100,
+                file_filter=regex_filter,
+            )
+            for d in regex_docs_final:
+                d.metadata["retriever_sources"] = "Regex"
+            top_k_post_rewrite_query_en += len(regex_docs_final)
+
+            regex_docs = regex_docs_final
+            if use_guardrail:
+                regex_docs_seed = self.regex_retriever.query(
+                    guardrail_query,
+                    k=mySession.retriever_k or 100,
+                    file_filter=regex_filter,
+                )
+                for d in regex_docs_seed:
+                    d.metadata["retriever_sources"] = "Regex"
+                top_k_orig_query_en += len(regex_docs_seed)
+                if regex_docs_seed:
+                    regex_docs = BM25Retriever.reciprocal_rank_fusion(
+                        regex_docs_final,
+                        regex_docs_seed,
+                        k=self.bm25_retriever.rrf_k,
+                        labels=["Regex", "Regex"],
+                        weights=[1.0, 1.0],
+                    )
+
+            self.pretty.write(
+                "O",
+                "Regex",
+                f"Regex retrieval returned {len(regex_docs)} chunks",
+            )
+            self.perf_logger.log(
+                "RAGChatImpl._retrieve",
+                "chat",
+                f"stop  regex block n={len(regex_docs)} elapsed={time.perf_counter() - _t_regex:.3f}s",
+            )
+            if DebugHelper.check_session(mySession, 30):
+                self._print_regex_debug(regex_docs)
+
+        if use_guardrail:
+            mySession.retrieval_top_k_orig_query_en = top_k_orig_query_en
+            mySession.retrieval_top_k_post_rewrite_query_en = (
+                top_k_post_rewrite_query_en
+            )
+            mySession.retrieval_top_k_seed_query = top_k_orig_query_en
+            mySession.retrieval_top_k_final_query = top_k_post_rewrite_query_en
+            mySession.retrieval_top_k_before_t2 = top_k_orig_query_en
+            mySession.retrieval_top_k_after_t2 = top_k_post_rewrite_query_en
+            self.pretty.write(
+                "I",
+                "LangDrift",
+                f"retrieval_top_k_orig_query_en={top_k_orig_query_en}  "
+                f"retrieval_top_k_post_rewrite_query_en={top_k_post_rewrite_query_en}",
+            )
+
+        return vector_docs, bm25_docs, graph_docs, regex_docs
 
     def _fetch_web_docs(
         self,
@@ -984,13 +1475,14 @@ class RAGChatImpl(SingletonMixin):
         vector_docs: list[Any],
         bm25_docs: list[Any],
         graph_docs: list[Any],
+        regex_docs: list[Any],
         web_docs: list[Any],
     ) -> list[Any]:
         """RRF-fuse local docs, cap, append web docs, dedup, rerank, and select.
 
         Returns the final chosen list.
         """
-        # Local retrievers (Vector, BM25, Graph) are fused via RRF and then
+        # Local retrievers (Vector, BM25, Graph, Regex) are fused via RRF and then
         # capped to retriever_k.  Web docs are appended AFTER the cap so they
         # always reach the reranker.  Including web in the same RRF pool caused
         # them to be pushed off the list: with weight=0.5 and only 5 results
@@ -999,6 +1491,7 @@ class RAGChatImpl(SingletonMixin):
             (vector_docs, "Vector"),
             (bm25_docs, "BM25"),
             (graph_docs, "Graph"),
+            (regex_docs, "Regex"),
         ]
         local_active_labeled = [(d, lbl) for d, lbl in local_sources if d]
         local_active = [d for d, _ in local_active_labeled]
@@ -1012,6 +1505,9 @@ class RAGChatImpl(SingletonMixin):
             ),
             "Graph": float(
                 mySession.graph_weight if mySession.graph_weight is not None else 1.0
+            ),
+            "Regex": float(
+                mySession.regex_weight if mySession.regex_weight is not None else 1.0
             ),
         }
         local_weights = [local_weight_map.get(lbl, 1.0) for lbl in local_active_labels]
@@ -1358,10 +1854,9 @@ class RAGChatImpl(SingletonMixin):
             # Confine the answer highlight to the source chunk's physical page so a
             # fragment that also occurs earlier (TOC/front matter) is not marked there.
             try:
+                page_value: Any = meta.get("PageNumber")
                 page_int: int | None = (
-                    int(meta.get("PageNumber"))
-                    if meta.get("PageNumber") is not None
-                    else None
+                    int(page_value) if page_value is not None else None
                 )
             except (TypeError, ValueError):
                 page_int = None
@@ -1438,8 +1933,8 @@ class RAGChatImpl(SingletonMixin):
 
     def _print_bm25_debug(self, docs: list[Any]) -> None:
         """Print BM25 retrieval debug table."""
-        header = "{:>6}  {:>12}  {:>17}   {}"
-        row = "{:>6}  {:>12.4f}  {:>17}   {}"
+        header = "{:>6}  {:>12}  {:>24}   {}"
+        row = "{:>6}  {:>12.4f}  {:>24}   {}"
         self.pretty.write(
             "D",
             "BM25",
@@ -1449,14 +1944,16 @@ class RAGChatImpl(SingletonMixin):
         self.pretty.write("D", "BM25", "-" * 71, color=CYAN)
         for i, doc in enumerate(docs[:20], start=1):
             score = doc.metadata.get("bm25_score", 0.0)
-            sources = str(doc.metadata.get("retriever_sources", ""))
+            sources = align_retriever_sources_for_print(
+                str(doc.metadata.get("retriever_sources", "")), 24
+            )
             fn = doc.metadata.get("FileName", "<unknown>")
             self.pretty.write("D", "BM25", row.format(i, score, sources, fn))
 
     def _print_graph_debug(self, docs: list[Any]) -> None:
         """Print graph retrieval debug table (shown at debug_level >= 30)."""
-        header = "{:>6}  {:>12}  {:>17}   {}"
-        row = "{:>6}  {:>12.4f}  {:>17}   {}"
+        header = "{:>6}  {:>12}  {:>24}   {}"
+        row = "{:>6}  {:>12.4f}  {:>24}   {}"
         self.pretty.write(
             "D",
             "Graph",
@@ -1466,9 +1963,38 @@ class RAGChatImpl(SingletonMixin):
         self.pretty.write("D", "Graph", "-" * 71, color=CYAN)
         for i, doc in enumerate(docs[:20], start=1):
             score = doc.metadata.get("graph_score", 0.0)
-            sources = str(doc.metadata.get("retriever_sources", ""))
+            sources = align_retriever_sources_for_print(
+                str(doc.metadata.get("retriever_sources", "")), 24
+            )
             fn = doc.metadata.get("FileName", "<unknown>")
             self.pretty.write("D", "Graph", row.format(i, score, sources, fn))
+
+    def _print_regex_debug(self, docs: list[Any]) -> None:
+        """Print regex retrieval debug table (shown at debug_level >= 30)."""
+        header = "{:>6}  {:>12}  {:>8}  {:>8}  {:>24}   {}"
+        row = "{:>6}  {:>12.4f}  {:>8}  {:>8}  {:>24}   {}"
+        self.pretty.write(
+            "D",
+            "Regex",
+            header.format(
+                "Pos", "RegexScore", "VerbHit", "NounHit", "Retrievers", "File"
+            ),
+            color=CYAN,
+        )
+        self.pretty.write("D", "Regex", "-" * 94, color=CYAN)
+        for i, doc in enumerate(docs[:20], start=1):
+            score = doc.metadata.get("regex_score", 0.0)
+            verb_hits = doc.metadata.get("regex_verb_hits", 0)
+            noun_hits = doc.metadata.get("regex_noun_hits", 0)
+            sources = align_retriever_sources_for_print(
+                str(doc.metadata.get("retriever_sources", "")), 24
+            )
+            fn = doc.metadata.get("FileName", "<unknown>")
+            self.pretty.write(
+                "D",
+                "Regex",
+                row.format(i, score, verb_hits, noun_hits, sources, fn),
+            )
 
     def _print_web_prefilter_debug(
         self,
@@ -1501,8 +2027,8 @@ class RAGChatImpl(SingletonMixin):
 
     def _print_web_debug(self, docs: list[Any]) -> None:
         """Print web retrieval debug table (shown at debug_level >= 10)."""
-        header = "{:>6}  {:>12}  {:>17}   {}"
-        row = "{:>6}  {:>12.4f}  {:>17}   {}"
+        header = "{:>6}  {:>12}  {:>24}   {}"
+        row = "{:>6}  {:>12.4f}  {:>24}   {}"
         self.pretty.write(
             "D",
             "Web",
@@ -1512,7 +2038,9 @@ class RAGChatImpl(SingletonMixin):
         self.pretty.write("D", "Web", "-" * 71, color=CYAN)
         for i, doc in enumerate(docs[:20], start=1):
             score = doc.metadata.get("chroma_score", 0.0)
-            sources = str(doc.metadata.get("retriever_sources", ""))
+            sources = align_retriever_sources_for_print(
+                str(doc.metadata.get("retriever_sources", "")), 24
+            )
             url = doc.metadata.get("FilePath", "<unknown>")
             self.pretty.write("D", "Web", row.format(i, score, sources, url))
 
@@ -1521,10 +2049,10 @@ class RAGChatImpl(SingletonMixin):
 
         Column widths mirror the Rerank debug table so Pos / Retrievers / File
         stay visually aligned across both outputs:
-          Pos(6)  RRFScore(10)  [blank AdjScore](10)  Retrievers(17)  File(30)
+          Pos(6)  RRFScore(10)  [blank AdjScore](10)  Retrievers(24)  File(30)
         """
-        header = "{:>6}  {:>10}  {:>10}  {:>17}  {:<30}"
-        row = "{:>6}  {:>10.4f}  {:>10}  {:>17}  {:<30}"
+        header = "{:>6}  {:>10}  {:>10}  {:>24}  {:<30}"
+        row = "{:>6}  {:>10.4f}  {:>10}  {:>24}  {:<30}"
         self.pretty.write(
             "D",
             "Merge",
@@ -1534,7 +2062,9 @@ class RAGChatImpl(SingletonMixin):
         self.pretty.write("D", "Merge", "-" * 82, color=CYAN)
         for i, doc in enumerate(docs, start=1):
             score = doc.metadata.get("rrf_score", 0.0)
-            sources = doc.metadata.get("retriever_sources", "")
+            sources = align_retriever_sources_for_print(
+                str(doc.metadata.get("retriever_sources", "")), 24
+            )
             fn = doc.metadata.get("FileName", "<unknown>")
             self.pretty.write("D", "Merge", row.format(i, score, "", sources, fn))
 

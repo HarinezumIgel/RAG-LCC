@@ -38,6 +38,7 @@ from Strategies.Chunkers.SentenceWindowChunker import SentenceWindowChunker
 from Strategies.Chunkers.SlideChunker import SlideChunker
 from Strategies.Chunkers.SlidingWindowChunker import SlidingWindowChunker
 from Strategies.GraphRetriever import GraphRetriever
+from Strategies.RegexRetriever import RegexRetriever
 from Strategies.StrategyType import StrategyType
 
 # Third-party imports
@@ -80,6 +81,7 @@ class DocumentIngestionStrategy(SingletonMixin):
         self.exclusions: Exclusions = Exclusions()
         self.bm25_retriever: BM25Retriever = BM25Retriever()
         self.graph_retriever: GraphRetriever = GraphRetriever()
+        self.regex_retriever: RegexRetriever = RegexRetriever()
         self.perf_logger: PerfLogger = PerfLogger()
 
         _coll_name, _ = self.chromaDBHelper.change_chroma_collection(
@@ -313,6 +315,16 @@ class DocumentIngestionStrategy(SingletonMixin):
 
         # 8c) Update graph index incrementally (remove old + add new)
         self.graph_retriever.ingest_file(
+            self.escapedFilePath or "",
+            self.collection_name,
+            self.collection,
+            kept_ids,
+            kept_texts,
+            kept_metas,
+        )
+
+        # 8d) Update regex index incrementally (remove old + add new)
+        self.regex_retriever.ingest_file(
             self.escapedFilePath or "",
             self.collection_name,
             self.collection,

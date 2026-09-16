@@ -366,7 +366,7 @@ still bound by the model owner's license terms**.
 RAG-LCC does not download LLMs. On startup `RAGLoad.py`, `RAGChat.py`, `RAGChatService.py` and `DocClassify.py` check whether the licenses belonging to the models used in `./Configuration/Config_Models.py` have been accepted.
 RAG-LCC asks you whether it may temporarily allow internet access to fetch the licenses. Then you are guided through the license consent loop. The fetched licenses and operator consent are stored in `./ModelGovernance/licenses`. Operators can monitor network activity using the built-in [Socket-Level Network Tracing](#-socket-level-network-tracing).
 
-Hugging Face models (embedder, cross-encoder, and translation model) follow a separate consent-based download flow. See [Hugging Face Models (Embedder, Cross-Encoder + Translation)](#-hugging-face-models-embedder--cross-encoder--translation) for details on when and how these models are downloaded.
+Hugging Face models (embedder and cross-encoder) follow a separate consent-based download flow. See [Hugging Face Models (Embedder + Cross-Encoder)](#-hugging-face-models-embedder--cross-encoder) for details on when and how these models are downloaded.
 
 ## 🌍 7. Install Argos Translate
 
@@ -898,7 +898,7 @@ If you see a `RequestsDependencyWarning` see [Troubleshooting](CONFIGURATION_REF
 
 You are asked to consent to the licenses for the models defined in `Config_Models.py`. With the default used in this repository  `LICENSE_DOWNLOAD = "0"`, RAG‑LCC prompts you with `[y/N]` on each individual license download. You can also set `LICENSE_DOWNLOAD` to `"1"` in `Config_Internet_Env.py` to skip the per-fetch prompt if this is acceptable for your environment and policies. In this case licenses will be fetched online on every run.
 
-This step is repeated for each model that the started application actually requires (for example, `RAGChat` needs the LLM, compliance-check LLM, embedder, cross-encoder, translation model, and Ollama provider — but not the OpenWebUI entry, which is only used by `RAGChatService`). Only the licenses relevant to the launched `.py` file are checked; models not used by that application are skipped. Once consented, license consent is only re-requested if a local license file is missing, the config hash changes, or — when `LICENSE_DOWNLOAD` is enabled — a changed remote license text or TLS certificate is detected.
+This step is repeated for each model that the started application actually requires (for example, `RAGChat` needs the LLM, compliance-check LLM, embedder, cross-encoder, and Ollama provider — but not the OpenWebUI entry, which is only used by `RAGChatService`). Only the licenses relevant to the launched `.py` file are checked; models not used by that application are skipped. Once consented, license consent is only re-requested if a local license file is missing, the config hash changes, or — when `LICENSE_DOWNLOAD` is enabled — a changed remote license text or TLS certificate is detected.
 
 ```text
 🟡 License                        mistral._LLM: missing license or metadata
@@ -1052,11 +1052,9 @@ and [Web-Search Intent Filter Extensions in CONFIGURATION_REFERENCE.md](CONFIGUR
 
 When `RAG_LCC_NW_TRACE` is set to `"1"`, RAG-LCC monkey-patches Python's `socket.connect` and `socket.getaddrinfo` at startup via `NetworkTracer`. Every DNS resolution and outgoing TCP connection is logged to the console with a timestamp, the destination host/port, resolved IP addresses (forward DNS) or hostname (reverse DNS), and a filtered stack trace showing only project frames (site-packages are excluded). This may assist operators in observing certain Python‑level network activity and associated code paths, but does not guarantee completeness or accuracy. Set `RAG_LCC_STACK_TRACE` to `"1"` alongside it to also get full Python stack traces on errors.
 
-## 🤗 Hugging Face Models (Embedder + Cross-Encoder + Translation)
+## 🤗 Hugging Face Models (Embedder + Cross-Encoder)
 
-If you enable HF_HUB_OFFLINE="0" and accept the model licenses, RAG-LCC will download the required Hugging Face models (embedder, cross-encoder, and translation model). In this case, a download consent is requested. Consent is recorded in the `ModelGovernance/consents` directory.
-
-The translation model (`facebook/m2m100_1.2B`, MIT, ~5 GB) is downloaded lazily on the first query that requires translation. Its license (MIT) and download are gated through the same `HFDownloader` consent flow as the embedder — you will be prompted once and consent is recorded under `ModelGovernance/consents`.
+If you enable HF_HUB_OFFLINE="0" and accept the model licenses, RAG-LCC will download the required Hugging Face models (embedder and cross-encoder). In this case, a download consent is requested. Consent is recorded in the `ModelGovernance/consents` directory.
 
 If internet is not reachable or HF_HUB_OFFLINE="1" you must install the HF models manually in the local HF cache.
 

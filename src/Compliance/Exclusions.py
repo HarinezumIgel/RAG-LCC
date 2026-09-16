@@ -1,6 +1,7 @@
 import os
 from typing import List, Optional, Set
 
+from Commons.DriveRootGuard import is_drive_root
 from Commons.Exceptions import ExclusionsError
 from Commons.SingletonMixin import SingletonMixin
 from Config.Config import Config
@@ -252,6 +253,15 @@ class Exclusions(SingletonMixin):
         finally:
             if os.path.exists(tmp_path):
                 try:
-                    os.remove(tmp_path)
+                    abs_tmp = os.path.normpath(os.path.abspath(tmp_path))
+                    if is_drive_root(abs_tmp):
+                        self.pretty.write(
+                            "E",
+                            "Path Guard",
+                            f"Refusing to delete root or drive path '{abs_tmp}'.",
+                            color=RED,
+                        )
+                    else:
+                        os.remove(abs_tmp)
                 except Exception:
                     pass

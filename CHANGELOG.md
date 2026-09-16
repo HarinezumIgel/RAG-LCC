@@ -6,6 +6,127 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [Released] — 2026-09-16
+
+### 🌐 Changed — Query translation backend simplified to Argos-only
+
+- `_QUERY_REWRITE.TRANSLATION_BACKEND` now supports only `"argos"` and `"off"`.
+- The runtime M2M/HF translation path was removed from chat query normalisation.
+- `src/Compliance/HfTranslator.py` was removed.
+- `RAGChatImpl._get_translator()` now resolves only the Argos translator (or `None`).
+- The translation model selector role was removed from `Config_Models.py`.
+- `src/Scripts/ArgosTranslatePackages.py` docs now clarify required pair directions
+  for query normalisation and response-language translation.
+
+### 🧭 Changed — Retrieval-language contract hardened in query normalisation
+
+- `RAGChatImpl._normalize_query()` now enforces an explicit retrieval-language
+  pipeline: raw language detection → original English translation
+  (`orig_translated_query_en`) → rewrite → post-rewrite English enforcement
+  (`post_rewrite_query_en`).
+- Session metadata is now consistently tracked for this path with explicit names
+  (`user_language`, `retrieval_language`, `orig_translated_query_en`,
+  `rewritten_query`, `rewrite_language`, `post_rewrite_query_en`,
+  `retrieval_top_k_orig_query_en`, `retrieval_top_k_post_rewrite_query_en`,
+  `effective_query`, `effective_query_reason`).
+- Legacy aliases are still populated for compatibility
+  (`t1_query`/`t2_query`, `retrieval_top_k_before_t2`/`retrieval_top_k_after_t2`).
+- Non-English rewrites trigger one strict-English rewrite retry before fallback
+  translation.
+- `_normalize_query()` was split with focused helpers:
+  `_resolve_turn_translation_backend`, `_detect_raw_query_language`,
+  `_translate_query_to_english`, `_rewrite_query_with_strict_retry`,
+  `_apply_post_rewrite_translation`, `_log_query_language_drift`, and
+  `_set_effective_query_metadata`.
+- Compatibility fallback was preserved for tests that dynamically compile
+  `_normalize_query()` in isolation.
+
+### 🔒 Hardened — deletion guards (including Regex retriever maintenance path)
+
+- `BM25Retriever.remove_by_filepath`, `GraphRetriever.remove_by_filepath`, and
+  `RegexRetriever.remove_by_filepath` now enforce the shared jailbreak/root
+  safety check via `FileUtils.is_safe_delete_path(...)` before mutation.
+- `Exclusions._flush_to_disk()` now guards temporary-file cleanup against
+  drive/filesystem-root paths before `os.remove(...)`.
+- `OfficeDocConverter` now routes temp-file cleanup through
+  `_safe_remove_temp_file(...)`, which rejects root/drive paths before delete.
+
+### ✨ Changed — RegexRetriever language-aware auxiliary cache
+
+- `RegexRetriever` now pre-builds translated auxiliary-lemma caches for
+  active languages derived from `_ARGOS_DEFINITIONS.ARGOS_LANGUAGES`
+  (plus English).
+- Auxiliary filtering during term extraction is now language-aware per chunk,
+  using each chunk's metadata `Language` field.
+- Query-term extraction in `RegexRetriever.query()` remains English-aligned
+  with the retrieval-language contract.
+- `RegexRetriever` now reads `_REGEX_INDEX.noun_pos_tags` and
+  `_REGEX_INDEX.aux_lemmas` directly from config (removed duplicated
+  hardcoded fallback lists).
+- `RegexRetriever` now resolves its spaCy model from
+  `_REGEX_INDEX.spacy_model` only (no graph-setting fallback).
+- Added startup status output via `PrettyWriter` after aux-lemma cache warm-up,
+  including fallback-to-English count when translations are unavailable.
+- Removed placeholder `bm25_score` emission from `RegexRetriever` metadata;
+  source-specific `regex_score` and generic `chroma_score` remain.
+
+### 🧭 Documentation
+
+- Updated `README.md` quick mental model box alignment (right-border fix).
+- Synced retrieval docs across `README.md`, `ARCHITECTURE.md`, and
+  `CONFIGURATION_REFERENCE.md` for the 4-local-store model
+  (Vector + BM25 + Graph + Regex) and expanded retrieve-mode matrix.
+
+### ✅ Tests
+
+- Guard-focused checks passed:
+  `tests/test_argos_downloader.py`, `tests/test_open_marked_documents.py`,
+  `tests/test_file_utils_path_guard.py`.
+- Full regression pass after changes: `1360 passed, 2 skipped`.
+- Skips are intentional diagnostic scripts:
+  `scripts_posh/private/test_pcie_query.py` and
+  `scripts_posh/private/test_pcie_retrieval.py`.
+
+### 🧪 Fixed — Explicit source-language pair handling in `SharedHelpers`
+
+- `SharedHelpers._get_translation()` no longer probes arbitrary source
+  languages when a concrete source language is provided and the exact pair is
+  missing.
+- In that case, it now returns `None` so callers can handle missing pairs
+  explicitly.
+
+### 🛡️ Added — Hard grounding fallback for unsupported answers
+
+- `Chatter.run()` now validates whether the generated answer is grounded in the
+  retrieved chunks.
+- When no supporting evidence is found, it returns a deterministic no-evidence
+  fallback message instead of a plausible-but-ungrounded answer.
+- Added helpers in `Chatter`: `_has_grounded_evidence()`,
+  `_extract_answer_section()`, and `_build_no_evidence_message()`.
+- For non-English answers, grounding can use a translated English proxy when
+  retrieval language is English.
+
+### 🧾 Documentation
+
+- Updated `README.md`, `INSTALL.md`, `ARCHITECTURE.md`, and
+  `CONFIGURATION_REFERENCE.md` to remove stale M2M/hybrid references and align
+  with the Argos-only architecture.
+
+### ✅ Tests
+
+- Added translation/grounding contract tests:
+  `tests/test_query_language_contract.py`,
+  `tests/test_shared_helpers_translation.py`, and
+  `tests/test_chatter_grounding_guard.py`.
+- Removed `tests/test_hf_translator.py` with HF translator runtime deprecation.
+- Verified current regression state with `pytest tests -q`: `1319 passed`.
+
+### 🙏 Credits
+
+- Thanks to [GioiaZheng (Gioia Zheng)](https://github.com/GioiaZheng) for contributions to this release (language handling).
+
+---
+
 ## [Released] — 2026-08-05
 
 ### 🛡️ Startup safeguards — drive-root and working-directory checks
@@ -333,27 +454,17 @@ All subsequent calls use `self.perf_logger.log(...)`. Because construction
 is now single-threaded by design, all locking (`_file_lock`, `_times_lock`,
 double-checked locking) was removed.
 
-- **`PerfLogger`:** removed `threading` import and both `Lock` instances;
-  simplified `_get_file_logger()` and `log()`.
-- **All 13 call-site files** updated to the `self.perf_logger` pattern:
-  `LLMCaller`, `ModelsCache`, `BM25Scorer`, `CosineScorer`, `JaccardScorer`,
-  `KeyBertScorer`, `RegexScorer`, `LevenshteinScorer`, `BM25Retriever`,
-  `DocumentIngestionStrategy`, `GraphRetriever`, `WebRetriever`, `RAGChatImpl`.
 - **`ScorerBase`** (`ComplianceAlgoResult.py`) gained an `__init__` that sets
   `self.perf_logger` so the shared `verify()` timing wrapper works for any
   subclass.
-- **Test factory functions** in `test_bm25_retriever.py`,
   `test_models_cache.py`, `test_graph_retriever.py`, and `test_llm_caller.py`
   updated to set `perf_logger = MagicMock()` after bypassing `__init__`.
-
-### ✨ Added — `PerfLogger` elapsed time as a dedicated log column
 
 The `Δ=...s` elapsed value is now written as its own fourth pipe-separated
 column instead of being appended to the detail string. A new `_DETAIL_WIDTH`
 constant (65 chars) pads the detail column so the elapsed column aligns
-across all log lines.
 
-Previous format:
+Old format:
 
 ```text
 2026-07-13T14:22:05.145Z | BM25Retriever.query              | stop  bm25 query n=42 elapsed=0.145s  Δ=0.145s
@@ -375,23 +486,18 @@ New format:
 ### ✨ Added — Early startup connectivity probe for Ollama / vLLM
 
 `StartupCommons.common_start()` now probes the configured LLM endpoint immediately
-after printing the endpoint info banner, before any model or pipeline is loaded.
 If the endpoint is unreachable the application prints a red error and raises
-`LocalLLMEndpointNotAvailable` (a new subclass of `BackendUnavailableError`), then
 exits cleanly.
 
 Probe behaviour is controlled by `TRY_FALLBACK_URLS` in each endpoint's config block
-(`Config_Models.py`):
 
 | Value | Behaviour |
 | --- | --- |
 | `True` *(default)* | Uses the existing `Helpers.find_provider_url()` fallback logic — tries up to 6 candidate URLs (configured host, localhost, 127.0.0.1, host.docker.internal, plus default-port variants). |
-| `False` | Probes only `BASE_URL` once. On failure the error is shown immediately and the app exits — no fallback attempts. Use this when `BASE_URL` is a fixed remote IP and fallback probing is undesirable. |
 
 Each failed probe in the fallback sequence now also emits an orange *"Trying next: \<url\>"*
 warning so the operator can see which candidates are being tried.
 
-- **New exception:** `LocalLLMEndpointNotAvailable` in `src/Commons/Exceptions.py`
 - **New config key:** `TRY_FALLBACK_URLS` in `_MODELS["ollama"]["_OLLAMA"]` and `_MODELS["vllm"]["_VLLM"]` in `src/Configuration/Config_Models.py`
 - **Affected files:** `src/Commons/StartupCommons.py`, `src/Commons/Exceptions.py`, `src/Helpers/Helpers.py`, `src/Configuration/Config_Models.py`
 
@@ -402,27 +508,18 @@ warning so the operator can see which candidates are being tried.
 ### 🐛 Fixed — `.vscode/settings.json` wrong source path and missing site-packages
 
 `python.analysis.extraPaths` referenced `"${workspaceFolder}/source"` (non-existent)
-instead of `"${workspaceFolder}/src"`, meaning Pylance never indexed project
 modules. The same typo existed in `python.autoComplete.extraPaths`.
 
 Additionally, Pylance could not resolve installed packages (`fastapi`, `uvicorn`,
-`starlette`) despite them being present in `.venv`. Added
 `"${workspaceFolder}/.venv/lib/python3.13/site-packages"` to
-`python.analysis.extraPaths` to force resolution.
-
-- **Affected file:** `.vscode/settings.json`
 
 ### 🐛 Fixed — `RAGChatService.py` duplicate `import sys` and Pylance false positives
 
 - Removed duplicate `import sys` (appeared on lines 3 and 8).
 - Moved `# pyright: ignore[reportUnusedFunction]` from the function body line
   to the `def` line for `_verifyBearerToken`, `_validationErrorHandler`,
-  `chatCompletions`, and `getMarkedDocument` (FastAPI decorator-registered
   handlers that Pylance incorrectly reports as unused).
 - Added `reportPrivateUsage` suppression on the import line for
-  `_complianceResponse` and `_format_session_for_error`.
-
-- **Affected file:** `src/Apps/RAGChatService.py`
 
 ---
 

@@ -550,22 +550,10 @@ class FileUtils:
         """
         return self.delete_file_or_dir(path)
 
-    def delete_file_or_dir(self, filepath: str) -> bool:
-        """
-        Deletes a file or directory at the specified filepath.
-
-        A project-root containment check prevents deletion of paths
-        outside the project directory (path jailbreak guard).
-
-        Args:
-            filepath (str): The full path to the file or directory to be deleted.
-
-        Returns:
-            bool: True if deletion succeeded or if the file/directory does not exist,
-                False if an error occurred.
-        """
+    def is_safe_delete_path(self, filepath: str) -> bool:
+        """Return True when *filepath* passes the jailbreak delete guard."""
         if not filepath:
-            self.pretty.write("E", "", f"No filepath specified.")
+            self.pretty.write("E", "", "No filepath specified.")
             return False
 
         abs_fp = os.path.normpath(os.path.abspath(filepath))
@@ -612,6 +600,25 @@ class FileUtils:
                 f"Refusing to delete '{abs_fp}': path is outside the project root "
                 f"'{project_root}'. This looks like a path jailbreak attempt.",
             )
+            return False
+
+        return True
+
+    def delete_file_or_dir(self, filepath: str) -> bool:
+        """
+        Deletes a file or directory at the specified filepath.
+
+        A project-root containment check prevents deletion of paths
+        outside the project directory (path jailbreak guard).
+
+        Args:
+            filepath (str): The full path to the file or directory to be deleted.
+
+        Returns:
+            bool: True if deletion succeeded or if the file/directory does not exist,
+                False if an error occurred.
+        """
+        if not self.is_safe_delete_path(filepath):
             return False
 
         if os.path.exists(filepath):

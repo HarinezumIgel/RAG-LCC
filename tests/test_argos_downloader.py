@@ -75,8 +75,10 @@ class StubFileUtils:
 
     def delete_file_or_dir(self, path):
         self.deleted.append(path)
-        if os.path.isfile(path):
-            os.remove(path)
+        abs_path = os.path.normpath(os.path.abspath(path))
+        _, tail = os.path.splitdrive(abs_path)
+        if len(tail) > 2 and os.path.isfile(abs_path):
+            os.remove(abs_path)
         return True
 
 

@@ -226,7 +226,7 @@ class SharedHelpers(SingletonMixin):
                         f"installed \u2014 returning text unchanged. Add "
                         f"('{src_norm}', '{tgt_norm}') to "
                         f"_ARGOS_DEFINITIONS.ARGOS_LANGUAGES and run "
-                        f"src/scripts/ArgosTranslatePackages.py to install it.",
+                        f"src/Scripts/ArgosTranslatePackages.py to install it.",
                         color=ORANGE,
                     )
         else:
@@ -269,9 +269,17 @@ class SharedHelpers(SingletonMixin):
             except Exception:
                 pass
 
-        # fallback: try every installed source → target
-        if tgt_lang:
+        # Fallback source probing is only safe when source is unknown/auto.
+        # If a concrete source language is provided and that exact pair is
+        # missing, return None so callers can handle the miss explicitly.
+        allow_source_fallback: bool = (
+            source_code in {"", "auto"} or source_code not in self.installed_langs
+        )
+        if tgt_lang and allow_source_fallback:
             for src in self.installed_langs.values():
+                src_code = str(getattr(src, "code", "")).lower()
+                if not src_code or src_code == target_code:
+                    continue
                 try:
                     translated = src.get_translation(tgt_lang)
                     if translated:
@@ -280,7 +288,9 @@ class SharedHelpers(SingletonMixin):
                     continue
 
         # --- no installed pair found ---
-        if target_code not in self.warned_langs:
+        # Only emit the target-language warning when the target itself is
+        # missing. Pair-specific misses are logged by translate_text().
+        if tgt_lang is None and target_code not in self.warned_langs:
             self.warned_langs.add(target_code)
             stanza_download = os.environ.get("ARGOS_STANZA_DOWNLOAD", "0").strip()
             if stanza_download != "1":
@@ -290,7 +300,7 @@ class SharedHelpers(SingletonMixin):
                     f"Language '{target_code}' not installed locally — "
                     f"banned words to target language translation skipped, "
                     f"using English fallback. Set ARGOS_STANZA_DOWNLOAD=1 to allow network downloads "
-                    f"or run src/scripts/ArgosTranslatePackages.py to install languages "
+                    f"or run src/Scripts/ArgosTranslatePackages.py to install languages "
                     f"defined in Config_Global _ARGOS_DEFINITIONS.ARGOS_LANGUAGES)",
                     color=ORANGE,
                 )

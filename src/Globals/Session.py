@@ -45,6 +45,7 @@ class Session:
         self.vector_weight: float | None = None
         self.bm25_weight: float | None = None
         self.graph_weight: float | None = None
+        self.regex_weight: float | None = None
         self.web_search: bool = False
         self.web_weight: float | None = None
         self.web_rerank_threshold: float | None = None
@@ -58,7 +59,7 @@ class Session:
         self.top_p: float | None = None
         self.base_kwargs: dict[str, Any] | None = None
         self.collection_name: str | None = None
-        self.retrieve_mode: str | None = "HYBRID"  # VECTOR, BM25, HYBRID (default)
+        self.retrieve_mode: str | None = "ALL"  # See _ALLOWED_RETRIEVE_MODES
         self.debug_level: int | None = None
         # Comparison mode for debug_level: "ge" = >= level (default), "is" = == level exactly
         self.debug_mode: str = "ge"
@@ -84,6 +85,36 @@ class Session:
         # to tag stored turns and filter fetched turns by language so that
         # German context never bleeds into an English query and vice-versa.
         self.current_query_lang: str | None = None
+        # Language contract fields for the query-normalisation pipeline.
+        # user_language: language detected on the raw user turn (response side)
+        # retrieval_language: target language used for retrieval queries
+        # orig_translated_query_en: raw user turn translated to retrieval language
+        # rewritten_query: query text immediately after PromptRewrite
+        # rewrite_language: detected language of rewritten_query
+        # post_rewrite_query_en: final retrieval query after post-rewrite enforcement
+        self.user_language: str | None = None
+        self.retrieval_language: str | None = None
+        self.orig_translated_query_en: str | None = None
+        self.post_rewrite_query_en: str | None = None
+
+        # Compatibility aliases.
+        self.seed_retrieval_query: str | None = None
+        self.final_retrieval_query: str | None = None
+        self.t1_query: str | None = None
+        self.rewritten_query: str | None = None
+        self.rewrite_language: str | None = None
+        self.t2_query: str | None = None
+
+        # Retrieval guardrail counters: documents returned by seed-query
+        # versus final-query legs before they are fused.
+        self.retrieval_top_k_orig_query_en: int | None = None
+        self.retrieval_top_k_post_rewrite_query_en: int | None = None
+
+        # Compatibility aliases.
+        self.retrieval_top_k_seed_query: int | None = None
+        self.retrieval_top_k_final_query: int | None = None
+        self.retrieval_top_k_before_t2: int | None = None
+        self.retrieval_top_k_after_t2: int | None = None
         # Set by RAGChatImpl to the effective (translated / rewritten) retrieval
         # query when it differs from the user's original input.  Chatter uses
         # this to show a notice at the top of the answer.
@@ -147,6 +178,7 @@ class Session:
             "vector_weight",
             "bm25_weight",
             "graph_weight",
+            "regex_weight",
             "web_search",
             "web_weight",
             "fetch_page_content",

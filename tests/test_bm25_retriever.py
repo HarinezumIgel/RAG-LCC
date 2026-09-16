@@ -98,6 +98,9 @@ def _make_retriever(**overrides: Any) -> BM25Retriever:
     r._k1 = overrides.get("k1", 1.2)
     r._b = overrides.get("b", 0.75)
     r._rrf_k = overrides.get("rrf_k", 60)
+    file_utils = overrides.get("file_utils", MagicMock())
+    file_utils.is_safe_delete_path.return_value = True
+    r._file_utils = file_utils
     r.perf_logger = MagicMock()
     # Register as the singleton instance so is_loaded_for works
     BM25Retriever._instance = r  # type: ignore[reportPrivateUsage]
@@ -327,6 +330,20 @@ class TestRemoveByFilepath:
         )
         assert r._data.N == 4
         assert "c1_v2" in r._data.chunk_ids
+
+    def test_skips_removal_when_guard_rejects_path(self):
+        file_utils = MagicMock()
+        file_utils.is_safe_delete_path.return_value = False
+        r = _make_retriever(file_utils=file_utils)
+        _build_index(r, CHUNKS)
+
+        n_before = r._data.N
+        ids_before = list(r._data.chunk_ids)
+        r.remove_by_filepath("/")
+
+        file_utils.is_safe_delete_path.assert_called_once_with("/")
+        assert r._data.N == n_before
+        assert r._data.chunk_ids == ids_before
 
 
 # ===========================================================================

@@ -60,6 +60,40 @@ def truncate_for_print(content: str, width: int) -> str:
     return content[:left] + "..." + content[-(chars - left) :]
 
 
+def align_retriever_sources_for_print(sources: str, width: int = 24) -> str:
+    """Render retriever sources in fixed slots for stable debug-table alignment.
+
+    Local retrievers are displayed in this fixed order with blank padding when
+    missing: Vector, BM25, Graph, Regex. Non-local labels (for example "Web")
+    fall back to a width-limited plain string.
+    """
+    raw = str(sources or "")
+    labels = [part.strip() for part in raw.split(",") if part.strip()]
+    if not labels:
+        return " " * width
+
+    ordered_slots: tuple[tuple[str, int], ...] = (
+        ("Vector", 6),
+        ("BM25", 4),
+        ("Graph", 5),
+        ("Regex", 5),
+    )
+    label_set = {label.lower() for label in labels}
+    local_names = {name.lower() for name, _ in ordered_slots}
+
+    if any(name in label_set for name in local_names):
+        parts = [
+            (name if name.lower() in label_set else "").ljust(slot_width)
+            for name, slot_width in ordered_slots
+        ]
+        aligned = " ".join(parts)
+        if len(aligned) > width:
+            return truncate_for_print(aligned, width)
+        return aligned.ljust(width)
+
+    return truncate_for_print(",".join(labels), width).ljust(width)
+
+
 def _current_uid() -> str:
     """Return current uid if available; otherwise a stable marker for non-POSIX systems."""
     getuid = getattr(os, "getuid", None)
@@ -214,6 +248,12 @@ class Helpers:
             "rrf_score",
             "bm25_score",
             "graph_score",
+            "regex_score",
+            "regex_verb_hits",
+            "regex_noun_hits",
+            "regex_match_mode",
+            "regex_verb_matches",
+            "regex_noun_matches",
             "position",
             "retriever_sources",
             "FileHash",

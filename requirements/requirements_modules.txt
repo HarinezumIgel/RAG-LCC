@@ -17,7 +17,7 @@ Module: langchain_core
 Module: langchain_huggingface
 Module: langchain_text_splitters
 Module: langdetect
-Module: lingua
+Module: lingua-language-detector
 Module: lxml
 Module: nltk
 Module: numpy
@@ -38,7 +38,6 @@ Module: spacy
 Module: stanza
 Module: starlette
 Module: torch
-Module: transformers
 Module: uvicorn
 Module: wcwidth
 Module: pywin32

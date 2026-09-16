@@ -175,8 +175,18 @@ class Chatter:
                 session, query, query_notice, apiChunkHandler
             )
 
-        # Resolve the prompt with actual values
-        formatted = prompt.format(context=context, input=session.query)
+        # Resolve the prompt with actual values. Retrieval runs in English,
+        # but response language follows user preference / detected user language.
+        response_language: str = (
+            session.preferred_response_language
+            or getattr(session, "user_language", None)
+            or "english"
+        )
+        formatted = prompt.format(
+            context=context,
+            input=session.query,
+            response_language=response_language,
+        )
         effective_ctx, resolved_output = self._resolve_token_params(session, formatted)
         session.max_output_tokens = resolved_output
 
@@ -271,6 +281,28 @@ class Chatter:
         if self._check_answer_compliance(session, answer, content):
             return False, None
 
+        chunk_texts_for_grounding: list[str] = list(
+            getattr(session, "chunk_texts_for_grounding", []) or []
+        )
+        if not self._has_grounded_evidence(
+            session,
+            content,
+            chunk_texts_for_grounding,
+            response_language,
+        ):
+            self.pretty.write(
+                "W",
+                "Grounding",
+                "No supporting evidence found in retrieved context; "
+                "returning no-evidence fallback.",
+                color=ORANGE,
+            )
+            content = self._build_no_evidence_message()
+            answer.content = content
+            # Avoid presenting unrelated source files for an ungrounded answer.
+            session.last_chosen_chunks = []
+            session.chunk_texts_for_grounding = []
+
         if session.use_chat_context:
             self.chatContext.add_chat_turn(session, query, content)
 
@@ -348,6 +380,184 @@ class Chatter:
         }
         label = notice_labels.get(reason, "Query (changed)")
         return f'\U0001f50d *{label}: "{effective_q}"*\n\n---\n\n'
+
+    @staticmethod
+    def _build_no_evidence_message() -> str:
+        """Return the standard fallback when no evidence is found in context."""
+        return (
+            "I couldn't find evidence in the retrieved context to answer your query.\n\n"
+            "Try increasing retriever_k, top_k and lower threshold or change strategy."
+        )
+
+    @staticmethod
+    def _extract_answer_section(text: str) -> str:
+        """Return answer text before the optional '### Sources' section."""
+        if not text:
+            return ""
+        marker = "\n### sources"
+        lower = text.lower()
+        idx = lower.find(marker)
+        if idx >= 0:
+            return text[:idx].strip()
+        return text.strip()
+
+    def _collect_web_grounding_texts(self, session: Session) -> list[str]:
+        """Collect deduplicated web snippets/page text from retrieved chunks."""
+        chosen = list(getattr(session, "last_chosen_chunks", []) or [])
+        web_texts: list[str] = []
+        seen_norm: set[str] = set()
+        for doc in chosen:
+            meta = getattr(doc, "metadata", {}) or {}
+            if str(meta.get("Source", "")).lower() != "web":
+                continue
+            snippet = str(meta.get("snippet", "") or "").strip()
+            page_text = str(getattr(doc, "page_content", "") or "").strip()
+            for candidate in (snippet, page_text):
+                if not candidate:
+                    continue
+                norm = " ".join(candidate.split()).lower()
+                if norm in seen_norm:
+                    continue
+                seen_norm.add(norm)
+                web_texts.append(candidate)
+        return web_texts
+
+    def _has_grounded_evidence(
+        self,
+        session: Session,
+        answer_text: str,
+        chunk_texts: list[str],
+        response_language: str,
+    ) -> bool:
+        """Return True when answer_text can be grounded in retrieved evidence.
+
+        Grounding is checked against the answer section (excluding an optional
+        sources block). Evidence includes local chunk text and retrieved web
+        snippets/page text. If direct grounding fails and retrieval is English,
+        a translated proxy of the answer is attempted to support
+        non-English final responses.
+        """
+        if not answer_text.strip():
+            return True
+
+        web_chunk_texts: list[str] = []
+        try:
+            collected_any: Any = self._collect_web_grounding_texts(session)
+            if isinstance(collected_any, list):
+                from typing import cast as _cast
+
+                cleaned: list[str] = []
+                for item in _cast(list[object], collected_any):
+                    if isinstance(item, str) and item.strip():
+                        cleaned.append(item)
+                web_chunk_texts = cleaned
+        except Exception:
+            web_chunk_texts = []
+
+        evidence_texts = [c for c in chunk_texts if c and c.strip()]
+        evidence_texts.extend(web_chunk_texts)
+        if not evidence_texts:
+            return True
+
+        from VisualMarkers.AnswerGrounder import AnswerGrounder
+
+        answer_body = self._extract_answer_section(answer_text)
+        if not answer_body:
+            return False
+
+        def _relaxed_overlap_supported(
+            answer_candidate: str,
+            evidence: list[str],
+        ) -> bool:
+            """Second-pass grounding for paraphrased/translated answers.
+
+            Uses sentence-vs-evidence token containment with conservative
+            thresholds to reduce false negatives while still requiring
+            substantial lexical overlap.
+            """
+            import re as _re
+
+            if not answer_candidate.strip() or not evidence:
+                return False
+
+            def _tokset(text: str) -> set[str]:
+                return {
+                    tok
+                    for tok in _re.findall(r"\w+", text.lower(), flags=_re.UNICODE)
+                    if len(tok) >= 3
+                }
+
+            evidence_token_sets: list[set[str]] = [
+                _tokset(chunk) for chunk in evidence if chunk and chunk.strip()
+            ]
+            evidence_token_sets = [s for s in evidence_token_sets if s]
+            if not evidence_token_sets:
+                return False
+
+            sentences: list[str] = []
+            for para in answer_candidate.splitlines():
+                p = para.strip()
+                if not p:
+                    continue
+                sentences.extend(
+                    s.strip() for s in _re.split(r"(?<=[.!?])\s+", p) if s.strip()
+                )
+
+            for sentence in sentences:
+                s_tokens = _tokset(sentence)
+                if len(s_tokens) < 4:
+                    continue
+                for e_tokens in evidence_token_sets:
+                    overlap = s_tokens & e_tokens
+                    if len(overlap) < 3:
+                        continue
+                    # Require at least one substantive token to avoid
+                    # stopword-only matches (e.g. "and", "with", "from").
+                    if not any(len(tok) >= 5 for tok in overlap):
+                        continue
+                    containment = len(overlap) / max(
+                        1,
+                        min(len(s_tokens), len(e_tokens)),
+                    )
+                    if containment >= 0.60:
+                        return True
+            return False
+
+        grounder = AnswerGrounder()
+        if grounder.find_grounded_sentences(answer_body, evidence_texts):
+            return True
+        if _relaxed_overlap_supported(answer_body, evidence_texts):
+            return True
+
+        retrieval_lang = str(getattr(session, "retrieval_language", "") or "").lower()
+        if retrieval_lang not in {"english", "en"}:
+            return False
+
+        answer_lang = self.fileUtils.get_user_text_language(
+            answer_body,
+            output="nltk",
+            native_lang=response_language,
+        )
+        if answer_lang == "english":
+            return False
+
+        try:
+            from Compliance.SharedHelpers import SharedHelpers
+
+            translated = SharedHelpers().translate_text(
+                answer_body,
+                target_lang="en",
+                source_lang=answer_lang,
+            )
+        except Exception:
+            translated = answer_body
+
+        if not translated or translated == answer_body:
+            return False
+
+        if grounder.find_grounded_sentences(translated, evidence_texts):
+            return True
+        return _relaxed_overlap_supported(translated, evidence_texts)
 
     def _handle_no_results(
         self,

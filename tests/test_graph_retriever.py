@@ -146,6 +146,9 @@ def _make_retriever(nlp: Any = None, **overrides: Any) -> GraphRetriever:
     r._spacy_model = "en_core_web_sm"
     r._noun_chunk_min_chars = overrides.get("noun_chunk_min_chars", 3)
     r._noun_chunk_drop_leading = overrides.get("noun_chunk_drop_leading", "[({<")
+    file_utils = overrides.get("file_utils", MagicMock())
+    file_utils.is_safe_delete_path.return_value = True
+    r._file_utils = file_utils
     r.perf_logger = MagicMock()
     # Register as the singleton instance
     GraphRetriever._instance = r  # type: ignore[reportPrivateUsage]
@@ -384,6 +387,18 @@ class TestRemoveByFilepath:
         assert "tim cook" in r._data.entity_to_chunks
         assert "c5" in r._data.entity_to_chunks["tim cook"]
         assert "c1" not in r._data.chunk_entities
+
+    def test_skips_removal_when_guard_rejects_path(self):
+        file_utils = MagicMock()
+        file_utils.is_safe_delete_path.return_value = False
+        r = _make_retriever(nlp=StubNLP(ENTITY_MAP), file_utils=file_utils)
+        _add(r, CHUNKS)
+
+        before = dict(r._data.chunk_entities)
+        r.remove_by_filepath("/")
+
+        file_utils.is_safe_delete_path.assert_called_once_with("/")
+        assert r._data.chunk_entities == before
 
 
 # ===========================================================================

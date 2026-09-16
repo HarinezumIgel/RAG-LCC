@@ -44,7 +44,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from Api.ChatCompletionHandler import (
     ChatMessage,
     ChatCompletionRequest,
-    _buildQuey,
+    _buildQuery,
     _applyRequestToSession,
     _complianceResponse,
     handleRequest,
@@ -415,7 +415,7 @@ class TestBuildQuery:
 
     def test_single_user_message(self):
         msgs = [self._msg("user", "what is a hedgehog?")]
-        assert _buildQuey(msgs) == "what is a hedgehog?"
+        assert _buildQuery(msgs) == "what is a hedgehog?"
 
     def test_last_user_message_wins(self):
         msgs = [
@@ -423,14 +423,14 @@ class TestBuildQuery:
             self._msg("assistant", "first answer"),
             self._msg("user", "second question"),
         ]
-        assert _buildQuey(msgs) == "second question"
+        assert _buildQuery(msgs) == "second question"
 
     def test_system_message_prepended(self):
         msgs = [
             self._msg("system", "You are a helpful assistant."),
             self._msg("user", "what is a hedgehog?"),
         ]
-        result = _buildQuey(msgs)
+        result = _buildQuery(msgs)
         assert result.startswith("You are a helpful assistant.")
         assert "what is a hedgehog?" in result
 
@@ -441,22 +441,22 @@ class TestBuildQuery:
             self._msg("assistant", "A1"),
             self._msg("user", "Q2"),
         ]
-        result = _buildQuey(msgs)
+        result = _buildQuery(msgs)
         assert result.startswith("System context.")
         assert result.endswith("Q2")
 
     def test_only_system_no_user(self):
         msgs = [self._msg("system", "only system")]
         # system_text set but user_text is "" → "only system\n\n"
-        result = _buildQuey(msgs)
+        result = _buildQuery(msgs)
         assert "only system" in result
 
     def test_empty_messages(self):
-        assert _buildQuey([]) == ""
+        assert _buildQuery([]) == ""
 
     def test_no_user_messages(self):
         msgs = [self._msg("assistant", "some prior answer")]
-        assert _buildQuey(msgs) == ""
+        assert _buildQuery(msgs) == ""
 
     def test_only_second_system_ignored(self):
         """Only the first system message is picked up."""
@@ -465,7 +465,7 @@ class TestBuildQuery:
             self._msg("system", "second system"),
             self._msg("user", "query"),
         ]
-        result = _buildQuey(msgs)
+        result = _buildQuery(msgs)
         assert "first system" in result
         assert "second system" not in result
 
@@ -473,7 +473,7 @@ class TestBuildQuery:
         msg = ChatMessage(
             role="user", content=[{"text": "describe"}, {"text": "a fox"}]
         )
-        result = _buildQuey([msg])
+        result = _buildQuery([msg])
         assert "describe" in result
         assert "fox" in result
 

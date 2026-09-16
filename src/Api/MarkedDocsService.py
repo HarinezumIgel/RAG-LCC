@@ -22,8 +22,8 @@ def register_marked_documents(
 
     With store (SERVE_IN_MEMORY_DOCS_HTTP=1):
         ---
-        📎 **Marked sources** _(links expire in N min)_
-        - [Hedgehogs.pdf (highlighted)](https://host/marked/<token>.pdf)
+        🔵 **Marked sources** *(links expire in N min)*
+        - 🟢 [Hedgehogs.pdf (highlighted)](https://host/marked/<token>.pdf)
 
     Without store (SERVE_IN_MEMORY_DOCS_HTTP=0):
         ---
@@ -56,7 +56,7 @@ def register_marked_documents(
                 continue
             url = f"{base}/marked/{token}{out_suffix}"
             url_map[src_path] = url
-            lines.append(f"- [{display_name} (highlighted)]({url})")
+            lines.append(f"- 🟢 [{display_name} (highlighted)]({url})")
 
         if url_map:
             session.marked_docs_url_map = url_map  # type: ignore[attr-defined]
@@ -65,7 +65,7 @@ def register_marked_documents(
             return ""
 
         ttl_min = max(1, store.ttl_seconds // 60)
-        header = f"\n\n---\n📎 **Marked sources** _(links expire in {ttl_min} min)_\n"
+        header = f"\n\n---\n🔵 **Marked sources** *(links expire in {ttl_min} min)*\n"
         return header + "\n".join(lines) + "\n"
 
     # If no store but we have sources: show filenames only (no links)

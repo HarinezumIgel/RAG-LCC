@@ -18,7 +18,7 @@ langchain_core
 langchain_huggingface
 langchain_text_splitters
 langdetect
-lingua
+lingua-language-detector>=2.2.0
 lxml
 nltk==3.9.2
 numpy
@@ -44,7 +44,6 @@ spacy
 stanza
 starlette
 torch
-transformers
 uvicorn
 wcwidth
 xlsxwriter

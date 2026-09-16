@@ -8,8 +8,8 @@ collection using spaCy NER.  The graph can be:
 
 Scoring at query time: NER the query → BFS hop traversal → score candidate
 chunks by sum of co-occurrence edge weights → return LangChain Documents with
-``graph_score`` and ``bm25_score=0.0`` in metadata (the latter is the existing
-pipeline signal that triggers rerank-only blending in ``_rerank``).
+``graph_score`` and ``chroma_score`` in metadata for downstream ranking and
+debug output compatibility.
 """
 
 import gzip
@@ -25,6 +25,7 @@ from Commons.Exceptions import ModelLoadError
 from Commons.SingletonMixin import SingletonMixin
 from Config.Config import Config
 from Gui.PrettyWriter import PrettyWriter
+from Helpers.FileUtils import FileUtils
 from Helpers.PerfLogger import PerfLogger
 
 
@@ -89,6 +90,7 @@ class GraphRetriever(SingletonMixin):
 
         self.cfg: Config = cfg or Config()
         self.pretty: PrettyWriter = pretty or PrettyWriter()
+        self._file_utils: FileUtils = FileUtils(cfg=self.cfg, pretty=self.pretty)
         self._data: _GraphIndexData = _GraphIndexData()
         self.perf_logger: PerfLogger = PerfLogger()
 
@@ -131,6 +133,10 @@ class GraphRetriever(SingletonMixin):
         return os.path.join(
             self.cfg.get_str("_GRAPH_INDEX.GRAPH_INDEX_DIR"), collection_name
         )
+
+    def get_index_dir(self, collection_name: str) -> str:
+        """Protocol alias for ``get_graph_dir``."""
+        return self.get_graph_dir(collection_name)
 
     # ------------------------------------------------------------------
     # Public API — index state queries
@@ -199,8 +205,22 @@ class GraphRetriever(SingletonMixin):
         self._rebuild_from_collection(collection_name, collection)
         self._persist(self._index_path(graph_directory))
 
+    def _can_remove_filepath(self, file_path: str) -> bool:
+        """Guard remove_by_filepath with the shared jailbreak-safe path check."""
+        if not hasattr(self, "_file_utils"):
+            self._file_utils = FileUtils(cfg=self.cfg, pretty=self.pretty)
+        return self._file_utils.is_safe_delete_path(file_path)
+
     def remove_by_filepath(self, file_path: str) -> None:
         """Remove all chunks belonging to *file_path* and rebuild derived data."""
+        if not self._can_remove_filepath(file_path):
+            self.pretty.write(
+                "W",
+                "Graph",
+                f"Skipped remove_by_filepath for unsafe path: {file_path!r}",
+            )
+            return
+
         chunk_ids_to_remove = [
             cid
             for cid, meta in self._data.chunk_metas.items()
@@ -277,7 +297,7 @@ class GraphRetriever(SingletonMixin):
           4. Score each chunk: sum of edge weights from connected visited entities
           5. Apply file_filter, sort descending, return top-k LangchainDocuments
 
-        Each returned Document has ``graph_score``, ``bm25_score=0.0``, and
+        Each returned Document has ``graph_score`` and
         ``chroma_score=<graph_score>`` in its metadata so it is compatible with
         the downstream rerank / chunk-selection pipeline.
         """
@@ -346,7 +366,7 @@ class GraphRetriever(SingletonMixin):
         for cid, score in sorted_chunks:
             meta = dict(self._data.chunk_metas.get(cid, {}))
             meta["graph_score"] = score
-            meta["bm25_score"] = 0.0  # signals rerank-only blending downstream
+            meta["bm25_score"] = 0.0
             meta["chroma_score"] = score  # unified score key for the pipeline
             meta["chroma_sim"] = 1.0
             docs.append(

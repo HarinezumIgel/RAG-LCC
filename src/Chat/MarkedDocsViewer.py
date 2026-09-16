@@ -125,6 +125,8 @@ def open_marked_documents(
                 items.append((src_path, out))
         if not items:
             return
+        link_green: str = "\033[32m"
+        reset: str = "\033[0m"
         pretty.write(
             "I",
             "Marked sources",
@@ -134,7 +136,7 @@ def open_marked_documents(
         )
         for src_path, out_path in items:
             label = f"{Path(src_path).name} (highlighted)"
-            print(f"   📎 {label}: {out_path.resolve().as_uri()}")
+            print(f"{link_green}   📎 {label}: {out_path.resolve().as_uri()}{reset}")
         return
 
     # ── Picker path — write lazily (only the file the user selects) ───────────

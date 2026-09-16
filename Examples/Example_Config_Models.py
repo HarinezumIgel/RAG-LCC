@@ -98,7 +98,6 @@ _ACTIVE_CROSS      = "mmarco"
 _ACTIVE_ENDPOINT   = "ollama"
 _ACTIVE_OPENWEBUI  = "openwebui"
 _ACTIVE_RAGCHATSERVICE = "ragchatservice"
-_ACTIVE_TRANSLATION = "m2m100"
 
 # Optional Hugging Face access token used for gated/private model downloads.
 # Leave empty for public models and anonymous access.
@@ -141,40 +140,6 @@ _MODELS: dict[str, dict[str, dict[str, Any]]] = {
             "LICENSE_URL": "https://www.apache.org/licenses/LICENSE-2.0.txt",
             "COMPLIANCE_MSG": "Cross Encoder: This model was trained on the MMARCO dataset. It is a machine translated version of MS MARCO using Google Translate.",
             "MODEL_CARD": "https://huggingface.co/cross-encoder/mmarco-mMiniLMv2-L12-H384-v1",
-            "USED_BY": ["RAGChat", "RAGChatService"],
-        },
-    },
-
-    "m2m100": {
-        "_TRANSLATION": {
-            # Facebook/Meta's M2M-100 1.2B (MIT license) — many-to-many
-            # translator covering 100 languages. We previously tried
-            # MADLAD-400-3B but the T5X-converted HF checkpoint produced
-            # garbage output on CPU with current transformers (model emits
-            # constant-class tokens regardless of input). The 418M variant
-            # of M2M-100 worked but mistranslated several common German
-            # nouns (e.g. "Säugetiere" -> "seed animals"); the 1.2B variant
-            # fixes those at the cost of ~5 GB on disk and ~5 GB resident.
-            # M2M-100 is HF-native, well tested and MIT-licensed
-            # (commercial-safe).
-            "MODEL": "facebook/m2m100_1.2B",
-            "FRIENDLY_NAME": "M2M-100 1.2B Multilingual Translation",
-            "REVISION": "",
-            "SOURCE": "https://huggingface.co/facebook/m2m100_1.2B",
-            # Optional per-model HF key. If empty, _HF_API_KEY is used.
-            "HF_API_KEY": "",
-            "LICENSE": "MIT",
-            "LICENSE_URL": "https://raw.githubusercontent.com/spdx/license-list-data/main/text/MIT.txt",
-            "COMPLIANCE_MSG": "M2M-100 is a many-to-many multilingual translation model released by Facebook/Meta under the MIT licence, supporting 100 languages. Used to translate non-English user queries into English before retrieval.",
-            "MODEL_CARD": "https://huggingface.co/facebook/m2m100_1.2B",
-            # When True, load on CUDA in FP16; otherwise CPU in FP32.
-            # Default False: keeps the GPU available for the retrieval
-            # stack (embedder + reranker + KeyBERT). The 1.2B variant is
-            # ~5 GB on disk and ~5 GB resident in fp32 on CPU; first-token
-            # latency on CPU is a few seconds for typical chat queries,
-            # which is acceptable for a once-per-turn translation. Switch
-            # to True only when the GPU has clear headroom (>= 8 GB free).
-            "USE_GPU": False,
             "USED_BY": ["RAGChat", "RAGChatService"],
         },
     },

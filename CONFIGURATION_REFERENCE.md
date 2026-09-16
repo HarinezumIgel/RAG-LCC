@@ -21,8 +21,8 @@ This reference covers both a **quick-scan overview** (tables by topic and by con
 | **Semantic Chunking** | `BREAKPOINT_PERCENTILE`: 15%, `MAX_CHUNK_SIZE`: 256 words | Controls semantic boundary detection. Lower percentile = more aggressive splitting. MIN_SENTENCE_WORDS merges short fragments to prevent noisy embeddings. |
 | **Office Document Extraction** | `Word`: True, `PowerPoint`: True, `Excel`: True | Toggles extraction from MS Office formats. Disable if Office components not installed. |
 | **Tesseract OCR** | `TESSERACT_PATH`: configurable paths | Path to Tesseract executable for OCR on image-based PDFs and image files. Platform-specific (`Windows\|Linux`). |
-| **Collection Management** | `RETRIEVAL_STORES_KEEP`: True/False | Controls ChromaDB/BM25/Graph lifecycle. False wipes and rebuilds all three on every RAGLoad run; True preserves existing stores (incremental mode). |
-| **Collection Name** | `COLLECTION`: "Test" (default) | Identifies the active ChromaDB collection, BM25 index, and graph index. Switch collections to maintain separate document sets. |
+| **Collection Management** | `RETRIEVAL_STORES_KEEP`: True/False | Controls ChromaDB/BM25/Graph/Regex lifecycle. False wipes and rebuilds all four on every RAGLoad run; True preserves existing stores (incremental mode). |
+| **Collection Name** | `COLLECTION`: "Test" (default) | Identifies the active ChromaDB collection, BM25 index, graph index, and regex index. Switch collections to maintain separate document sets. |
 | **Exclusions** | `USE_EXCLUSIONS`: True/False, CSV files in Exclusions/ | Skip files that previously triggered banned-word detection. Prevents reprocessing rejected documents. |
 
 ### 🔍 Retrieval & Search
@@ -30,7 +30,7 @@ This reference covers both a **quick-scan overview** (tables by topic and by con
 | **Component** | **Options/Values** | **Purpose** |
 |---------------|-------------------|-------------|
 | **Retrieval Strategies** | `NARROW`, `BALANCED_FILE_CAP`, `DEFAULT`, `WIDE`, `ULTRA_WIDE` | Pre-configured retrieval profiles balancing precision/recall. Control final_chunks_to_llm (20-1500), retriever_k (60-3000), threshold (0.45-0.60), and per-file limits. |
-| **Retrieval Modes** | `VECTOR`, `BM25`, `GRAPH`, `VECTOR_BM25`, `VECTOR_GRAPH`, `BM25_GRAPH`, `ALL`, `WEB` | Select retrieval algorithms. VECTOR uses embeddings; BM25 uses keyword matching; GRAPH uses entity co-occurrence; combined modes use RRF fusion. WEB adds internet search results. |
+| **Retrieval Modes** | `VECTOR`, `BM25`, `GRAPH`, `REGEX`, `VECTOR_BM25`, `VECTOR_GRAPH`, `BM25_GRAPH`, `VECTOR_REGEX`, `BM25_REGEX`, `GRAPH_REGEX`, `ALL`, `WEB` | Select retrieval algorithms. VECTOR uses embeddings; BM25 uses keyword matching; GRAPH uses entity co-occurrence; REGEX uses verb/noun lemma matching; combined modes use RRF fusion. WEB adds internet search results. |
 | **Final Chunks to LLM** | 20-1500 chunks (strategy-dependent) | How many chunks are sent to the LLM after retrieval and selection. Directly affects context window usage and answer quality. |
 | **Retriever K** | 60-3000 candidates (strategy-dependent) | How many candidates each retriever fetches before fusion/reranking. Higher = better recall but slower. |
 | **File Limit** | `filelim`: 0-20 chunks per file | Maximum chunks allowed from any single file in final selection. Enforces cross-file diversity. 0 = no limit. |
@@ -41,7 +41,7 @@ This reference covers both a **quick-scan overview** (tables by topic and by con
 | **Graph Traversal** | `max_hops`: 2, `max_candidates`: 50, `min_edge_weight`: 1 | Controls graph query expansion. max_hops limits BFS depth; max_candidates caps results before top-k; min_edge_weight filters weak co-occurrences. |
 | **Reranking** | `rerank`: 0/1, Cross-encoder model | Enables/disables neural reranking of candidates. When enabled, uses cross-encoder (mmarco-mMiniLMv2-L12) to rescore query-chunk pairs for relevance. |
 | **Rerank Threshold** | 0.45-0.60 (sigmoid probability) | Cross-encoder confidence floor to keep a chunk. Applied after cross-encoder scoring. Lower = more permissive; higher = stricter filtering. If no chunk clears the floor, reranking is skipped and chunks fall back to retrieval (RRF) order. |
-| **RRF Weights** | `vector_weight`, `bm25_weight`, `graph_weight`, `web_weight`: 0.0-1.0+ | Per-retriever weights for Reciprocal Rank Fusion. 1.0 = full weight; 0.0 = disabled. Controls relative influence of each retrieval method. |
+| **RRF Weights** | `vector_weight`, `bm25_weight`, `graph_weight`, `regex_weight`, `web_weight`: 0.0-1.0+ | Per-retriever weights for Reciprocal Rank Fusion. 1.0 = full weight; 0.0 = disabled. Controls relative influence of each retrieval method. |
 
 ### 🌐 Web Search
 
@@ -62,7 +62,7 @@ This reference covers both a **quick-scan overview** (tables by topic and by con
 | **LLM — Query Rewrite** | `mistral:7b`, `llama3.1:8b`, etc. | Dedicated role for topic detection and query rewriting, configured via `_ACTIVE_LLM_REWRITE_PROMPT`. Can be a smaller/faster model than the generation LLM. |
 | **Embedder** | `snowflake/snowflake-arctic-embed-l-v2.0` (HuggingFace) | Converts text to dense vectors. Used at indexing time (RAGLoad) and query time (RAGChat). Changing the model requires rebuilding the collection. |
 | **Cross-Encoder (Reranker)** | `cross-encoder/mmarco-mMiniLMv2-L12-H384-v1` (HuggingFace) | Rescores query-chunk pairs for precise relevance ranking. Applied only to top-k candidates; disable per strategy with `rerank: 0`. |
-| **Translation Model** | `facebook/m2m100_1.2B` (100 languages, MIT) | Normalises non-English user queries to English before retrieval. Lazy-loaded singleton; runs on CPU by default to preserve GPU for the retrieval stack. |
+| **Query Translation** | `argos` / `off` | Normalises non-English user queries to English before retrieval using Argos Translate (`argos`) or disables normalization (`off`). HF/M2M runtime translators were removed. |
 | **Inference Backend** | `ollama` (local) / `vllm` (networked, OpenAI-compatible) | LLM inference provider. Ollama for local single-machine use; vLLM for high-throughput or remote setups. Both configured via `BASE_URL` and optional `API_KEY`. |
 | **RAGChatService** | `HOST`, `PORT`: 11435, `API_KEY` | Exposes the RAG pipeline as an OpenAI-compatible REST API, making it a drop-in backend for OpenWebUI or any OpenAI client. |
 | **Token Budgets** | `TOKEN_BUDGET_CONTEXT_CAP`: 32768, `RESERVED_OUTPUT`: 2048, `RESERVED_SYSTEM`: 1024 | Per-model token allocation. The remainder after reserved tokens is available for retrieved chunks. |
@@ -89,7 +89,7 @@ This reference covers both a **quick-scan overview** (tables by topic and by con
 | **Prompt Templates** | `_PROMPT_CHAT`, `_PROMPT_CLASSIFY`, `_PROMPT_CHECK`, `_PROMPT_TOPIC_DETECT`, `_PROMPT_QUERY_EXPAND` | Controls LLM behavior. CHAT generates answers; CLASSIFY extracts metadata; CHECK validates safety; TOPIC_DETECT analyzes query context; QUERY_EXPAND rewrites queries. |
 | **Chat Context** | `use_chat_context`: True, `turns`: 5-10, `max_history_turns`: 3 | Enables conversational memory. `turns` sets max stored turns before pruning; `max_history_turns` limits context sent to query rewriter. |
 | **Topic Summarization** | `TOPIC_SUMMARY_MODE`: "last" / "all" | Controls rolling topic summary sent to the rewriter LLM. "last" uses only the most recent assistant turn; "all" joins all turns (more context but noisier). |
-| **Query Rewriting** | `enabled`: True, `topic_confidence_threshold`: 0.5, `TRANSLATION_BACKEND`: m2m100/argos/off | Rewrites the query to resolve pronoun/referent dependencies on previous turns. Below confidence threshold, falls back to standalone rewrite. Also normalises non-English queries to English before retrieval. |
+| **Query Rewriting** | `enabled`: True, `topic_confidence_threshold`: 0.5, `TRANSLATION_BACKEND`: argos/off | Rewrites the query to resolve pronoun/referent dependencies on previous turns. Below confidence threshold, falls back to standalone rewrite. Also normalises non-English queries to English before retrieval. |
 | **Meta-Descriptor Guard** | List of noun heads: "specifications", "details", "overview", … | Blocks under-specified queries whose root noun phrase is a generic descriptor without an entity anchor. Returns a clarification prompt instead of retrieving arbitrary chunks. |
 | **Multi-Query Expansion** | `enabled`: True, `num_variants`: 3, temperature: 0.5 | Generates N alternate phrasings of the query using the LLM, then merges all retrieval pools. Boosts recall by covering synonyms and domain-specific vocabulary the user didn't type. |
 | **Preferred Language** | NLTK language name (e.g. `"english"`, `"german"`) | Declares the user's preferred response language. Used to route translation and adapt prompts. |
@@ -105,9 +105,9 @@ This reference covers both a **quick-scan overview** (tables by topic and by con
 |---------------|-------------------|-------------|
 | **Language Detection** | `MIN_WORDS`: 3, `MIN_CONFIDENCE`: 0.60, `CONF_FULL_WORDS`: 10 | Lingua-language-detector settings. Texts below MIN_WORDS skip detection and fall back to English. MIN_CONFIDENCE scales linearly upward for short texts; at CONF_FULL_WORDS words the full floor applies. |
 | **Supported Languages** | 28 languages (ISO 639-1: en, de, fr, es, it, ja, zh-cn, …) | Documents in unsupported languages are either rejected or processed with English fallback depending on `UNSUPPORTED_LANGUAGE_ACTION`. |
-| **Argos Translate Pairs** | `en→de`, `en→es`, `en→fr`, `en→it` (default enabled set) | Unidirectional translation pairs used for banlist translation only (EN→X). User query translation uses M2M100. Install only the pairs you need to save disk space. |
+| **Argos Translate Pairs** | `de→en`, `en→de`, `es→en`, `en→es`, `fr→en`, `en→fr`, `it→en`, `en→it` (default enabled set) | Argos pairs are unidirectional. Keep EN→X for banlist localization and install X→EN for user-query translation. |
 | **Unsupported Language Action** | `NOT_OK` / `FALLBACK_EN` | `NOT_OK` rejects documents whose language has no installed Argos pair. `FALLBACK_EN` processes with English banlists instead — less safe but more permissive. |
-| **Query Translation Backend** | `"m2m100"` / `"argos"` / `"off"` in `_QUERY_REWRITE` | Engine for normalising non-English queries to English before rewriting and retrieval. M2M100 (100 languages, MIT) gives better quality on short queries; argos is lighter but requires offline packages. |
+| **Query Translation Backend** | `"argos"` / `"off"` in `_QUERY_REWRITE` | Engine for normalising non-English queries to English before rewriting and retrieval. Argos runs fully offline once language packages are installed. |
 
 ### 📊 Classification & Document Analysis
 
@@ -189,9 +189,9 @@ This reference covers both a **quick-scan overview** (tables by topic and by con
 | **Retriever K** | `Config_RAGChat.py` | `_STRATEGIES[strategy]["retriever_k"]` | Per-strategy candidate fetch count |
 | **Rerank Threshold** | `Config_RAGChat.py` | `_STRATEGIES[strategy]["threshold"]` | Per-strategy sigmoid probability floor |
 | **Reranking Enabled** | `Config_RAGChat.py` | `_STRATEGIES[strategy]["rerank"]` | 0=off, 1=on |
-| **Retrieval Mode** | `Config_RAGChat.py` | `_STRATEGIES[strategy]["retrieve_mode"]` | "VECTOR", "BM25", "GRAPH", "ALL", "WEB", etc. |
+| **Retrieval Mode** | `Config_RAGChat.py` | `_STRATEGIES[strategy]["retrieve_mode"]` | "VECTOR", "BM25", "GRAPH", "REGEX", pair-combinations, "ALL", "WEB". |
 | **Allowed Retrieval Modes** | `Config_RAGChat.py` | `_ALLOWED_RETRIEVE_MODES` | List of valid retrieval mode strings |
-| **RRF Weights** | `Config_RAGChat.py` | `_STRATEGIES[strategy]["vector_weight"]`, `["bm25_weight"]`, `["graph_weight"]`, `["web_weight"]` | Per-retriever RRF fusion weights |
+| **RRF Weights** | `Config_RAGChat.py` | `_STRATEGIES[strategy]["vector_weight"]`, `["bm25_weight"]`, `["graph_weight"]`, `["regex_weight"]`, `["web_weight"]` | Per-retriever RRF fusion weights |
 | **File Limit** | `Config_RAGChat.py` | `_STRATEGIES[strategy]["filelim"]` | Max chunks per file (0=unlimited) |
 | **Single Chunk Boost** | `Config_RAGChat.py` | `SINGLE_CHUNK_SCORE_BOOST` | Score multiplier for single-file results |
 
@@ -216,13 +216,11 @@ This reference covers both a **quick-scan overview** (tables by topic and by con
 | **Active LLM Rewriter** | `Config_Models.py` | `_ACTIVE_LLM_REWRITE_PROMPT` | Implementation key for query rewrite model |
 | **Active Embedder** | `Config_Models.py` | `_ACTIVE_EMBED` | Implementation key for embedding model |
 | **Active Cross-Encoder** | `Config_Models.py` | `_ACTIVE_CROSS` | Implementation key for reranking model |
-| **Active Translation** | `Config_Models.py` | `_ACTIVE_TRANSLATION` | Implementation key for translation model |
 | **Active Endpoint** | `Config_Models.py` | `_ACTIVE_ENDPOINT` | "ollama" or "vllm" |
 | **Model Definitions** | `Config_Models.py` | `_MODELS[impl][role]` | Hierarchical model config: `_MODELS["mistral"]["_LLM"]` etc. |
 | **LLM Config** | `Config_Models.py` | `_MODELS[impl]["_LLM"]` | MODEL_OLLAMA, MODEL_VLLM, PROMPT_CHAT, TOKEN_BUDGET_* |
 | **Embedder Config** | `Config_Models.py` | `_MODELS[impl]["_EMBED"]` | MODEL, HF_API_KEY, LICENSE, SOURCE |
 | **Cross-Encoder Config** | `Config_Models.py` | `_MODELS[impl]["_CROSS"]` | MODEL, QUERY_INSTRUCTION, LICENSE |
-| **Translation Config** | `Config_Models.py` | `_MODELS[impl]["_TRANSLATION"]` | MODEL, USE_GPU (CPU by default) |
 | **Ollama Endpoint** | `Config_Models.py` | `_MODELS["ollama"]["_OLLAMA"]["BASE_URL"]` | Ollama server address (default: localhost:11434) |
 | **vLLM Endpoint** | `Config_Models.py` | `_MODELS["vllm"]["_VLLM"]["BASE_URL"]`, `["API_KEY"]` | vLLM OpenAI-compatible server and auth key |
 | **RAGChatService Host/Port** | `Config_Models.py` | `_MODELS["ragchatservice"]["_RAGCHATSERVICE"]["HOST"]`, `["PORT"]` | Service listener address and port (default 11435) |
@@ -362,10 +360,11 @@ _ACTIVE_CHUNK_SELECT_STRATEGY = "NARROW"  # NARROW, WIDE, BALANCED_FILE_CAP, DEF
 
 **Switch retrieval mode (in-chat):**
 ```text
-mode! ALL          # Vector + BM25 + Graph
+mode! ALL          # Vector + BM25 + Graph + Regex
 mode! VECTOR       # Embeddings only
 mode! BM25         # Keywords only
 mode! GRAPH        # Entity graph only
+mode! REGEX        # Verb/noun regex retrieval only
 mode! WEB          # Web search only
 ```
 
@@ -591,15 +590,16 @@ When any file or metadata filter is active it is printed in turquoise before eac
 
 ### 🔗 Retrieval Stores & Search Modes
 
-RAG‑LCC maintains three retrieval stores per collection:
+RAG‑LCC maintains four retrieval stores per collection:
 
 | Store | Persisted at | Purpose |
 | --- | --- | --- |
-| **ChromaDB** (vector) | `chromadb/<collection>/` | Dense embedding nearest-neighbour search |
+| **ChromaDB** (vector) | `chromadb/docs/<collection>/` | Dense embedding nearest-neighbour search |
 | **BM25 index** | `chromadb/bm25/<collection>/bm25_index.pkl.gz` | Keyword Okapi BM25 scoring |
 | **Graph index** | `chromadb/graph/<collection>/graph_index.pkl.gz` | Entity co-occurrence graph traversal |
+| **Regex index** | `chromadb/regex/<collection>/regex_index.pkl.gz` | Verb/noun lemma matching with strict + fallback gates |
 
-Both the BM25 and graph indexes are built automatically during `RAGLoad` and loaded on demand during `RAGChat`. When `RETRIEVAL_STORES_KEEP = False` all three stores are deleted together before a reload.
+BM25, graph, and regex indexes are built automatically during `RAGLoad` and loaded on demand during `RAGChat`. When `RETRIEVAL_STORES_KEEP = False` all four local stores are deleted together before a reload.
 
 **Graph index and spaCy**
 The graph retriever uses [spaCy](https://spacy.io/) (`en_core_web_sm`, **MIT license**, © Explosion AI) for named-entity recognition (NER) and noun-phrase extraction. The `en_core_web_sm` model is downloaded as a separate step (`python -m spacy download en_core_web_sm`); it is not bundled with this project. Entity types and extraction behaviour are configured in `_GRAPH_INDEX` in `Config_Global.py`.
@@ -612,7 +612,7 @@ _BM25_INDEX = {
     "BM25_INDEX_DIR": "<project_root>/chromadb/bm25",
     "k1": 1.2,      # BM25 term-frequency saturation
     "b":  0.75,     # BM25 document-length normalisation
-    "rrf_k": 60.0,  # RRF fusion constant (ALL / *_GRAPH modes)
+    "rrf_k": 60.0,  # RRF fusion constant (ALL and fused local modes)
 }
 ```
 
@@ -631,10 +631,14 @@ query time via `retrieve_mode=ALL`) selects the retrieval mode:
 | `VECTOR` | ChromaDB | Embedding-based retrieval only. |
 | `BM25` | BM25 | Keyword BM25 Okapi retrieval only. |
 | `GRAPH` | Graph | Entity co-occurrence graph traversal only. |
+| `REGEX` | Regex | Verb/noun lemma matching only. |
 | `VECTOR_BM25` | ChromaDB + BM25 | Both; merged via RRF. |
 | `VECTOR_GRAPH` | ChromaDB + Graph | Both; merged via RRF. |
 | `BM25_GRAPH` | BM25 + Graph | Both; merged via RRF. |
-| `ALL` | ChromaDB + BM25 + Graph | All three stores merged via RRF (default). |
+| `VECTOR_REGEX` | ChromaDB + Regex | Both; merged via RRF. |
+| `BM25_REGEX` | BM25 + Regex | Both; merged via RRF. |
+| `GRAPH_REGEX` | Graph + Regex | Both; merged via RRF. |
+| `ALL` | ChromaDB + BM25 + Graph + Regex | All four local stores merged via RRF (default). |
 | `WEB` | Internet (DuckDuckGo) | Web-only retrieval; local stores are skipped. Requires `WEB_SEARCH_MODE = "1"` (from `Config_Internet_Env.py`). |
 
 > **When to use GRAPH / graph-combined modes:** The graph retriever seeds traversal from entities and noun phrases extracted from the query. It excels at pulling in thematically connected chunks (e.g. "hedgehog diet" → co-occurring anatomy or habitat chunks). For generic summary queries ("what animals are described?") the vector or BM25 legs carry the load; the graph leg contributes 0 results but does not harm the merge. `ALL` is therefore a safe default.
@@ -768,12 +772,12 @@ When enabled (`_WORDNET.ENABLED = True`), the banned-word list is expanded with 
 
 ### 🌍 Argos Translate Definitions
 
-Groups language-code mapping and translation pairs. Used for banned-word translation (EN→X) and language detection. See [Argos Translate in INSTALL.md](INSTALL.md#-7-install-argos-translate) for installation instructions.
+Groups language-code mapping and translation pairs. Used for banned-word translation (EN→X), query normalization (X→EN), and language detection. See [Argos Translate in INSTALL.md](INSTALL.md#-7-install-argos-translate) for installation instructions.
 
 | Key | Default used in this repository | Purpose |
 | --- | --- | --- |
 | `_ARGOS_DEFINITIONS.LANG_CODE_TO_NAME` | See config file | ISO-639-1 language codes mapped to NLTK human-readable names (e.g. `"de"`→`"german"`). |
-| `_ARGOS_DEFINITIONS.ARGOS_LANGUAGES` | `[("en", "de"), ("en", "es"), ("en", "fr"), ("en", "it")]` | List of (from_code, to_code) tuples for Argos Translate language pairs. Only EN→X pairs need to be installed. |
+| `_ARGOS_DEFINITIONS.ARGOS_LANGUAGES` | `[("de", "en"), ("en", "de"), ("es", "en"), ("en", "es"), ("fr", "en"), ("en", "fr"), ("it", "en"), ("en", "it")]` | List of (from_code, to_code) tuples for Argos Translate language pairs. Keep EN→X for banlist localization and X→EN for query normalization. |
 
 ## 🛡️ 2b. Config_Banned.py — Detection & Compliance
 
@@ -935,7 +939,6 @@ _ACTIVE_EMBED              = "snowflake"    # impl for _EMBED role
 _ACTIVE_CROSS              = "mmarco"       # impl for _CROSS role
 _ACTIVE_ENDPOINT           = "ollama"       # active inference endpoint: ollama or vllm
 _ACTIVE_OPENWEBUI          = "openwebui"    # impl for _OPENWEBUI role
-_ACTIVE_TRANSLATION        = "m2m100"       # impl for _TRANSLATION role. m2m100 (facebook/m2m100_1.2B)
 ```
 
 | Selector | Default used in this repository | Resolves to | Allowed values |
@@ -947,7 +950,6 @@ _ACTIVE_TRANSLATION        = "m2m100"       # impl for _TRANSLATION role. m2m100
 | `_ACTIVE_LLM_REWRITE_PROMPT` | `"mistral"` | `_MODELS["mistral"]["_LLM_REWRITE_PROMPT"]` | `mistral`, `llama` |
 | `_ACTIVE_ENDPOINT` | `"vllm"` | `_MODELS["ollama"]["_OLLAMA"]` or `_MODELS["vllm"]["_VLLM"]` | `ollama`, `vllm` |
 | `_ACTIVE_OPENWEBUI` | `"openwebui"` | `_MODELS["openwebui"]["_OPENWEBUI"]` | `openwebui` |
-| `_ACTIVE_TRANSLATION` | `"m2m100"` | `_MODELS["m2m100"]["_TRANSLATION"]` | `m2m100` |
 
 To switch models, change the selector value to another key that carries a matching role entry in `_MODELS`.
 
@@ -1256,11 +1258,12 @@ Strategy parameters explained:
 | `top_k` | Limit sampling to the top-k most likely next tokens. |
 | `top_p` | Nucleus sampling probability threshold. |
 | `rerank` | `1` = enable cross-encoder reranking (used by default). |
-| `retrieve_mode` | Retrieval mode: `VECTOR`, `BM25`, `GRAPH`, `VECTOR_BM25`, `VECTOR_GRAPH`, `BM25_GRAPH`, or `ALL`. See [Retrieval Stores & Search Modes](#-retrieval-stores--search-modes) for details. |
+| `retrieve_mode` | Retrieval mode: `VECTOR`, `BM25`, `GRAPH`, `REGEX`, pair-combinations (`VECTOR_BM25`, `VECTOR_GRAPH`, `BM25_GRAPH`, `VECTOR_REGEX`, `BM25_REGEX`, `GRAPH_REGEX`), `ALL`, or `WEB`. See [Retrieval Stores & Search Modes](#-retrieval-stores--search-modes) for details. |
 | `filelim` | Max chunks per contributing file. `0` = unlimited. Exposed as `per_file_limit` in the API / OpenWebUI Controls. |
 | `vector_weight` | RRF weight for the vector (Chroma) retriever. `0` disables vector retrieval entirely. |
 | `bm25_weight` | RRF weight for the BM25 retriever. `0` disables BM25 retrieval entirely. |
 | `graph_weight` | RRF weight for the entity-graph retriever. `0` disables graph retrieval entirely. NARROW defaults to `0` because `SingleDocumentSelector` discards cross-file graph results anyway. |
+| `regex_weight` | RRF weight for the regex verb/noun retriever. `0` disables regex retrieval entirely. |
 | ⚠️ `web_weight` | Default RRF weight applied to web search results when this strategy is loaded (e.g. `0.5`). Overridable per-session. Only takes effect when `web_search` is enabled. |
 | `collection` | ChromaDB collection. `"$COLLECTION"` resolves the global `COLLECTION` key. |
 | `use_chat_context` | Include previous conversation turns in the prompt. |
@@ -1857,7 +1860,9 @@ Argos Translate settings live in a single `_ARGOS_DEFINITIONS` slot inside
 | Key | Type | Purpose |
 | --- | --- | --- |
 | `LANG_CODE_TO_NAME` | `dict` | Maps ISO-639-1 codes (e.g. `"de"`) to NLTK / human-readable names (e.g. `"german"`). Used for language detection, stopword lookup, and the reverse mapping (name → code) in `SharedHelpers`. |
-| `ARGOS_LANGUAGES` | `list[tuple]` | Translation pairs `(from_code, to_code)` that the install script and startup consent check use to download and verify Argos Translate packages. Argos is used **only** by the Compliance pipeline to translate the English banlist into the document language, so only `(en, X)` pairs are needed. Only uncommented pairs are active. |
+| `ARGOS_LANGUAGES` | `list[tuple]` | Translation pairs `(from_code, to_code)` that the install script and startup consent check use to download and verify Argos Translate packages. Keep `(en, X)` for Compliance banlist localization and `(X, en)` for query normalization when `_QUERY_REWRITE.TRANSLATION_BACKEND="argos"`. Only uncommented pairs are active. |
+
+> Note: The legacy HF/M2M translator path (`HfTranslator` / `ArgosThenM2MTranslator`) was removed. Query translation backends now support only `"argos"` and `"off"`.
 
 ```python
 _ARGOS_DEFINITIONS = {
@@ -1872,11 +1877,18 @@ _ARGOS_DEFINITIONS = {
     },
     "ARGOS_LANGUAGES": [
         # Uncomment the pairs you need — each pair downloads ~100 MB.
+        # Keep EN→X for banlist localization and X→EN for query normalization.
+        # ("ar", "en"),  # Arabic → English
         # ("en", "ar"),  # English → Arabic
+        ("de", "en"),    # German → English
         ("en", "de"),    # English → German
+        ("es", "en"),    # Spanish → English
         ("en", "es"),    # English → Spanish
+        ("fr", "en"),    # French → English
         ("en", "fr"),    # English → French
+        ("it", "en"),    # Italian → English
         ("en", "it"),    # English → Italian
+        # ("ja", "en"),  # Japanese → English
         # ("en", "ja"),  # English → Japanese
         # … 48 pairs available, see Config_Global.py for the full list
     ],

@@ -26,6 +26,7 @@ from Commons.SingletonMixin import SingletonMixin
 from Compliance.SharedHelpers import SharedHelpers
 from Config.Config import Config
 from Gui.PrettyWriter import PrettyWriter
+from Helpers.FileUtils import FileUtils
 from Helpers.PerfLogger import PerfLogger
 
 
@@ -108,6 +109,7 @@ class BM25Retriever(SingletonMixin):
         self.cfg: Config = cfg or Config()
         self.pretty: PrettyWriter = pretty or PrettyWriter()
         self._shared: SharedHelpers = SharedHelpers()
+        self._file_utils: FileUtils = FileUtils(cfg=self.cfg, pretty=self.pretty)
         self._data: _BM25IndexData = _BM25IndexData()
 
         # BM25 hyper-parameters — read from _BM25_INDEX config slot
@@ -124,6 +126,10 @@ class BM25Retriever(SingletonMixin):
         return os.path.join(
             self.cfg.get_str("_BM25_INDEX.BM25_INDEX_DIR"), collection_name
         )
+
+    def get_index_dir(self, collection_name: str) -> str:
+        """Protocol alias for ``get_bm25_dir``."""
+        return self.get_bm25_dir(collection_name)
 
     @property
     def rrf_k(self) -> int:
@@ -214,8 +220,22 @@ class BM25Retriever(SingletonMixin):
         self._rebuild_from_collection(collection_name, collection)
         self._persist(self._index_path(bm25_directory))
 
+    def _can_remove_filepath(self, file_path: str) -> bool:
+        """Guard remove_by_filepath with the shared jailbreak-safe path check."""
+        if not hasattr(self, "_file_utils"):
+            self._file_utils = FileUtils(cfg=self.cfg, pretty=self.pretty)
+        return self._file_utils.is_safe_delete_path(file_path)
+
     def remove_by_filepath(self, file_path: str) -> None:
         """Remove all chunks belonging to *file_path* and update corpus stats."""
+        if not self._can_remove_filepath(file_path):
+            self.pretty.write(
+                "W",
+                "BM25",
+                f"Skipped remove_by_filepath for unsafe path: {file_path!r}",
+            )
+            return
+
         keep_ids: List[int] = []
         remove_ids: List[int] = []
 

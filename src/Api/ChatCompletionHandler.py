@@ -24,7 +24,7 @@ from Commons.Exceptions import (CollectionNotFoundError, LLMResultError,
 from Compliance.BannedPhraseCollector import BannedPhraseCollector
 from Config.Config import Config
 from Globals.Session import Session
-from Gui.Colors import CYAN, MAGENTA, YELLOW
+from Gui.Colors import CYAN, GREEN, MAGENTA, YELLOW
 from Gui.PrettyWriter import PrettyWriter
 from Helpers.Accumulator import Accumulator
 from Helpers.CSVWriter import CSVWriter
@@ -123,13 +123,16 @@ class ChatCompletionRequest(BaseModel):
     final_chunks_to_llm: Optional[int] = None
     context_chunks: Optional[int] = None  # CLI alias for final_chunks_to_llm
     vector_weight: Optional[float] = None
+    bm25_weight: Optional[float] = None
+    graph_weight: Optional[float] = None
+    regex_weight: Optional[float] = None
 
     use_chat_context: Optional[bool] = None
     chat_name: Optional[str] = None
     per_file_limit: Optional[int] = None
     file_cap: Optional[int] = None  # CLI alias for per_file_limit
     retrieve_mode: Optional[str] = (
-        None  # VECTOR, BM25, GRAPH, VECTOR_GRAPH, BM25_GRAPH, ALL
+        None  # VECTOR, BM25, GRAPH, REGEX, VECTOR_BM25, VECTOR_GRAPH, BM25_GRAPH, VECTOR_REGEX, BM25_REGEX, GRAPH_REGEX, ALL, WEB
     )
     web_search: Optional[Union[bool, str]] = None
     web_weight: Optional[float] = None
@@ -238,7 +241,7 @@ class ChatCompletionRequest(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-def _buildQuey(messages: List[ChatMessage]) -> str:
+def _buildQuery(messages: List[ChatMessage]) -> str:
     """
     Extract the user query from the messages array.
     If a system message is present, prepend it to the user query so the RAG
@@ -361,6 +364,12 @@ def _applyRequestToSession(
             session.final_chunks_to_llm = chunks
         if req.vector_weight is not None:
             session.vector_weight = max(0.0, min(1.0, req.vector_weight))
+        if req.bm25_weight is not None:
+            session.bm25_weight = max(0.0, min(1.0, req.bm25_weight))
+        if req.graph_weight is not None:
+            session.graph_weight = max(0.0, min(1.0, req.graph_weight))
+        if req.regex_weight is not None:
+            session.regex_weight = max(0.0, min(1.0, req.regex_weight))
         if req.use_chat_context is not None:
             session.use_chat_context = req.use_chat_context
         # chat_name priority: explicit param > OpenWebUI chat_id > keep existing
@@ -481,7 +490,7 @@ def _applyRequestToSession(
             top_level[key] = value
     session.ollamaTopLevelParams = top_level if top_level else None
 
-    session.query = _buildQuey(req.messages)
+    session.query = _buildQuery(req.messages)
     session.base_kwargs = {"k": session.retriever_k}
     return web_search_notice
 
@@ -720,6 +729,28 @@ def _summarise_request(raw_dump: Dict[str, Any]) -> str:
                     m["content"] = content[:_MSG_CONTENT_LIMIT] + "…"
                 short_msgs.append(m)
             cleaned[k] = short_msgs
+        elif k == "tools" and isinstance(v, list):
+            tools_list = cast(List[Any], v)
+            tool_names: list[str] = []
+            for tool in tools_list:
+                if not isinstance(tool, dict):
+                    continue
+                tool_dict: Dict[str, Any] = cast(Dict[str, Any], tool)
+                fn = tool_dict.get("function")
+                if not isinstance(fn, dict):
+                    continue
+                fn_dict: Dict[str, Any] = cast(Dict[str, Any], fn)
+                name = fn_dict.get("name")
+                if isinstance(name, str) and name.strip():
+                    tool_names.append(name.strip())
+
+            max_names = 12
+            preview = tool_names[:max_names]
+            cleaned[k] = {
+                "count": len(tools_list),
+                "names": preview,
+                "truncated": len(tool_names) > max_names,
+            }
         else:
             cleaned[k] = v
 
@@ -825,6 +856,7 @@ def _format_session_for_error(
             ("vector_weight", getattr(s, "vector_weight", None)),
             ("bm25_weight", getattr(s, "bm25_weight", None)),
             ("graph_weight", getattr(s, "graph_weight", None)),
+            ("regex_weight", getattr(s, "regex_weight", None)),
         ),
         _sub(
             "Web",
@@ -1137,6 +1169,11 @@ async def handleRequest(
                     f"max_history_turns={session.max_history_turns}  "
                     f"topic_summary_mode={session.topic_summary_mode}  "
                     f"retrieve_mode={session.retrieve_mode}  "
+                    f"vector_weight={session.vector_weight}  "
+                    f"bm25_weight={session.bm25_weight}  "
+                    f"graph_weight={session.graph_weight}  "
+                    f"regex_weight={getattr(session, 'regex_weight', None)}  "
+                    f"web_weight={session.web_weight}  "
                     f"rerank={session.rerank}  "
                     f"debug_level={session.debug_level}  "
                     f"debug_mode={getattr(session, 'debug_mode', 'ge') or 'ge'}  "
@@ -1460,7 +1497,7 @@ async def handleRequest(
                     "I",
                     "MarkedDoc",
                     f"{_Path(src_path).name}  →  {http_url}",
-                    color=CYAN,
+                    color=GREEN,
                 )
 
         answer_out = SourcePathLinkifier.strip_inline_file_citation_links(

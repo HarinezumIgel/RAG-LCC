@@ -18,6 +18,7 @@ from openpyxl import load_workbook
 from openpyxl.worksheet.worksheet import Worksheet
 from pptx import Presentation
 
+from Commons.DriveRootGuard import is_drive_root
 from Commons.Exceptions import DataProcessingError
 from Commons.SingletonMixin import SingletonMixin
 from Config.Config import Config
@@ -56,6 +57,15 @@ class OfficeDocConverter(SingletonMixin):
         self.converted_obj: Any = None
         self.file_path: str = ""
 
+    def _safe_remove_temp_file(self, temp_path: str) -> None:
+        """Delete temporary conversion files with a root-path guard."""
+        abs_path = os.path.normpath(os.path.abspath(temp_path))
+        if is_drive_root(abs_path):
+            raise DataProcessingError(
+                f"Refusing to delete root or drive path '{abs_path}'."
+            )
+        os.remove(abs_path)
+
     def doc_to_docx(self) -> Any:
         try:
             self._require_windows_support()
@@ -71,7 +81,7 @@ class OfficeDocConverter(SingletonMixin):
             word.Quit()
 
             self.converted_obj = WordDoc(tmp_path)
-            os.remove(tmp_path)
+            self._safe_remove_temp_file(tmp_path)
             self.pretty.write(
                 "O", "+", f"Converted and loaded DOCX from {self.file_path}"
             )
@@ -103,7 +113,7 @@ class OfficeDocConverter(SingletonMixin):
                 self.pretty.write("A", "+", "PowerPoint application kept open")
 
             self.converted_obj = Presentation(tmp_path)
-            os.remove(tmp_path)
+            self._safe_remove_temp_file(tmp_path)
             self.pretty.write(
                 "O", "+", f"Converted and loaded PPTX from {self.file_path}"
             )
@@ -128,7 +138,7 @@ class OfficeDocConverter(SingletonMixin):
             excel.Quit()
 
             self.converted_obj = load_workbook(tmp_path)
-            os.remove(tmp_path)
+            self._safe_remove_temp_file(tmp_path)
             self.pretty.write(
                 "O", "+", f"Converted and loaded XLSX from {self.file_path}"
             )

@@ -18,6 +18,17 @@ def test_resolve_package_name_keeps_plain_name_for_requirements() -> None:
     assert install_required.resolve_package_name("win32com") == "pywin32"
 
 
+def test_resolve_package_name_maps_lingua_to_detector_package() -> None:
+    assert install_required.resolve_package_name("lingua") == "lingua-language-detector"
+
+
+def test_resolve_install_spec_maps_lingua_with_minimum_version() -> None:
+    assert (
+        install_required.resolve_install_spec("lingua")
+        == "lingua-language-detector>=2.2.0"
+    )
+
+
 def test_install_packages_streams_output(monkeypatch, tmp_path: Path) -> None:
     python_exe = tmp_path / "venv" / "bin" / "python"
     python_exe.parent.mkdir(parents=True)

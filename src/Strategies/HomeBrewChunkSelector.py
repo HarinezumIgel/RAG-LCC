@@ -11,7 +11,8 @@ from Gui.Colors import CYAN, ORANGE, YELLOW
 from Gui.FileList import FileList
 from Gui.Symbols import Symbols
 from Helpers.DebugHelper import DebugHelper
-from Helpers.Helpers import truncate_for_print
+from Helpers.Helpers import (align_retriever_sources_for_print,
+                             truncate_for_print)
 
 
 class ChunkSelector(ABC):
@@ -61,7 +62,13 @@ class ChunkSelector(ABC):
         cross-encoder rerank is skipped.  Prefers the fused RRF score, then the
         individual retriever scores, and finally the rerank/chroma score."""
         if hasattr(c, "metadata"):
-            for key in ("rrf_score", "chroma_score", "bm25_score", "graph_score"):
+            for key in (
+                "rrf_score",
+                "chroma_score",
+                "bm25_score",
+                "graph_score",
+                "regex_score",
+            ):
                 v = c.metadata.get(key)
                 if v is not None:
                     return float(v)
@@ -95,9 +102,21 @@ class ChunkSelector(ABC):
         hits: list[tuple[Any, float, float, float]],
     ) -> None:
         """Threshold is sigmoid-probability [0, 1]; raw logit and sigmoid are shown side by side."""
-        header = "{:>3}  {:>16}  {:>8}  {:>9}  {:>17}  {:<40}  {}"
-        row = "{:>2}  {:>8.4f} [{:.3f}]  ({:>6.4f})  {:>+9.4f}  {:>17}  {:<40}  {}"
-        row_b = "{:>2}  {:>8.4f}+[{:.3f}]  ({:>6.4f})  {:>+9.4f}  {:>17}  {:<40}  {}"
+        # Keep a fixed retriever column width so long labels (for example
+        # regex fusion labels) cannot push the File column to the right.
+        sources_width = 24
+        header = (
+            f"{{:>3}}  {{:>16}}  {{:>8}}  {{:>9}}  "
+            f"{{:<{sources_width}}}  {{:<40}}  {{}}"
+        )
+        row = (
+            f"{{:>2}}  {{:>8.4f}} [{{:.3f}}]  ({{:>6.4f}})  "
+            f"{{:>+9.4f}}  {{:<{sources_width}}}  {{:<40}}  {{}}"
+        )
+        row_b = (
+            f"{{:>2}}  {{:>8.4f}}+[{{:.3f}}]  ({{:>6.4f}})  "
+            f"{{:>+9.4f}}  {{:<{sources_width}}}  {{:<40}}  {{}}"
+        )
 
         has_boosted = any(eff != sc for _, sc, _, eff in misses + hits)
         if has_boosted:
@@ -115,15 +134,29 @@ class ChunkSelector(ABC):
             ),
             color=CYAN,
         )
-        self.pretty.write("A", "Rerank select", "-" * 116, color=CYAN)
+        divider_len = len(
+            header.format(
+                "",
+                "Logit [Sigmoid]",
+                "Thr",
+                "ΔProb",
+                "Retrievers",
+                "File",
+                "Text",
+            )
+        )
+        self.pretty.write("A", "Rerank select", "-" * divider_len, color=CYAN)
 
         for c, sc, thr, eff in misses:
             dev = self._sigmoid(eff) - thr
             fn = truncate_for_print(self._get_filename(c) or "<unknown>", 40)
-            sources: str = str(
-                c.metadata.get("retriever_sources", "")
-                if hasattr(c, "metadata")
-                else ""
+            sources: str = align_retriever_sources_for_print(
+                str(
+                    c.metadata.get("retriever_sources", "")
+                    if hasattr(c, "metadata")
+                    else ""
+                ),
+                sources_width,
             )
             text: str = str(getattr(c, "page_content", "") or "")[:40]
             if eff != sc:
@@ -163,10 +196,13 @@ class ChunkSelector(ABC):
         for c, sc, thr, eff in hits:
             dev = self._sigmoid(eff) - thr
             fn = truncate_for_print(self._get_filename(c) or "<unknown>", 40)
-            sources = str(
-                c.metadata.get("retriever_sources", "")
-                if hasattr(c, "metadata")
-                else ""
+            sources = align_retriever_sources_for_print(
+                str(
+                    c.metadata.get("retriever_sources", "")
+                    if hasattr(c, "metadata")
+                    else ""
+                ),
+                sources_width,
             )
             text = str(getattr(c, "page_content", "") or "")[:40]
             sym = ("⬆" + Symbols.sym_ok()) if eff != sc else Symbols.sym_ok()
@@ -325,6 +361,7 @@ class ChunkSelector(ABC):
                 "rrf_score",
                 "bm25_score",
                 "graph_score",
+                "regex_score",
                 "position",
                 "snippet",  # web docs: printed on its own line below, not in extra_meta
             }
@@ -349,12 +386,15 @@ class ChunkSelector(ABC):
             chroma_sc = meta.get("chroma_score")
             rerank_sc = meta.get("rerank_score")
             rrf_sc = meta.get("rrf_score")
+            regex_sc = meta.get("regex_score")
             if chroma_sc is not None:
                 scores_parts.append(f"chroma={float(chroma_sc):.4f}")
             if rerank_sc is not None:
                 scores_parts.append(f"rerank={float(rerank_sc):.4f}")
             if rrf_sc is not None:
                 scores_parts.append(f"rrf={float(rrf_sc):.4f}")
+            if regex_sc is not None:
+                scores_parts.append(f"regex={float(regex_sc):.4f}")
 
             extra_meta = {k: v for k, v in meta.items() if k not in _SHOWN_KEYS}
 

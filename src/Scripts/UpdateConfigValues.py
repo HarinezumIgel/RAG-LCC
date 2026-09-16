@@ -10,7 +10,7 @@ import os
 import re
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from Commons.DriveRootGuard import assert_not_drive_root  # noqa: E402
@@ -151,7 +151,7 @@ def _load_updates(args: argparse.Namespace) -> list[dict[str, Any]]:
         )
 
     if args.updates_json:
-        raw: Any = json.loads(args.updates_json)
+        raw: object = json.loads(args.updates_json)
     else:
         updates_file = Path(args.updates_file)
         raw = json.loads(updates_file.read_text(encoding="utf-8"))
@@ -159,11 +159,14 @@ def _load_updates(args: argparse.Namespace) -> list[dict[str, Any]]:
     if not isinstance(raw, list):
         raise ValueError("Updates payload must be a JSON array")
 
-    for item in raw:
+    raw_list = cast(list[object], raw)
+    updates: list[dict[str, Any]] = []
+    for item in raw_list:
         if not isinstance(item, dict):
             raise ValueError("Every update entry must be a dictionary")
+        updates.append(cast(dict[str, Any], item))
 
-    return raw
+    return updates
 
 
 def _resolve_config_file(conf: str, config_root: Path | None) -> Path:

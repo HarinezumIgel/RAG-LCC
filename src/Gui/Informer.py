@@ -11,6 +11,7 @@ from Commons.Exceptions import (CollectionNotFoundError, NoVirtualEnvError,
                                 OllamaNotRunning, VllmNotRunning)
 from Strategies.BM25Retriever import BM25Retriever
 from Strategies.GraphRetriever import GraphRetriever
+from Strategies.RegexRetriever import RegexRetriever
 
 
 # Custom exception for OpenWebUI
@@ -306,6 +307,16 @@ class Informer:
                         "I", "Graph", f"Deleted graph index directory {graph_dir}."
                     )
 
+            # Delete the regex index directory (sibling of the ChromaDB dir)
+            regex_dir = os.path.join(
+                self.cfg.get_str("_REGEX_INDEX.REGEX_INDEX_DIR"), collection
+            )
+            if os.path.exists(regex_dir):
+                if self.chromaDBHelper.fileUtils.delete_file_or_dir(regex_dir):
+                    self.pretty.write(
+                        "I", "Regex", f"Deleted regex index directory {regex_dir}."
+                    )
+
             self.pretty.write("N", "-", "----------------------")
         else:
             # RETRIEVAL_STORES_KEEP is True — verify that the BM25 index exists on disk.
@@ -338,6 +349,21 @@ class Informer:
                     f"the collection and all its retrieval indexes."
                 )
                 self.pretty.write("E", "Graph", msg, color=RED)
+                raise CollectionNotFoundError(msg)
+
+            # Verify that the regex index also exists on disk.
+            regex_dir = os.path.join(
+                self.cfg.get_str("_REGEX_INDEX.REGEX_INDEX_DIR"), collection
+            )
+            regex_index_path = os.path.join(regex_dir, RegexRetriever.INDEX_FILENAME)
+            if not os.path.isfile(regex_index_path):
+                msg = (
+                    f"Regex index for collection '{collection}' not found at "
+                    f"{regex_index_path}. "
+                    f"Re-run RAGLoad with RETRIEVAL_STORES_KEEP = False to rebuild "
+                    f"the collection and all its retrieval indexes."
+                )
+                self.pretty.write("E", "Regex", msg, color=RED)
                 raise CollectionNotFoundError(msg)
 
     def show_results(self) -> None:

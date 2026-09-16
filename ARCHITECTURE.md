@@ -36,7 +36,7 @@ RAG-LCC follows a modular, configuration-driven architecture intended for labora
 
 Four applications share the same core infrastructure:
 
-- **RAGLoad** — ingests documents into a ChromaDB vector store; applies text masking and optional compliance checks during ingestion.
+- **RAGLoad** — ingests documents, applies text masking and optional compliance checks, and builds four synchronized local retrieval stores (ChromaDB vector, BM25, graph, regex).
 - **RAGChat** — retrieves relevant chunks from the store and answers queries via an LLM; applies compliance checks to both the prompt and the LLM response.
 - **RAGChatService** — exposes the same RAG pipeline as RAGChat over an OpenAI-compatible REST API; entry point is a network listener instead of the terminal GUI.
 - **DocClassify** — classifies documents in a directory using keyword extraction, stemming, and optional LLM-assisted label generation; writes results to CSV.
@@ -89,6 +89,7 @@ src/
 │   ├── StrategyType.py            Strategy enum and type constants
 │   ├── BM25Retriever.py           Okapi BM25 keyword retrieval
 │   ├── GraphRetriever.py          Entity co-occurrence graph retrieval (spaCy NER + BFS)
+│   ├── RegexRetriever.py          Verb/noun lemma retrieval with strict + fallback gates
 │   ├── WebRetriever.py            DuckDuckGo web search retrieval leg
 │   ├── WebPreFilter.py            Query sanitisation and injection-detection before web calls
 │   ├── WebSearchFilter.py         Intent-classifier gate on web queries
@@ -137,7 +138,6 @@ src/
 │   ├── BannedPhraseCollector.py   Loads, translates, and expands banned-phrase lists
 │   ├── SharedHelpers.py           Shared detection utilities (consensus rules, CSV output)
 │   ├── Exclusions.py              Exclusion-list management (previously-flagged files)
-│   ├── HfTranslator.py            M2M100 query translation (HuggingFace, lazy singleton)
 │   ├── ArgosDownloader.py         Argos Translate package download and consent workflow
 │   └── HFDownloader.py            HuggingFace model download, cache scan, and consent
 │
@@ -153,7 +153,7 @@ src/
 ├── Helpers/                       General-purpose utilities
 │   ├── Helpers.py                 Startup helpers (Tesseract, NLTK, spaCy init)
 │   ├── FileUtils.py               Document extraction (PDF, images, Office, text)
-│   ├── ChromaDBHelper.py          ChromaDB collection interface (HNSW, BM25, graph)
+│   ├── ChromaDBHelper.py          ChromaDB collection interface (HNSW, BM25, graph, regex)
 │   ├── Accumulator.py             Score aggregation across detection algorithms
 │   ├── DebugHelper.py             DEBUG_LEVEL evaluation (`on`, `only`, `active`, `parse`, `check`)
 │   ├── CSVWriter.py               Compliance and classification CSV output
@@ -324,7 +324,6 @@ _ACTIVE_EMBED              = "snowflake"     # snowflake
 _ACTIVE_CROSS              = "mmarco"        # mmarco
 _ACTIVE_ENDPOINT           = "ollama"        # ollama, vllm
 _ACTIVE_OPENWEBUI          = "openwebui"     # openwebui
-_ACTIVE_TRANSLATION        = "m2m100"        # m2m100
 ```
 
 At runtime the framework resolves a role via `_MODELS[<impl>][<role>]`. For example, with `_ACTIVE_LLM = "mistral"` the LLM configuration is read from `_MODELS["mistral"]["_LLM"]`.
@@ -382,7 +381,7 @@ The pattern is used consistently across five config files:
 
 | Config file | Selector variable | Dictionary | Variants (default **bold**) | Purpose |
 | --- | --- | --- | --- | --- |
-| `Config_Models.py` | `_ACTIVE_LLM`, `_ACTIVE_LLM_CHK`, `_ACTIVE_LLM_REWRITE_PROMPT`, `_ACTIVE_TRANSLATION`, `_ACTIVE_EMBED`, `_ACTIVE_CROSS`, `_ACTIVE_ENDPOINT`, `_ACTIVE_OPENWEBUI` | `_MODELS[<impl>][<role>]` | see [Model Implementation Selectors](#-model-implementation-selectors) | Model selection per role |
+| `Config_Models.py` | `_ACTIVE_LLM`, `_ACTIVE_LLM_CHK`, `_ACTIVE_LLM_REWRITE_PROMPT`, `_ACTIVE_EMBED`, `_ACTIVE_CROSS`, `_ACTIVE_ENDPOINT`, `_ACTIVE_OPENWEBUI`, `_ACTIVE_RAGCHATSERVICE` | `_MODELS[<impl>][<role>]` | see [Model Implementation Selectors](#-model-implementation-selectors) | Model selection per role |
 | `Config_Global.py` | `_ACTIVE_CHROMA_EMBED_AND_RETRIEVE_PARAMS_CONFIG` | `_CHROMA_EMBED_AND_RETRIEVE_PARAMS` | **`THOROUGH`**, `COMPACT` | HNSW neighbor counts |
 | `Config_Global.py` | `_ACTIVE_CHUNKER_CONFIG` | `_CHUNK_STRATEGY` | **`DETAILED`**, `FAST` | Chunker strategy profile and per-file-type routing (see [Chunking Architecture](#-chunking-architecture)) |
 | `Config_DocClassify.py` | `_ACTIVE_EXTRACTION_CONFIG` | `_EXTRACTION_MODEL_PARAMS` | **`STRICT`**, `BALANCED`, `RECALL` | LLM sampling (temperature, top-k, top-p) |
@@ -975,12 +974,12 @@ If the operator changes the model configuration (different model name, different
 Internet access is configured in `Config_Internet_Env.py`.  All defaults ship as offline (`HF_HUB_OFFLINE="1"`, `TRANSFORMERS_OFFLINE="1"`, etc.).
 See [Internet Access in INSTALL.md](INSTALL.md#-internet-access) for the full environment‑variable reference table and startup‑banner examples.
 
-## 🌍 Argos Translate (Compliance only)
+## 🌍 Argos Translate
 
-RAG‑LCC uses [Argos Translate](https://github.com/argosopentech/argos-translate) to translate the English banned-word list into the detected document language so that compliance checks work across languages. Argos is **only** used for this Compliance EN→X path; user-query translation uses the m2m100 backend (see [User-Query Translation](#user-query-translation) below).
+RAG‑LCC uses [Argos Translate](https://github.com/argosopentech/argos-translate) to translate the English banned-word list into the detected document language so that compliance checks work across languages. The same Argos runtime also normalises non-English user queries to English before retrieval.
 
 - **Environment variables** — `ARGOS_MODEL_PROVIDER` and `ARGOS_STANZA_DOWNLOAD` (see table above) control provider selection and network access.
-- **Language pairs & code mapping** — configured via the `_ARGOS_DEFINITIONS` slot in `Config_Global.py`. Only EN→X pairs need to be installed. See [Translation configuration (Argos) in CONFIGURATION_REFERENCE.md](CONFIGURATION_REFERENCE.md#-translation-configuration-argos) for the full reference, available pairs, and install/remove commands.
+- **Language pairs & code mapping** — configured via the `_ARGOS_DEFINITIONS` slot in `Config_Global.py`. For query normalization, install source→English pairs for user languages. Keep EN→X pairs for compliance banlist localization. See [Translation configuration (Argos) in CONFIGURATION_REFERENCE.md](CONFIGURATION_REFERENCE.md#-translation-configuration-argos) for the full reference, available pairs, and install/remove commands.
 - **Language-detection minimum length** — `_LANGUAGE_DETECTION.MIN_WORDS` (default `3`) sets the minimum word count a text must have before language detection is attempted; shorter texts skip detection and fall back to English, preventing single words from being misclassified.
 - **Language-detection confidence** — `_LANGUAGE_DETECTION.MIN_CONFIDENCE` (default `0.60`) and `_LANGUAGE_DETECTION.CONF_FULL_WORDS` (default `10`) control a word-count-scaled threshold: confidence required starts at 0.90 for short text and decreases linearly to `MIN_CONFIDENCE` at `CONF_FULL_WORDS` words; results below the effective threshold fall back to English, avoiding spurious translation warnings for short queries.
 - **Package management** — `python src/Scripts/ArgosTranslatePackages.py install | remove | status`
@@ -1350,13 +1349,14 @@ Supporting:
 
 ## 📡 Retrieval Stores
 
-RAG-LCC builds and maintains three persistent local stores per collection during `RAGLoad`, plus an optional live web source. All three local stores are queried at chat time depending on the active `retrieve_mode`; the web leg is additive when `web_search` is enabled. When `RETRIEVAL_STORES_KEEP = False`, all three local stores are deleted and rebuilt together.
+RAG-LCC builds and maintains four persistent local stores per collection during `RAGLoad`, plus an optional live web source. All four local stores are queried at chat time depending on the active `retrieve_mode`; the web leg is additive when `web_search` is enabled. When `RETRIEVAL_STORES_KEEP = False`, all four local stores are deleted and rebuilt together.
 
 | Store | Directory | Built by | Queried by |
 | --- | --- | --- | --- |
-| ChromaDB (vector) | `chromadb/<collection>/` | `DocumentIngestionStrategy` | `RAGChatImpl` (Chroma similarity_search) |
+| ChromaDB (vector) | `chromadb/docs/<collection>/` | `DocumentIngestionStrategy` | `RAGChatImpl` (Chroma similarity_search) |
 | BM25 index | `chromadb/bm25/<collection>/bm25_index.pkl.gz` | `BM25Retriever` | `RAGChatImpl` (BM25 Okapi) |
 | Graph index | `chromadb/graph/<collection>/graph_index.pkl.gz` | `GraphRetriever` | `RAGChatImpl` (BFS traversal) |
+| Regex index | `chromadb/regex/<collection>/regex_index.pkl.gz` | `RegexRetriever` | `RAGChatImpl` (verb/noun lemma matching) |
 | Web search | — (live DuckDuckGo queries; no local store) | — | `RAGChatImpl` via `WebRetriever` (only when `web_search = on`) |
 
 ### 🕸️ Graph Retriever (`Strategies/GraphRetriever.py`)
@@ -1470,17 +1470,22 @@ chunks are sent to the LLM as context.  Three selector classes in
    - `GRAPH` — extract entities and noun phrases from the query with spaCy
      (`en_core_web_sm`, **MIT**, Explosion AI), seed a BFS traversal on the
      entity co-occurrence graph, and return the highest-scoring chunks.
+   - `REGEX` — extract query verb/noun lemmas with spaCy and return chunks
+     whose indexed verb/noun channels satisfy strict or fallback gates.
    - `VECTOR_BM25` — ChromaDB + BM25; merged via RRF.
    - `VECTOR_GRAPH` — ChromaDB + Graph; merged via **Reciprocal Rank Fusion** (RRF).
    - `BM25_GRAPH` — BM25 + Graph; merged via RRF.
-   - `ALL` (default) — all three stores; merged via RRF.  Each document at
+   - `VECTOR_REGEX` — ChromaDB + Regex; merged via RRF.
+   - `BM25_REGEX` — BM25 + Regex; merged via RRF.
+   - `GRAPH_REGEX` — Graph + Regex; merged via RRF.
+   - `ALL` (default) — all four local stores; merged via RRF.  Each document at
      rank *r* in a list receives score `1 / (k + r)`.  Documents found by
      multiple retrievers have their scores summed and naturally float to the
      top.  The RRF constant *k* (default 60) is configurable in
      `_BM25_INDEX.rrf_k`.
    - **Web leg (optional)** — when `web_search = 'local + internet'` is active,
      `WebRetriever` runs a live DuckDuckGo query and adds the results as a
-     fourth RRF arm (weight `web_weight`, default `0.5`).  This is orthogonal
+     fifth RRF arm (weight `web_weight`, default `0.5`).  This is orthogonal
      to `retrieve_mode` — web results are merged *alongside* whichever local
      stores are active.
    - **Multi-query expansion (optional)** — when `_MULTI_QUERY.enabled` is `True`
@@ -1490,9 +1495,9 @@ chunks are sent to the LLM as context.  Three selector classes in
      candidates per variant); the hits are deduplicated and folded into the
      main candidate pool before the RRF merge step.  The prompt template used
      for this call is `PROMPT_QUERY_EXPAND` (configured in `Config_Models.py`
-     under `_LLM_REWRITE_PROMPT`).  Alternate-query candidates are logged at
-     debug level 29 (`ChunkDedup` label).  This is orthogonal to
-     `retrieve_mode` — BM25 and Graph legs are not affected.
+    under `_LLM_REWRITE_PROMPT`).  Alternate-query candidates are logged at
+    debug level 29 (`ChunkDedup` label).  This is orthogonal to
+    `retrieve_mode` — BM25, Graph, and Regex legs are not affected.
 2. **Near-duplicate chunk removal (optional)** — when `_CHUNK_DEDUP.enabled` is
    `True` in `Config_RAGChat.py`, chunks in the merged candidate pool are
    compared pairwise using token-level Jaccard similarity.  Any chunk whose
@@ -1526,7 +1531,7 @@ document.
 
 ### Per-file cap selection (`BALANCED_FILE_CAP`, `filelim > 0`)
 
-`PerFileCapSelector` is used when `BALANCED_FILE_CAP` sets `filelim = 40`,
+`PerFileCapSelector` is used when `BALANCED_FILE_CAP` sets `filelim = 10`,
 which changes the selection algorithm:
 
 1. **Group** surviving chunks by source file.
@@ -1737,14 +1742,8 @@ retrieval see the same query and HYBRID RRF fusion stays consistent. The LLM is
 **not** instructed to reply in a specific language — it responds naturally based
 on the language of its context.
 
-Translation is performed by `Compliance.HfTranslator`, a lazy-loaded singleton
-wrapping the model selected by `_ACTIVE_TRANSLATION` in
-[Config_Models.py](src/Configuration/Config_Models.py) (default
-`facebook/m2m100_1.2B`, MIT, ~5 GB). M2M-100 covers 100 languages — no
-per-pair install required. Consent + download are routed through `HFDownloader`
-exactly like the embedder. CPU by default; flip
-`_MODELS["m2m100"]["_TRANSLATION"]["USE_GPU"]` to `True` if the GPU has spare
-headroom.
+Translation is performed by `Compliance.SharedHelpers` using Argos Translate.
+The engine runs offline with locally installed Argos language packages.
 
 The backend is configurable globally via `_QUERY_REWRITE.TRANSLATION_BACKEND`
 in [Config_RAGChat.py](src/Configuration/Config_RAGChat.py) or per-turn via the
@@ -1752,8 +1751,7 @@ in [Config_RAGChat.py](src/Configuration/Config_RAGChat.py) or per-turn via the
 
 | Value | Engine | Notes |
 | --- | --- | --- |
-| `"m2m100"` | `Compliance.HfTranslator` wrapping `facebook/m2m100_1.2B` (MIT, ~5 GB) | Many-to-many 100-language model, no per-pair install. Lazy-loaded; consent + download via `HFDownloader`. |
-| `"argos"` | Argos Translate (OPUS-MT) | Light-weight, offline; quality degrades on short/colloquial sentences. EN→X pair must be installed. |
+| `"argos"` | Argos Translate (OPUS-MT) | Light-weight, offline query normalisation. Source→EN pairs must be installed for user-query translation; keep EN→X pairs for compliance banlist localization. |
 | `"off"` | Disabled | Query sent to retrieval as-is. |
 
 ### Diagnostic log messages (rewrite)
@@ -1963,6 +1961,9 @@ src/
     ├── HomeBrewChunkSelector.py
     ├── ProcessingStrategy.py
     ├── StrategyType.py
+    ├── BM25Retriever.py
+    ├── GraphRetriever.py
+    ├── RegexRetriever.py
     ├── WebRetriever.py
     └── WebSearchFilter.py
 │

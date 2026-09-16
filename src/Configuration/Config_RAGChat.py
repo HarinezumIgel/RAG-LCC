@@ -44,10 +44,14 @@ _ALLOWED_RETRIEVE_MODES = [
     "VECTOR",  # Embedding-based retrieval only
     "BM25",  # Keyword-based retrieval only
     "GRAPH",  # Entity co-occurrence graph only
+    "REGEX",  # Verb/noun regex-style retrieval only
     "VECTOR_BM25",  # Vector + BM25 fused via RRF
     "VECTOR_GRAPH",  # Vector + graph fused via RRF
     "BM25_GRAPH",  # BM25 + graph fused via RRF
-    "ALL",  # Vector + BM25 + graph fused via RRF (all retrieval algorithms)
+    "VECTOR_REGEX",  # Vector + regex fused via RRF
+    "BM25_REGEX",  # BM25 + regex fused via RRF
+    "GRAPH_REGEX",  # Graph + regex fused via RRF
+    "ALL",  # Vector + BM25 + graph + regex fused via RRF (all local retrieval algorithms)
     "WEB",  # Web search only; skips all local indexes (requires web_search enabled)
 ]  # Retrieval mode
 
@@ -94,6 +98,7 @@ _STRATEGIES: dict[str, dict[str, int | float | bool | str]] = {
         "vector_weight": 1,  # RRF weight for vector retriever (1 = full, 0 = off)
         "bm25_weight": 1,  # RRF weight for BM25 retriever (1 = full, 0 = off)
         "graph_weight": 0,  # Graph disabled — SingleDocumentSelector discards cross-file results anyway
+        "regex_weight": 1,  # RRF weight for regex retriever (1 = full, 0 = off)
         "web_weight": 0.5,  # Weight of web search results in RRF fusion (0.0–1.0)
         "filelim": 5,  # Max 5 chunks per file — prevents large files filling all 20 slots
         "use_chat_context": True,  # Include previous conversation turns in retrieval and rewrite context
@@ -101,7 +106,7 @@ _STRATEGIES: dict[str, dict[str, int | float | bool | str]] = {
         "prune_batch": 5,  # Oldest turns summarized per prune pass
         "max_history_turns": 3,  # Recent turns sent to the query rewriter
         "TOPIC_SUMMARY_MODE": "last",  # "last" = most recent ASSISTANT turn; "all" = all turns joined
-        "retrieve_mode": "ALL",  # Retrieval mode: VECTOR, BM25, GRAPH, VECTOR_GRAPH, BM25_GRAPH, ALL
+        "retrieve_mode": "ALL",  # Retrieval mode (see _ALLOWED_RETRIEVE_MODES)
     },
     "BALANCED_FILE_CAP": {  # Balanced precision / recall with per-file chunk cap
         "final_chunks_to_llm": 40,  # Moderate selection window
@@ -115,6 +120,7 @@ _STRATEGIES: dict[str, dict[str, int | float | bool | str]] = {
         "vector_weight": 1,  # RRF weight for vector retriever (1 = full, 0 = off)
         "bm25_weight": 1,  # RRF weight for BM25 retriever (1 = full, 0 = off)
         "graph_weight": 1,  # RRF weight for graph retriever (1 = full, 0 = off)
+        "regex_weight": 1,  # RRF weight for regex retriever (1 = full, 0 = off)
         "web_weight": 0.5,  # Weight of web search results in RRF fusion (0.0–1.0)
         "filelim": 10,  # Max 10 chunks per file — enforces actual diversity across files
         "use_chat_context": True,  # Include previous conversation turns in retrieval and rewrite context
@@ -122,7 +128,7 @@ _STRATEGIES: dict[str, dict[str, int | float | bool | str]] = {
         "prune_batch": 5,  # Oldest turns summarized per prune pass
         "max_history_turns": 3,  # Recent turns sent to the query rewriter
         "TOPIC_SUMMARY_MODE": "last",  # "last" = most recent ASSISTANT turn; "all" = all turns joined
-        "retrieve_mode": "ALL",  # Retrieval mode: VECTOR, BM25, GRAPH, VECTOR_GRAPH, BM25_GRAPH, ALL
+        "retrieve_mode": "ALL",  # Retrieval mode (see _ALLOWED_RETRIEVE_MODES)
     },
     "DEFAULT": {  # General-purpose balanced retrieval
         "final_chunks_to_llm": 50,  # Moderate selection window
@@ -136,6 +142,7 @@ _STRATEGIES: dict[str, dict[str, int | float | bool | str]] = {
         "vector_weight": 1,  # RRF weight for vector retriever (1 = full, 0 = off)
         "bm25_weight": 1,  # RRF weight for BM25 retriever (1 = full, 0 = off)
         "graph_weight": 1,  # RRF weight for graph retriever (1 = full, 0 = off)
+        "regex_weight": 1,  # RRF weight for regex retriever (1 = full, 0 = off)
         "web_weight": 0.5,  # Weight of web search results in RRF fusion (0.0–1.0)
         "filelim": 15,  # Max 15 chunks per file — prevents large docs filling all 40 slots
         "use_chat_context": True,  # Include previous conversation turns in retrieval and rewrite context
@@ -143,7 +150,7 @@ _STRATEGIES: dict[str, dict[str, int | float | bool | str]] = {
         "prune_batch": 5,  # Oldest turns summarized per prune pass
         "max_history_turns": 3,  # Recent turns sent to the query rewriter
         "TOPIC_SUMMARY_MODE": "last",  # "last" = most recent ASSISTANT turn; "all" = all turns joined
-        "retrieve_mode": "ALL",  # Retrieval mode: VECTOR, BM25, GRAPH, VECTOR_GRAPH, BM25_GRAPH, ALL
+        "retrieve_mode": "ALL",  # Retrieval mode (see _ALLOWED_RETRIEVE_MODES)
     },
     "WIDE": {  # Recall-oriented — exploratory search across many chunks
         "final_chunks_to_llm": 60,  # Large selection window — more context for the LLM
@@ -157,6 +164,7 @@ _STRATEGIES: dict[str, dict[str, int | float | bool | str]] = {
         "vector_weight": 1,  # RRF weight for vector retriever (1 = full, 0 = off)
         "bm25_weight": 1,  # RRF weight for BM25 retriever (1 = full, 0 = off)
         "graph_weight": 1,  # RRF weight for graph retriever (1 = full, 0 = off)
+        "regex_weight": 1,  # RRF weight for regex retriever (1 = full, 0 = off)
         "web_weight": 0.5,  # Weight of web search results in RRF fusion (0.0–1.0)
         "filelim": 20,  # Loose cap — breadth allowed but no file takes more than 20 of 60 slots
         "use_chat_context": True,  # Include previous conversation turns in retrieval and rewrite context
@@ -164,7 +172,7 @@ _STRATEGIES: dict[str, dict[str, int | float | bool | str]] = {
         "prune_batch": 5,  # Oldest turns summarized per prune pass
         "max_history_turns": 3,  # Recent turns sent to the query rewriter
         "TOPIC_SUMMARY_MODE": "last",  # "last" = most recent ASSISTANT turn; "all" = all turns joined
-        "retrieve_mode": "ALL",  # Retrieval mode: VECTOR, BM25, GRAPH, VECTOR_GRAPH, BM25_GRAPH, ALL
+        "retrieve_mode": "ALL",  # Retrieval mode (see _ALLOWED_RETRIEVE_MODES)
     },
     "ULTRA_WIDE": {  # Diagnostic / exploratory — very high recall, high cost
         "final_chunks_to_llm": 1500,  # Very large selection window (high computational cost)
@@ -178,6 +186,7 @@ _STRATEGIES: dict[str, dict[str, int | float | bool | str]] = {
         "vector_weight": 1,  # RRF weight for vector retriever (1 = full, 0 = off)
         "bm25_weight": 1,  # RRF weight for BM25 retriever (1 = full, 0 = off)
         "graph_weight": 1,  # RRF weight for graph retriever (1 = full, 0 = off)
+        "regex_weight": 1,  # RRF weight for regex retriever (1 = full, 0 = off)
         "web_weight": 0.5,  # Weight of web search results in RRF fusion (0.0–1.0)
         "filelim": 0,  # No per-file chunk limit
         "use_chat_context": True,  # Include previous conversation turns in retrieval and rewrite context
@@ -185,7 +194,7 @@ _STRATEGIES: dict[str, dict[str, int | float | bool | str]] = {
         "prune_batch": 5,  # Oldest turns summarized per prune pass
         "max_history_turns": 3,  # Recent turns sent to the query rewriter
         "TOPIC_SUMMARY_MODE": "last",  # "last" = most recent ASSISTANT turn; "all" = all turns joined
-        "retrieve_mode": "ALL",  # Retrieval mode: VECTOR, BM25, GRAPH, VECTOR_GRAPH, BM25_GRAPH, ALL
+        "retrieve_mode": "ALL",  # Retrieval mode (see _ALLOWED_RETRIEVE_MODES)
     },
 }
 
@@ -207,6 +216,11 @@ Citing a source for something it does not contain is a more serious error than s
 "the context is silent on this." If you know a fact from training but cannot find it in
 the context, you MUST NOT write "according to the sources" — you must admit the context
 does not cover it.
+
+FINAL RESPONSE LANGUAGE:
+Write your final answer in: {response_language}
+If a source quote is in another language, you may quote it verbatim but keep
+the explanatory narrative in {response_language}.
 
 ONE EXCEPTION — DIRECT LOGICAL INFERENCE FROM CONTEXT (NEGATIVE INFERENCES ONLY):
 If the context provides an explicit, reasonably complete description of a characteristic
@@ -316,6 +330,7 @@ You MUST output STRICT JSON. No commentary, no markdown, no preamble.
 Previous user utterance : {previous_user_utterance}
 Rolling topic summary   : {rolling_topic_summary}
 Current user utterance  : {current_user_utterance}
+Retrieval language      : {output_language}
 
 ### Output schema
 {{
@@ -370,9 +385,15 @@ RULE 5 - salient_referents.
   List the specific entities from the rolling topic summary that the current
   utterance implicitly refers to. Empty list when depends = false.
 
-RULE 6 - Language.
-  Both rewrites must be in the same language as the current user utterance.
-  Do NOT translate. Entity names from the topic summary are copied verbatim.
+RULE 6 - Retrieval language contract.
+  Both rewrites MUST be in {output_language}.
+  Do NOT mirror the user's language when {output_language} differs.
+  This is a monolingual retrieval pipeline: output retrieval-language rewrites only.
+
+RULE 6b - Preserve entity surface forms.
+  Keep named entities, product names, policy IDs, document titles, acronyms,
+  and quoted strings unchanged whenever possible.
+  Translate only the surrounding sentence frame into {output_language}.
 
 RULE 7 - Output only the JSON object. No explanation outside it.
 
@@ -467,10 +488,8 @@ _QUERY_REWRITE: dict[str, Any] = {
     #   "argos"  — offline Argos Translate (OPUS-MT based; lighter but lower quality
     #              on short/colloquial sentences). Requires the language pair to be
     #              installed (see _ARGOS_DEFINITIONS.ARGOS_LANGUAGES).
-    #   "m2m100" — facebook/m2m100_418M via Hugging Face Transformers (MIT, ~1.7 GB).
-    #              Better quality on short queries; lazy-loaded singleton.
     #   "off"    — no translation, query sent as-is.
-    "TRANSLATION_BACKEND": "m2m100",
+    "TRANSLATION_BACKEND": "argos",
     "LLM_PARAM": {
         "temperature": 0.05,
         "top_k": 10,
@@ -498,7 +517,7 @@ Rules:
 - Each variant must be a complete, self-contained retrieval query.
 - Do NOT add new facts, entities, or assumptions not present in the original query.
 - Do NOT produce meta-descriptor queries (e.g. "What are the characteristics of X?").
-- Keep the same language as the input query.
+- Keep all variants in English retrieval language.
 
 Output ONLY a JSON array of strings. No commentary, no markdown, no preamble.
 Example for num_variants=3: ["variant one", "variant two", "variant three"]
