@@ -66,6 +66,8 @@ Most RAG stacks optimize only retrieval score. RAG-LCC also optimizes context qu
   https://github.com/HarinezumIgel/RAG-LCC/blob/main/EXAMPLES.md
 - Hands-on tour
   https://github.com/HarinezumIgel/RAG-LCC/blob/main/HANDS_ON_TOUR.md
+- Legal and compliance notes
+  https://github.com/HarinezumIgel/RAG-LCC/blob/main/LEGAL.md
 
 ## Source repository
 
