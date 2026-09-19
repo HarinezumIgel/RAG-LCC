@@ -87,7 +87,7 @@ Each query runs through a staged pipeline:
 2. **Translation** — non‑English queries normalised to English via Argos Translate (enabled X→EN pairs filtered by the active-language set)
 3. **Query rewriting** — pronouns and referents from prior turns resolved by a dedicated rewrite LLM; prefix with `new:` to hard‑switch topics without clearing history
 4. **Multi‑query expansion** — the LLM generates N alternate phrasings to broaden vocabulary coverage across the retrieval pool
-5. **Hybrid retrieval** — Vector + BM25 + Graph + Regex fused via weighted Reciprocal Rank Fusion; in multilingual corpora, BM25/Graph/Regex run through language-bucket routing (query-relevant bucket first, then remaining active-and-present buckets); optional live DuckDuckGo web leg
+5. **Hybrid retrieval** — Vector + BM25 + Graph + Regex fused via weighted Reciprocal Rank Fusion; BM25/Graph/Regex use language-aware retrieval via language-bucket routing in multilingual corpora (query-relevant bucket first, then remaining active-and-present buckets); optional live DuckDuckGo web leg
 6. **Near‑duplicate removal** — chunks sharing ≥ 85% token overlap collapsed before reranking
 7. **Cross‑encoder reranking** — neural relevance scoring on top‑k candidates
 8. **Strategy‑gated context assembly** — five profiles from `NARROW` (20 chunks, high precision) to `ULTRA_WIDE` (1500 chunks, exhaustive), with per‑file diversity caps
@@ -109,36 +109,6 @@ Supports Bearer‑token authentication, optional streaming, configurable host/po
 ---
 
 ## 🧭 Quick mental model
-
-Language behavior is centralized in `src/Configuration/Config_Languages.py`: `_ACTIVE_LANGUAGES` defines what is enabled, `_ARGOS_DEFINITIONS.ARGOS_LANGUAGES` defines available translation pairs, and `_SPACY_MODELS_BY_ACTIVE_LANGUAGE` defines per-language spaCy package routing. For local indexed retrieval, orchestration discovers corpus language buckets and routes BM25/Graph/Regex across active-and-present buckets (query-relevant first) to preserve multilingual coverage. Unsupported document languages follow `UNSUPPORTED_LANGUAGE_ACTION` in `Config_Global.py`.
-
-### Add and install a new language
-
-Use the strict script-managed flow below.
-
-1. Edit `src/Configuration/Config_Languages.py` and add the language code to `_ACTIVE_LANGUAGES`.
-
-2. In the same file, add matching Argos pairs in `_ARGOS_DEFINITIONS["ARGOS_LANGUAGES"]`. Argos packages are one-way, so in most cases you need both `X -> en` (query normalization) and `en -> X` (banlist localization).
-
-3. Add the spaCy model package for the same language code in `_SPACY_MODELS_BY_ACTIVE_LANGUAGE`.
-
-4. Install/update runtime resources:
-
-```bash
-python src/Scripts/ArgosTranslatePackages.py install
-python src/Scripts/SpacyLanguageModels.py install
-```
-
-5. Verify what is installed:
-
-```bash
-python src/Scripts/ArgosTranslatePackages.py
-python src/Scripts/SpacyLanguageModels.py
-```
-
-Running these scripts without arguments shows status.
-
-There are no legacy runtime toggles for automatic Argos or spaCy downloads. If consent metadata is stale or missing, startup fails fast and asks you to run these scripts.
 
 ```text
 Raw documents
@@ -191,20 +161,22 @@ Raw documents
 │  │  multi-query expansion  (LLM → N alternate phrasings)       │    │
 │  │    │  each variant runs an additional Vector search         │    │
 │  │    ▼                                                        │    │
-│  │  local arms: Vector (Chroma) · BM25 · Graph · Regex         │    │
+│  │  local arms: Vector + language-aware BM25/Graph/Regex       │    │
 │  │  optional web arm: DuckDuckGo (web_search=on)               │    │
 │  │                      │                                      │    │
 │  │                      ▼                                      │    │
-│  │                  weighted RRF fusion                        │    │
+│  │         weighted RRF fusion (local) + web append            │    │
 │  │                      │                                      │    │
 │  │                      ▼                                      │    │
 │  │          near-duplicate removal  (Jaccard)                  │    │
 │  │                      │                                      │    │
 │  │                      ▼                                      │    │
-│  │          threshold filter  (sigmoid score ≥ T)              │    │
+│  │          cross-encoder reranker  (mmarco MiniLM)            │    │
 │  │                      │                                      │    │
 │  │                      ▼                                      │    │
-│  │          cross-encoder reranker  (mmarco MiniLM)            │    │
+│  │     threshold gate (sigmoid(raw logit) ≥ local/web T)       │    │
+│  │     fallback: if no local hit passes T, use retrieval       │    │
+│  │               ordering (RRF score) for selection            │    │
 │  │                      │                                      │    │
 │  │                      ▼                                      │    │
 │  │          chunk selection strategy                           │    │
@@ -273,7 +245,7 @@ Key capabilities organized by application. Full configuration details, defaults,
 ### 📥 RAGLoad
 
 - **7 chunking strategies** with per-format routing: PDF→PDF_PAGE, DOCX/MD→heading, PPTX→slide, plain text→sliding window, sentences→sentence window, code/CSV→recursive, default→semantic boundary detection
-- **Four parallel indexes built simultaneously**: ChromaDB HNSW dense vectors, Okapi BM25 keyword index, spaCy entity co-occurrence graph, and a regex verb/noun lemma index
+- **Four parallel indexes built simultaneously**: ChromaDB HNSW dense vectors, Okapi BM25 keyword index, spaCy entity co-occurrence graph, and a regex verb/noun lemma index (with language-aware BM25/Graph/Regex retrieval at query time)
 - **Compliance filter chain + masking** — Regex+Levenshtein, Jaccard, BM25, and KeyBERT all run before any chunk is stored; matched spans are redacted in place
 - **Obfuscation hardening** — leet-speak decoding (`1→i`, `3→e`, …) and Unicode confusable normalisation (Cyrillic lookalikes, `ß→ss`, …) run before detection
 - **Incremental processing** — SHA-256 hash check skips unchanged files; exclusion CSVs automatically drop previously-flagged documents
@@ -282,17 +254,17 @@ Key capabilities organized by application. Full configuration details, defaults,
 
 ### 💬 RAGChat
 
-- **12 retrieval modes** — `VECTOR`, `BM25`, `GRAPH`, `REGEX`, six pairwise combinations, `ALL` (all four local retrievers), and `WEB` (web only)
+- **12 retrieval modes** — `VECTOR`, `BM25`, `GRAPH`, `REGEX`, six pairwise combinations, `ALL` (all four local retrievers), and `WEB` (web only). `BM25`, `GRAPH`, and `REGEX` are language-aware and execute per discovered corpus language bucket. See [Retrieval Stores & Search Modes](CONFIGURATION_REFERENCE.md#-retrieval-stores--search-modes).
 - **5 retrieval strategies** from `NARROW` (20 chunks, threshold 0.70, high precision) to `ULTRA_WIDE` (1 500 chunks, exhaustive); `BALANCED_FILE_CAP` enforces per-file diversity caps
 - **Multi-query expansion** — a dedicated LLM generates N alternate phrasings of the query; each variant runs an additional Vector search merged into the main pool before fusion
 - **Query rewriting / coreference resolution** — a second dedicated LLM resolves pronouns and referents from conversation history (`"are they mammals?"` → `"are hedgehogs mammals?"`); prefix with `new:` to hard-switch topics without clearing history
 - **Near-duplicate chunk removal** — Jaccard token-level deduplication of the retrieval pool runs after RRF fusion and before reranking
-- **Cross-encoder reranking** — mmarco MiniLM rescores every candidate; per-strategy sigmoid threshold drops weak matches; when no chunk clears the threshold, reranking is skipped and chunks fall back to retrieval (RRF) order so the top chunk always surfaces
+- **Cross-encoder reranking** — mmarco MiniLM rescores every candidate; per-strategy sigmoid threshold drops weak matches; when the best local chunk stays below the threshold, cross-encoder filtering is skipped, the merged RRF pool is kept, and chunk ordering falls back to retrieval scores before selected chunks are passed to the final LLM context
 - **Answer grounding** — every answer sentence is checked for overlap with retrieved source chunks and marked visually; CLI uses ANSI highlights, API returns marked source documents as `/marked/<token>` links
 - **Compliance filter chain** runs on queries before retrieval **and** on generated responses before delivery
 - **Multi-turn conversational memory** — rolling topic summary, configurable turn window, batch pruning; `new:` prefix isolates topics without discarding history
 - **Translation** — Argos Translate normalises non-English queries to English before retrieval and rewriting; the same Argos runtime translates banlists for document-language compliance checks
-- **Multilingual retrieval routing** — when local indexed retrievers are enabled, `BM25`, `Graph`, and `Regex` are dispatched by discovered corpus language buckets constrained by active language config. Query-relevant language runs first, then remaining active-and-present buckets, preserving mixed-language recall.
+- **Language-aware indexed retrievers** — `BM25`, `Graph`, and `Regex` run per discovered corpus language bucket constrained by active language config. Query-relevant language runs first, then remaining active-and-present buckets, preserving mixed-language recall. Configure active languages/models in [src/Configuration/Config_Languages.py](src/Configuration/Config_Languages.py) and translation behavior in [Translation configuration (Argos)](CONFIGURATION_REFERENCE.md#-translation-configuration-argos).
 - **Per-session web knobs** — `web_search` (`local_only` / `local_and_web` / `web_only`), `web_weight`, `fetch_page_content` (`snippets only` / `fetch pages`); see [CONFIGURATION_REFERENCE.md § Web Search Admin Knobs](CONFIGURATION_REFERENCE.md#-web-search--admin-knobs)
 
 ### 🌐 RAGChatService
@@ -324,7 +296,7 @@ RAG‑LCC exposes every significant architectural decision as a configuration sl
 | Area | What you configure | Why you'd tune it |
 |------|--------------------|-------------------|
 | **Chunking** | 7 strategies (Semantic, Heading, PDF/Page, Sliding Window, Recursive…); per-format routing; chunk size and overlap | Chunking quality determines retrieval precision — wrong boundaries produce noisy embeddings, referential ambiguity, and incoherent context |
-| **Retrieval mode** | `VECTOR`, `BM25`, `GRAPH`, `REGEX`, pairwise combinations, `ALL`, `WEB` — with per-retriever RRF weights | Switch between semantic recall, lexical precision, entity-graph traversal, and verb/noun pattern recall; tune each store's influence independently |
+| **Retrieval mode** | `VECTOR`, `BM25`, `GRAPH`, `REGEX`, pairwise combinations, `ALL`, `WEB` — with per-retriever RRF weights | Switch between semantic recall, lexical precision, entity-graph traversal, and verb/noun pattern recall; `BM25`/`GRAPH`/`REGEX` run language-aware per corpus language bucket, and each store's influence is tunable independently |
 | **Retrieval strategy** | 5 profiles (`NARROW` → `ULTRA_WIDE`): chunk count to LLM, score threshold, per-file limits, retriever-k | Dial precision vs recall: 20 chunks for focused Q&A, 1500 for exhaustive exploratory search |
 | **Reranking** | Cross-encoder on/off per strategy; sigmoid score threshold | Neural relevance pass after retrieval — switch off for speed, tune threshold for precision |
 | **Query processing** | Multi-query expansion (N alternate phrasings); context-dependent rewriting; pronoun/referent resolution; meta-descriptor guard | Boost recall via vocabulary diversity; prevent stale chat history from poisoning retrieval |
@@ -334,7 +306,7 @@ RAG‑LCC exposes every significant architectural decision as a configuration sl
 | **Compliance** | 5-algorithm detection pipeline (Regex+Levenshtein, Jaccard, BM25, KeyBERT); per-app thresholds; masking; consensus count | Fine-tune false-positive/negative tradeoff independently for indexing vs chat |
 | **Content hardening** | Leet-speak and Unicode confusable normalization; WordNet synonym expansion; LLM guard model | Defense-in-depth: obfuscation is neutralized before embedding, LLM gates responses before delivery |
 | **Classification** | Customisable extraction keys; `STRICT`/`BALANCED`/`RECALL` profiles; SQLite filter for selective indexing | Classify first, then load only the documents that match your query's domain |
-| **Language** | 28-language detection (Lingua); Argos query translation (installed source→EN pairs); Argos banlist translation | Retrieve and filter correctly even in multilingual document corpora |
+| **Language** | 28-language detection (Lingua); Argos query translation (installed source→EN pairs); Argos banlist translation; language-aware `BM25`/`GRAPH`/`REGEX` bucket routing | Retrieve and filter correctly even in multilingual document corpora |
 | **Web search** | DuckDuckGo integration; 3-stage pre-filter (BM25 + cosine + rerank); intent blocking; per-session weight | Augment local retrieval with live web results; configure filtering aggressively enough to suppress noise |
 | **Answer grounding** | Sentence-level overlap detection; configurable match strictness; color markers per output mode | Distinguish grounded sentences from hallucinations at the sentence level, in CLI and API |
 | **Deployment** | Ollama or vLLM backend; `RAGChatService` (OpenAI-compatible REST); OpenWebUI drop-in | Same config and pipeline whether you run CLI, a service, or behind OpenWebUI |

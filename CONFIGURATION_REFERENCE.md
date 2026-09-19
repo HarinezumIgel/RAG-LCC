@@ -86,7 +86,7 @@ This reference covers both a **quick-scan overview** (tables by topic and by con
 
 | **Component** | **Options/Values** | **Purpose** |
 |---------------|-------------------|-------------|
-| **Prompt Templates** | `_PROMPT_CHAT`, `_PROMPT_CLASSIFY`, `_PROMPT_CHECK`, `_PROMPT_TOPIC_DETECT`, `_PROMPT_QUERY_EXPAND` | Controls LLM behavior. CHAT generates answers; CLASSIFY extracts metadata; CHECK validates safety; TOPIC_DETECT analyzes query context; QUERY_EXPAND rewrites queries. |
+| **Prompt Templates** | `_PROMPT_CHAT`, `_PROMPT_CLASSIFY_MISTRAL` / `_PROMPT_CLASSIFY_LLAMA`, `_PROMPT_CHECK_CHAT_*` / `_PROMPT_CHECK_CLASSIFY_*`, `_PROMPT_TOPIC_DETECT`, `_PROMPT_QUERY_EXPAND` | Controls LLM behavior. CHAT generates answers; CLASSIFY extracts metadata; CHECK validates safety; TOPIC_DETECT analyzes query context; QUERY_EXPAND creates retrieval variants. |
 | **Chat Context** | `use_chat_context`: True, `turns`: 5-10, `max_history_turns`: 3 | Enables conversational memory. `turns` sets max stored turns before pruning; `max_history_turns` limits context sent to query rewriter. |
 | **Topic Summarization** | `TOPIC_SUMMARY_MODE`: "last" / "all" | Controls rolling topic summary sent to the rewriter LLM. "last" uses only the most recent assistant turn; "all" joins all turns (more context but noisier). |
 | **Query Rewriting** | `enabled`: True, `topic_confidence_threshold`: 0.5, `TRANSLATION_BACKEND`: argos/off | Rewrites the query to resolve pronoun/referent dependencies on previous turns. Below confidence threshold, falls back to standalone rewrite. Also normalises non-English queries to English before retrieval. |
@@ -287,7 +287,6 @@ This reference covers both a **quick-scan overview** (tables by topic and by con
 | **Active Languages** | `Config_Languages.py` | `_ARGOS_DEFINITIONS["ACTIVE_LANGUAGES"]` | Languages enabled at runtime (filters Argos/spaCy routing) |
 | **Unsupported Language Action** | `Config_Global.py` | `UNSUPPORTED_LANGUAGE_ACTION` | "NOT_OK" or "FALLBACK_EN" |
 | **NLTK Stopwords Path** | `Config_Global.py` | `_CUSTOM_NLTK_DATA_DIRECTORY` | Custom NLTK data location |
-| **NLTK Stopwords Download** | `Config_Internet_Env.py` | `os.environ["NLTK_STOPWORDS_DOWNLOAD"]` | Auto-download NLTK data |
 
 ### 📊 Classification & Document Analysis
 
@@ -795,7 +794,7 @@ Defined in `Config_Languages.py`. Groups active-language selection, language-cod
 
 ## 🛡️ 2b. Config_Banned.py — Detection & Compliance
 
-This file defines the detection algorithms, thresholds, banned word lists, and masking rules used by RAGLoad, RAGChat, and DocClassify. After editing it, update `_BANNED_CONFIG_HASH` in `Config_Global.py`.
+This file defines the detection algorithms, thresholds, banned word lists, and masking rules used by RAGLoad, RAGChat, and DocClassify. After editing it, update `_CRITICAL_CONFIG_HASHES["Config_Banned"]` in `Config_Global.py`.
 
 ### 🔤 Algorithm Constants (Single Source of Truth)
 
@@ -937,7 +936,7 @@ The banned word lists (`_ACTIVE_BANNED_CONFIG`) are organized by language and ap
 
 ## 🤖 2. Config_Models.py — Model Definitions
 
-This file defines every model used by RAG-LCC. After editing it, update `_MODELS_CONFIG_HASH` in `Config_Global.py` (the new hash is printed at startup). For details on how model implementations are selected, see [Model Implementation Selectors in ARCHITECTURE.md](ARCHITECTURE.md#model-implementation-selectors) and the [Strategy Selection Pattern](ARCHITECTURE.md#strategy-selection-pattern).
+This file defines every model used by RAG-LCC. After editing it, update `_CRITICAL_CONFIG_HASHES["Config_Models"]` in `Config_Global.py` (the new hash is printed at startup). For details on how model implementations are selected, see [Model Implementation Selectors in ARCHITECTURE.md](ARCHITECTURE.md#model-implementation-selectors) and the [Strategy Selection Pattern](ARCHITECTURE.md#strategy-selection-pattern).
 
 `LICENSE_URL` entries should point to canonical upstream license texts (for example Apache, MIT, or upstream repository LICENSE files), consistent with the setup scripts that fetch native package licenses directly from upstream sources.
 
@@ -1060,7 +1059,7 @@ A dedicated LLM used to rewrite follow-up queries for coreference resolution in 
     "_LLM_REWRITE_PROMPT": {
         "MODEL_OLLAMA": "mistral:7b",
         "MODEL_VLLM": "mistral_7b",
-        "PROMPT_REWRITE": "_PROMPT_REWRITE",
+        "PROMPT_TOPIC_DETECT": "_PROMPT_TOPIC_DETECT",
         ...
     },
 },
@@ -1174,7 +1173,7 @@ Records the RAGChatService listener configuration (host, port, API key). The imp
 
 ## 🌐 3b. Config_WebSearch.py — Web Search Configuration
 
-This file contains all web-search-specific settings shared across RAGChat and RAGChatService. After editing it, update `_WEB_SEARCH_CONFIG_HASH` in `Config_Global.py`.
+This file contains all web-search-specific settings shared across RAGChat and RAGChatService. After editing it, update `_CRITICAL_CONFIG_HASHES["Config_WebSearch"]` in `Config_Global.py`.
 
 ### 🔑 Web-Search Switch Reference
 
@@ -1468,7 +1467,7 @@ Terminals that support OSC 8 hyperlinks (Windows Terminal, VS Code, iTerm2, Kitt
 
 #### Service delivery (`RAGChatService`)
 
-In service mode, highlighted bytes are stored in the `MarkedDocsStore` in-memory cache and served as short-lived URLs (`GET /marked/<token>.<ext>`). The link block is appended to the LLM answer. See the `_MARKED_DOCS` block in `Config_RAGChatService.py`.
+In service mode, highlighted bytes are stored in the `MarkedDocsStore` in-memory cache and served as short-lived URLs (`GET /marked/<token>.<ext>`). The link block is appended to the LLM answer. Runtime behavior is configured in `_SERVE_DOCS` in `Config_RAGChatService.py` and gated by `SERVE_IN_MEMORY_DOCS_HTTP` in `Config_Internet_Env.py`.
 
 ### 🎨 Answer Display Style (`ANSWER_DISPLAY`)
 
@@ -1703,7 +1702,7 @@ All settings from `Config_RAGChat.py` are available in `Config_RAGChatService.py
 
 ## 🚧 7. Config_Banned.py — Detection, Thresholds, and Masking
 
-After editing `Config_Banned.py` update `_BANNED_CONFIG_HASH` in `Config_Global.py`.
+After editing `Config_Banned.py` update `_CRITICAL_CONFIG_HASHES["Config_Banned"]` in `Config_Global.py`.
 
 ### 🧮 Detection Algorithms
 
@@ -1789,7 +1788,7 @@ Built-in rules cover credit cards, emails, SSNs, IBANs, IP addresses, MAC addres
 
 Masking is applied on document ingestion and on RAGChat query output.
 
-To define a custom masking profile, create a new dictionary (e.g. `_MY_MASKING_REGEXES`) and point `_ACTIVE_MASKING_CONFIG` to it.
+To define a custom masking profile, create a new dictionary (for example, `MY_MASKING_REGEXES`) and point `_ACTIVE_MASKING_CONFIG` to it.
 
 ### 🌐 Web-Search Intent Filter Extensions
 
@@ -1805,7 +1804,7 @@ without editing that file. Three keys are supported:
 
 All three default to empty dicts — no behavioral change until populated.
 
-> **After editing `WEB_SEARCH_INTENT_EXTENSIONS`**, update `_BANNED_CONFIG_HASH`
+> **After editing `WEB_SEARCH_INTENT_EXTENSIONS`**, update `_CRITICAL_CONFIG_HASHES["Config_Banned"]`
 > in `Config_Global.py`. Run `python src/Scripts/RecalcConfigHashes.py` to
 > calculate and apply the new hash automatically.
 
@@ -1816,7 +1815,6 @@ This file controls all internet connectivity and diagnostic toggles. It is descr
 | Environment Variable | default used in this repository | Purpose |
 | --- | --- | --- |
 | `LICENSE_DOWNLOAD` | `"0"` | Online fetch license on every run. Defined in `Config_Models.py`. When `"0"`, the Compliance module prompts for per-fetch consent. |
-| `NLTK_STOPWORDS_DOWNLOAD` | `"0"` | Allow download of missing NLTK stopwords corpus. When `"0"`, the system falls back to an empty stopword list. |
 | `RAG_LCC_NW_TRACE` | `"0"` | Socket-level network tracing (debug). |
 | `RAG_LCC_STACK_TRACE` | `"0"` | Stack traces on errors. |
 | `WEB_SEARCH_MODE` | `"0"` | **Master web-search switch.** `"0"` = disabled (safe default); `"1"` = internet search enabled (user queries may be sent to DuckDuckGo). Operators enabling `"1"` must review `LEGAL.md § Web Search` and `SECURITY.md`. |
@@ -1829,6 +1827,8 @@ This file controls all internet connectivity and diagnostic toggles. It is descr
 | `SERVE_IN_MEMORY_DOCS_HTTP` | `"0"` | Enable the in-memory document HTTP server used by RAGChatService for `/marked/<token>` links. `"0"` = disabled (no in-memory docs store). `"1"` = enabled. See `_SERVE_DOCS` in `Config_RAGChatService.py` for TTL and size limits. |
 | `HF_HUB_DISABLE_PROGRESS_BARS` | `"0"` | Show Hugging Face Hub progress bars during model downloads. Set to `"1"` to suppress progress bar output for cleaner log output. |
 | `TOKENIZERS_PARALLELISM` | `"false"` | Prevent tokenizer parallelism warnings from HuggingFace tokenizers. Set via `os.environ.setdefault` (only applied when not already set). |
+
+NLTK stopwords corpora are script-managed via `python src/Scripts/NLTK_Stopwords_WordNet.py install`; there is no runtime auto-download toggle.
 
 ## 💻 CLI Parameter Override
 
@@ -1932,11 +1932,11 @@ python src/Scripts/ArgosTranslatePackages.py remove
 
 | Issue | Cause | Solution |
 | --- | --- | --- |
-| `Detected modification of Configuration.Config_Models` / `Update Expected hash … _MODELS_CONFIG_HASH to match expected hash` | Edited `Config_Models.py` without updating hash | Copy the new hash from the startup message into `_MODELS_CONFIG_HASH` in `Config_Global.py`. See [Update the hashes](INSTALL.md#-update-the-hashes). |
-| `Detected modification of Configuration.Config_Banned` / `Update Expected hash … _BANNED_CONFIG_HASH to match expected hash` | Edited `Config_Banned.py` without updating hash | Copy the new hash from the startup message into `_BANNED_CONFIG_HASH` in `Config_Global.py`. See [Update the hashes](INSTALL.md#-update-the-hashes). |
+| `Detected modification of Configuration.Config_Models` / `Reference hash _CRITICAL_CONFIG_HASHES["Config_Models"] ...` | Edited `Config_Models.py` without updating hash | Copy the new hash from the startup message into `_CRITICAL_CONFIG_HASHES["Config_Models"]` in `Config_Global.py`. See [Update the hashes](INSTALL.md#-update-the-hashes). |
+| `Detected modification of Configuration.Config_Banned` / `Reference hash _CRITICAL_CONFIG_HASHES["Config_Banned"] ...` | Edited `Config_Banned.py` without updating hash | Copy the new hash from the startup message into `_CRITICAL_CONFIG_HASHES["Config_Banned"]` in `Config_Global.py`. See [Update the hashes](INSTALL.md#-update-the-hashes). |
 | 'ModuleNotFoundError: No module named 'Configuration.Config_Banned' | You forgot to copy Config_Banned.py | See [Review the example config files](INSTALL.md#-review-the-example-config-files) and [Copy example configs into place](INSTALL.md#-if-ok-copy-example-configs-into-place) |
 | 'ModuleNotFoundError: No module named 'Configuration.Config_Models' | You forgot to copy Config_Models.py | See [Review the example config files](INSTALL.md#-review-the-example-config-files) and [Copy example configs into place](INSTALL.md#-if-ok-copy-example-configs-into-place) |
-| `Execution stopped due to compliance check` | Config hash not updated after editing `Config_Models.py` or `Config_Banned.py` | Update both `_MODELS_CONFIG_HASH` and `_BANNED_CONFIG_HASH` in `Config_Global.py` and restart. See [Update the hashes](INSTALL.md#-update-the-hashes). |
+| `Execution stopped due to compliance check` | Config hash not updated after editing `Config_Models.py` or `Config_Banned.py` | Update `_CRITICAL_CONFIG_HASHES["Config_Models"]` and `_CRITICAL_CONFIG_HASHES["Config_Banned"]` in `Config_Global.py` and restart. See [Update the hashes](INSTALL.md#-update-the-hashes). |
 | Embeddings seem wrong | Changed embedding model without re-embedding | Set `RETRIEVAL_STORES_KEEP = False` and re-run RAGLoad or delete the collection manually (`./chromadb/docs`) |
 | RAGChat is slow | Too many `NEIGHBORS_RETRIEVE` or large `CHUNK_SIZE` | Reduce both in `Config_Global.py` |
 | Detection not working | Phrases not in banned list | Add to `Config_Banned.py` and [update the hash](INSTALL.md#-update-the-hashes) |

@@ -202,7 +202,7 @@ src/
 └── Scripts/                       Operator utilities (run directly, not imported)
     ├── Setup.py                   Interactive first-run setup wizard
     ├── CopyExampleConfigs.py      Copies example Config_*.py files into place
-    ├── RecalcConfigHashes.py      Recomputes and updates _*_CONFIG_HASH values
+    ├── RecalcConfigHashes.py      Recomputes and updates _CRITICAL_CONFIG_HASHES[...] values
     ├── ArgosTranslatePackages.py  Install / remove Argos Translate language packages
     ├── SpacyLanguageModels.py     Install / remove spaCy model packages
     ├── BM25IndexInspector.py      Inspect persisted BM25 index contents
@@ -299,6 +299,13 @@ Parameters are accessible via `Config().get(key_path)` using dot notation.
 
 ### 🔑 Key Configuration Areas
 
+**Notes:**
+
+- CLI overrides apply **only** to `Config_Global.py` and the app-specific config files (`Config_RAGChat.py`, `Config_RAGLoad.py`, `Config_DocClassify.py`).
+- Keys in `Config_Languages.py`, `Config_Models.py`, `Config_Banned.py`, `Config_WebSearch.py`, and `Config_Internet_Env.py` are **not** exposed as CLI arguments — edit these files directly to change their values.
+- Keys starting with `_` are internal and cannot be overridden via CLI arguments.
+- Keys starting with `$` are indirect lookups (the value names another config key).
+
 | Area | File | Purpose | CLI Overridable |
 | --- | --- | --- | --- |
 | Global | `Config_Global.py` | Paths, device, debugging | ✅ Yes |
@@ -312,12 +319,35 @@ Parameters are accessible via `Config().get(key_path)` using dot notation.
 | Web Search | `Config_WebSearch.py` | Web search mode, backend, query compliance gates | ❌ No |
 | Network | `Config_Internet_Env.py` | Network connection, network trace | ❌ No |
 
-**Notes:**
+### 🌍 Add and install a new language
 
-- CLI overrides apply **only** to `Config_Global.py` and the app-specific config files (`Config_RAGChat.py`, `Config_RAGLoad.py`, `Config_DocClassify.py`).
-- Keys in `Config_Languages.py`, `Config_Models.py`, `Config_Banned.py`, `Config_WebSearch.py`, and `Config_Internet_Env.py` are **not** exposed as CLI arguments — edit these files directly to change their values.
-- Keys starting with `_` are internal and cannot be overridden via CLI arguments.
-- Keys starting with `$` are indirect lookups (the value names another config key).
+Language behavior is centralized in `src/Configuration/Config_Languages.py`: `_ACTIVE_LANGUAGES` defines what is enabled, `_ARGOS_DEFINITIONS.ARGOS_LANGUAGES` defines available translation pairs, and `_SPACY_MODELS_BY_ACTIVE_LANGUAGE` defines per-language spaCy package routing. For local indexed retrieval, orchestration discovers corpus language buckets and routes BM25/Graph/Regex across active-and-present buckets (query-relevant first) to preserve multilingual coverage. Unsupported document languages follow `UNSUPPORTED_LANGUAGE_ACTION` in `Config_Global.py`.
+
+Use the strict script-managed flow below.
+
+1. Edit `src/Configuration/Config_Languages.py` and add the language code to `_ACTIVE_LANGUAGES`.
+
+2. In the same file, add matching Argos pairs in `_ARGOS_DEFINITIONS["ARGOS_LANGUAGES"]`. Argos packages are one-way, so in most cases you need both `X -> en` (query normalization) and `en -> X` (banlist localization).
+
+3. Add the spaCy model package for the same language code in `_SPACY_MODELS_BY_ACTIVE_LANGUAGE`.
+
+4. Install/update runtime resources:
+
+```bash
+python src/Scripts/ArgosTranslatePackages.py install
+python src/Scripts/SpacyLanguageModels.py install
+```
+
+5. Verify what is installed:
+
+```bash
+python src/Scripts/ArgosTranslatePackages.py
+python src/Scripts/SpacyLanguageModels.py
+```
+
+Running these scripts without arguments shows status.
+
+There are no legacy runtime toggles for automatic Argos or spaCy downloads. If consent metadata is stale or missing, startup fails fast and asks you to run these scripts.
 
 ### 🔩 Model Implementation Selectors
 
@@ -1137,7 +1167,7 @@ Each highlighter returns `bytes` — the annotated document as an in-memory byte
 strategy (`_find_rects`), applied in order until one produces bounding boxes:
 
 1. **Full token sequence** — the whole snippet matched as one contiguous run of tokens.
-2. **Line / sentence fragments** — each newline- or sentence-delimited fragment (≥ `_MIN_FRAGMENT_LEN` chars) matched independently.
+2. **Line / sentence fragments** — each newline- or sentence-delimited fragment (≥ `_MARKED_DOCS_GROUNDING["min_fragment_len"]` chars) matched independently.
 3. **Fixed token windows** — consecutive 4-token slices matched individually. This last resort covers tables and numbered legends that have neither newlines nor sentence punctuation and whose token order on the page differs from the stored chunk text (e.g. multi-column connector tables), which would otherwise be left unmarked.
 
 **Source-page confinement.** Both the yellow chunk snippets and the orange
@@ -1393,14 +1423,6 @@ The graph retriever builds an **entity co-occurrence graph** over all chunks in 
 | `min_edge_weight` | `1` | Minimum co-occurrence count to follow an edge |
 | `spacy_model` | `"en_core_web_sm"` | spaCy model for NER and noun chunks |
 
-The `en_core_web_sm` model must be downloaded separately:
-
-```bash
-python src/Scripts/SpacyLanguageModels.py install
-```
-
-Direct manual install is also supported (`python -m spacy download en_core_web_sm`).
-
 You can inspect a persisted graph index with:
 
 ```bash
@@ -1421,8 +1443,9 @@ python src/Scripts/GraphIndexInspector.py -path chromadb/graph/Test -chunks 5 -e
 | --- | --- | --- |
 | Hard-block list | Absolute prohibitions (CSAM, WMD/CBRN, attack tooling) | No — always enforced |
 | Injection patterns | Regex over `block_on_injection` patterns | `_WEB_SEARCH.block_on_injection` |
+| Intent classifier | Weighted intent scoring via `WebSearchFilter` | `WEB_SEARCH_INTENT_EXTENSIONS` in `Config_WebSearch.py` |
 | Length truncation | Queries truncated at `max_query_length` chars | `_WEB_SEARCH.max_query_length` |
-| LLM compliance pre-check | Same compliance chain as user prompts | `_PROMPT_COMPLIANCE` in `Config_RAGChat.py` |
+| Prompt/content compliance | Enforced upstream before `WebRetriever` (algorithm + LLM guard chain) | `Config_Banned.py` pipelines + `_ACTIVE_LLM_CHK` / `_MODELS[*]["_LLM_CHK"]` in `Config_Models.py` |
 
 **Audit log** — every web query attempt (including blocked ones) is appended to the log file at `_QUERY_LOG` (default: `logs/queries.log`).
 
@@ -1681,47 +1704,42 @@ the active `file=` filter at the time the turn was recorded; it is `""`
                               |
               slice to max_history_turns most recent
                               |
-         topic-change gate (Jaccard overlap)
-           below threshold? --> log + return original
+      extract previous USER utterance (most recent turn)
                               |
-           join turns into chat_history string
+    build rolling_topic_summary (referents-first fallback)
                               |
-        tag current query with [File: ...] or [No file filter]
+    tag current query with [File filter active] or [No file filter]
                               |
-         format _PROMPT_REWRITE template
-         (chat_history + tagged query)
+     format _PROMPT_TOPIC_DETECT template
                               |
        call dedicated rewrite LLM (mistral:7b)
          with _QUERY_REWRITE LLM params
               LLM error? --> log + return original
                               |
-       strip any echoed [File:...] tag from response
-           empty response? --> log + return original
+       parse JSON decision payload
+     (depends, confidence, contextual, standalone, referents)
                               |
-         query unchanged? --> log "no rewrite needed"
-         query changed?   --> log old -> new + hint
+  grounding check for hallucinated standalone insertions
+      fallback? --> sanitized original query
+                    |
+  depends && confidence >= topic_confidence_threshold && contextual?
+        yes --> choose contextual_rewrite
+        no --> choose standalone_rewrite / fallback
                               |
               return rewritten query
 ```
 
 #### Prompt rules
 
-The rewrite prompt (`_PROMPT_REWRITE` in `Config_RAGChat.py`) enforces six
-rules:
-
-| Rule | Summary |
-| --- | --- |
-| 1 - Resolve pronouns | Replace "they", "them", "it" etc. with specific entities from the ASSISTANT's most recent answer |
-| 2 - No added information | Never combine multiple previous questions or add new topics |
-| 3 - Self-contained queries unchanged | If the query already names its subject or is a new topic, return it verbatim |
-| 4 - Respect file context changes | If the current `[File: ...]` tag differs from history turns, treat as new topic |
-| 5 - Output only | No explanation, no preamble, no quotes |
-| 6 - Concise rewrite | Only resolve pronouns; preserve formatting instructions |
+The topic-detect prompt (`_PROMPT_TOPIC_DETECT` in `Config_RAGChat.py`)
+enforces strict rewrite constraints: resolve pronouns from recent context,
+avoid adding new facts or retrieval metadata, preserve intent and language,
+and return JSON-only output fields used by the post-parser decision logic.
 
 #### Rewrite model and configuration
 
 The rewrite model is selected independently via `_ACTIVE_LLM_REWRITE_PROMPT`
-(`llama` default; `mistral` also available). Rewrite-specific LLM
+(`mistral` default; `llama` also available). Rewrite-specific LLM
 parameters are configured in `_QUERY_REWRITE` in `Config_RAGChat.py`,
 separate from the main chat LLM parameters.
 

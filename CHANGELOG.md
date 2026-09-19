@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [Unreleased] — 2026-09-19
+
+### 🛡️ Changed — NLTK stopwords now validated at startup for all apps
+
+- Added a centralized startup preflight in `StartupCommons` that validates
+  stopwords corpus presence before app execution continues.
+- Missing stopwords now fail fast with a consistent installer hint:
+  `python ./src/Scripts/NLTK_Stopwords_WordNet.py install`.
+- Runtime behavior is now aligned across app entrypoints
+  (`RAGLoad`, `DocClassify`, `RAGChat`, `RAGChatService`) because all use
+  `StartupCommons.common_start(...)`.
+
 ## [2026-09-19]
 
 ### 🌍 Added — Multilingual retrieval routing for BM25/Graph/Regex
@@ -129,6 +141,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   script/app layout validation and `_ABSOLUTE_PATH` alignment checks
   (including unrelated-root and drive-root rejections).
 - Focused guard regression suite currently passes: `41 passed`.
+
+### 🧹 Removed — obsolete runtime stopwords auto-download switch
+
+- Removed `NLTK_STOPWORDS_DOWNLOAD` handling from runtime logic and startup
+  environment checks.
+- Removed `NLTK_STOPWORDS_DOWNLOAD` from `Config_Internet_Env.py` and setup
+  interactive prompts/write-back flow in `src/Scripts/Setup.py`.
+- Synced documentation and startup/setup tests to the installer-managed model
+  (`python src/Scripts/NLTK_Stopwords_WordNet.py install`).
+
+### 📝 Documentation
+
+- Fixed markdown lint issues in `docs/index.md`:
+  replaced bare URLs with markdown links and removed duplicate top-level
+  heading.
+
+### ✅ Tests
+
+- Focused regression suites pass after the stopwords/startup refactor:
+  `tests/test_setup_startup_flow.py` and `tests/test_chunkers.py`.
 
 ## [Released] — 2026-09-16
 
@@ -718,7 +750,6 @@ files against `CONFIGURATION_REFERENCE.md` section 8.
 
 **Corrected defaults (safe/shipping defaults restored in `Config_Internet_Env.py`):**
 
-- **`NLTK_STOPWORDS_DOWNLOAD`**: corrected to `"0"` — download disabled by default.
 - **`HF_HUB_OFFLINE`**: corrected to `"1"` — Hub access offline by default (safe).
 - **`ARGOS_STANZA_DOWNLOAD`**: corrected to `"0"` — package download disabled by default.
 - **`WEB_SEARCH_MODE`** (both the admin-knobs table and the section 8 table): corrected to `"0"` — web search disabled by default.
@@ -1948,8 +1979,8 @@ from `StubSession`. All 37 prompt-rewrite tests pass.
   command (`argos`, `m2m100`, `off`) and configured globally through
   `_QUERY_REWRITE.TRANSLATION_BACKEND` in
   [Config_RAGChat.py](src/Configuration/Config_RAGChat.py).
-- Implementation lives in
-  [HfTranslator](src/Compliance/HfTranslator.py) — singleton, lazy load,
+- Implementation lived in
+  `src/Compliance/HfTranslator.py` — singleton, lazy load,
   CPU-first defaults, `_TRANSLATION` model role bound through
   [Config_Models.py](src/Configuration/Config_Models.py)
   (`_ACTIVE_TRANSLATION = "m2m100"`).
@@ -2639,7 +2670,7 @@ See [LEGAL.md](LEGAL.md) for governance, liability, and responsibility boundarie
 >   regulatory assessment is required under applicable law.
 > - Third-party packages, models, and tools are **not bundled**. Operators install all
 >   dependencies from upstream sources and enter into direct licensing relationships with
->   their respective authors. See [3rdPartyLicenses/Licenses.md](3rdPartyLicenses/Licenses.md) for attribution information.
+>   their respective authors. See [3rdPartyLicenses/Licenses.txt](3rdPartyLicenses/Licenses.txt) for attribution information.
 > - Model licenses must be obtained and accepted through the model owner’s official
 >   distribution channel prior to download or use.
 
@@ -2774,7 +2805,7 @@ See [LEGAL.md](LEGAL.md) for governance, liability, and responsibility boundarie
 - [HANDS_ON_TOUR.md](HANDS_ON_TOUR.md) — Example walkthroughs.
 - [LEGAL.md](LEGAL.md) — Legal, privacy, and governance notes.
 - [ACKNOWLEDGMENTS.md](ACKNOWLEDGMENTS.md) — Third-party attribution.
-- [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) — Community conduct guidelines.
+- [SECURITY.md](SECURITY.md) — Security policy and reporting guidance.
 - Class and overview diagrams in Documentation/ClassGraphs/.
 
 ---

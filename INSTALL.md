@@ -40,6 +40,13 @@ Use the other docs for detail after (or during) setup:
 - [EXAMPLES.md](EXAMPLES.md) for end-to-end usage examples
 - [HANDS_ON_TOUR.md](HANDS_ON_TOUR.md) for guided walkthrough scenarios
 
+Most-used configuration shortcuts:
+
+- [Retrieval Stores & Search Modes](CONFIGURATION_REFERENCE.md#-retrieval-stores--search-modes)
+- [Config_RAGChat.py — Retrieval and Response](CONFIGURATION_REFERENCE.md#-3-config_ragchatpy--retrieval-and-response)
+- [Translation configuration (Argos)](CONFIGURATION_REFERENCE.md#-translation-configuration-argos)
+- [Web Search — Admin Knobs](CONFIGURATION_REFERENCE.md#-web-search--admin-knobs)
+
 ## 📋 Prerequisites
 
 - **Python 3.13** (developed and tested with 3.13; minimum 3.10)
@@ -332,7 +339,7 @@ Run the signature verification script to confirm that shipped files have not bee
 
 ## 📥 3. Install Dependencies (manual/reference)
 
-The `./requirements` folder contains `requirements_final.txt` and a list of required modules. Consult [3rdPartyLicenses](3rdPartyLicenses/Licenses.md) for an overview of development environment licenses.
+The `./requirements` folder contains `requirements_final.txt` and a list of required modules. Consult [3rdPartyLicenses](3rdPartyLicenses/Licenses.txt) for an overview of development environment licenses.
 
 ```bash
 # Install dependencies only after you have reviewed the license files
@@ -473,15 +480,8 @@ python src/Scripts/NLTK_Stopwords_WordNet.py remove
 
 Calling `python src/Scripts/NLTK_Stopwords_WordNet.py` without arguments shows status.
 
-Download the stopwords corpus manually:
-
-```python
-import nltk
-nltk.download("stopwords")
-```
-
-If `NLTK_STOPWORDS_DOWNLOAD` in `Configuration/Config_Internet_Env.py` is set to `"1"` and a stopword list for a newly detected language is missing, RAG‑LCC will download the required NLTK stopword corpus.
-If downloads are disabled (default used in this repository `"0"`), the system falls back to an empty stopword list.
+RAG‑LCC expects the stopwords corpus to be installed by this helper script.
+All app entrypoints stop with an install hint when stopwords are missing.
 
 Adjust the NLTK data path in `Configuration/Config_Global.py` if needed:
 
@@ -539,7 +539,7 @@ _WORDNET = {
 
 ## 👁️ 9. Installing OCR Support (Tesseract)
 
-RAG‑LCC uses [Tesseract OCR](https://github.com/tesseract-ocr/tesseract) ([Apache-2.0 License](https://github.com/tesseract-ocr/tesseract/blob/main/LICENSE)) to extract text from non plain text files. The Python wrapper [pytesseract](https://github.com/madmaze/pytesseract) is also licensed under [Apache-2.0](3rdPartyLicenses/Licenses.md#pytesseract-0313).
+RAG‑LCC uses [Tesseract OCR](https://github.com/tesseract-ocr/tesseract) ([Apache-2.0 License](https://github.com/tesseract-ocr/tesseract/blob/main/LICENSE)) to extract text from non plain text files. The Python wrapper [pytesseract](https://github.com/madmaze/pytesseract) is also licensed under [Apache-2.0](https://github.com/madmaze/pytesseract/blob/master/LICENSE).
 
 > **Note:** Tesseract OCR is **not** included with or distributed by RAG‑LCC. Operators must obtain and install the Tesseract engine independently. By downloading and using Tesseract, operators are bound by its license terms.
 
@@ -593,7 +593,7 @@ os.environ.setdefault(
 
 ## 🕸️ 10. Installing Graph Retrieval Support (spaCy)
 
-RAG‑LCC uses [spaCy](https://spacy.io/) ([MIT License](https://github.com/explosion/spaCy/blob/master/LICENSE), © Explosion AI) for named-entity recognition (NER) and noun-phrase extraction when any `*_GRAPH` or `GRAPH` search mode is active. The `en_core_web_sm` language model is downloaded separately and is also released under the [MIT License](https://github.com/explosion/spaCy/blob/master/LICENSE).
+RAG‑LCC uses [spaCy](https://spacy.io/) ([MIT License](https://github.com/explosion/spaCy/blob/master/LICENSE), © Explosion AI) for named-entity recognition (NER) and noun-phrase extraction when any GRAPH-enabled search mode is active (for example `GRAPH`, `VECTOR_GRAPH`, `BM25_GRAPH`, `GRAPH_REGEX`, `ALL`). The `en_core_web_sm` language model is downloaded separately and is also released under the [MIT License](https://github.com/explosion/spaCy/blob/master/LICENSE).
 
 > **Note:** spaCy and its models are **not** bundled with RAG‑LCC. `RAGLoad` always builds all three retrieval stores (ChromaDB, BM25, and graph index) unconditionally, so spaCy **must** be installed before running `RAGLoad`. During `RAGChat`, spaCy is loaded on demand when graph/regex retrieval paths are active.
 
@@ -793,7 +793,8 @@ settings are added specifically for the HTTP listener:
 | --- | --- | --- |
 | `OPENWEBUI_THREAD_POOL_WORKERS` | `2` | `ThreadPoolExecutor` max workers for `chatter.run()`. |
 | `SHOW_CLI_LIKE_ALGO_RESULTS` | `True` | When enabled, filter chain algo results (depth/breadth table and ensemble summary) are appended to the LLM answer in Markdown format, mirroring the terminal output of the CLI version. |
-| `_MARKED_DOCS["enabled"]` | `False` | **Disabled by default in deployed builds** (enforced during deployment packaging). Set to `True` in `Config_RAGChatService.py` to enable the highlighted-document service. When enabled, RAG-LCC produces in-memory highlighted copies of retrieved PDFs and serves them at short-lived `GET /marked/<token>.pdf` URLs that are injected into the LLM answer. This also starts an in-process HTTP token store; configure `ttl_seconds`, `max_total_mb`, and `cors_origins` in the same block. See [SECURITY.md](SECURITY.md#-architecture-security-relevant-characteristics) for the token security model. |
+| `SERVE_IN_MEMORY_DOCS_HTTP` (env var) | `"0"` | Master switch in `Config_Internet_Env.py` for the `/marked` in-memory highlighted-document endpoint. Set to `"1"` to enable serving highlighted bytes over short-lived token URLs. |
+| `_SERVE_DOCS` | see `Config_RAGChatService.py` | Runtime controls for marked-document serving (`ttl_seconds`, `max_total_mb`, `single_use`, `public_base_url`, `cors_origins`). See [SECURITY.md](SECURITY.md#-architecture-security-relevant-characteristics) for the token security model. |
 
 **RAGChatService Listener Configuration:**
 
@@ -937,23 +938,23 @@ The expected configuration hashes are displayed:
 
 ## 🔒 Update the hashes
 
-- `_MODELS_CONFIG_HASH = "<new_hash>"`      — update after editing Configuration/Config_Models.py
-- `_BANNED_CONFIG_HASH = "<new_hash>"`      — update after editing Configuration/Config_Banned.py
-- `_WEB_SEARCH_CONFIG_HASH = "<new_hash>"` — update after editing Configuration/Config_WebSearch.py
+- `_CRITICAL_CONFIG_HASHES["Config_Models"] = "<new_hash>"` — update after editing `Configuration/Config_Models.py`
+- `_CRITICAL_CONFIG_HASHES["Config_Banned"] = "<new_hash>"` — update after editing `Configuration/Config_Banned.py`
+- `_CRITICAL_CONFIG_HASHES["Config_WebSearch"] = "<new_hash>"` — update after editing `Configuration/Config_WebSearch.py`
+- `_CRITICAL_CONFIG_HASHES["Config_Internet_Env"] = "<new_hash>"` — update after editing `Configuration/Config_Internet_Env.py`
 
-After any change in these 3 files the new required hash is displayed at startup of RAGLoad, RAGChat or DocClassify.
+After any change in these config files, the new required hash is displayed at startup of RAGLoad, RAGChat or DocClassify.
 
 You can either copy the expected value from the startup message into
 `Config_Global.py` manually, or run the helper script which recomputes all
-three hashes and rewrites the slots in `Config_Global.py` in-place:
+required hashes and rewrites `_CRITICAL_CONFIG_HASHES` in `Config_Global.py` in-place:
 
 ```powershell
 python src\Scripts\RecalcConfigHashes.py
 ```
 
-The script prints the old and new hash for each of the three pinned config
-files and updates `_MODELS_CONFIG_HASH`, `_BANNED_CONFIG_HASH`, and
-`_WEB_SEARCH_CONFIG_HASH` accordingly.
+The script prints the old and new hash for each pinned config file and updates
+the matching `_CRITICAL_CONFIG_HASHES[...]` entries accordingly.
 
 ## ▶️ Start RAGLoad.py again
 
@@ -998,7 +999,6 @@ Internet access is configured in `Configuration/Config_Internet_Env.py`.
 | Environment Variable | default used in this repository | Purpose |
 | --- | --- | --- |
 | `LICENSE_DOWNLOAD` | `"0"` | Allow online fetch of model license files defined in `Config_Models.py`. When `"0"`, the Compliance module prompts for per-fetch consent. |
-| `NLTK_STOPWORDS_DOWNLOAD` | `"0"` | Allow download of missing NLTK stopwords corpus. When `"0"`, the system falls back to an empty stopword list. |
 | `RAG_LCC_NW_TRACE` | `"0"` | Socket-level network tracing (debug). |
 | `RAG_LCC_STACK_TRACE` | `"0"` | Stack traces on errors. |
 | `HF_HUB_OFFLINE` | `"0"` | Set to `"1"` to disable Hugging Face Hub downloads. Default `"0"` allows model downloads. |
@@ -1049,7 +1049,7 @@ python src\Scripts\RecalcConfigHashes.py
 ```
 
 (or copy the expected hash from the startup error message into
-`_WEB_SEARCH_CONFIG_HASH` manually — see [Update the hashes](#-update-the-hashes)).
+`_CRITICAL_CONFIG_HASHES["Config_Internet_Env"]` manually — see [Update the hashes](#-update-the-hashes)).
 
 ### 3. Pick a backend (optional)
 
@@ -1110,7 +1110,7 @@ web-search question) lives in `Config_WebSearch.py`. Operators can extend it
 without editing that file by populating `WEB_SEARCH_INTENT_EXTENSIONS` in
 `Config_Banned.py` (`entity_extensions`, `entity_categories_extra`,
 `threshold_overrides`). After editing, rerun
-`python src\Scripts\RecalcConfigHashes.py` to refresh `_BANNED_CONFIG_HASH`.
+`python src\Scripts\RecalcConfigHashes.py` to refresh `_CRITICAL_CONFIG_HASHES["Config_Banned"]`.
 
 See also: [Web Search — Admin Knobs in CONFIGURATION_REFERENCE.md](CONFIGURATION_REFERENCE.md#-web-search--admin-knobs)
 and [Web-Search Intent Filter Extensions in CONFIGURATION_REFERENCE.md](CONFIGURATION_REFERENCE.md#-web-search-intent-filter-extensions).

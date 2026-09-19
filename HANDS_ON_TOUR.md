@@ -623,7 +623,7 @@ In `Config_Banned.py`, the RAGLoad pipeline requires **3** algorithms above thre
 
 **What changes:** In this configuration, more chunks are likely to be flagged and rejected during loading. Even a single algorithm scoring above its threshold is enough to block a chunk. This is useful when you want a very strict ingestion policy, but expect more false positives — harmless chunks may be rejected because one algorithm happened to score high.
 
-After editing, update `_BANNED_CONFIG_HASH` in `Config_Global.py` (the required hash is printed at startup).
+After editing, update `_CRITICAL_CONFIG_HASHES["Config_Banned"]` in `Config_Global.py` (the required hash is printed at startup).
 
 ### 🔒 2. Tighten the consensus rules to let more documents through
 
@@ -779,12 +779,12 @@ In `Config_Banned.py`, find the `_STRICT_MASKING_REGEXES` dictionary and add a n
 In `Config_Models.py`, change the compliance checker from Llama Guard to the same model used for generation:
 
 ```python
-_LLM_CHK = "mistral"   # was "llama_guard"
+_ACTIVE_LLM_CHK = "mistral"   # was "llama_guard"
 ```
 
 **What changes:** Prompt compliance checks are now performed by Mistral instead of the dedicated Llama Guard safety model. Llama Guard is specifically trained for safety classification and returns structured safe/unsafe labels. Mistral will still perform the check using the configured prompt template, but its judgements may differ — it could be more lenient or flag different content. This is useful for comparing how different models evaluate the same prompts.
 
-After editing, update `_MODELS_CONFIG_HASH` in `Config_Global.py`.
+After editing, update `_CRITICAL_CONFIG_HASHES["Config_Models"]` in `Config_Global.py`.
 
 ### ⚙️ 11. Try different DocClassify extraction presets
 

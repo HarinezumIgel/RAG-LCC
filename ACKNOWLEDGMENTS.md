@@ -2,7 +2,7 @@
 
 ## 📦 Third-Party Libraries and Models
 
-This project builds on excellent open-source software and pre-trained models. RAG‑LCC does not distribute these packages; users install them independently from upstream sources. For comprehensive licensing information and attribution for all third-party dependencies, see [3rdPartyLicenses/Licenses.md](3rdPartyLicenses/Licenses.md).
+This project builds on excellent open-source software and pre-trained models. RAG‑LCC does not distribute these packages; users install them independently from upstream sources. For comprehensive licensing information and attribution for all third-party dependencies, see [3rdPartyLicenses/Licenses.txt](3rdPartyLicenses/Licenses.txt).
 
 ### 🔑 Key Dependencies
 
@@ -59,4 +59,4 @@ Model downloads and licensing are user-controlled; see the setup instructions in
 
 ## ⚖️ License
 
-RAG-LCC itself is licensed under [LICENSE](LICENSE). All third-party software retains its original license; see [3rdPartyLicenses/Licenses.md](3rdPartyLicenses/Licenses.md).
+RAG-LCC itself is licensed under [LICENSE](LICENSE). All third-party software retains its original license; see [3rdPartyLicenses/Licenses.txt](3rdPartyLicenses/Licenses.txt).

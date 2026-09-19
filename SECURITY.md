@@ -27,7 +27,7 @@ the operator.
 | Network exposure | RAG‑LCC's console applications do not open listening ports. The optional `RAGChatService.py` **does** open a listening socket (default `127.0.0.1:11435`) via Uvicorn to serve an OpenAI‑compatible REST API. If run in Docker, the configured port (default `11435`) is forwarded. The operator controls bind address and port through configuration and is responsible for any network‑security implications. Note: on startup, Python or its dependencies may attempt a brief connection to `[::1]` (IPv6 loopback) to probe whether IPv6 is available on the host. This is a local‑only probe. |
 | External calls | **None by default.** When `web_search` is enabled (`WEB_SEARCH_MODE = "1"` in `Config_Internet_Env.py`), user queries are transmitted to an external search provider (DuckDuckGo). See [🌐 Web / Internet Search](#-web--internet-search) below. |
 | Data storage | Local filesystem and local ChromaDB only. When `mark_text` is enabled, highlighted document bytes are held in process memory and (CLI) written to a short-lived OS temp directory that is deleted at process exit. No persistent copies are created by the framework. |
-| Highlighted-doc HTTP tokens (`RAGChatService`) | When `_MARKED_DOCS["enabled"]` is `True`, highlighted document bytes are served via `GET /marked/<token>.<ext>`. Tokens are 256-bit `secrets.token_urlsafe` values. The route is outside `/v1/*` so the Bearer middleware is intentionally bypassed — the token IS the access credential. Entries auto-expire (default 1800 s). Operators who require stricter isolation should place the service behind an authenticated reverse proxy. |
+| Highlighted-doc HTTP tokens (`RAGChatService`) | When `SERVE_IN_MEMORY_DOCS_HTTP="1"` is enabled, highlighted document bytes are served via `GET /marked/<token>.<ext>`. Tokens are 256-bit `secrets.token_urlsafe` values. The route is outside `/v1/*` so the Bearer middleware is intentionally bypassed — the token IS the access credential. Runtime controls live in `_SERVE_DOCS` (`ttl_seconds`, `single_use`, `max_total_mb`, `cors_origins`, `public_base_url`). |
 | Telemetry | None |
 | Authentication | Not applicable (single‑user, local execution) |
 
@@ -67,7 +67,8 @@ and accept no liability for vulnerabilities or compromises arising from their us
 
 - Documents remain at their original retrieval location and are processed locally.
 - Content is stored in a local vector database as configured by the operator.
-- Detection and filtering mechanisms are probabilistic and may fail.- When `mark_text` is enabled, highlighted copies of retrieved source documents are held in process memory. In CLI mode (`RAGChat`), a copy is written to the OS temp directory only when the user explicitly opens a file; the temp directory is deleted at process exit. In service mode (`RAGChatService`), bytes are held in the `MarkedDocsStore` in-memory cache and served over HTTP for the configured TTL before expiry; they are never written to disk.
+- Detection and filtering mechanisms are probabilistic and may fail.
+- When `mark_text` is enabled, highlighted copies of retrieved source documents are held in process memory. In CLI mode (`RAGChat`), a copy is written to the OS temp directory only when the user explicitly opens a file; the temp directory is deleted at process exit. In service mode (`RAGChatService`), bytes are held in the `MarkedDocsStore` in-memory cache and served over HTTP for the configured TTL before expiry; they are never written to disk.
 RAG‑LCC’s filtering and detection features are **diagnostic aids**, not security controls.
 
 ---
