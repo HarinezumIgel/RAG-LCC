@@ -25,7 +25,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from langchain_core.documents.base import Document as LangchainDocument
 
-from Strategies.WebPreFilter import WebPreFilter, _bm25_score, _cosine, _idf
+from Retrievers.WebPreFilter import WebPreFilter, _bm25_score, _cosine, _idf
 
 # ---------------------------------------------------------------------------
 # Stubs

@@ -6,6 +6,130 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [2026-09-19]
+
+### 🌍 Added — Multilingual retrieval routing for BM25/Graph/Regex
+
+- `GraphRetriever` and `RegexRetriever` now support optional per-language spaCy
+  model routing via `_GRAPH_INDEX.spacy_models_by_language` and
+  `_REGEX_INDEX.spacy_models_by_language`.
+- Retrieval orchestration now applies language-bucket stage planning to
+  `BM25`, `Graph`, and `Regex` together (query-relevant buckets first, then
+  remaining active-and-present buckets) to preserve multilingual corpus
+  coverage across local indexed retrievers.
+- `SpacyLanguageModels.py` and compliance consent checks now resolve/install the
+  union of default models and per-language model overrides.
+
+### ✅ Tests
+
+- Added focused setup/startup flow tests for setup step ordering and
+  `--set-config-values-only` rehash behavior.
+- Added multilingual routing tests for BM25/Graph/Regex orchestration,
+  Graph/Regex spaCy model routing, and compliance fallback warning coverage.
+
+### 🧱 Changed — Retriever package extracted and renamed to `src/Retrievers`
+
+- Local retriever modules were moved from `src/Strategies/` into a dedicated
+  `src/Retrievers/` package:
+  `BM25Retriever.py`, `GraphRetriever.py`, `RegexRetriever.py`,
+  `RetrieverProtocol.py`, `WebRetriever.py`, `WebPreFilter.py`, and
+  `WebSearchFilter.py`.
+- Import paths were updated across runtime components to use `Retrievers.*`
+  (including `RAGChatImpl`, `Informer`, and `DocumentIngestionStrategy`).
+- Package casing was normalized from `retrievers` to `Retrievers` to keep
+  behavior consistent on case-sensitive filesystems.
+
+### 🧭 Changed — Retrieval orchestration output and WEB-mode stage behavior
+
+- Retrieval orchestration status lines now always emit through PrettyWriter on
+  the `Retrieval Orchestration` channel, independent of debug level.
+- Query language-flow and query rewrite-flow status messages are emitted per
+  retrieval turn through the same orchestration channel.
+- `retrieve_mode=WEB` now skips local retrieval stage orchestration entirely,
+  so WEB-only runs no longer emit local-stage lines such as local dispatch,
+  graph/regex query-shaping, or local-doc-count summaries.
+- Indexed stage executors now short-circuit empty spec lists to avoid
+  no-op stage traces.
+
+### 🧾 Documentation
+
+- Updated directory structure charts in `ARCHITECTURE.md` and `EXAMPLES.md`
+  to show `src/Retrievers/` as a top-level package and keep `Strategies/`
+  focused on processing strategies/chunkers.
+- Updated architecture retriever section headings to the new paths:
+  `Retrievers/GraphRetriever.py` and `Retrievers/WebRetriever.py`.
+- Updated `ACKNOWLEDGMENTS.md` attribution coverage for runtime components,
+  including Argos Translate, spaCy, ChromaDB, and NLTK data usage
+  (stopwords/WordNet).
+
+### ✅ Tests
+
+- Added/updated retrieval orchestration tests for always-on orchestration
+  output and WEB-only local-stage suppression.
+- Focused regression suites currently pass:
+  `tests/test_retrieval_orchestrator.py`,
+  `tests/test_query_language_contract.py`,
+  `tests/test_shared_helpers.py`.
+
+### 🛡️ Added — Startup config-path guardrails and first-run visibility
+
+- `StartupCommons` now scans effective config values (including top-level CLI
+  overrides) for path-like slots across nested dictionaries/lists/tuples and
+  validates each resolved path before startup continues.
+- Root-resolving path slots now fail fast with `ConfigurationError`, preventing
+  accidental drive/filesystem-root usage in config path settings.
+- Path-slot presence output was refined for real-world startup behavior:
+  file-like slots (for example `LOG_FILE`) are considered present when their
+  parent directory exists; missing entries are shown in white so first-run
+  path creation does not look like a warning.
+- Startup now emits a dedicated pre-check line before listing slots:
+  `Config path  Checking configured filesystem path slots (root guard + presence check).`
+  This banner is rendered in bright magenta for visibility.
+- `DriveRootGuard` gained reusable helpers used by startup path validation,
+  including slot-shape detection, path candidate splitting, and guard-path
+  resolution.
+
+### 🧰 Changed — NLTK stopwords/WordNet management workflow
+
+- `src/Scripts/NLTK_Stopwords_WordNet.py` now supports explicit `install`,
+  `remove`, and `status` actions with clearer, consent-aware operator flow.
+- NLTK downloads are now anchored to configured paths and passed explicitly to
+  `nltk.download(..., download_dir=...)`, avoiding implicit user-home fallbacks.
+- Remove mode now previews only currently present resources and applies the
+  shared root/deletion guard before removal.
+- `src/Scripts/Setup.py` now calls the NLTK step with an explicit `install`
+  action to keep setup behavior deterministic.
+
+### 🛡️ Hardened — entrypoint root preflight for `src/Scripts` and `src/Apps`
+
+- Added fail-fast entrypoint root guards in `DriveRootGuard`:
+  `assert_script_project_root(...)` for `src/Scripts/*` and
+  `assert_app_project_root(...)` for `src/Apps/*`.
+- Both guards now derive project root from the entrypoint file location and
+  enforce folder layout invariants (`<project>/src/Scripts` and
+  `<project>/src/Apps`).
+- Config root handling was tightened: `_ABSOLUTE_PATH` is treated as a
+  validation input (not sole source of truth) and must be path-related to the
+  entrypoint-derived project root; drive/filesystem-root resolutions are
+  rejected.
+- Script wrappers that perform operational path work now run this preflight
+  before heavy imports and side effects (`Setup`, `PipInstall`,
+  `RecalcConfigHashes`, `VerifySignatures`, `CopyExampleConfigs`,
+  `UpdateConfigValues`, `DiagnoseChunks`, `BM25IndexInspector`,
+  `GraphIndexInspector`, `ArgosTranslatePackages`,
+  `SpacyLanguageModels`, `NLTK_Stopwords_WordNet`).
+- App launchers now run the same preflight before startup bootstrapping:
+  `RAGChat`, `RAGLoad`, `DocClassify`, and `RAGChatService`.
+- `DiagnoseChunks` no longer anchors collection-path resolution to current
+  working directory; it now uses the validated project root.
+
+### ✅ Tests
+
+- Extended `tests/test_drive_root_guard.py` with dedicated coverage for
+  script/app layout validation and `_ABSOLUTE_PATH` alignment checks
+  (including unrelated-root and drive-root rejections).
+- Focused guard regression suite currently passes: `41 passed`.
+
 ## [Released] — 2026-09-16
 
 ### 🌐 Changed — Query translation backend simplified to Argos-only

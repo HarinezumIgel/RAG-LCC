@@ -165,6 +165,7 @@ class TestDriveRootPaths:
         result = fu.delete_file_or_dir(dangerous_path)
         assert result is False
         assert "Path Guard" in fu.pretty.logged_labels()
+        assert any("root or drive path" in str(m) for m in fu.pretty.messages)
 
 
 # ---------------------------------------------------------------------------

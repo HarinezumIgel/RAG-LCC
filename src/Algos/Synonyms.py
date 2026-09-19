@@ -14,7 +14,7 @@ from typing import Any, Dict, List, Set, Tuple, cast
 
 from Commons.SingletonMixin import SingletonMixin
 from Config.Config import Config
-from Gui.Colors import ORANGE
+from Gui.Colors import CYAN, ORANGE
 from Gui.PrettyWriter import PrettyWriter
 from Helpers.DebugHelper import DebugHelper
 
@@ -110,10 +110,14 @@ class Synonyms(SingletonMixin):
                     "W",
                     "WordNet Synonyms",
                     "NLTK WordNet not installed — synonym expansion skipped, "
-                    "proceeding with original banned-word list. "
-                    "Install with: pip install nltk && python -c "
-                    "\"import nltk; nltk.download('wordnet')\"",
+                    "proceeding with original banned-word list.",
                     color=ORANGE,
+                )
+                self.pretty.write(
+                    "I",
+                    "WordNet Synonyms",
+                    "Install with:\npython ./src/Scripts/NLTK_Stopwords_WordNet.py install",
+                    color=CYAN,
                 )
                 self._warned = True
                 return phrases

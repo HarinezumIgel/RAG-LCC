@@ -29,13 +29,19 @@ from typing import Any, Dict, List
 # Resolve project root (two levels up from this script)
 # ---------------------------------------------------------------------------
 _SCRIPT_DIR = os.path.abspath(os.path.dirname(__file__))
-_PROJECT_ROOT = os.path.abspath(os.path.join(_SCRIPT_DIR, "..", ".."))
+_SRC_DIR = os.path.normpath(os.path.join(_SCRIPT_DIR, ".."))
+if _SRC_DIR not in sys.path:
+    sys.path.insert(0, _SRC_DIR)
 
-# Refuse to run from a drive/filesystem root before doing anything
-sys.path.insert(0, os.path.dirname(_SCRIPT_DIR))
-from Commons.DriveRootGuard import assert_not_drive_root  # noqa: E402
+import Configuration.Config_Global as _ConfigGlobal  # noqa: E402
+# Fail fast when script layout/configured root is inconsistent.
+from Commons.DriveRootGuard import assert_script_project_root  # noqa: E402
 
-assert_not_drive_root(__file__)
+_PROJECT_ROOT = assert_script_project_root(
+    __file__,
+    configured_project_root=getattr(_ConfigGlobal, "_ABSOLUTE_PATH", None),
+    require_cwd_match=True,
+)
 
 # ---------------------------------------------------------------------------
 # Register a lightweight stub so pickle can deserialise _BM25IndexData

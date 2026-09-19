@@ -20,7 +20,12 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from Compliance.Compliance import Compliance
-from Commons.Exceptions import ComplianceViolationError, InternetConnectionDisabledError
+from Commons.Exceptions import (
+    ArgosConsentMissingError,
+    ComplianceViolationError,
+    InternetConnectionDisabledError,
+    SpacyConsentMissingError,
+)
 
 # ---------------------------------------------------------------------------
 # Stubs
@@ -830,6 +835,7 @@ class TestVerify:
         # Stub _check_models_config_hash to avoid needing real module files
         monkeypatch.setattr(c, "_check_models_config_hash", lambda: None)
         monkeypatch.setattr(c, "_verify_argos_consent", lambda: None)
+        monkeypatch.setattr(c, "_verify_spacy_consent", lambda: None)
 
         self._setup_consented(c, tmp_path)
         # Should not raise
@@ -841,6 +847,7 @@ class TestVerify:
 
         monkeypatch.setattr(c, "_check_models_config_hash", lambda: None)
         monkeypatch.setattr(c, "_verify_argos_consent", lambda: None)
+        monkeypatch.setattr(c, "_verify_spacy_consent", lambda: None)
 
         update_called = []
         monkeypatch.setattr(c, "_update_licenses", lambda: update_called.append(True))
@@ -855,6 +862,7 @@ class TestVerify:
 
         monkeypatch.setattr(c, "_check_models_config_hash", lambda: None)
         monkeypatch.setattr(c, "_verify_argos_consent", lambda: None)
+        monkeypatch.setattr(c, "_verify_spacy_consent", lambda: None)
 
         self._setup_consented(c, tmp_path)
 
@@ -878,6 +886,7 @@ class TestVerify:
 
         monkeypatch.setattr(c, "_check_models_config_hash", lambda: None)
         monkeypatch.setattr(c, "_verify_argos_consent", lambda: None)
+        monkeypatch.setattr(c, "_verify_spacy_consent", lambda: None)
 
         self._setup_consented(c, tmp_path)
 
@@ -900,6 +909,7 @@ class TestVerify:
 
         monkeypatch.setattr(c, "_check_models_config_hash", lambda: None)
         monkeypatch.setattr(c, "_verify_argos_consent", lambda: None)
+        monkeypatch.setattr(c, "_verify_spacy_consent", lambda: None)
 
         self._setup_consented(c, tmp_path)
 
@@ -916,6 +926,166 @@ class TestVerify:
         monkeypatch.setattr(c, "_update_licenses", lambda: update_called.append(True))
         c.verify()
         assert len(update_called) == 1
+
+
+# ===================================================================
+# Argos / spaCy consent gates
+# ===================================================================
+
+
+class TestArgosConsentGate:
+    def test_verify_argos_consent_skips_when_no_active_pairs(self, monkeypatch):
+        c = _build_compliance(
+            cfg_overrides={
+                "_ABSOLUTE_PATH": "D:/RAG-LCC",
+            }
+        )
+        calls: list[tuple[str, Any]] = []
+
+        class StubArgosDownloader:
+            def __init__(self, project_root, languages):
+                calls.append(("init", project_root, list(languages)))
+
+            def assert_consent_current_or_raise(self):
+                calls.append(("assert",))
+
+        monkeypatch.setattr(
+            "Compliance.Compliance.ArgosDownloader", StubArgosDownloader
+        )
+        monkeypatch.setattr(
+            "Compliance.Compliance.get_active_argos_pairs", lambda _cfg: []
+        )
+
+        c._verify_argos_consent()
+
+        assert calls == []
+
+    def test_verify_argos_consent_raises_when_missing(self, monkeypatch):
+        c = _build_compliance(
+            cfg_overrides={
+                "_ABSOLUTE_PATH": "D:/RAG-LCC",
+            }
+        )
+
+        class StubArgosDownloader:
+            def __init__(self, project_root, languages):
+                _ = (project_root, languages)
+
+            def assert_consent_current_or_raise(self):
+                raise ArgosConsentMissingError("missing argos consent")
+
+        monkeypatch.setattr(
+            "Compliance.Compliance.ArgosDownloader", StubArgosDownloader
+        )
+        monkeypatch.setattr(
+            "Compliance.Compliance.get_active_argos_pairs",
+            lambda _cfg: [("en", "de")],
+        )
+
+        with pytest.raises(ArgosConsentMissingError):
+            c._verify_argos_consent()
+
+
+class TestSpacyConsentGate:
+    def test_configured_spacy_models_dedup(self):
+        c = _build_compliance(
+            cfg_overrides={
+                "_GRAPH_INDEX.spacy_model": "en_core_web_sm",
+                "_REGEX_INDEX.spacy_model": "en_core_web_sm",
+            }
+        )
+        assert c._configured_spacy_models() == ["en_core_web_sm"]
+
+    def test_configured_spacy_models_include_language_maps(self):
+        c = _build_compliance(
+            cfg_overrides={
+                "_ARGOS_DEFINITIONS.ACTIVE_LANGUAGES": [
+                    "en",
+                    "de",
+                    "es",
+                    "fr",
+                    "it",
+                ],
+                "_BM25_INDEX.spacy_model": "en_core_web_sm",
+                "_GRAPH_INDEX.spacy_model": "en_core_web_sm",
+                "_REGEX_INDEX.spacy_model": "en_core_web_sm",
+                "_BM25_INDEX.spacy_models_by_language": {
+                    "es": "es_core_news_sm",
+                },
+                "_GRAPH_INDEX.spacy_models_by_language": {
+                    "de": "de_core_news_sm",
+                    "fr": "fr_core_news_sm",
+                },
+                "_REGEX_INDEX.spacy_models_by_language": {
+                    "de": "de_core_news_sm",
+                    "it": "it_core_news_sm",
+                },
+            }
+        )
+        assert c._configured_spacy_models() == [
+            "de_core_news_sm",
+            "en_core_web_sm",
+            "es_core_news_sm",
+            "fr_core_news_sm",
+            "it_core_news_sm",
+        ]
+
+    def test_configured_spacy_models_defaults_when_missing(self):
+        c = _build_compliance(
+            cfg_overrides={
+                "_GRAPH_INDEX.spacy_model": "",
+                "_REGEX_INDEX.spacy_model": "",
+            }
+        )
+        assert c._configured_spacy_models() == ["en_core_web_sm"]
+
+    def test_verify_spacy_consent_calls_assert(self, monkeypatch):
+        c = _build_compliance(
+            cfg_overrides={
+                "_ABSOLUTE_PATH": "D:/RAG-LCC",
+                "_GRAPH_INDEX.spacy_model": "en_core_web_sm",
+                "_REGEX_INDEX.spacy_model": "en_core_web_sm",
+            }
+        )
+        calls: list[tuple[str, Any]] = []
+
+        class StubSpacyDownloader:
+            def __init__(self, project_root, models):
+                calls.append(("init", project_root, list(models)))
+
+            def assert_consent_current_or_raise(self):
+                calls.append(("assert",))
+
+        monkeypatch.setattr(
+            "Compliance.Compliance.SpacyDownloader", StubSpacyDownloader
+        )
+
+        c._verify_spacy_consent()
+
+        assert ("assert",) in calls
+
+    def test_verify_spacy_consent_raises_when_missing(self, monkeypatch):
+        c = _build_compliance(
+            cfg_overrides={
+                "_ABSOLUTE_PATH": "D:/RAG-LCC",
+                "_GRAPH_INDEX.spacy_model": "en_core_web_sm",
+                "_REGEX_INDEX.spacy_model": "en_core_web_sm",
+            }
+        )
+
+        class StubSpacyDownloader:
+            def __init__(self, project_root, models):
+                _ = (project_root, models)
+
+            def assert_consent_current_or_raise(self):
+                raise SpacyConsentMissingError("missing spacy consent")
+
+        monkeypatch.setattr(
+            "Compliance.Compliance.SpacyDownloader", StubSpacyDownloader
+        )
+
+        with pytest.raises(SpacyConsentMissingError):
+            c._verify_spacy_consent()
 
 
 # ===================================================================
@@ -955,6 +1125,52 @@ class TestCheckModelsConfigHash:
 
         with pytest.raises(ComplianceViolationError):
             c._check_models_config_hash()
+
+    @pytest.mark.parametrize(
+        ("platform_name", "expected_fragment", "unexpected_fragment"),
+        [
+            (
+                "posix",
+                "python ./src/Scripts/RecalcConfigHashes.py",
+                "python .\\src\\Scripts\\RecalcConfigHashes.py",
+            ),
+            (
+                "nt",
+                "python .\\src\\Scripts\\RecalcConfigHashes.py",
+                "python ./src/Scripts/RecalcConfigHashes.py",
+            ),
+        ],
+    )
+    def test_mismatch_hint_uses_platform_specific_recalc_command(
+        self,
+        monkeypatch,
+        platform_name,
+        expected_fragment,
+        unexpected_fragment,
+    ):
+        c = _build_compliance()
+
+        fake_models = types.ModuleType("Config_Models")
+        fake_models.__file__ = "fake_models.py"
+        fake_banned = types.ModuleType("Config_Banned")
+        fake_banned.__file__ = "fake_banned.py"
+
+        monkeypatch.setattr("Compliance.Compliance.Config_Models", fake_models)
+        monkeypatch.setattr("Compliance.Compliance.Config_Banned", fake_banned)
+        monkeypatch.setattr("Compliance.Compliance.os.name", platform_name)
+
+        c.fileUtils.hash_module = lambda mod, algo="sha256": "different_hash"
+
+        with pytest.raises(ComplianceViolationError):
+            c._check_models_config_hash()
+
+        messages = [
+            msg[2]
+            for msg in c.pretty.messages
+            if len(msg) >= 3 and msg[0] == "I" and msg[1] == "Compliance"
+        ]
+        assert any(expected_fragment in message for message in messages)
+        assert all(unexpected_fragment not in message for message in messages)
 
 
 # ===================================================================

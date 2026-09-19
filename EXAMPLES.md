@@ -558,8 +558,9 @@ src/
 ├── Helpers/          General utilities (ChromaDB, CSV, classify-CSV reader, file utils, Office converter, etc.)
 ├── Pipeline/         Orchestration (LoadAndClassifyProcessor)
 ├── Scripts/          Standalone maintenance scripts (Setup, PipInstall, RecalcConfigHashes, Argos, NLTK, etc.)
-├── Strategies/       Processing strategies, chunkers, classification helpers
-│   └── Chunkers/     Chunking strategies (Semantic, FixedSize, Heading, Slide, SlidingWindow, SentenceWindow)
+├── Strategies/       Processing strategies, chunkers, and classification helpers
+│   └── Chunkers/     Chunking strategies (Semantic, Recursive, Heading, Slide, SlidingWindow, SentenceWindow)
+├── Retrievers/       Retrieval engines and web-leg filters (BM25, Graph, Regex, Web)
 └── VisualMarkers/    In-memory document highlighters (PDF, DOCX, PPTX, plain text) and answer grounder
 ```
 

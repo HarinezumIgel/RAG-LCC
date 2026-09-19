@@ -28,8 +28,9 @@ The script guides you through:
 - **Step 3:** Copy Example_*.py files from Examples/ to src/Configuration/ (with interactive review)
 - **Step 4:** Download NLTK stopwords and WordNet with consent flow
 - **Step 5:** Optionally install Argos Translate language packages after explicit confirmation
+- **Step 6:** Optionally install spaCy model packages after explicit confirmation
 - **Runtime questions:** Ask for endpoint, internet-mode, and service settings (API keys masked in output)
-- **Step 6:** Recalculate and write SHA-256 config hashes in Config_Global.py
+- **Step 7:** Recalculate and write SHA-256 config hashes in Config_Global.py
 
 Before performing an action, the script requires 3rd party license consents.
 
@@ -376,11 +377,28 @@ RAG-LCC supports optional local translation of banned phrases from English to th
 - Stanza License is here: <https://github.com/stanfordnlp/stanza?tab=Apache-2.0-1-ov-file>
 - To enable this feature please refer to: <https://www.argosopentech.com>
 
+Manual install flow (without Setup.py):
+
 ```shell
+# 1) Install the Argos Translate Python module
 pip install argostranslate
+
+# 2) Show current package status (default action)
+python src/Scripts/ArgosTranslatePackages.py
+
+# 3) Install language packages from your active config
+python src/Scripts/ArgosTranslatePackages.py install
+
+# 4) Verify installed language packages (explicit status)
+python src/Scripts/ArgosTranslatePackages.py status
 ```
 
-**Important:** When `ARGOS_STANZA_DOWNLOAD` is `"0"` (default used in this repository), the Argos Translate language packages for the languages expected in your documents must be **pre-installed** before processing. If a document's language is not installed, translation is skipped, a warning is issued, and the compliance pipeline falls back to English-normalized patterns. When `ARGOS_STANZA_DOWNLOAD` is `"1"`, stanza may download missing tokenizer models at runtime, so pre-installation is not strictly required — but a warning is still issued if no matching translation pair is found.
+Calling `python src/Scripts/ArgosTranslatePackages.py` without arguments shows status.
+
+**Important:** Argos package install and license consent are script-managed.
+Run `python src/Scripts/ArgosTranslatePackages.py install` to install the
+active language pairs and record consent metadata. At runtime, compliance
+checks validate this metadata and stop startup when it is missing or stale.
 
 ### Controlling behaviour for unsupported languages
 
@@ -392,14 +410,19 @@ what happens when a document’s detected language is not installed:
 | `FALLBACK_EN`   | Process silently with English-only banlists                                            |
 | `NOT_OK`        | *(default)* Reject the document -- write to NOT_OK CSV, skip all further processing    |
 
-Install language packages using the provided helper script:
+Install/remove language packages using the provided helper script:
 
 ```powershell
 # Install Argos Translate language packages.
-# Languages to install are defined in Config_Global.py ARGOS_LANGUAGES slot
-# Each package bundles the required stanza tokenizer models.
+# Pair catalog is defined in Config_Languages.py _ARGOS_DEFINITIONS["ARGOS_LANGUAGES"].
+# Active languages are defined in Config_Languages.py _ACTIVE_LANGUAGES.
+# Packages may include model/tokenizer/vocabulary/data artifacts and
+# can carry additional third-party licenses.
 # The script shows what will be installed and asks for confirmation before proceeding.
 python src\Scripts\ArgosTranslatePackages.py install
+
+# Show package install status for active language pairs (default action).
+python src\Scripts\ArgosTranslatePackages.py
 
 # Remove all installed Argos Translate language packages.
 # The script shows what will be removed and asks for confirmation before proceeding.
@@ -410,7 +433,7 @@ Enable the languages you need, see [Translation configuration (Argos)](CONFIGURA
 
 For license consent details, see [Argos](#-argos).
 
-Each Argos Translate language package bundles the stanza tokenizer models it needs (stored inside the package directory, e.g. `~/.local/share/argos-translate/packages/<pkg>/stanza/`). Without the correct language packages installed, translation is skipped at runtime and non-English documents fall back to English-normalized patterns (e.g. German "Pferde" would not match the banned word "horse"). The remove command uninstalls all Argos packages and their bundled stanza models.
+Argos Translate itself is MIT licensed. Installed language packages may contain additional model, tokenizer, vocabulary, or data artifacts under their own licenses (see each package README). Package internals can include tokenizer models (for example under `~/.local/share/argos-translate/packages/<pkg>/stanza/`). Without the correct language packages installed, translation is skipped at runtime and non-English documents fall back to English-normalized patterns (e.g. German "Pferde" would not match the banned word "horse"). The remove command uninstalls all Argos packages and their bundled package artifacts.
 
 The setting in ./Configuration/Config_Internet_Env.py forces local translation:
 
@@ -420,15 +443,9 @@ The setting in ./Configuration/Config_Internet_Env.py forces local translation:
 os.environ["ARGOS_MODEL_PROVIDER"] = "OPENNMT"
 ```
 
-```Python
-# ARGOS_CHUNK_TYPE: Select the sentence boundary detection (SBD) backend
-# used by Argos Translate before translating.
-# "SPACY"  = use SpaCy sentencizer (works offline, default used in this repository).
-# "STANZA" = use stanza Pipeline (broken offline in argos-translate ≥1.11,
-#            see argosopentech/argos-translate#385 / #512).
-# "MINISBD" / "ARGOSTRANSLATE" / "DEFAULT" = other options.
-os.environ["ARGOS_CHUNK_TYPE"] = "SPACY"
-```
+RAG-LCC does not expose ARGOS_CHUNK_TYPE as a user setting.
+Sentence splitting is enforced internally via the Argos SPACY slot patched to
+blingfire, which avoids xx_sent_ud_sm downloads.
 
 > **Note:** You may see the warning `Language en package default expects mwt, which has been added` during translation. This is a harmless informational message from **Stanza** (the NLP tokenizer used internally by Argos Translate). It means the English language model expects a Multi-Word Token (MWT) processor and Stanza added it automatically. No action is required.
 
@@ -440,6 +457,21 @@ NLTK license is here: <https://raw.githubusercontent.com/nltk/nltk/v3.10.0/LICEN
 ```shell
 pip install nltk
 ```
+
+Status/install/remove via the helper script:
+
+```shell
+# Show installed NLTK resource status (default action)
+python src/Scripts/NLTK_Stopwords_WordNet.py
+
+# Install stopwords + WordNet with consent handling
+python src/Scripts/NLTK_Stopwords_WordNet.py install
+
+# Remove stopwords + WordNet resources
+python src/Scripts/NLTK_Stopwords_WordNet.py remove
+```
+
+Calling `python src/Scripts/NLTK_Stopwords_WordNet.py` without arguments shows status.
 
 Download the stopwords corpus manually:
 
@@ -561,18 +593,55 @@ os.environ.setdefault(
 
 ## 🕸️ 10. Installing Graph Retrieval Support (spaCy)
 
-RAG‑LCC uses [spaCy](https://spacy.io/) ([MIT License](https://github.com/explosion/spaCy/blob/master/LICENSE), © Explosion AI) for named-entity recognition (NER) and noun-phrase extraction when any `*_GRAPH` or `GRAPH` search mode is active. The `en_core_web_sm` language model is downloaded separately and is also released under the [MIT License](https://github.com/explosion/spacy-models/blob/master/LICENSE).
+RAG‑LCC uses [spaCy](https://spacy.io/) ([MIT License](https://github.com/explosion/spaCy/blob/master/LICENSE), © Explosion AI) for named-entity recognition (NER) and noun-phrase extraction when any `*_GRAPH` or `GRAPH` search mode is active. The `en_core_web_sm` language model is downloaded separately and is also released under the [MIT License](https://github.com/explosion/spaCy/blob/master/LICENSE).
 
-> **Note:** spaCy and its models are **not** bundled with RAG‑LCC. `RAGLoad` always builds all three retrieval stores (ChromaDB, BM25, and graph index) unconditionally, so spaCy **must** be installed before running `RAGLoad`. During `RAGChat`, spaCy is loaded on demand only when a graph search mode is active. If the model is missing, a descriptive error with the exact `python -m spacy download …` command is raised.
+> **Note:** spaCy and its models are **not** bundled with RAG‑LCC. `RAGLoad` always builds all three retrieval stores (ChromaDB, BM25, and graph index) unconditionally, so spaCy **must** be installed before running `RAGLoad`. During `RAGChat`, spaCy is loaded on demand when graph/regex retrieval paths are active.
 
-Install spaCy (already listed in `requirements.txt`) and download the English model:
+Manual install flow (without Setup.py):
 
 ```bash
+# 1) Install the spaCy Python module
 pip install spacy
-python -m spacy download en_core_web_sm
+
+# 2) Show current model status (default action)
+python src/Scripts/SpacyLanguageModels.py
+
+# 3) Install model packages from your active config
+python src/Scripts/SpacyLanguageModels.py install
+
+# 4) Verify installed model packages (explicit status)
+python src/Scripts/SpacyLanguageModels.py status
 ```
 
-Entity types, BFS depth, and noise-filter thresholds are configured in the `_GRAPH_INDEX` slot in `Config_Global.py`. See [Retrieval Stores & Search Modes](ARCHITECTURE.md#-retrieval-stores) for details.
+Calling `python src/Scripts/SpacyLanguageModels.py` without arguments shows status.
+
+Install model packages with the consent-aware helper script:
+
+```bash
+python src/Scripts/SpacyLanguageModels.py install
+```
+
+Direct model-by-model install is also possible when needed:
+
+```bash
+python -m spacy download en_core_web_sm
+# Example for additional active language support:
+# python -m spacy download de_core_news_sm
+# python -m spacy download fr_core_news_sm
+```
+
+At runtime, spaCy model install/consent is script-managed.
+Run `python src/Scripts/SpacyLanguageModels.py install` to install missing
+configured models and record consent metadata. Compliance checks validate this
+metadata and stop startup when it is missing or stale.
+
+Configure the default and optional language-specific model package names in
+`Config_Languages.py`:
+
+- `_GRAPH_INDEX.spacy_model` and `_REGEX_INDEX.spacy_model` (default)
+- `_GRAPH_INDEX.spacy_models_by_language` and `_REGEX_INDEX.spacy_models_by_language` (optional overrides by language code/name)
+
+Entity types, BFS depth, and noise-filter thresholds are configured in the `_GRAPH_INDEX` slot in `Config_Languages.py`. See [Retrieval Stores & Search Modes](ARCHITECTURE.md#-retrieval-stores) for details.
 
 ## 🎮 GPU Setup
 
@@ -724,7 +793,7 @@ settings are added specifically for the HTTP listener:
 | --- | --- | --- |
 | `OPENWEBUI_THREAD_POOL_WORKERS` | `2` | `ThreadPoolExecutor` max workers for `chatter.run()`. |
 | `SHOW_CLI_LIKE_ALGO_RESULTS` | `True` | When enabled, filter chain algo results (depth/breadth table and ensemble summary) are appended to the LLM answer in Markdown format, mirroring the terminal output of the CLI version. |
-| `_MARKED_DOCS["enabled"]` | `False` | **Disabled by default in deployed builds** (enforced by `Deploy.ps1`). Set to `True` in `Config_RAGChatService.py` to enable the highlighted-document service. When enabled, RAG-LCC produces in-memory highlighted copies of retrieved PDFs and serves them at short-lived `GET /marked/<token>.pdf` URLs that are injected into the LLM answer. This also starts an in-process HTTP token store; configure `ttl_seconds`, `max_total_mb`, and `cors_origins` in the same block. See [SECURITY.md](SECURITY.md#-architecture-security-relevant-characteristics) for the token security model. |
+| `_MARKED_DOCS["enabled"]` | `False` | **Disabled by default in deployed builds** (enforced during deployment packaging). Set to `True` in `Config_RAGChatService.py` to enable the highlighted-document service. When enabled, RAG-LCC produces in-memory highlighted copies of retrieved PDFs and serves them at short-lived `GET /marked/<token>.pdf` URLs that are injected into the LLM answer. This also starts an in-process HTTP token store; configure `ttl_seconds`, `max_total_mb`, and `cors_origins` in the same block. See [SECURITY.md](SECURITY.md#-architecture-security-relevant-characteristics) for the token security model. |
 
 **RAGChatService Listener Configuration:**
 
@@ -935,9 +1004,7 @@ Internet access is configured in `Configuration/Config_Internet_Env.py`.
 | `HF_HUB_OFFLINE` | `"0"` | Set to `"1"` to disable Hugging Face Hub downloads. Default `"0"` allows model downloads. |
 | `TRANSFORMERS_OFFLINE` | `"1"` | Disable transformers library hub access when `"1"`. |
 | `HF_DATASETS_OFFLINE` | `"1"` | Disable HF datasets hub access when `"1"`. |
-| `ARGOS_STANZA_DOWNLOAD` | `"0"` | Control stanza network access for Argos Translate. When `"0"`, stanza is blocked from downloading — only pre-installed packages are used. When `"1"`, stanza may download missing tokenizer models at runtime. Requires prior license acceptance via `python src\Scripts\ArgosTranslatePackages.py install`. |
 | `ARGOS_MODEL_PROVIDER` | `"OPENNMT"` | Force Argos Translate to use local packages only. |
-| `ARGOS_CHUNK_TYPE` | "SPACY" | ARGOS_CHUNK_TYPE: Select the sentence boundary detection (SBD) backend |
 | `SERVE_OPENWEBUI_CHAT` | `"1"` | Enable the `RAGChatService` HTTP listener. When `"1"`, `RAGChatService.py` starts a uvicorn server that accepts incoming connections on the configured host/port (`ragchatservice` slot in `Config_Models.py`). **This opens a network listener.** Change the default `API_KEY` in `_MODELS.ragchatservice._RAGCHATSERVICE` before exposing the service beyond localhost. |
 
 For convenience, these values are displayed at startup.
@@ -1092,9 +1159,12 @@ Same for remaining models.
 
 ## 🌍 Argos
 
-When language packages are pre-installed with the install script (`python src\Scripts\ArgosTranslatePackages.py install`), the script requires license consent for Argos Translate before downloading any packages. The consent is recorded in `ModelGovernance/consents/argos_translate/`.
+When language packages are installed with the install script (`python src\Scripts\ArgosTranslatePackages.py install`), the script requires license consent for Argos Translate before downloading any packages. The consent is recorded in `ModelGovernance/consents/argos_translate/`.
 
-When `ARGOS_STANZA_DOWNLOAD` is set to `"1"` in `Config_Internet_Env.py`, the Argos Translate license consent is also verified at runtime — similar to the LLM and HuggingFace model consent flow. If the license has not been accepted, execution is stopped and the operator is prompted to run the install script to complete the consent.
+At runtime, consent metadata is verified for the active language-pair
+configuration. If metadata is missing, stale, or no longer matches the active
+pairs, execution is stopped and the operator is prompted to run the install
+script again.
 
 ## 🏃 First run with data
 

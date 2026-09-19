@@ -64,6 +64,7 @@ src/
 │
 ├── Configuration/                 Config files read at startup
 │   ├── Config_Global.py           Shared defaults (paths, hardware, chunking, debug)
+│   ├── Config_Languages.py        Active languages, Argos pairs, spaCy language maps, BM25/Graph/Regex language slots
 │   ├── Config_Models.py           Model definitions and endpoint metadata
 │   ├── Config_Banned.py           Banned-phrase lists, detection thresholds, masking rules
 │   ├── Config_WebSearch.py        Web search backend and intent-filter settings
@@ -80,19 +81,13 @@ src/
 ├── Pipeline/                      Pipeline orchestration
 │   └── LoadAndClassifyProcessor.py  Drives the load + classify pipeline (RAGLoad / DocClassify)
 │
-├── Strategies/                    Processing strategies and retrievers
+├── Strategies/                    Processing strategies and chunkers
 │   ├── DocumentIngestionStrategy.py  Chunk, embed, and store documents
 │   ├── ClassifyStrategy.py        LLM-based document classification
 │   ├── ClassifyHelper.py          Classification workflow helpers
 │   ├── ProcessingStrategy.py      Base / abstract strategy contract
 │   ├── HomeBrewChunkSelector.py   Custom chunk selection logic (NARROW / WIDE / etc.)
 │   ├── StrategyType.py            Strategy enum and type constants
-│   ├── BM25Retriever.py           Okapi BM25 keyword retrieval
-│   ├── GraphRetriever.py          Entity co-occurrence graph retrieval (spaCy NER + BFS)
-│   ├── RegexRetriever.py          Verb/noun lemma retrieval with strict + fallback gates
-│   ├── WebRetriever.py            DuckDuckGo web search retrieval leg
-│   ├── WebPreFilter.py            Query sanitisation and injection-detection before web calls
-│   ├── WebSearchFilter.py         Intent-classifier gate on web queries
 │   └── Chunkers/                  Chunker implementations
 │       ├── ChunkerStrategy.py     Base class / ABC for all chunkers
 │       ├── RecursiveChunker.py    Fixed-size word chunks with overlap
@@ -104,6 +99,15 @@ src/
 │       ├── SlideChunker.py        Per-slide chunking (PPTX / PPT)
 │       ├── PdfPageChunker.py      Per-page chunking (PDF)
 │       └── SentenceSplitter.py    Sentence boundary utility used by multiple chunkers
+│
+├── Retrievers/                    Retrieval engines and web-leg filters
+│   ├── BM25Retriever.py           Okapi BM25 keyword retrieval
+│   ├── GraphRetriever.py          Entity co-occurrence graph retrieval (spaCy NER + BFS)
+│   ├── RegexRetriever.py          Verb/noun lemma retrieval with strict + fallback gates
+│   ├── RetrieverProtocol.py       Structural protocol for persistent local retrievers
+│   ├── WebRetriever.py            DuckDuckGo web search retrieval leg
+│   ├── WebPreFilter.py            Query sanitisation and injection-detection before web calls
+│   └── WebSearchFilter.py         Intent-classifier gate on web queries
 │
 ├── Chat/                          RAGChat conversation layer
 │   ├── RAGChatImpl.py             Core retrieval + generation loop
@@ -200,6 +204,7 @@ src/
     ├── CopyExampleConfigs.py      Copies example Config_*.py files into place
     ├── RecalcConfigHashes.py      Recomputes and updates _*_CONFIG_HASH values
     ├── ArgosTranslatePackages.py  Install / remove Argos Translate language packages
+    ├── SpacyLanguageModels.py     Install / remove spaCy model packages
     ├── BM25IndexInspector.py      Inspect persisted BM25 index contents
     ├── GraphIndexInspector.py     Inspect persisted entity-graph index contents
     ├── NLTK_Stopwords_WordNet.py  Download NLTK stopwords and WordNet corpora
@@ -279,11 +284,12 @@ Configuration is hierarchically resolved:
 1. **Defaults** - Default used in this repository
 2. **Configuration Files** - `Configuration/Config_*.py` files
 3. **Environment Variables** - Override via ENV
-4. **CLI Flags** - Command-line argument override (applies to `Config_Global.py` and the app-specific config only; `Config_Models.py`, `Config_Banned.py`, and `Config_WebSearch.py` are not exposed as CLI flags)
+4. **CLI Flags** - Command-line argument override (applies to `Config_Global.py` and the app-specific config only; `Config_Languages.py`, `Config_Models.py`, `Config_Banned.py`, and `Config_WebSearch.py` are not exposed as CLI flags)
 
 Each application loads from:
 
 - `Config_Global.py` - Common settings
+- `Config_Languages.py` - Active languages, Argos language pairs, per-language spaCy maps
 - `Config_Models.py` - Model selections
 - `Config_Banned.py` - Detection, compliance rules
 - `Config_WebSearch.py` - Web search settings
@@ -296,6 +302,7 @@ Parameters are accessible via `Config().get(key_path)` using dot notation.
 | Area | File | Purpose | CLI Overridable |
 | --- | --- | --- | --- |
 | Global | `Config_Global.py` | Paths, device, debugging | ✅ Yes |
+| Languages | `Config_Languages.py` | Active languages, Argos pairs, WordNet/leet/confusables, BM25/Graph/Regex language-aware slots | ❌ No |
 | Models | `Config_Models.py` | Embedding, cross-encoder, LLM | ❌ No |
 | RAGLoad | `Config_RAGLoad.py` | Chunking, batch sizes | ✅ Yes |
 | RAGChat | `Config_RAGChat.py` | Retrieval thresholds, re-ranking | ✅ Yes |
@@ -308,7 +315,7 @@ Parameters are accessible via `Config().get(key_path)` using dot notation.
 **Notes:**
 
 - CLI overrides apply **only** to `Config_Global.py` and the app-specific config files (`Config_RAGChat.py`, `Config_RAGLoad.py`, `Config_DocClassify.py`).
-- Keys in `Config_Models.py`, `Config_Banned.py`, `Config_WebSearch.py`, and `Config_Internet_Env.py` are **not** exposed as CLI arguments — edit these files directly to change their values.
+- Keys in `Config_Languages.py`, `Config_Models.py`, `Config_Banned.py`, `Config_WebSearch.py`, and `Config_Internet_Env.py` are **not** exposed as CLI arguments — edit these files directly to change their values.
 - Keys starting with `_` are internal and cannot be overridden via CLI arguments.
 - Keys starting with `$` are indirect lookups (the value names another config key).
 
@@ -605,7 +612,7 @@ GENERATION & RESPONSE VALIDATION PHASE:
 
 ### 📖 WordNet Synonym Expansion (Optional)
 
-When enabled (`_WORDNET.ENABLED = True` in `Config_Global.py`), the banned‑word list is expanded with English synonyms from [NLTK WordNet](https://wordnet.princeton.edu/) before translation and detection.
+When enabled (`_WORDNET.ENABLED = True` in `Config_Languages.py`), the banned‑word list is expanded with English synonyms from [NLTK WordNet](https://wordnet.princeton.edu/) before translation and detection.
 This is handled by `Algos/Synonyms.py` (singleton, lazy‑loaded, cached).
 
 **Which algorithms receive the expanded list:**
@@ -978,13 +985,13 @@ See [Internet Access in INSTALL.md](INSTALL.md#-internet-access) for the full en
 
 RAG‑LCC uses [Argos Translate](https://github.com/argosopentech/argos-translate) to translate the English banned-word list into the detected document language so that compliance checks work across languages. The same Argos runtime also normalises non-English user queries to English before retrieval.
 
-- **Environment variables** — `ARGOS_MODEL_PROVIDER` and `ARGOS_STANZA_DOWNLOAD` (see table above) control provider selection and network access.
-- **Language pairs & code mapping** — configured via the `_ARGOS_DEFINITIONS` slot in `Config_Global.py`. For query normalization, install source→English pairs for user languages. Keep EN→X pairs for compliance banlist localization. See [Translation configuration (Argos) in CONFIGURATION_REFERENCE.md](CONFIGURATION_REFERENCE.md#-translation-configuration-argos) for the full reference, available pairs, and install/remove commands.
+- **Environment variables** — `ARGOS_MODEL_PROVIDER` controls provider selection for local package-based translation.
+- **Language pairs & code mapping** — configured via the `_ARGOS_DEFINITIONS` slot in `Config_Languages.py` and filtered through `_ACTIVE_LANGUAGES`. For query normalization, install source→English pairs for active user languages. Keep EN→X pairs for compliance banlist localization. See [Translation configuration (Argos) in CONFIGURATION_REFERENCE.md](CONFIGURATION_REFERENCE.md#-translation-configuration-argos) for the full reference, available pairs, and install/remove commands.
 - **Language-detection minimum length** — `_LANGUAGE_DETECTION.MIN_WORDS` (default `3`) sets the minimum word count a text must have before language detection is attempted; shorter texts skip detection and fall back to English, preventing single words from being misclassified.
 - **Language-detection confidence** — `_LANGUAGE_DETECTION.MIN_CONFIDENCE` (default `0.60`) and `_LANGUAGE_DETECTION.CONF_FULL_WORDS` (default `10`) control a word-count-scaled threshold: confidence required starts at 0.90 for short text and decreases linearly to `MIN_CONFIDENCE` at `CONF_FULL_WORDS` words; results below the effective threshold fall back to English, avoiding spurious translation warnings for short queries.
 - **Package management** — `python src/Scripts/ArgosTranslatePackages.py install | remove | status`
 
-Each Argos package (~100 MB) bundles an OpenNMT translation model and the required stanza tokenizer, so no additional network downloads are needed at runtime when `ARGOS_STANZA_DOWNLOAD="0"`.
+Each Argos package (~100 MB) bundles an OpenNMT translation model and the required stanza tokenizer, so no additional network downloads are needed at runtime once required packages are installed.
 
 ## 🎫 Token Budget
 
@@ -1359,7 +1366,7 @@ RAG-LCC builds and maintains four persistent local stores per collection during 
 | Regex index | `chromadb/regex/<collection>/regex_index.pkl.gz` | `RegexRetriever` | `RAGChatImpl` (verb/noun lemma matching) |
 | Web search | — (live DuckDuckGo queries; no local store) | — | `RAGChatImpl` via `WebRetriever` (only when `web_search = on`) |
 
-### 🕸️ Graph Retriever (`Strategies/GraphRetriever.py`)
+### 🕸️ Graph Retriever (`Retrievers/GraphRetriever.py`)
 
 The graph retriever builds an **entity co-occurrence graph** over all chunks in a collection. Entities that appear in the same chunk are connected by a weighted edge (weight = number of shared chunks). At query time, entities are extracted from the query, the graph is traversed via BFS up to `max_hops`, and chunks accumulated along the traversal are scored and returned.
 
@@ -1375,7 +1382,7 @@ The graph retriever builds an **entity co-occurrence graph** over all chunks in 
 | `noun_chunk_min_chars` | `3` | Discard noun chunks shorter than N characters |
 | `noun_chunk_drop_leading` | `"[({<"` | Discard chunks whose first character is one of these (filters heading-breadcrumb artefacts like `[section`) |
 
-**Key configuration keys** (`_GRAPH_INDEX` in `Config_Global.py`):
+**Key configuration keys** (`_GRAPH_INDEX` in `Config_Languages.py`):
 
 | Key | Default | Purpose |
 | --- | --- | --- |
@@ -1389,10 +1396,10 @@ The graph retriever builds an **entity co-occurrence graph** over all chunks in 
 The `en_core_web_sm` model must be downloaded separately:
 
 ```bash
-python -m spacy download en_core_web_sm
+python src/Scripts/SpacyLanguageModels.py install
 ```
 
-This step is included in `scripts_posh/private/Deploy.ps1`.
+Direct manual install is also supported (`python -m spacy download en_core_web_sm`).
 
 You can inspect a persisted graph index with:
 
@@ -1400,7 +1407,7 @@ You can inspect a persisted graph index with:
 python src/Scripts/GraphIndexInspector.py -path chromadb/graph/Test -chunks 5 -edges 10
 ```
 
-### 🌐 Web Retriever (`Strategies/WebRetriever.py`)
+### 🌐 Web Retriever (`Retrievers/WebRetriever.py`)
 
 `WebRetriever` adds an optional **live web search leg** to the retrieval pipeline. When `web_search` is enabled for a session (and the operator master switch `WEB_SEARCH_MODE = "1"` is set in `Config_Internet_Env.py`), it issues a DuckDuckGo search for the rewritten query, converts results into `Document` objects with `Source = "Web"` metadata, and returns them alongside local chunks. They enter the same RRF pool and are reranked by the cross-encoder.
 
@@ -1894,6 +1901,7 @@ src/
 │   ├── Config_Banned.py
 │   ├── Config_DocClassify.py
 │   ├── Config_Global.py
+│   ├── Config_Languages.py
 │   ├── Config_Internet_Env.py
 │   ├── Config_Models.py
 │   ├── Config_RAGChat.py
@@ -1943,29 +1951,33 @@ src/
 │   ├── UpdateConfigValues.py
 │   └── VerifySignatures.py
 │
-└── Strategies/                     Processing strategies + helpers
-    ├── Chunkers/                   Chunking strategies
-    │   ├── ChunkerStrategy.py          Abstract base (chunk_size + chunk())
-    │   ├── PageBasedChunker.py         Abstract base for page/slide chunkers
-    │   ├── RecursiveChunker.py         RecursiveCharacterTextSplitter wrapper
-    │   ├── SemanticChunker.py          Cosine-similarity breakpoint detection
-    │   ├── SentenceWindowChunker.py    Sentence packing (no overlap)
-    │   ├── SlidingWindowChunker.py     Sentence packing with overlap
-    │   ├── HeadingChunker.py           Heading-aware (MD + DOCX)
-    │   ├── SlideChunker.py             Per-slide (PPTX)
-    │   ├── PdfPageChunker.py           Per-page (PDF, adds PageNumber metadata)
-    │   └── SentenceSplitter.py         Shared sentence boundary detection
-    ├── DocumentIngestionStrategy.py
-    ├── ClassifyHelper.py
-    ├── ClassifyStrategy.py
-    ├── HomeBrewChunkSelector.py
-    ├── ProcessingStrategy.py
-    ├── StrategyType.py
-    ├── BM25Retriever.py
-    ├── GraphRetriever.py
-    ├── RegexRetriever.py
-    ├── WebRetriever.py
-    └── WebSearchFilter.py
+├── Strategies/                     Processing strategies + helpers
+│   ├── Chunkers/                   Chunking strategies
+│   │   ├── ChunkerStrategy.py          Abstract base (chunk_size + chunk())
+│   │   ├── PageBasedChunker.py         Abstract base for page/slide chunkers
+│   │   ├── RecursiveChunker.py         RecursiveCharacterTextSplitter wrapper
+│   │   ├── SemanticChunker.py          Cosine-similarity breakpoint detection
+│   │   ├── SentenceWindowChunker.py    Sentence packing (no overlap)
+│   │   ├── SlidingWindowChunker.py     Sentence packing with overlap
+│   │   ├── HeadingChunker.py           Heading-aware (MD + DOCX)
+│   │   ├── SlideChunker.py             Per-slide (PPTX)
+│   │   ├── PdfPageChunker.py           Per-page (PDF, adds PageNumber metadata)
+│   │   └── SentenceSplitter.py         Shared sentence boundary detection
+│   ├── DocumentIngestionStrategy.py
+│   ├── ClassifyHelper.py
+│   ├── ClassifyStrategy.py
+│   ├── HomeBrewChunkSelector.py
+│   ├── ProcessingStrategy.py
+│   └── StrategyType.py
+│
+├── Retrievers/                     Retrieval engines + web filters
+│   ├── BM25Retriever.py
+│   ├── GraphRetriever.py
+│   ├── RegexRetriever.py
+│   ├── RetrieverProtocol.py
+│   ├── WebRetriever.py
+│   ├── WebPreFilter.py
+│   └── WebSearchFilter.py
 │
 └── VisualMarkers/                  In-memory document highlighters + answer grounder
     ├── AnswerGrounder.py

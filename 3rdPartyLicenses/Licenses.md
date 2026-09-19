@@ -28,6 +28,7 @@ This overview is provided for informational purposes only. Signing attests only 
 | bcrypt | 5.0.0 | Apache Software License | The Python Cryptographic Authority developers <cryptography-dev@python.org> |
 | beautifulsoup4 | 4.15.0 | MIT License | Leonard Richardson <leonardr@segfault.org> |
 | bleach | 6.4.0 | Apache Software License | UNKNOWN |
+| blingfire | 0.1.8 | MIT License | Bling |
 | blis | 1.3.3 | BSD License | Matthew Honnibal |
 | build | 1.6.1 | MIT | Filipe Laíns <lains@riseup.net>, Bernát Gábor <gaborjbernat@gmail.com>, layday <layday@protonmail.com>, Henry Schreiner <henryschreineriii@gmail.com> |
 | catalogue | 2.0.10 | MIT License | Explosion |
@@ -44,22 +45,23 @@ This overview is provided for informational purposes only. Signing attests only 
 | cryptography | 50.0.1 | Apache-2.0 OR BSD-3-Clause | The Python Cryptographic Authority and individual contributors <cryptography-dev@python.org> |
 | ctranslate2 | 4.8.2 | MIT | OpenNMT |
 | cymem | 2.0.13 | MIT License | Matthew Honnibal |
+| ddgs | 9.16.0 | MIT | deedy5 |
 | decorator | 5.3.1 | BSD-2-Clause | Michele Simionato <michele.simionato@gmail.com> |
 | defusedxml | 0.7.1 | Python Software Foundation License | Christian Heimes |
 | distro | 1.9.0 | Apache Software License | Nir Cohen |
 | docopt | 0.6.2 | MIT License | Vladimir Keleshev |
 | durationpy | 0.11 | MIT | Ilia Choly |
-| emoji | 2.15.0 | BSD License | Taehoon Kim <carpedm20@gmail.com>, Kevin Wurster <wursterk@gmail.com> |
-| en_core_web_sm | 3.8.0 | MIT | Explosion |
+| emoji | 2.16.0 | BSD License | Taehoon Kim <carpedm20@gmail.com>, Kevin Wurster <wursterk@gmail.com> |
 | et_xmlfile | 2.0.0 | MIT License | See AUTHORS.txt |
 | executing | 2.2.1 | MIT License | Alex Hall |
 | fastapi | 0.141.1 | MIT | =?utf-8?q?Sebasti=C3=A1n_Ram=C3=ADrez?= <tiangolo@gmail.com> |
 | fastjsonschema | 2.22.2 | BSD License | Michal Horejsek |
-| filelock | 3.32.7 | MIT | UNKNOWN |
+| filelock | 4.0.1 | MIT | UNKNOWN |
 | flatbuffers | 25.12.19 | Apache Software License | Derek Bailey |
 | frozenlist | 1.8.0 | Apache-2.0 | UNKNOWN |
-| fsspec | 2026.7.0 | BSD-3-Clause | UNKNOWN |
+| fsspec | 2026.9.0 | BSD-3-Clause | UNKNOWN |
 | googleapis-common-protos | 1.75.3 | Apache-2.0 | Google LLC <googleapis-packages@google.com> |
+| graphviz | 0.21 | MIT | Sebastian Bank <sebastian.bank@uni-leipzig.de> |
 | grpcio | 1.84.0 | Apache-2.0 | The gRPC Authors <grpc-io@googlegroups.com> |
 | h11 | 0.16.0 | MIT License | Nathaniel J. Smith |
 | hf-xet | 1.6.0 | Apache-2.0 | UNKNOWN |
@@ -69,8 +71,8 @@ This overview is provided for informational purposes only. Signing attests only 
 | httptools | 0.8.0 | MIT | Yury Selivanov <yury@magic.io> |
 | httpx | 0.28.1 | BSD License | Tom Christie <tom@tomchristie.com> |
 | httpx2 | 2.13.0 | BSD-3-Clause | Tom Christie <tom@tomchristie.com> |
-| huggingface_hub | 1.31.0 | Apache Software License | Hugging Face, Inc. |
-| idna | 3.19 | BSD-3-Clause | Kim Davies <kim+pypi@gumleaf.org> |
+| huggingface_hub | 1.32.0 | Apache Software License | Hugging Face, Inc. |
+| idna | 3.20 | BSD-3-Clause | Kim Davies <kim+pypi@gumleaf.org> |
 | importlib_resources | 7.1.0 | Apache-2.0 | Barry Warsaw <barry@python.org> |
 | iniconfig | 2.3.0 | MIT | Ronny Pfannschmidt <opensource@ronnypfannschmidt.de>, Holger Krekel <holger.krekel@gmail.com> |
 | inquirerpy | 0.3.4 | MIT License | Kevin Zhuang |
@@ -87,12 +89,13 @@ This overview is provided for informational purposes only. Signing attests only 
 | jupyterlab_pygments | 0.3.0 | BSD License | Jupyter Development Team <jupyter@googlegroups.com> |
 | keybert | 0.9.0 | MIT License | Maarten Grootendorst <maartengrootendorst@gmail.com> |
 | kubernetes | 36.0.3 | Apache Software License | Kubernetes |
+| langchain-chroma | 1.1.0 | MIT | UNKNOWN |
 | langchain-core | 1.6.3 | MIT License | UNKNOWN |
 | langchain-huggingface | 1.2.2 | MIT License | UNKNOWN |
 | langchain-protocol | 0.0.19 | MIT License | UNKNOWN |
 | langchain-text-splitters | 1.1.2 | MIT License | UNKNOWN |
 | langdetect | 1.0.9 | Apache Software License | Michal Mimino Danilak |
-| langsmith | 0.12.5 | MIT | LangChain <support@langchain.dev> |
+| langsmith | 0.13.0 | MIT | LangChain <support@langchain.dev> |
 | lingua-language-detector | 2.2.0 | Apache Software License | "Peter M. Stahl" <pemistahl@gmail.com> |
 | lxml | 6.1.3 | BSD-3-Clause | lxml dev team |
 | markdown-it-py | 4.2.0 | MIT License | Chris Sewell <chrisj_sewell@hotmail.com> |
@@ -102,7 +105,7 @@ This overview is provided for informational purposes only. Signing attests only 
 | mistune | 3.3.4 | BSD License | Hsiaoming Yang <me@lepture.com> |
 | mmh3 | 5.3.0 | MIT License | Hajime Senuma <hajime.senuma@gmail.com> |
 | mpmath | 1.3.0 | BSD License | Fredrik Johansson |
-| multidict | 6.8.0 | Apache License 2.0 | Andrew Svetlov |
+| multidict | 6.9.0 | Apache License 2.0 | Andrew Svetlov |
 | murmurhash | 1.0.15 | MIT License | Explosion |
 | narwhals | 2.26.0 | MIT | Marco Gorelli |
 | nbclient | 0.11.0 | BSD License | Jupyter Development Team <jupyter@googlegroups.com> |
@@ -123,7 +126,7 @@ This overview is provided for informational purposes only. Signing attests only 
 | orjson | 3.12.0 | MPL-2.0 AND (Apache-2.0 OR MIT) | UNKNOWN |
 | overrides | 7.7.0 | Apache License, Version 2.0 | Mikko Korpela |
 | packaging | 26.3 | Apache-2.0 OR BSD-2-Clause | Donald Stufft <donald@stufft.io> |
-| pandas | 3.0.5 | BSD License | The Pandas Development Team <pandas-dev@python.org> |
+| pandas | 3.0.6 | BSD License | The Pandas Development Team <pandas-dev@python.org> |
 | pandocfilters | 1.5.1 | BSD License | John MacFarlane |
 | parso | 0.8.7 | MIT License | David Halter |
 | pdf2image | 1.17.0 | MIT License | Edouard Belval |
@@ -136,13 +139,14 @@ This overview is provided for informational purposes only. Signing attests only 
 | pip-licenses | 5.5.5 | MIT | Mr. Walls |
 | pip-review | 1.3.0 | BSD License | Julian Gonggrijp, Vincent Driessen |
 | pipreqs | 0.5.0 | Apache Software License | Vadim Kravcenko |
-| platformdirs | 4.11.9 | MIT | UNKNOWN |
+| platformdirs | 4.11.11 | MIT | UNKNOWN |
 | pluggy | 1.6.0 | MIT License | Holger Krekel <holger@merlinux.eu> |
 | preshed | 3.0.13 | MIT License | Explosion |
 | prettytable | 3.18.0 | BSD-3-Clause | Luke Maurits <luke@maurits.id.au> |
+| primp | 2.0.1 | MIT License | deedy5 |
 | prompt_toolkit | 3.0.53 | BSD License | Jonathan Slenders |
 | propcache | 0.5.4 | Apache-2.0 | Andrew Svetlov |
-| protobuf | 7.36.1 | 3-Clause BSD License | protobuf@googlegroups.com |
+| protobuf | 7.36.2 | 3-Clause BSD License | protobuf@googlegroups.com |
 | pure_eval | 0.2.4 | MIT License | Alex Hall |
 | pybase64 | 1.5.0 | BSD-2-Clause | Matthieu Darbois |
 | pycparser | 3.0 | BSD-3-Clause | Eli Bendersky <eliben@gmail.com> |
@@ -171,7 +175,7 @@ This overview is provided for informational purposes only. Signing attests only 
 | safetensors | 0.8.0 | Apache Software License | Nicolas Patry <patry.nicolas@protonmail.com>, Luc Georges <luc@huggingface.co>, Daniël De Kok <daniel.dekok@huggingface.co> |
 | scikit-learn | 1.9.1 | BSD-3-Clause | UNKNOWN |
 | scipy | 1.18.1 | BSD License | UNKNOWN |
-| sentence-transformers | 6.0.1 | Apache-2.0 | Nils Reimers <info@nils-reimers.de>, Tom Aarsen <tom.aarsen@huggingface.co> |
+| sentence-transformers | 6.1.0 | Apache-2.0 | Nils Reimers <info@nils-reimers.de>, Tom Aarsen <tom.aarsen@huggingface.co> |
 | sentencepiece | 0.2.2 | Apache-2.0 | Taku Kudo <taku@google.com> |
 | setuptools | 81.0.0 | MIT | Python Packaging Authority <distutils-sig@python.org> |
 | shellingham | 1.5.4 | ISC License (ISCL) | Tzu-ping Chung |
@@ -207,7 +211,7 @@ This overview is provided for informational purposes only. Signing attests only 
 | uvicorn | 0.53.0 | BSD-3-Clause | Tom Christie <tom@tomchristie.com> |
 | wasabi | 1.1.3 | MIT | Explosion |
 | watchfiles | 1.2.0 | MIT License | Samuel Colvin <s@muelcolvin.com> |
-| wcwidth | 0.8.3 | MIT | Jeff Quast <contact@jeffquast.com> |
+| wcwidth | 0.8.4 | MIT | Jeff Quast <contact@jeffquast.com> |
 | weasel | 1.0.0 | MIT License | Explosion |
 | webencodings | 0.6.1 | BSD License | Simon Sapin <simon.sapin@exyr.org> |
 | websocket-client | 1.9.2 | Apache-2.0 | liris |
@@ -1961,6 +1965,37 @@ limitations under the License.
 
 ```
 
+### blingfire 0.1.8
+
+**License:** MIT License
+
+**Author:** Bling
+
+```text
+    MIT License
+
+    Copyright (c) Microsoft Corporation. All rights reserved.
+
+    Permission is hereby granted, free of charge, to any person obtaining a copy
+    of this software and associated documentation files (the "Software"), to deal
+    in the Software without restriction, including without limitation the rights
+    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+    copies of the Software, and to permit persons to whom the Software is
+    furnished to do so, subject to the following conditions:
+
+    The above copyright notice and this permission notice shall be included in all
+    copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+    SOFTWARE
+
+```
+
 ### blis 1.3.3
 
 **License:** BSD License
@@ -2636,6 +2671,37 @@ THE SOFTWARE.
 
 ```
 
+### ddgs 9.16.0
+
+**License:** MIT
+
+**Author:** deedy5
+
+```text
+MIT License
+
+Copyright (c) 2022 deedy5
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+```
+
 ### decorator 5.3.1
 
 **License:** BSD-2-Clause
@@ -2990,7 +3056,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 ```
 
-### emoji 2.15.0
+### emoji 2.16.0
 
 **License:** BSD License
 
@@ -2999,7 +3065,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 ```text
 New BSD License
 
-Copyright (c) 2014-2025, Taehoon Kim, Kevin Wurster
+Copyright (c) 2014-2026, Taehoon Kim, Kevin Wurster
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -3025,35 +3091,6 @@ SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
 CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-```
-
-### en_core_web_sm 3.8.0
-
-**License:** MIT
-
-**Author:** Explosion
-
-```text
-Copyright 2021 ExplosionAI GmbH
-
-Permission is hereby granted, free of charge, to any person obtaining a copy of
-this software and associated documentation files (the "Software"), to deal in
-the Software without restriction, including without limitation the rights to
-use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
-of the Software, and to permit persons to whom the Software is furnished to do
-so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
 
 ```
 
@@ -3464,7 +3501,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ```
 
-### filelock 3.32.7
+### filelock 4.0.1
 
 **License:** MIT
 
@@ -3716,7 +3753,7 @@ Apache License
 
 ```
 
-### fsspec 2026.7.0
+### fsspec 2026.9.0
 
 **License:** BSD-3-Clause
 
@@ -3964,6 +4001,37 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.
+
+```
+
+### graphviz 0.21
+
+**License:** MIT
+
+**Author:** Sebastian Bank <sebastian.bank@uni-leipzig.de>
+
+```text
+The MIT License (MIT)
+
+Copyright (c) 2013-2025 Sebastian Bank
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
 
 ```
 
@@ -5678,7 +5746,7 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 
 ```
 
-### huggingface_hub 1.31.0
+### huggingface_hub 1.32.0
 
 **License:** Apache Software License
 
@@ -5889,7 +5957,7 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 
 ```
 
-### idna 3.19
+### idna 3.20
 
 **License:** BSD-3-Clause
 
@@ -6958,6 +7026,37 @@ SOFTWARE.
 
 ```
 
+### langchain-chroma 1.1.0
+
+**License:** MIT
+
+**Author:** UNKNOWN
+
+```text
+MIT License
+
+Copyright (c) 2024 LangChain, Inc.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+```
+
 ### langchain-core 1.6.3
 
 **License:** MIT License
@@ -7084,7 +7183,7 @@ UNKNOWN
 
 ```
 
-### langsmith 0.12.5
+### langsmith 0.13.0
 
 **License:** MIT
 
@@ -8233,7 +8332,7 @@ DAMAGE.
 
 ```
 
-### multidict 6.8.0
+### multidict 6.9.0
 
 **License:** Apache License 2.0
 
@@ -11614,7 +11713,7 @@ under the terms of *both* these licenses.
 
 ```
 
-### pandas 3.0.5
+### pandas 3.0.6
 
 **License:** BSD License
 
@@ -13833,7 +13932,7 @@ UNKNOWN
 
 ```
 
-### platformdirs 4.11.9
+### platformdirs 4.11.11
 
 **License:** MIT
 
@@ -13964,6 +14063,16 @@ THE SOFTWARE.
 # ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 # POSSIBILITY OF SUCH DAMAGE.
 
+```
+
+### primp 2.0.1
+
+**License:** MIT License
+
+**Author:** deedy5
+
+```text
+UNKNOWN
 ```
 
 ### prompt_toolkit 3.0.53
@@ -14215,7 +14324,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ```
 
-### protobuf 7.36.1
+### protobuf 7.36.2
 
 **License:** 3-Clause BSD License
 
@@ -17262,7 +17371,7 @@ Public License instead of this License.  But first, please read
 
 ```
 
-### sentence-transformers 6.0.1
+### sentence-transformers 6.1.0
 
 **License:** Apache-2.0
 
@@ -19530,7 +19639,7 @@ SOFTWARE.
 
 ```
 
-### wcwidth 0.8.3
+### wcwidth 0.8.4
 
 **License:** MIT
 

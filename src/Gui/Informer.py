@@ -9,9 +9,9 @@ import torch  # type: ignore[reportMissingImports]
 
 from Commons.Exceptions import (CollectionNotFoundError, NoVirtualEnvError,
                                 OllamaNotRunning, VllmNotRunning)
-from Strategies.BM25Retriever import BM25Retriever
-from Strategies.GraphRetriever import GraphRetriever
-from Strategies.RegexRetriever import RegexRetriever
+from Retrievers.BM25Retriever import BM25Retriever
+from Retrievers.GraphRetriever import GraphRetriever
+from Retrievers.RegexRetriever import RegexRetriever
 
 
 # Custom exception for OpenWebUI

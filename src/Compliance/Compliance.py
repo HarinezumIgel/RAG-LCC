@@ -51,11 +51,14 @@ from Commons.Exceptions import (ComplianceViolationError,
 from Commons.SingletonMixin import SingletonMixin
 from Compliance.ArgosDownloader import ArgosDownloader
 from Compliance.SharedHelpers import SharedHelpers
+from Compliance.SpacyDownloader import SpacyDownloader
 from Config.Config import Config
 from Globals.Globals import Globals
 from Gui.Colors import BRIGHT_BLUE, CYAN, GREEN, ORANGE, RED, RESET, YELLOW
 from Gui.PrettyWriter import PrettyWriter
 from Helpers.FileUtils import FileUtils
+from Helpers.LanguageConfig import get_active_argos_pairs
+from Scripts.SpacyLanguageModelsImpl import configured_spacy_models
 
 _CONSENT_DISCLAIMER = (
     "This record indicates technical acknowledgement of license terms. "
@@ -518,10 +521,15 @@ class Compliance(SingletonMixin):
             msg = f"The goal of this is that you consent your changes in: {changed}"
             self.logger.error(msg)
             self.pretty.write("I", "Compliance", msg)
+            recalc_cmd = (
+                "python .\\src\\Scripts\\RecalcConfigHashes.py"
+                if os.name == "nt"
+                else "python ./src/Scripts/RecalcConfigHashes.py"
+            )
             self.pretty.write(
                 "I",
                 "Compliance",
-                "Run:  python .\\src\\Scripts\\RecalcConfigHashes.py  to update the hash(es) automatically.",
+                f"Run:  {recalc_cmd}  to update the hash(es) automatically.",
                 color=CYAN,
             )
             raise ComplianceViolationError(msg)
@@ -533,35 +541,36 @@ class Compliance(SingletonMixin):
         )
 
     # ---------------------------
-    # Argos Translate license consent + download
+    # Argos Translate consent verification (script-managed install)
     # ---------------------------
     def _verify_argos_consent(self) -> None:
-        """Check Argos Translate consent and download packages if needed.
-
-        When ARGOS_STANZA_DOWNLOAD is "1", prompt the user to accept the
-        license and download packages (like HFDownloader).  If the user
-        declines, warn and continue — no exception is raised.
-
-        When ARGOS_STANZA_DOWNLOAD is "0" the check is skipped.
-        """
+        """Require current Argos consent metadata for active language pairs."""
         project_root: str = self.cfg.get_str("_ABSOLUTE_PATH")
-        languages = self.cfg.get_list("_ARGOS_DEFINITIONS.ARGOS_LANGUAGES")
-        downloader = ArgosDownloader(project_root, languages)
-
-        stanza_download: str = os.environ.get("ARGOS_STANZA_DOWNLOAD", "0").strip()
-        if stanza_download != "1":
-            # Even when downloads are disabled, show consent status if
-            # packages were pre-installed via scripts/ArgosTranslatePackages.py.
-            downloader.report_consent_status()
+        languages = get_active_argos_pairs(self.cfg)
+        if not languages:
+            self.pretty.write(
+                "I",
+                "Argos",
+                "No active Argos language pairs after ACTIVE_LANGUAGES "
+                "filter - skipping package consent/download checks.",
+            )
             return
+        downloader = ArgosDownloader(project_root, languages)
+        downloader.assert_consent_current_or_raise()
 
-        installed = downloader.ensure_packages()
+    # ---------------------------
+    # spaCy model consent verification (script-managed install)
+    # ---------------------------
+    def _configured_spacy_models(self) -> list[str]:
+        """Return the deduped list of configured spaCy model package names."""
+        return configured_spacy_models(self.cfg)
 
-        # Refresh installed languages whenever new packages were just installed
-        # so translation is available immediately without a restart.
-        refresh_langs = getattr(self.sharedHelpers, "refresh_installed_languages", None)
-        if installed and callable(refresh_langs):
-            refresh_langs()
+    def _verify_spacy_consent(self) -> None:
+        """Require current spaCy model consent metadata for configured models."""
+        project_root: str = self.cfg.get_str("_ABSOLUTE_PATH")
+        spacy_models = self._configured_spacy_models()
+        downloader = SpacyDownloader(project_root, spacy_models)
+        downloader.assert_consent_current_or_raise()
 
     # ---------------------------
     # Verify flow
@@ -659,3 +668,6 @@ class Compliance(SingletonMixin):
 
         # Argos Translate package license consent
         self._verify_argos_consent()
+
+        # spaCy model package license consent
+        self._verify_spacy_consent()

@@ -26,7 +26,9 @@ from Helpers.CSVWriter import CSVWriter
 from Helpers.FileUtils import FileUtils
 from Helpers.Helpers import Helpers
 from Helpers.PerfLogger import PerfLogger
-from Strategies.BM25Retriever import BM25Retriever
+from Retrievers.BM25Retriever import BM25Retriever
+from Retrievers.GraphRetriever import GraphRetriever
+from Retrievers.RegexRetriever import RegexRetriever
 from Strategies.Chunkers.ChunkerStrategy import ChunkerStrategy
 from Strategies.Chunkers.DocumentMetadataExtractor import \
     DocumentMetadataExtractor
@@ -37,8 +39,6 @@ from Strategies.Chunkers.SemanticChunker import SemanticChunker
 from Strategies.Chunkers.SentenceWindowChunker import SentenceWindowChunker
 from Strategies.Chunkers.SlideChunker import SlideChunker
 from Strategies.Chunkers.SlidingWindowChunker import SlidingWindowChunker
-from Strategies.GraphRetriever import GraphRetriever
-from Strategies.RegexRetriever import RegexRetriever
 from Strategies.StrategyType import StrategyType
 
 # Third-party imports

@@ -4,6 +4,16 @@ import sys
 from datetime import datetime
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+import Configuration.Config_Global as _ConfigGlobal
+# Fail fast when app layout/configured root is inconsistent.
+from Commons.DriveRootGuard import assert_app_project_root
+
+assert_app_project_root(
+    __file__,
+    configured_project_root=getattr(_ConfigGlobal, "_ABSOLUTE_PATH", None),
+)
+
 import Configuration.Config_Internet_Env  # type: ignore[reportUnusedImport]  # side-effect import
 
 if os.environ.get("RAG_LCC_NW_TRACE", "0") == "1":

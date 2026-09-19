@@ -23,6 +23,8 @@ from Gui.MetadataPicker import MetadataPicker
 from Gui.PrettyWriter import PrettyWriter
 from Helpers.DebugHelper import DebugHelper
 from Helpers.Helpers import Helpers
+from Helpers.LanguageConfig import (get_active_language_codes,
+                                    get_lang_code_to_name)
 
 
 # ——— Command & Cmd types ———
@@ -851,22 +853,10 @@ class QueryParts(SingletonMixin):
             return
 
         if mode == "preferred_response_language":
-            # Build the language list from the Argos pair table so we only
-            # offer languages the system can actually translate.
-            lang_map: dict[str, str] = (
-                self.cfg.get_dict("_ARGOS_DEFINITIONS.LANG_CODE_TO_NAME") or {}
-            )
-            argos_pairs: list[Any] = (
-                self.cfg.get_list("_ARGOS_DEFINITIONS.ARGOS_LANGUAGES") or []
-            )
-            iso_codes: set[str] = {"en"}
-            for pair in argos_pairs:
-                # Each entry is a (from, to) tuple/list.
-                try:
-                    iso_codes.add(str(pair[0]).lower())
-                    iso_codes.add(str(pair[1]).lower())
-                except (IndexError, TypeError):
-                    continue
+            # Build the language list from ACTIVE_LANGUAGES so all language-aware
+            # modules share the same activation source of truth.
+            lang_map: dict[str, str] = get_lang_code_to_name(self.cfg)
+            iso_codes: set[str] = set(get_active_language_codes(self.cfg))
             names: list[str] = sorted(
                 {lang_map.get(code, code).lower() for code in iso_codes}
             )

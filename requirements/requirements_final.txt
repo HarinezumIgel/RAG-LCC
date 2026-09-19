@@ -1,11 +1,11 @@
 argostranslate
+blingfire
 chardet
 charset_normalizer
 chromadb
 colorama
 cryptography
 ddgs
-en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl
 fastapi
 graphviz
 html2text

@@ -7,17 +7,35 @@ This project builds on excellent open-source software and pre-trained models. RA
 ### 🔑 Key Dependencies
 
 - **ChromaDB** – Vector database for embedding storage and retrieval
+- **spaCy** – NLP pipeline used for tokenization, entity extraction, and language-aware retrieval helpers
 - **Ollama** – Local LLM inference engine
 - **OpenWebUI** – Web-based chat interface for LLM interaction (used as an optional frontend for `RAGChatService`)
 - **HuggingFace Transformers** – Pre-trained NLP models and sentence transformers
-- **NLTK** – Natural Language Toolkit for tokenization, stemming, and optional WordNet synonym expansion
+- **Sentence Transformers** – Embedding and cross-encoder model wrappers used for retrieval and reranking
+- **NLTK** – Natural Language Toolkit for tokenization, stemming, stopwords, and optional WordNet synonym expansion
+- **KeyBERT** – Keyword extraction/scoring used in classification and compliance workflows
+- **lingua-language-detector** – Language identification for multilingual preprocessing and retrieval routing
+- **DDGS (DuckDuckGo Search)** – Optional web search backend for internet retrieval
 - **PyTorch** – Deep learning framework
 - **Argos Translate** – Language translation library
+- **pdfminer.six + pdfplumber** – PDF text extraction and page-level processing utilities
+- **pytesseract** – Python OCR wrapper for optional Tesseract-based text extraction
 - **pywin32** – Python extensions for Windows COM automation (used for optional Microsoft Office document extraction)
 
-### 📚 NLTK Data — WordNet Corpus
+### 📚 NLTK Data — Stopwords and WordNet
 
-The optional synonym-expansion feature (`Algos/Synonyms.py`) uses the **WordNet** lexical database, downloaded at the operator's discretion via `nltk.download("wordnet")`.
+RAG‑LCC uses optional NLTK data packages downloaded separately from NLTK data servers; these corpora are not distributed with this repository.
+
+The setup helper `src/Scripts/NLTK_Stopwords_WordNet.py` records license evidence and operator consent for NLTK stopwords and WordNet downloads.
+
+#### Stopwords Corpus
+
+Multilingual stopword lists used by preprocessing are obtained via `nltk.download("stopwords")`.
+These lists remain third-party NLTK data resources; operators are responsible for reviewing applicable upstream license and attribution notices in their environment.
+
+#### WordNet Corpus
+
+The optional synonym-expansion feature (`src/Algos/Synonyms.py`) uses the **WordNet** lexical database, downloaded at the operator's discretion via `nltk.download("wordnet")`.
 
 - **WordNet 3.0** — Copyright © 2006 by Princeton University. Licensed under the [WordNet 3.0 License](https://wordnet.princeton.edu/license-and-commercial-use). The WordNet corpus is **not** distributed with RAG‑LCC; operators download it independently from NLTK's data servers.
 - Attribution: George A. Miller (1995). *WordNet: A Lexical Database for English.* Communications of the ACM, 38(11), 39–41.

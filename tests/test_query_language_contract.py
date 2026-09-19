@@ -18,11 +18,13 @@ import re
 import sys
 import textwrap
 import time
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
+
+from Chat.RetrievalOrchestrator import RetrievalOrchestrator
 
 _RAG_IMPL_SRC = os.path.join(
     os.path.dirname(__file__), "..", "src", "Chat", "RAGChatImpl.py"
@@ -101,6 +103,22 @@ class StubTranslator:
     ) -> str:
         self.calls.append((text, target_lang, source_lang))
         return self._mapping.get((text, source_lang), text)
+
+
+class StubSharedTranslate:
+    def __init__(self, mapping: dict[tuple[str, str, str], str]) -> None:
+        self._mapping = mapping
+        self.calls: list[tuple[str, str, str]] = []
+        self.lang_name_to_code: dict[str, str] = {
+            "english": "en",
+            "german": "de",
+        }
+
+    def translate_text(
+        self, text: str, target_lang: str, source_lang: str = "auto"
+    ) -> str:
+        self.calls.append((text, target_lang, source_lang))
+        return self._mapping.get((text, target_lang, source_lang), text)
 
 
 class StubPromptRewrite:
@@ -197,7 +215,7 @@ def _extract_method(method_name: str) -> str:
     with open(_RAG_IMPL_SRC, encoding="utf-8") as fh:
         source = fh.read()
     match = re.search(
-        rf"(    def {re.escape(method_name)}\(.*?)(?=\n    def |\nclass |\Z)",
+        rf"(    def {re.escape(method_name)}\(.*?)(?=\n    @|\n    def |\nclass |\Z)",
         source,
         re.DOTALL,
     )
@@ -208,6 +226,7 @@ def _extract_method(method_name: str) -> str:
 def _load_method(name: str) -> Any:
     ns: dict[str, Any] = {
         "Any": Any,
+        "cast": cast,
         "Session": StubSession,
         "CYAN": "CYAN",
         "time": time,
@@ -219,15 +238,37 @@ def _load_method(name: str) -> Any:
 
 
 _normalize_query = _load_method("_normalize_query")
+_resolve_turn_translation_backend = _load_method("_resolve_turn_translation_backend")
+_detect_raw_query_language = _load_method("_detect_raw_query_language")
 _fetch_local_docs = _load_method("_fetch_local_docs")
+_resolve_file_filter = _load_method("_resolve_file_filter")
+_normalize_language_bucket = _load_method("_normalize_language_bucket")
+_query_language_label = _load_method("_query_language_label")
+_run_indexed_retriever_with_guardrail = _load_method(
+    "_run_indexed_retriever_with_guardrail"
+)
+_mode_flags_for_local_retrievers = _load_method("_mode_flags_for_local_retrievers")
+_is_guardrail_query_active = _load_method("_is_guardrail_query_active")
+_resolve_guardrail_queries = _load_method("_resolve_guardrail_queries")
+_accumulate_topk_counts = _load_method("_accumulate_topk_counts")
+_indexed_retriever_specs = _load_method("_indexed_retriever_specs")
+_run_indexed_local_retrievers = _load_method("_run_indexed_local_retrievers")
+_store_guardrail_retrieval_topk = _load_method("_store_guardrail_retrieval_topk")
 _apply_post_rewrite_translation = _load_method("_apply_post_rewrite_translation")
+_rewrite_query_with_strict_retry = _load_method("_rewrite_query_with_strict_retry")
+_log_query_language_drift = _load_method("_log_query_language_drift")
 _set_effective_query_metadata = _load_method("_set_effective_query_metadata")
 _translate_query_to_english = _load_method("_translate_query_to_english")
+_shape_graph_regex_stage_queries = _load_method("_shape_graph_regex_stage_queries")
 
 
 class NormalizeShell:
     _normalize_query = _normalize_query
+    _resolve_turn_translation_backend = _resolve_turn_translation_backend
+    _detect_raw_query_language = _detect_raw_query_language
     _apply_post_rewrite_translation = _apply_post_rewrite_translation
+    _rewrite_query_with_strict_retry = _rewrite_query_with_strict_retry
+    _log_query_language_drift = _log_query_language_drift
     _set_effective_query_metadata = _set_effective_query_metadata
     _translate_query_to_english = _translate_query_to_english
 
@@ -257,6 +298,18 @@ class NormalizeShell:
 
 class FetchShell:
     _fetch_local_docs = _fetch_local_docs
+    _shape_graph_regex_stage_queries = _shape_graph_regex_stage_queries
+    _normalize_language_bucket = _normalize_language_bucket
+    _query_language_label = _query_language_label
+    _resolve_file_filter = staticmethod(_resolve_file_filter)
+    _run_indexed_retriever_with_guardrail = _run_indexed_retriever_with_guardrail
+    _mode_flags_for_local_retrievers = staticmethod(_mode_flags_for_local_retrievers)
+    _is_guardrail_query_active = staticmethod(_is_guardrail_query_active)
+    _resolve_guardrail_queries = _resolve_guardrail_queries
+    _accumulate_topk_counts = staticmethod(_accumulate_topk_counts)
+    _indexed_retriever_specs = _indexed_retriever_specs
+    _run_indexed_local_retrievers = _run_indexed_local_retrievers
+    _store_guardrail_retrieval_topk = _store_guardrail_retrieval_topk
 
     def __init__(self, bm25_map: dict[str, list[StubDoc]]) -> None:
         self.pretty = StubPrettyWriter()
@@ -266,6 +319,10 @@ class FetchShell:
         self.perf_logger = StubPerfLogger()
         self.bm25_retriever = StubBM25Runtime(bm25_map)
         self.graph_retriever = StubGraphRuntime()
+        self.regex_retriever = StubGraphRuntime()
+        self._translation_backend = "off"
+        self._shared = StubSharedTranslate({})
+        self.retrieval_orchestrator = RetrievalOrchestrator(self)
 
     def _vector_kwargs(self, _session: StubSession) -> dict[str, Any]:
         return {}
@@ -274,6 +331,9 @@ class FetchShell:
         return None
 
     def _print_graph_debug(self, _docs: list[Any]) -> None:
+        return None
+
+    def _print_regex_debug(self, _docs: list[Any]) -> None:
         return None
 
 
@@ -405,3 +465,153 @@ class TestDualQueryFusion:
         assert session.retrieval_top_k_post_rewrite_query_en is None
         assert session.retrieval_top_k_before_t2 is None
         assert session.retrieval_top_k_after_t2 is None
+
+
+class TestGraphRegexStageQueryShaping:
+    def test_translates_non_english_bucket_when_argos_enabled(self) -> None:
+        shell = FetchShell(bm25_map={})
+        shell._translation_backend = "argos"
+        shared = StubSharedTranslate(
+            {
+                ("Q2", "de", "en"): "Q2|de",
+                ("Q1", "de", "en"): "Q1|de",
+            }
+        )
+        shell._shared = shared
+
+        primary_query, guardrail_query = shell._shape_graph_regex_stage_queries(
+            StubSession(query="Q2"),
+            language_bucket="german",
+            primary_query="Q2",
+            guardrail_query="Q1",
+        )
+
+        assert primary_query == "Q2|de"
+        assert guardrail_query == "Q1|de"
+        assert shared.calls == [
+            ("Q2", "de", "en"),
+            ("Q1", "de", "en"),
+        ]
+
+    def test_keeps_queries_for_english_bucket(self) -> None:
+        shell = FetchShell(bm25_map={})
+        shell._translation_backend = "argos"
+        shared = StubSharedTranslate(
+            {
+                ("Q2", "de", "en"): "Q2|de",
+                ("Q1", "de", "en"): "Q1|de",
+            }
+        )
+        shell._shared = shared
+
+        primary_query, guardrail_query = shell._shape_graph_regex_stage_queries(
+            StubSession(query="Q2"),
+            language_bucket="english",
+            primary_query="Q2",
+            guardrail_query="Q1",
+        )
+
+        assert primary_query == "Q2"
+        assert guardrail_query == "Q1"
+        assert shared.calls == []
+
+
+class TestLocalRetrieverModeFlags:
+    @pytest.mark.parametrize(
+        ("mode", "expected"),
+        [
+            ("ALL", (True, True, True, True)),
+            ("VECTOR", (True, False, False, False)),
+            ("BM25_GRAPH", (False, True, True, False)),
+            ("regex_vector", (True, False, False, True)),
+            ("WEB", (False, False, False, False)),
+        ],
+    )
+    def test_mode_flags(
+        self, mode: str, expected: tuple[bool, bool, bool, bool]
+    ) -> None:
+        assert FetchShell._mode_flags_for_local_retrievers(mode) == expected
+
+
+class TestGuardrailActivation:
+    @pytest.mark.parametrize(
+        ("primary", "guardrail", "expected"),
+        [
+            ("what do hedgehogs eat", "what do hedgehogs eat", False),
+            ("what do hedgehogs eat", "what do hedgehogs eat in winter", True),
+            ("What Do Hedgehogs Eat", "what do hedgehogs eat", False),
+            ("what do hedgehogs eat", "", False),
+        ],
+    )
+    def test_is_guardrail_query_active(
+        self,
+        primary: str,
+        guardrail: str,
+        expected: bool,
+    ) -> None:
+        assert FetchShell._is_guardrail_query_active(primary, guardrail) is expected
+
+
+class TestGuardrailQueryResolution:
+    @pytest.mark.parametrize(
+        ("bm25_query", "orig_translated_query_en", "expected"),
+        [
+            (
+                "what do hedgehogs eat",
+                "what do hedgehogs eat",
+                ("what do hedgehogs eat", "what do hedgehogs eat", False),
+            ),
+            (
+                "what do hedgehogs eat in winter",
+                "what do hedgehogs eat",
+                ("what do hedgehogs eat in winter", "what do hedgehogs eat", True),
+            ),
+            (
+                "what do hedgehogs eat",
+                "  what do hedgehogs eat in winter  ",
+                ("what do hedgehogs eat", "what do hedgehogs eat in winter", True),
+            ),
+        ],
+    )
+    def test_resolve_guardrail_queries(
+        self,
+        bm25_query: str,
+        orig_translated_query_en: str,
+        expected: tuple[str, str, bool],
+    ) -> None:
+        shell = FetchShell(bm25_map={})
+        assert (
+            shell._resolve_guardrail_queries(
+                bm25_query=bm25_query,
+                orig_translated_query_en=orig_translated_query_en,
+            )
+            == expected
+        )
+
+
+class TestTopKAccumulator:
+    @pytest.mark.parametrize(
+        ("start_orig", "start_post", "add_orig", "add_post", "expected"),
+        [
+            (0, 0, 2, 3, (2, 3)),
+            (2, 3, 1, 4, (3, 7)),
+            (10, 12, 0, 0, (10, 12)),
+        ],
+    )
+    def test_accumulate_topk_counts(
+        self,
+        start_orig: int,
+        start_post: int,
+        add_orig: int,
+        add_post: int,
+        expected: tuple[int, int],
+    ) -> None:
+        assert (
+            FetchShell._accumulate_topk_counts(
+                start_orig,
+                start_post,
+                add_orig,
+                add_post,
+            )
+            == expected
+        )

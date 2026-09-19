@@ -79,9 +79,11 @@ class PromptRewrite(SingletonMixin):
         if nlp is not None:
             self._nlp: Any = nlp
         else:
-            spacy_model: str = (
-                self.cfg.get_str("_GRAPH_INDEX.spacy_model") or "en_core_web_sm"
+            spacy_model_value, _ = self.cfg.indirect_get(
+                "_GRAPH_INDEX.spacy_model",
+                "en_core_web_sm",
             )
+            spacy_model: str = str(spacy_model_value or "en_core_web_sm").strip()
             try:
                 import spacy  # type: ignore[import-untyped]
 
@@ -89,7 +91,8 @@ class PromptRewrite(SingletonMixin):
             except OSError as exc:
                 raise RuntimeError(
                     f"spaCy model '{spacy_model}' not found. "
-                    f"Run: python -m spacy download {spacy_model}"
+                    "Run: python ./src/Scripts/SpacyLanguageModels.py install "
+                    f"(or python -m spacy download {spacy_model})"
                 ) from exc
 
     def rewrite(self, session: Session, *, strict_english: bool = False) -> str:
@@ -262,6 +265,13 @@ class PromptRewrite(SingletonMixin):
             "I",
             "QueryRewrite",
             f"Topic detection using {len(history_docs)} history turns",
+        )
+        rewrite_mode = "strict English retry" if strict_english else "standard"
+        self.pretty.write(
+            "I",
+            "LLM Plan",
+            "Query rewrite: resolve pronoun/noun references from chat history "
+            f"and output a standalone retrieval query ({rewrite_mode}).",
         )
 
         try:

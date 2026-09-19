@@ -49,12 +49,16 @@ Execution order:
              Present the Argos Translate license/consent flow and download
              the language packages listed in ARGOS_LANGUAGES.
 
+    6. Install spaCy language model packages
+                         Present the spaCy model-package license/consent flow and install
+                         the model packages configured for graph and regex retrieval.
+
   Config setup –
              Ask for endpoint, internet-mode, and service settings
              (API keys are masked in output).  Write the answers into
              the configuration files via UpdateConfigValues.py.
 
-  6. Recalculate configuration hashes
+    7. Recalculate configuration hashes
              Compute fresh SHA-256 hashes for Config_Models.py,
              Config_Banned.py, Config_WebSearch.py, and
              Config_Internet_Env.py, then write them into
@@ -141,13 +145,19 @@ _SRC_DIR = Path(__file__).resolve().parent.parent
 if str(_SRC_DIR) not in sys.path:
     sys.path.insert(0, str(_SRC_DIR))
 
-# Refuse to run from a drive/filesystem root before any heavy imports
-from Commons.DriveRootGuard import assert_not_drive_root  # noqa: E402
+import Configuration.Config_Global as _ConfigGlobal  # noqa: E402
+# Resolve and validate project root before any setup actions.
+from Commons.DriveRootGuard import assert_script_project_root  # noqa: E402
 
-assert_not_drive_root(__file__)
+_PROJECT_ROOT = Path(
+    assert_script_project_root(
+        __file__,
+        configured_project_root=getattr(_ConfigGlobal, "_ABSOLUTE_PATH", None),
+        require_cwd_match=True,
+    )
+)
 
 _SCRIPTS_DIR = Path(__file__).resolve().parent
-_PROJECT_ROOT = _SRC_DIR.parent
 _LICENSE_DIR = _PROJECT_ROOT / "3rdPartyLicenses"
 _REQUIREMENTS = _PROJECT_ROOT / "requirements" / "requirements_final.txt"
 _SETUP_LOG_DIR = _PROJECT_ROOT / "logs" / "setup"
@@ -175,7 +185,7 @@ _WHITE = "\033[97m"
 _ORANGE = "\033[38;2;255;165;0m"
 _TURQUOISE = "\033[38;2;0;255;220m"
 
-_TOTAL_STEPS = 6
+_TOTAL_STEPS = 7
 _SECRET_FIELD_RE = re.compile(
     r"(secret|token|password|passwd|api[_-]?key|bearer|auth)",
     re.IGNORECASE,
@@ -292,10 +302,13 @@ def _print_execution_plan() -> None:
         f"{_DIM}  Step 5:{_RESET} Optionally install Argos Translate language packages after explicit user confirmation."
     )
     print(
+        f"{_DIM}  Step 6:{_RESET} Optionally install spaCy model packages after explicit user confirmation."
+    )
+    print(
         f"{_DIM}  Runtime questions:{_RESET} After all downloads, ask for endpoint/internet/service settings (API keys masked), then write values to config files."
     )
     print(
-        f"{_DIM}  Step 6:{_RESET} Recalculate and write critical config hashes in Config_Global.py."
+        f"{_DIM}  Step 7:{_RESET} Recalculate and write critical config hashes in Config_Global.py."
     )
     print(f"{_CYAN}{'-' * w}{_RESET}")
 
@@ -530,8 +543,8 @@ def _confirm(prompt: str) -> bool:
             sys.exit(130)  # Standard exit code for Ctrl+C
 
 
-def _test_endpoint_connectivity(endpoint: str) -> None:
-    """Print curl test commands for the specified endpoint."""
+def _print_endpoint_connectivity_examples(endpoint: str) -> None:
+    """Print curl probe command examples for the specified endpoint."""
     if endpoint == "ollama":
         port = "11434"
         test_path = "/api/tags"
@@ -970,6 +983,9 @@ def _run_setup_questions() -> None:
         f"{_DIM}    • Default Argos languages installed by this script; new languages{_RESET}"
     )
     print(f"{_DIM}      will NOT be auto-installed on-the-fly{_RESET}")
+    print(
+        f"{_DIM}    • Argos and spaCy consent/install are script-managed steps{_RESET}"
+    )
     print(f"{_DIM}    • NLTK/WordNet corpora must be pre-downloaded{_RESET}")
     print(
         f"{_DIM}    • Web search features available only if enabled via WEB_SEARCH_MODE{_RESET}"
@@ -1024,7 +1040,6 @@ def _run_setup_questions() -> None:
     openwebui_api_key = ""
     hf_hub_offline = True
     hf_api_key = ""
-    argos_stanza_download = False
     nltk_stopwords_download = False
     license_download = False
     web_search_mode = "0"
@@ -1049,7 +1064,7 @@ def _run_setup_questions() -> None:
             correction_value=endpoint if correction_mode else None,
         )
 
-        _test_endpoint_connectivity(endpoint)
+        _print_endpoint_connectivity_examples(endpoint)
         print()
         print(f"{_RED}{'='*70}{_RESET}")
         print(
@@ -1222,17 +1237,6 @@ def _run_setup_questions() -> None:
         _print_setting_context(
             "Config_Internet_Env.py",
             "src/Configuration/Config_Internet_Env.py",
-            "Enable Argos package/license download prompt at startup.",
-        )
-        argos_stanza_download = _prompt_bool(
-            "Enable ARGOS_STANZA_DOWNLOAD",
-            default=False,
-            correction_value=argos_stanza_download if correction_mode else None,
-        )
-
-        _print_setting_context(
-            "Config_Internet_Env.py",
-            "src/Configuration/Config_Internet_Env.py",
             "Enable NLTK stopwords/WordNet download prompt at startup.",
         )
         nltk_stopwords_download = _prompt_bool(
@@ -1324,6 +1328,13 @@ def _run_setup_questions() -> None:
         # --------------------------------------------------------------
         # Group 6: Debug and tracing
         # --------------------------------------------------------------
+        print()
+        print(
+            f"{_ORANGE}⚠️  WARNING: Enabling RAG_LCC_NW_TRACE will produce a lot of noise.{_RESET}"
+        )
+        print(
+            f"{_ORANGE}   Recommendation: Keep the default 'N' unless you want to trace network connections.{_RESET}"
+        )
         _print_setting_context(
             "Config_Internet_Env.py",
             "src/Configuration/Config_Internet_Env.py",
@@ -1346,9 +1357,6 @@ def _run_setup_questions() -> None:
         )
         print(f"{_WHITE}  HF_HUB_OFFLINE:{_RESET} {'1' if hf_hub_offline else '0'}")
         print(f"{_WHITE}  _HF_API_KEY:{_RESET} {'<set>' if hf_api_key else '<empty>'}")
-        print(
-            f"{_WHITE}  ARGOS_STANZA_DOWNLOAD:{_RESET} {'1' if argos_stanza_download else '0'}"
-        )
         print(
             f"{_WHITE}  NLTK_STOPWORDS_DOWNLOAD:{_RESET} {'1' if nltk_stopwords_download else '0'}"
         )
@@ -1438,11 +1446,6 @@ def _run_setup_questions() -> None:
         },
         {
             "conf": "Config_Internet_Env.py",
-            "slot_name": 'os.environ["ARGOS_STANZA_DOWNLOAD"]',
-            "value": _as_py_string("1" if argos_stanza_download else "0"),
-        },
-        {
-            "conf": "Config_Internet_Env.py",
             "slot_name": 'os.environ["NLTK_STOPWORDS_DOWNLOAD"]',
             "value": _as_py_string("1" if nltk_stopwords_download else "0"),
         },
@@ -1523,7 +1526,6 @@ def _run_setup_questions() -> None:
         license_download=license_download,
         web_search_mode=web_search_mode,
         openweb_ui_websearch=openweb_ui_websearch,
-        argos_stanza_download=argos_stanza_download,
         nltk_stopwords_download=nltk_stopwords_download,
         serve_openwebui_chat=serve_openwebui_chat,
         serve_in_memory_docs_http=serve_in_memory_docs,
@@ -2676,7 +2678,7 @@ def main() -> None:
     parser.add_argument(
         "--no-config-rehash",
         action="store_true",
-        help="Skip Step 6 — do not recalculate SHA-256 config hashes.",
+        help="Skip Step 7 — do not recalculate SHA-256 config hashes.",
     )
     parser.add_argument(
         "--set-config-values-only",
@@ -2726,15 +2728,15 @@ def main() -> None:
         _run_setup_questions()
 
         if args.no_config_rehash:
-            print(f"{_YELLOW}  ⏭  Step 6 skipped (--no-config-rehash).{_RESET}")
+            print(f"{_YELLOW}  ⏭  Step 7 skipped (--no-config-rehash).{_RESET}")
             _write_setup_log(
                 "step_skipped",
-                step=6,
+                step=7,
                 reason="--no-config-rehash",
             )
         else:
             _run_step(
-                step=6,
+                step=7,
                 label="Recalculate SHA-256 config hashes",
                 script="RecalcConfigHashes.py",
                 description=(
@@ -3022,6 +3024,7 @@ def main() -> None:
             "Fetches NLTK and WordNet licenses for the installed versions, "
             "records consent, and downloads the stopwords and wordnet corpora."
         ),
+        extra_argv=["install"],
         required=True,
     )
 
@@ -3057,25 +3060,59 @@ def main() -> None:
         )
 
     # ------------------------------------------------------------------
+    # Step 6 – Install spaCy model packages.
+    # ------------------------------------------------------------------
+    _print_next_action_block(
+        "Next action",
+        [
+            ("If approved", "Run spaCy model installer"),
+            ("Step", "Show license and collect consent"),
+            (
+                "Then",
+                "Install configured models from _BM25_INDEX.spacy_model / _BM25_INDEX.spacy_models_by_language, _GRAPH_INDEX.spacy_model / _GRAPH_INDEX.spacy_models_by_language, and _REGEX_INDEX.spacy_model / _REGEX_INDEX.spacy_models_by_language",
+            ),
+        ],
+    )
+    if not _confirm("Ok to install configured spaCy model packages?"):
+        print(f"{_YELLOW}  Skipping spaCy model install.{_RESET}")
+        _write_setup_log(
+            "step_skipped",
+            step=6,
+            reason="user declined spaCy model install",
+        )
+    else:
+        _run_step(
+            step=6,
+            label="Install spaCy model packages",
+            script="SpacyLanguageModels.py",
+            description=(
+                "Presents the spaCy models license, records consent, and "
+                "installs configured model packages used by BM25, graph, and regex retrieval."
+            ),
+            extra_argv=["install"],
+            required=True,
+        )
+
+    # ------------------------------------------------------------------
     # Runtime configuration questions.
     # Runs after all download/install steps by design.
     # ------------------------------------------------------------------
     _run_setup_questions()
 
     # ------------------------------------------------------------------
-    # Step 6 – Recalculate config hashes.
+    # Step 7 – Recalculate config hashes.
     # Must run after runtime question updates.
     # ------------------------------------------------------------------
     if args.no_config_rehash:
-        print(f"{_YELLOW}  ⏭  Step 6 skipped (--no-config-rehash).{_RESET}")
+        print(f"{_YELLOW}  ⏭  Step 7 skipped (--no-config-rehash).{_RESET}")
         _write_setup_log(
             "step_skipped",
-            step=6,
+            step=7,
             reason="--no-config-rehash",
         )
     else:
         _run_step(
-            step=6,
+            step=7,
             label="Recalculate SHA-256 config hashes",
             script="RecalcConfigHashes.py",
             description=(

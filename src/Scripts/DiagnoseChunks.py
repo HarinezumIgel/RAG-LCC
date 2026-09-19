@@ -22,13 +22,21 @@ import sys
 from collections.abc import Mapping
 from typing import Any
 
-# Add project src directory to path (script is in scripts_posh/private/)
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
+# Add project src directory to path.
+_SCRIPT_DIR = os.path.abspath(os.path.dirname(__file__))
+_SRC_DIR = os.path.normpath(os.path.join(_SCRIPT_DIR, ".."))
+if _SRC_DIR not in sys.path:
+    sys.path.insert(0, _SRC_DIR)
 
-# Refuse to run from a drive/filesystem root before any heavy imports
-from Commons.DriveRootGuard import assert_not_drive_root
+import Configuration.Config_Global as _ConfigGlobal
+# Fail fast when script layout/configured root is inconsistent.
+from Commons.DriveRootGuard import assert_script_project_root
 
-assert_not_drive_root(__file__)
+_PROJECT_ROOT = assert_script_project_root(
+    __file__,
+    configured_project_root=getattr(_ConfigGlobal, "_ABSOLUTE_PATH", None),
+    require_cwd_match=True,
+)
 
 from chromadb.config import Settings
 
@@ -71,7 +79,7 @@ def main():
     if not args.all and not args.terms:
         parser.error("either --terms or --all must be specified")
 
-    root = os.getcwd()
+    root = _PROJECT_ROOT
 
     chroma_db_dir = os.path.join(
         root,

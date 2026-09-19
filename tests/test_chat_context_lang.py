@@ -100,6 +100,10 @@ class StubSession:
         self.turns = turns
         self.prune_batch = prune_batch
         self.debug_level = debug_level
+        self.orig_translated_query_en: str | None = None
+        self.post_rewrite_query_en: str | None = None
+        self.effective_query: str | None = None
+        self.effective_query_reason: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -249,6 +253,35 @@ class TestAddChatTurnQueryLang:
         session = StubSession()
         ctx.add_chat_turn(session, "q", "a")
         assert ctx._upserted[0]["metadatas"][0]["conversation_id"] == "my-unique-conv"
+
+    def test_stores_query_forms_in_metadata(self):
+        ctx = ContextShell()
+        session = StubSession(current_query_lang="german")
+        session.orig_translated_query_en = "what do hedgehogs eat"
+        session.post_rewrite_query_en = "what do hedgehogs eat in winter"
+        session.effective_query = "what do hedgehogs eat in winter"
+        session.effective_query_reason = "translated+rewritten"
+
+        ctx.add_chat_turn(session, "was essen igel", "Sie essen ...")
+
+        meta = ctx._upserted[0]["metadatas"][0]
+        assert meta["query_user_original"] == "was essen igel"
+        assert meta["query_orig_translated_en"] == "what do hedgehogs eat"
+        assert meta["query_post_rewrite_en"] == "what do hedgehogs eat in winter"
+        assert meta["query_effective"] == "what do hedgehogs eat in winter"
+        assert meta["query_effective_reason"] == "translated+rewritten"
+
+    def test_history_text_keeps_original_user_query(self):
+        ctx = ContextShell()
+        session = StubSession(current_query_lang="german")
+        session.orig_translated_query_en = "what do hedgehogs eat"
+        session.post_rewrite_query_en = "what do hedgehogs eat in winter"
+
+        ctx.add_chat_turn(session, "was essen igel", "Sie essen ...")
+
+        doc = ctx._upserted[0]["docs"][0]
+        assert "USER: was essen igel" in doc
+        assert "USER: what do hedgehogs eat" not in doc
 
 
 # ---------------------------------------------------------------------------

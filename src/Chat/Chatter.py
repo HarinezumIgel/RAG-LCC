@@ -253,6 +253,12 @@ class Chatter:
                 color=ORANGE,
             )
 
+        self.pretty.write(
+            "I",
+            "LLM Plan",
+            "Answer generation: producing the final grounded response from retrieved context chunks.",
+        )
+
         llm_result = self.llmCaller.call_llm(
             self.llm_model,
             formatted,

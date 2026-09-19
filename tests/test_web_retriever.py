@@ -23,7 +23,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from langchain_core.documents.base import Document as LangchainDocument
 
-from Strategies.WebRetriever import WebRetriever
+from Retrievers.WebRetriever import WebRetriever
 
 # ---------------------------------------------------------------------------
 # Stubs
@@ -671,7 +671,7 @@ class TestFilterThreshold:
 # WebSearchFilter — weighted intent classifier
 # ===========================================================================
 
-from Strategies.WebSearchFilter import WebSearchFilter  # noqa: E402
+from Retrievers.WebSearchFilter import WebSearchFilter  # noqa: E402
 
 
 @pytest.fixture(autouse=False)

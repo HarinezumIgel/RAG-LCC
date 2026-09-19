@@ -8,13 +8,19 @@
 # If the user installs Argos Translate and its language packages manually,
 # RAG‑LCC will use them for local translation.
 #
-# Sentence boundary detection uses SpaCy (ARGOS_CHUNK_TYPE=SPACY) instead
-# of stanza, which is broken offline in argos-translate ≥1.11.
-# See argosopentech/argos-translate#385 / #512.
+# Sentence boundary detection is enforced internally to use the Argos SPACY
+# slot patched to blingfire sentence splitting (no xx_sent_ud_sm download).
 #
-# When ARGOS_STANZA_DOWNLOAD is "1", RAG‑LCC will prompt the user to accept
-# the Argos license and download language packages at startup if consent
-# has not yet been recorded.
+# Argos install/consent is script-managed:
+#   python src/Scripts/ArgosTranslatePackages.py install
+# Runtime compliance checks only validate that consent metadata is current.
+#
+# -----------------------------------------------------------------------------
+# spaCy model packages (Graph / Regex retrieval)
+# -----------------------------------------------------------------------------
+# spaCy install/consent is script-managed:
+#   python src/Scripts/SpacyLanguageModels.py install
+# Runtime compliance checks only validate that consent metadata is current.
 #
 # -----------------------------------------------------------------------------
 # NLTK Stopwords (Text Preprocessing)
@@ -99,25 +105,12 @@ os.environ["HF_DATASETS_OFFLINE"] = "1"
 # Requires the 'xet' package to be installed
 os.environ["HF_XET_HIGH_PERFORMANCE"] = "1"
 
-# ARGOS_STANZA_DOWNLOAD: Control Argos Translate consent & package downloads.
-# "0" = only use locally installed argostranslate language pairs;
-#        non-installed languages fall back to English-normalized patterns.
-# "1" = prompt for Argos license consent and download language packages
-#        at startup if consent has not yet been recorded.
-# Note: stanza is no longer used for Sentence Boundary Detection (see ARGOS_CHUNK_TYPE below).
-os.environ["ARGOS_STANZA_DOWNLOAD"] = "0"
-
 # ARGOS_MODEL_PROVIDER: Force Argos to use local package-based translation
 # and avoid remote provider paths (LibreTranslate/OpenAI).
 os.environ["ARGOS_MODEL_PROVIDER"] = "OPENNMT"
 
-# ARGOS_CHUNK_TYPE: Select the sentence boundary detection (SBD) backend
-# used by Argos Translate before translating.
-# "SPACY"  = use SpaCy sentencizer (works offline, default used in this repository.
-# "STANZA" = use stanza Pipeline (broken offline in argos-translate ≥1.11,
-#            see argosopentech/argos-translate#385 / #512).
-# "MINISBD" / "ARGOSTRANSLATE" / "DEFAULT" = other options.
-os.environ["ARGOS_CHUNK_TYPE"] = "SPACY"
+# Argos sentence splitting backend is intentionally not user-configurable.
+# RAG-LCC enforces the Argos SPACY slot and patches it to blingfire.
 
 # HF_HUB_DISABLE_PROGRESS_BARS: Suppress Hugging Face Hub progress bar output
 # "0" = show progress bars (useful for monitoring downloads)

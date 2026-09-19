@@ -48,7 +48,15 @@ class StubPrettyWriter:
         return None
 
 
+class StubConfig:
+    def get_str(self, key: str, default: str = "", *, silent: bool = False) -> str:
+        return default
+
+
 class StubSharedHelpers:
+    def __init__(self):
+        self.cfg = StubConfig()
+
     def compute_text_hash(self, text: str) -> str:
         return hashlib.sha256(
             text.replace("\r\n", "\n").strip().encode("utf-8")
@@ -268,7 +276,7 @@ class TestEnsurePackagesDeclineDownload:
 
 
 # ===================================================================
-# ensure_packages — full acceptance (mock install + stanza)
+# ensure_packages — full acceptance (mock install + tokenizer resources)
 # ===================================================================
 
 
@@ -302,14 +310,16 @@ class TestEnsurePackagesFullAccept:
 
         # Stub out network-hitting methods
         installed = []
-        stanza_downloaded = []
+        tokenizer_resources_downloaded = []
         monkeypatch.setattr(dl, "_install_packages", lambda: installed.append(True))
         monkeypatch.setattr(
-            dl, "_download_stanza_models", lambda: stanza_downloaded.append(True)
+            dl,
+            "_download_tokenizer_resources",
+            lambda: tokenizer_resources_downloaded.append(True),
         )
 
         result = dl.ensure_packages()
-        return dl, result, installed, stanza_downloaded
+        return dl, result, installed, tokenizer_resources_downloaded
 
     def test_returns_true(self, tmp_path, monkeypatch):
         _, result, _, _ = self._accept_and_install(tmp_path, monkeypatch)
@@ -332,7 +342,9 @@ class TestEnsurePackagesFullAccept:
             assert f.read() == _LICENSE_TEXT
 
     def test_calls_install(self, tmp_path, monkeypatch):
-        _, _, installed, _stanza = self._accept_and_install(tmp_path, monkeypatch)
+        _, _, installed, _tokenizer_resources = self._accept_and_install(
+            tmp_path, monkeypatch
+        )
         assert installed == [True]
 
     def test_meta_contains_identity_keys(self, tmp_path, monkeypatch):
@@ -388,39 +400,51 @@ class TestRemoveConsent:
 
 
 # ===================================================================
-# remove_stanza_models — path guard
+# remove_tokenizer_resources — path guard
 # ===================================================================
 
 
-class TestRemoveStanzaModels:
+class TestRemoveTokenizerResources:
     def test_removes_existing_directory(self, tmp_path, monkeypatch):
-        stanza_dir = str(tmp_path / "stanza_resources")
-        os.makedirs(stanza_dir)
-        (tmp_path / "stanza_resources" / "en").mkdir()
-        monkeypatch.setenv("STANZA_RESOURCES_DIR", stanza_dir)
+        resources_dir = str(tmp_path / "resources")
+        os.makedirs(resources_dir)
+        (tmp_path / "resources" / "en").mkdir()
         monkeypatch.setattr("builtins.input", lambda *a: "y")
 
         dl = _build(tmp_path)
-        dl.remove_stanza_models()
+        monkeypatch.setattr(
+            ArgosDownloader,
+            "tokenizer_resources_dir",
+            property(lambda _self: resources_dir),
+        )
+        dl.remove_tokenizer_resources()
 
-        assert not os.path.isdir(stanza_dir)
+        assert not os.path.isdir(resources_dir)
 
     def test_cancel_keeps_directory(self, tmp_path, monkeypatch):
-        stanza_dir = str(tmp_path / "stanza_resources")
-        os.makedirs(stanza_dir)
-        monkeypatch.setenv("STANZA_RESOURCES_DIR", stanza_dir)
+        resources_dir = str(tmp_path / "resources")
+        os.makedirs(resources_dir)
         monkeypatch.setattr("builtins.input", lambda *a: "")  # decline
 
         dl = _build(tmp_path)
-        dl.remove_stanza_models()
+        monkeypatch.setattr(
+            ArgosDownloader,
+            "tokenizer_resources_dir",
+            property(lambda _self: resources_dir),
+        )
+        dl.remove_tokenizer_resources()
 
-        assert os.path.isdir(stanza_dir)
+        assert os.path.isdir(resources_dir)
 
     def test_noop_when_directory_missing(self, tmp_path, monkeypatch):
-        stanza_dir = str(tmp_path / "stanza_resources_nonexistent")
-        monkeypatch.setenv("STANZA_RESOURCES_DIR", stanza_dir)
+        resources_dir = str(tmp_path / "resources_nonexistent")
         dl = _build(tmp_path)
-        dl.remove_stanza_models()
+        monkeypatch.setattr(
+            ArgosDownloader,
+            "tokenizer_resources_dir",
+            property(lambda _self: resources_dir),
+        )
+        dl.remove_tokenizer_resources()
         # Just check it doesn't crash
 
     def test_blocks_drive_root(self, tmp_path, monkeypatch):
@@ -432,9 +456,13 @@ class TestRemoveStanzaModels:
             )
 
         monkeypatch.setattr("shutil.rmtree", _fail_rmtree)
-        monkeypatch.setenv("STANZA_RESOURCES_DIR", "C:\\")
         dl = _build(tmp_path)
-        dl.remove_stanza_models()
+        monkeypatch.setattr(
+            ArgosDownloader,
+            "tokenizer_resources_dir",
+            property(lambda _self: "C:\\"),
+        )
+        dl.remove_tokenizer_resources()
         assert any("Path Guard" in str(m) for m in dl.pretty.messages)
 
 

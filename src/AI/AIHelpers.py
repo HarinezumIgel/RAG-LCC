@@ -237,6 +237,11 @@ class AIHelpers(SingletonMixin):
         Run compliance check on provided prompt using LLM.
         Raises ComplianceViolationError if not compliant.
         """
+        self.pretty.write(
+            "I",
+            "LLM Plan",
+            "Prompt validation: running the guard model to classify the user prompt as allow/block.",
+        )
         handler = self.llmCaller.make_on_chunk(ollama_options)
         # for cell in handler.__closure__: print(cell.cell_contents)
         llm_result = self.llmCaller.call_llm(

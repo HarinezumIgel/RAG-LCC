@@ -240,8 +240,19 @@ class InvalidCollectionName(RAGLCCException):
 
 class ArgosConsentMissingError(ComplianceViolationError):
     """
-    Raised when ARGOS_STANZA_DOWNLOAD is enabled but the user has not yet
-    accepted the Argos Translate license via src/Scripts/ArgosTranslatePackages.py.
+    Raised when Argos consent/license metadata is missing or stale for the
+    active language-pair configuration. Resolve by re-running the Argos
+    installer script to refresh consent evidence.
+    """
+
+    pass
+
+
+class SpacyConsentMissingError(ComplianceViolationError):
+    """
+    Raised when spaCy-model consent/license metadata is missing or stale for
+    the active configured model set. Resolve by re-running the spaCy model
+    installer script to refresh consent evidence.
     """
 
     pass

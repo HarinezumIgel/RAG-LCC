@@ -499,3 +499,12 @@ class TestCleanupDir:
         child = os.path.join(root, "tmp", "rag_marked_x")
         with pytest.raises(RuntimeError, match="drive/filesystem root"):
             _mdv._cleanup_dir(child, project_root=root)
+
+    def test_raises_when_target_is_windows_drive_root_literal(self, tmp_path):
+        import Chat.MarkedDocsViewer as _mdv
+
+        project_root = tmp_path / "project"
+        project_root.mkdir()
+
+        with pytest.raises(RuntimeError, match="drive/filesystem root"):
+            _mdv._cleanup_dir("C:\\", project_root=str(project_root))

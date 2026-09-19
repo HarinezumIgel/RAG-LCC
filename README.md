@@ -84,10 +84,10 @@ Files unchanged since the last run are skipped. Files flagged by prior complianc
 Each query runs through a staged pipeline:
 
 1. **[Compliance](LEGAL.md#-definition--compliance-rag-lcc) pre‑check** — the multi‑algorithm filter chain (Regex+Levenshtein, Jaccard, BM25, KeyBERT) runs on the raw query; matched phrases are masked or the request is blocked before anything else happens
-2. **Translation** — non‑English queries normalised to English via Argos Translate (configured source→English pairs)
+2. **Translation** — non‑English queries normalised to English via Argos Translate (enabled X→EN pairs filtered by the active-language set)
 3. **Query rewriting** — pronouns and referents from prior turns resolved by a dedicated rewrite LLM; prefix with `new:` to hard‑switch topics without clearing history
 4. **Multi‑query expansion** — the LLM generates N alternate phrasings to broaden vocabulary coverage across the retrieval pool
-5. **Hybrid retrieval** — Vector + BM25 + Graph + Regex fused via weighted Reciprocal Rank Fusion; optional live DuckDuckGo web leg
+5. **Hybrid retrieval** — Vector + BM25 + Graph + Regex fused via weighted Reciprocal Rank Fusion; in multilingual corpora, BM25/Graph/Regex run through language-bucket routing (query-relevant bucket first, then remaining active-and-present buckets); optional live DuckDuckGo web leg
 6. **Near‑duplicate removal** — chunks sharing ≥ 85% token overlap collapsed before reranking
 7. **Cross‑encoder reranking** — neural relevance scoring on top‑k candidates
 8. **Strategy‑gated context assembly** — five profiles from `NARROW` (20 chunks, high precision) to `ULTRA_WIDE` (1500 chunks, exhaustive), with per‑file diversity caps
@@ -109,6 +109,36 @@ Supports Bearer‑token authentication, optional streaming, configurable host/po
 ---
 
 ## 🧭 Quick mental model
+
+Language behavior is centralized in `src/Configuration/Config_Languages.py`: `_ACTIVE_LANGUAGES` defines what is enabled, `_ARGOS_DEFINITIONS.ARGOS_LANGUAGES` defines available translation pairs, and `_SPACY_MODELS_BY_ACTIVE_LANGUAGE` defines per-language spaCy package routing. For local indexed retrieval, orchestration discovers corpus language buckets and routes BM25/Graph/Regex across active-and-present buckets (query-relevant first) to preserve multilingual coverage. Unsupported document languages follow `UNSUPPORTED_LANGUAGE_ACTION` in `Config_Global.py`.
+
+### Add and install a new language
+
+Use the strict script-managed flow below.
+
+1. Edit `src/Configuration/Config_Languages.py` and add the language code to `_ACTIVE_LANGUAGES`.
+
+2. In the same file, add matching Argos pairs in `_ARGOS_DEFINITIONS["ARGOS_LANGUAGES"]`. Argos packages are one-way, so in most cases you need both `X -> en` (query normalization) and `en -> X` (banlist localization).
+
+3. Add the spaCy model package for the same language code in `_SPACY_MODELS_BY_ACTIVE_LANGUAGE`.
+
+4. Install/update runtime resources:
+
+```bash
+python src/Scripts/ArgosTranslatePackages.py install
+python src/Scripts/SpacyLanguageModels.py install
+```
+
+5. Verify what is installed:
+
+```bash
+python src/Scripts/ArgosTranslatePackages.py
+python src/Scripts/SpacyLanguageModels.py
+```
+
+Running these scripts without arguments shows status.
+
+There are no legacy runtime toggles for automatic Argos or spaCy downloads. If consent metadata is stale or missing, startup fails fast and asks you to run these scripts.
 
 ```text
 Raw documents
@@ -197,10 +227,26 @@ Raw documents
 A few refinements to keep in mind when reading the pipeline above:
 
 - **Confidence-gated reranking** — the per-strategy threshold is a cross-encoder *confidence floor*. When no chunk clears it (the reranker is unconfident about the whole pool, common on technical/tabular content), reranking is **skipped** and chunks fall back to retrieval (RRF) order instead of being dropped — with an orange `Rerank skipped` notice.
+- **Multilingual retrieval routing** — local indexed retrievers (`BM25`, `Graph`, `Regex`) are dispatched by language bucket discovered from corpus metadata and active language config. Query-relevant language runs first, then remaining active-and-present buckets, so mixed-language corpora are still fully searched.
 - **Metadata filtering** — harvested document metadata (author, title, dates, page labels, …) can be used as retrieval filters via the `metadata!` picker or `metadata=Field:Value`, narrowing all four local retrievers.
 - **Correct source pages** — citations and highlighted source documents use the document's *printed* page label (e.g. front-matter `iii`), while highlighting is placed on the true physical page.
 
 The goal is **not** to feed the model *more* text — but to feed it **better, safer context**.
+
+### 🧩 RetrievalOrchestrator (retrieval control layer)
+
+`RetrievalOrchestrator` (`src/Chat/RetrievalOrchestrator.py`) is the internal control layer that runs one retrieval turn end-to-end while keeping concrete retrievers decoupled. It is instantiated in `RAGChatImpl` and coordinates the pipeline through a stage model (`prepare → gate → local/web retrieve → merge/context build`).
+
+What it does today:
+
+- Resolves session/query inputs, including normalized query text and multi-query alternates.
+- Applies retrieval gates before expensive retrieval legs run.
+- Plans and runs local retrieval stages (Vector, BM25, Graph, Regex), including guardrail dual-query execution and multilingual language-bucket routing.
+- Runs the optional web leg with administrator gating and optional pre-filtering.
+- Aggregates stage outputs, merges candidates, and builds final LLM context.
+- Emits structured orchestration traces and counters for debugging and performance analysis.
+
+The orchestrator is an architectural component designed for extension. For example, it could serve as the execution layer for future agentic workflows.
 
 ---
 
@@ -246,6 +292,7 @@ Key capabilities organized by application. Full configuration details, defaults,
 - **Compliance filter chain** runs on queries before retrieval **and** on generated responses before delivery
 - **Multi-turn conversational memory** — rolling topic summary, configurable turn window, batch pruning; `new:` prefix isolates topics without discarding history
 - **Translation** — Argos Translate normalises non-English queries to English before retrieval and rewriting; the same Argos runtime translates banlists for document-language compliance checks
+- **Multilingual retrieval routing** — when local indexed retrievers are enabled, `BM25`, `Graph`, and `Regex` are dispatched by discovered corpus language buckets constrained by active language config. Query-relevant language runs first, then remaining active-and-present buckets, preserving mixed-language recall.
 - **Per-session web knobs** — `web_search` (`local_only` / `local_and_web` / `web_only`), `web_weight`, `fetch_page_content` (`snippets only` / `fetch pages`); see [CONFIGURATION_REFERENCE.md § Web Search Admin Knobs](CONFIGURATION_REFERENCE.md#-web-search--admin-knobs)
 
 ### 🌐 RAGChatService

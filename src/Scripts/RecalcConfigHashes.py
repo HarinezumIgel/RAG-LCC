@@ -21,14 +21,22 @@ import re
 import sys
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
+_SRC_DIR = os.path.normpath(os.path.join(_HERE, ".."))
+if _SRC_DIR not in sys.path:
+    sys.path.insert(0, _SRC_DIR)
+
+import Configuration.Config_Global as _ConfigGlobal  # noqa: E402
+# Resolve and validate project root before any config writes.
+from Commons.DriveRootGuard import assert_script_project_root  # noqa: E402
+from Gui.Colors import CYAN, RESET  # noqa: E402
+
+_PROJECT_ROOT = assert_script_project_root(
+    __file__,
+    configured_project_root=getattr(_ConfigGlobal, "_ABSOLUTE_PATH", None),
+    require_cwd_match=True,
+)
 # Default: script lives at <root>/src/Scripts/ → config is at <root>/src/Configuration/
-_DEFAULT_CFG_DIR = os.path.normpath(os.path.join(_HERE, "..", "Configuration"))
-
-# Refuse to run from a drive/filesystem root before doing anything
-sys.path.insert(0, os.path.dirname(_HERE))
-from Commons.DriveRootGuard import assert_not_drive_root  # noqa: E402
-
-assert_not_drive_root(__file__)
+_DEFAULT_CFG_DIR = os.path.join(_PROJECT_ROOT, "src", "Configuration")
 
 
 def _sha256_file(path: str, chunk_size: int = 8_192) -> str:
@@ -122,10 +130,12 @@ def main() -> int:
             "\nThis script rewrites the _CRITICAL_CONFIG_HASHES entries in Config_Global.py "
             "to match the current state of Config_Models.py, Config_Banned.py, "
             "Config_WebSearch.py, and Config_Internet_Env.py.\n"
-            "Run this only after you have intentionally edited one of those files "
-            "(src/Configuration/Config_Models.py, src/Configuration/Config_Banned.py, "
-            "src/Configuration/Config_WebSearch.py, or "
-            "src/Configuration/Config_Internet_Env.py).\n"
+        )
+        print(
+            f"{CYAN}Hint: run this only after you have intentionally edited one of "
+            "those files (src/Configuration/Config_Models.py, "
+            "src/Configuration/Config_Banned.py, src/Configuration/Config_WebSearch.py, "
+            f"or src/Configuration/Config_Internet_Env.py).{RESET}\n"
         )
         while True:
             answer = (

@@ -16,6 +16,7 @@ import hashlib
 import math
 import os
 import pickle
+import re
 import time
 from collections import Counter
 from typing import Any, Dict, List, Optional, Tuple, cast
@@ -27,7 +28,8 @@ from Compliance.SharedHelpers import SharedHelpers
 from Config.Config import Config
 from Gui.PrettyWriter import PrettyWriter
 from Helpers.FileUtils import FileUtils
-from Helpers.PerfLogger import PerfLogger
+from Helpers.LanguageConfig import get_active_language_codes
+from Retrievers.RetrieverBase import RetrieverBase
 
 
 # ---------------------------------------------------------------------------
@@ -65,7 +67,7 @@ class _BM25IndexData:
 # ---------------------------------------------------------------------------
 # BM25Retriever
 # ---------------------------------------------------------------------------
-class BM25Retriever(SingletonMixin):
+class BM25Retriever(SingletonMixin, RetrieverBase):
     """Singleton that manages a per-collection BM25 index.
 
     The index is **self-contained in memory** — ``_BM25IndexData`` stores the
@@ -116,7 +118,221 @@ class BM25Retriever(SingletonMixin):
         self._k1: float = self.cfg.get_float("_BM25_INDEX.k1")
         self._b: float = self.cfg.get_float("_BM25_INDEX.b")
         self._rrf_k: int = self.cfg.get_int("_BM25_INDEX.rrf_k")
-        self.perf_logger: PerfLogger = PerfLogger()
+
+        # Optional spaCy lemmatization for language-bucketed BM25 query/indexing.
+        # Keep legacy tokenization when language or model mapping is unavailable.
+        spacy_model_value, _ = self.cfg.indirect_get("_BM25_INDEX.spacy_model", "")
+        self._spacy_model: str = str(spacy_model_value or "").strip()
+        self._spacy_models_by_language: Dict[str, str] = (
+            self._load_spacy_models_by_language()
+        )
+        self._spacy_loader: Any = None
+        self._nlp_by_model: Dict[str, Any] = {}
+        self._warned_spacy_model_unavailable: set[str] = set()
+
+        if self._spacy_model or self._spacy_models_by_language:
+            try:
+                import spacy  # type: ignore[import-untyped]
+
+                self._spacy_loader = spacy.load
+            except Exception as exc:
+                self.pretty.write(
+                    "W",
+                    "BM25",
+                    "spaCy is unavailable for BM25 lemmatization "
+                    f"({exc!r}) - using fallback tokenization.",
+                )
+
+        RetrieverBase.__init__(self, perf_component="BM25Retriever")
+
+    @staticmethod
+    def _basic_tokenize(text: str) -> List[str]:
+        """Fallback tokenizer matching the current BM25 default behavior."""
+        if not text:
+            return []
+        return [token.lower() for token in re.findall(r"[A-Za-z0-9]+", text) if token]
+
+    def _fallback_tokenize(self, text: str) -> List[str]:
+        """Tokenize with shared helper when available, otherwise local fallback."""
+        shared_tokenize = getattr(self._shared, "tokenize", None)
+        if callable(shared_tokenize):
+            try:
+                token_values = shared_tokenize(text)
+                if isinstance(token_values, list):
+                    return [
+                        str(token).strip().lower()
+                        for token in token_values
+                        if str(token).strip()
+                    ]
+            except Exception:
+                pass
+        return self._basic_tokenize(text)
+
+    def _normalize_language_code(self, language: str | None) -> str:
+        text = str(language or "").strip().lower()
+        if not text:
+            return ""
+
+        mapping_obj = getattr(self._shared, "lang_name_to_code", None)
+        if isinstance(mapping_obj, dict):
+            mapping = cast(Dict[str, Any], mapping_obj)
+            mapped = mapping.get(text)
+            if mapped is not None:
+                mapped_text = str(mapped).strip().lower()
+                if mapped_text:
+                    return mapped_text
+        return text
+
+    @staticmethod
+    def _language_from_filter(file_filter: Optional[Dict[str, Any]]) -> str | None:
+        if not isinstance(file_filter, dict):
+            return None
+        language_value = file_filter.get("Language")
+        if isinstance(language_value, dict):
+            language_value = cast(Dict[str, Any], language_value).get("$eq")
+        language_text = str(language_value or "").strip()
+        return language_text or None
+
+    def _language_from_meta(self, meta: Dict[str, Any] | None) -> str | None:
+        if not isinstance(meta, dict):
+            return None
+        language_value = meta.get("Language")
+        if isinstance(language_value, dict):
+            language_value = cast(Dict[str, Any], language_value).get("$eq")
+        language_text = str(language_value or "").strip()
+        return language_text or None
+
+    def _load_spacy_models_by_language(self) -> Dict[str, str]:
+        """Load optional language->spaCy model overrides from config."""
+        raw_mapping = self.cfg.indirect_dict(
+            "_BM25_INDEX.spacy_models_by_language",
+            {},
+        )
+        if not isinstance(raw_mapping, dict):
+            return {}
+        active_codes = get_active_language_codes(self.cfg)
+
+        normalized_mapping: Dict[str, str] = {}
+        for language, model in raw_mapping.items():
+            language_code = self._normalize_language_code(str(language))
+            model_name = str(model or "").strip()
+            if language_code and model_name and language_code in active_codes:
+                normalized_mapping[language_code] = model_name
+        return normalized_mapping
+
+    def _spacy_model_for_language(self, language: str | None) -> str:
+        language_code = self._normalize_language_code(language)
+        by_language = getattr(self, "_spacy_models_by_language", {})
+        if isinstance(by_language, dict):
+            mapped = by_language.get(language_code)
+            if mapped:
+                return str(mapped)
+        default_model = str(getattr(self, "_spacy_model", "") or "").strip()
+        return default_model
+
+    def _warn_spacy_model_unavailable(
+        self,
+        model_name: str,
+        *,
+        language: str | None,
+        reason: str,
+    ) -> None:
+        warned = getattr(self, "_warned_spacy_model_unavailable", None)
+        if not isinstance(warned, set):
+            warned = set()
+            self._warned_spacy_model_unavailable = warned
+
+        language_code = self._normalize_language_code(language) or "default"
+        warn_key = f"{model_name}|{language_code}"
+        if warn_key in warned:
+            return
+        warned.add(warn_key)
+
+        self.pretty.write(
+            "W",
+            "BM25",
+            f"spaCy model '{model_name}' unavailable for language "
+            f"'{language_code}' ({reason}) - using fallback tokenization.",
+        )
+
+    def _load_spacy_model(self, model_name: str, *, language: str | None = None) -> Any:
+        loader = getattr(self, "_spacy_loader", None)
+        if not callable(loader):
+            self._warn_spacy_model_unavailable(
+                model_name,
+                language=language,
+                reason="loader not initialized",
+            )
+            return None
+        try:
+            return loader(model_name)
+        except OSError:
+            self._warn_spacy_model_unavailable(
+                model_name,
+                language=language,
+                reason="model not installed",
+            )
+            return None
+        except Exception as exc:
+            self._warn_spacy_model_unavailable(
+                model_name,
+                language=language,
+                reason=str(exc),
+            )
+            return None
+
+    def _get_nlp_for_language(self, language: str | None) -> Any:
+        model_name = self._spacy_model_for_language(language)
+        if not model_name:
+            return None
+
+        model_cache = getattr(self, "_nlp_by_model", None)
+        if not isinstance(model_cache, dict):
+            model_cache = {}
+            self._nlp_by_model = model_cache
+
+        cached_nlp = model_cache.get(model_name)
+        if cached_nlp is not None:
+            return cached_nlp
+
+        loaded_nlp = self._load_spacy_model(model_name, language=language)
+        if loaded_nlp is None:
+            return None
+        model_cache[model_name] = loaded_nlp
+        return loaded_nlp
+
+    def _tokenize_for_language(self, text: str, language: str | None) -> List[str]:
+        """Tokenize and lemmatize using spaCy when language/model is configured."""
+        if not text:
+            return []
+
+        language_code = self._normalize_language_code(language)
+        if not language_code:
+            return self._fallback_tokenize(text)
+
+        nlp = self._get_nlp_for_language(language_code)
+        if nlp is None:
+            return self._fallback_tokenize(text)
+
+        try:
+            doc = nlp(text)
+        except Exception:
+            return self._fallback_tokenize(text)
+
+        lemmas: List[str] = []
+        for tok in doc:
+            lemma = str(getattr(tok, "lemma_", "")).strip().lower()
+            if not lemma:
+                lemma = str(getattr(tok, "text", "")).strip().lower()
+            if not lemma:
+                continue
+            if not any(ch.isalnum() for ch in lemma):
+                continue
+            lemmas.append(lemma)
+
+        if lemmas:
+            return lemmas
+        return self._fallback_tokenize(text)
 
     def get_bm25_dir(self, collection_name: str) -> str:
         """Return the BM25 index directory for *collection_name*.
@@ -167,9 +383,8 @@ class BM25Retriever(SingletonMixin):
         ):
             return
 
-        self.perf_logger.log(
-            "BM25Retriever.load_or_rebuild",
-            "retriever",
+        self._perf_log(
+            "load_or_rebuild",
             f"start load collection={collection_name}",
         )
 
@@ -188,9 +403,8 @@ class BM25Retriever(SingletonMixin):
                     f"Loaded persisted BM25 index ({self._data.N} chunks, "
                     f"{len(self._data.idf)} terms)",
                 )
-                self.perf_logger.log(
-                    "BM25Retriever.load_or_rebuild",
-                    "retriever",
+                self._perf_log(
+                    "load_or_rebuild",
                     f"stop  load (persisted) collection={collection_name} n={self._data.N}",
                 )
                 return
@@ -204,9 +418,8 @@ class BM25Retriever(SingletonMixin):
         # not see a stale file and repeat the rebuild.
         self._rebuild_from_collection(collection_name, collection, file_filter)
         self._persist(idx_path)
-        self.perf_logger.log(
-            "BM25Retriever.load_or_rebuild",
-            "retriever",
+        self._perf_log(
+            "load_or_rebuild",
             f"stop  load (rebuilt) collection={collection_name} n={self._data.N}",
         )
 
@@ -272,7 +485,8 @@ class BM25Retriever(SingletonMixin):
     ) -> None:
         """Add new chunks and update corpus stats incrementally."""
         for chunk_id, text, meta in zip(ids, texts, metas):
-            tokens = self._shared.tokenize(text)
+            language = self._language_from_meta(meta)
+            tokens = self._tokenize_for_language(text or "", language)
             self._data.chunk_ids.append(chunk_id)
             self._data.chunk_tokens.append(tokens)
             self._data.chunk_metas.append(dict(meta))
@@ -331,15 +545,12 @@ class BM25Retriever(SingletonMixin):
         if self._data.N == 0:
             return []
 
-        query_tokens: List[str] = self._shared.tokenize(query_text)
+        query_language = self._language_from_filter(file_filter)
+        query_tokens = self._tokenize_for_language(query_text, query_language)
         if not query_tokens:
             return []
 
-        self.perf_logger.log(
-            "BM25Retriever.query",
-            "retriever",
-            f"start bm25 query q={query_text[:60]!r}",
-        )
+        self._perf_log("query", f"start bm25 query q={query_text[:60]!r}")
         _t0 = time.perf_counter()
         scored: List[Tuple[int, float]] = []
         for idx in range(self._data.N):
@@ -369,9 +580,8 @@ class BM25Retriever(SingletonMixin):
                 id=self._data.chunk_ids[idx],
             )
             docs.append(doc)
-        self.perf_logger.log(
-            "BM25Retriever.query",
-            "retriever",
+        self._perf_log(
+            "query",
             f"stop  bm25 query n={len(docs)} elapsed={time.perf_counter() - _t0:.3f}s",
         )
         return docs
@@ -534,9 +744,8 @@ class BM25Retriever(SingletonMixin):
         file_filter: Optional[Dict[str, Any]] = None,
     ) -> None:
         """Fetch all chunks from ChromaDB and build the BM25 index."""
-        self.perf_logger.log(
-            "BM25Retriever._rebuild_from_collection",
-            "retriever",
+        self._perf_log(
+            "_rebuild_from_collection",
             f"start rebuild collection={collection_name}",
         )
         _t0 = time.perf_counter()
@@ -562,7 +771,8 @@ class BM25Retriever(SingletonMixin):
         total_len: int = 0
 
         for chunk_id, text, meta in zip(ids, documents, metadatas):
-            tokens = self._shared.tokenize(text or "")
+            language = self._language_from_meta(meta)
+            tokens = self._tokenize_for_language(text or "", language)
             data.chunk_ids.append(chunk_id)
             data.chunk_tokens.append(tokens)
             data.chunk_metas.append(dict(meta) if meta else {})
@@ -589,9 +799,8 @@ class BM25Retriever(SingletonMixin):
             f"Built BM25 index: {data.N} chunks, {len(data.idf)} unique terms, "
             f"avg_dl={data.avg_dl:.1f}",
         )
-        self.perf_logger.log(
-            "BM25Retriever._rebuild_from_collection",
-            "retriever",
+        self._perf_log(
+            "_rebuild_from_collection",
             f"stop  rebuild collection={collection_name} n={data.N} elapsed={time.perf_counter() - _t0:.3f}s",
         )
 

@@ -113,7 +113,7 @@ class Helpers:
         data/config/cache folders under XDG_* paths. On this container the
         default parent ~/.local/share is root-owned and not writable by the
         current user, so we redirect Argos to writable subfolders under the
-        existing ~/.local/share/hf-cache, pip-cache and stanza_resources tree.
+        existing ~/.local/share/hf-cache, pip-cache and resources tree.
         """
         user_home = Path.home()
         base_dir = user_home / ".cache" / "argos"

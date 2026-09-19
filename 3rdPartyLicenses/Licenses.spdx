@@ -4,7 +4,7 @@ SPDXID: SPDXRef-DOCUMENT
 DocumentName: RAG-LCC-DEPLOY-Licenses
 DocumentNamespace: http://example.org/spdxdocs/RAG-LCC-DEPLOY-Licenses
 Creator: pip-licenses
-Created: 2026-09-16T17:39:44+02:00
+Created: 2026-09-19T15:45:13+02:00
 
 #####
 PackageName: Jinja2
@@ -169,6 +169,15 @@ PackageLicenseConcluded: Apache Software License
 PackageLicenseDeclared: Apache Software License
 
 #####
+PackageName: blingfire
+SPDXID: SPDXRef-Package-blingfire
+PackageVersion: 0.1.8
+PackageDownloadLocation: NOASSERTION
+FilesAnalyzed: false
+PackageLicenseConcluded: MIT License
+PackageLicenseDeclared: MIT License
+
+#####
 PackageName: blis
 SPDXID: SPDXRef-Package-blis
 PackageVersion: 1.3.3
@@ -313,6 +322,15 @@ PackageLicenseConcluded: MIT License
 PackageLicenseDeclared: MIT License
 
 #####
+PackageName: ddgs
+SPDXID: SPDXRef-Package-ddgs
+PackageVersion: 9.16.0
+PackageDownloadLocation: NOASSERTION
+FilesAnalyzed: false
+PackageLicenseConcluded: MIT
+PackageLicenseDeclared: MIT
+
+#####
 PackageName: decorator
 SPDXID: SPDXRef-Package-decorator
 PackageVersion: 5.3.1
@@ -360,20 +378,11 @@ PackageLicenseDeclared: MIT
 #####
 PackageName: emoji
 SPDXID: SPDXRef-Package-emoji
-PackageVersion: 2.15.0
+PackageVersion: 2.16.0
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: BSD License
 PackageLicenseDeclared: BSD License
-
-#####
-PackageName: en_core_web_sm
-SPDXID: SPDXRef-Package-en_core_web_sm
-PackageVersion: 3.8.0
-PackageDownloadLocation: NOASSERTION
-FilesAnalyzed: false
-PackageLicenseConcluded: MIT
-PackageLicenseDeclared: MIT
 
 #####
 PackageName: et_xmlfile
@@ -414,7 +423,7 @@ PackageLicenseDeclared: BSD License
 #####
 PackageName: filelock
 SPDXID: SPDXRef-Package-filelock
-PackageVersion: 3.32.7
+PackageVersion: 4.0.1
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: MIT
@@ -441,7 +450,7 @@ PackageLicenseDeclared: Apache-2.0
 #####
 PackageName: fsspec
 SPDXID: SPDXRef-Package-fsspec
-PackageVersion: 2026.7.0
+PackageVersion: 2026.9.0
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: BSD-3-Clause
@@ -455,6 +464,15 @@ PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: Apache-2.0
 PackageLicenseDeclared: Apache-2.0
+
+#####
+PackageName: graphviz
+SPDXID: SPDXRef-Package-graphviz
+PackageVersion: 0.21
+PackageDownloadLocation: NOASSERTION
+FilesAnalyzed: false
+PackageLicenseConcluded: MIT
+PackageLicenseDeclared: MIT
 
 #####
 PackageName: grpcio
@@ -540,7 +558,7 @@ PackageLicenseDeclared: BSD-3-Clause
 #####
 PackageName: huggingface_hub
 SPDXID: SPDXRef-Package-huggingface_hub
-PackageVersion: 1.31.0
+PackageVersion: 1.32.0
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: Apache Software License
@@ -549,7 +567,7 @@ PackageLicenseDeclared: Apache Software License
 #####
 PackageName: idna
 SPDXID: SPDXRef-Package-idna
-PackageVersion: 3.19
+PackageVersion: 3.20
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: BSD-3-Clause
@@ -700,6 +718,15 @@ PackageLicenseConcluded: Apache Software License
 PackageLicenseDeclared: Apache Software License
 
 #####
+PackageName: langchain-chroma
+SPDXID: SPDXRef-Package-langchain-chroma
+PackageVersion: 1.1.0
+PackageDownloadLocation: NOASSERTION
+FilesAnalyzed: false
+PackageLicenseConcluded: MIT
+PackageLicenseDeclared: MIT
+
+#####
 PackageName: langchain-core
 SPDXID: SPDXRef-Package-langchain-core
 PackageVersion: 1.6.3
@@ -747,7 +774,7 @@ PackageLicenseDeclared: Apache Software License
 #####
 PackageName: langsmith
 SPDXID: SPDXRef-Package-langsmith
-PackageVersion: 0.12.5
+PackageVersion: 0.13.0
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: MIT
@@ -837,7 +864,7 @@ PackageLicenseDeclared: BSD License
 #####
 PackageName: multidict
 SPDXID: SPDXRef-Package-multidict
-PackageVersion: 6.8.0
+PackageVersion: 6.9.0
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: Apache License 2.0
@@ -1026,7 +1053,7 @@ PackageLicenseDeclared: Apache-2.0 OR BSD-2-Clause
 #####
 PackageName: pandas
 SPDXID: SPDXRef-Package-pandas
-PackageVersion: 3.0.5
+PackageVersion: 3.0.6
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: BSD License
@@ -1143,7 +1170,7 @@ PackageLicenseDeclared: Apache Software License
 #####
 PackageName: platformdirs
 SPDXID: SPDXRef-Package-platformdirs
-PackageVersion: 4.11.9
+PackageVersion: 4.11.11
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: MIT
@@ -1177,6 +1204,15 @@ PackageLicenseConcluded: BSD-3-Clause
 PackageLicenseDeclared: BSD-3-Clause
 
 #####
+PackageName: primp
+SPDXID: SPDXRef-Package-primp
+PackageVersion: 2.0.1
+PackageDownloadLocation: NOASSERTION
+FilesAnalyzed: false
+PackageLicenseConcluded: MIT License
+PackageLicenseDeclared: MIT License
+
+#####
 PackageName: prompt_toolkit
 SPDXID: SPDXRef-Package-prompt_toolkit
 PackageVersion: 3.0.53
@@ -1197,7 +1233,7 @@ PackageLicenseDeclared: Apache-2.0
 #####
 PackageName: protobuf
 SPDXID: SPDXRef-Package-protobuf
-PackageVersion: 7.36.1
+PackageVersion: 7.36.2
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: 3-Clause BSD License
@@ -1458,7 +1494,7 @@ PackageLicenseDeclared: BSD License
 #####
 PackageName: sentence-transformers
 SPDXID: SPDXRef-Package-sentence-transformers
-PackageVersion: 6.0.1
+PackageVersion: 6.1.0
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: Apache-2.0
@@ -1782,7 +1818,7 @@ PackageLicenseDeclared: MIT License
 #####
 PackageName: wcwidth
 SPDXID: SPDXRef-Package-wcwidth
-PackageVersion: 0.8.3
+PackageVersion: 0.8.4
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: MIT

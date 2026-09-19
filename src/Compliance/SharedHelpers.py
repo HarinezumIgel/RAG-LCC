@@ -1,5 +1,6 @@
 import getpass
 import hashlib
+import importlib.util
 import os
 import re
 import socket
@@ -7,18 +8,22 @@ import subprocess
 import unicodedata
 from typing import Any, Dict, List, Optional, Tuple
 
-from Helpers.Helpers import Helpers
+from Commons.StartupCommons import suppress_argos_logging
+from Compliance.ArgosSpacySentencizerPatch import \
+    prepare_argos_runtime_for_patch
 
-Helpers().prepare_argos_runtime_dirs()
+prepare_argos_runtime_for_patch()
 
 from argostranslate import translate  # type: ignore[import-untyped]
 
 from Commons.SingletonMixin import SingletonMixin
-from Commons.StartupCommons import suppress_argos_logging
 from Config.Config import Config
 from Gui.Colors import ORANGE, RED, RESET, YELLOW
 from Gui.PrettyWriter import PrettyWriter
 from Helpers.DebugHelper import DebugHelper
+from Helpers.LanguageConfig import (get_active_language_codes,
+                                    get_lang_code_to_name,
+                                    get_lang_name_to_code)
 
 
 class SharedHelpers(SingletonMixin):
@@ -26,8 +31,16 @@ class SharedHelpers(SingletonMixin):
     Normalization, tokenization, n-grams, translation and shared compiled-regex cache.
     """
 
+    _INSTALLED_KIND_WIDTH = 5
+    _INSTALLED_NAME_WIDTH = 24
+    _INSTALLED_CODE_WIDTH = 5
+
     def __init__(
-        self, *, cfg: "Config | None" = None, pretty: "PrettyWriter | None" = None
+        self,
+        *,
+        cfg: "Config | None" = None,
+        pretty: "PrettyWriter | None" = None,
+        emit_startup_inventory: bool = True,
     ) -> None:
         if self._initialized:
             return
@@ -67,24 +80,16 @@ class SharedHelpers(SingletonMixin):
         self.warned_pairs: set[str] = set()
         self.pretty: PrettyWriter = pretty or PrettyWriter(always_on=True)
         self.cfg: Config = cfg or Config()
+        self._emit_startup_inventory: bool = emit_startup_inventory
 
-        if DebugHelper.check(self.cfg, 10):
-            for lang in langs:
-                self.pretty.write(
-                    "D",
-                    "Argos Translate",
-                    f"Lang: Installed {lang.name:<20} ({lang.code:<5})",
-                )
+        if self._emit_startup_inventory and DebugHelper.check(self.cfg, 10):
+            self._log_installed_argos_languages(langs)
+            self._log_installed_spacy_packages()
             self.pretty.write("N", "", "")
         self.leet_map: dict[str, Any] = self.cfg.get_dict("_LEET_MAP")
         self.confusables: dict[str, Any] = self.cfg.get_dict("_CONFUSABLES")
         # Reverse of LANG_CODE_TO_NAME: NLTK name → ISO code
-        code_to_name: dict[str, Any] = self.cfg.get_dict(
-            "_ARGOS_DEFINITIONS.LANG_CODE_TO_NAME"
-        )
-        self.lang_name_to_code: Dict[str, str] = {
-            str(name).lower(): code for code, name in code_to_name.items()
-        }
+        self.lang_name_to_code: Dict[str, str] = get_lang_name_to_code(self.cfg)
         # Module-level cache so the identity is captured only once per process
         self.identity_cache: Optional[Dict[str, object]] = None
 
@@ -140,6 +145,82 @@ class SharedHelpers(SingletonMixin):
         except Exception:
             langs = []
         self.installed_langs = {getattr(l, "code", "").lower(): l for l in langs}
+
+    @staticmethod
+    def _is_spacy_package_installed(package_name: str) -> bool:
+        """Return True if the given spaCy model package can be imported."""
+        try:
+            return importlib.util.find_spec(package_name) is not None
+        except Exception:
+            return False
+
+    def _format_installed_inventory_line(
+        self,
+        *,
+        kind: str,
+        name: Any,
+        code: Any,
+        suffix: str = "",
+    ) -> str:
+        """Build one aligned inventory line for Argos/spaCy status output."""
+        kind_text = str(kind or "").strip()
+        name_text = str(name or "").strip()
+        code_text = str(code or "").strip().lower()
+        suffix_text = str(suffix or "").strip()
+
+        base = (
+            f"{kind_text:<{self._INSTALLED_KIND_WIDTH}} "
+            f"Installed {name_text:<{self._INSTALLED_NAME_WIDTH}} "
+            f"({code_text:<{self._INSTALLED_CODE_WIDTH}})"
+        )
+        if suffix_text:
+            return f"{base} {suffix_text}"
+        return base
+
+    def _log_installed_argos_languages(self, langs: List[Any]) -> None:
+        """Emit debug lines for installed Argos language packages."""
+        for lang in langs:
+            self.pretty.write(
+                "D",
+                "Argos Translate",
+                self._format_installed_inventory_line(
+                    kind="Lang:",
+                    name=getattr(lang, "name", ""),
+                    code=getattr(lang, "code", ""),
+                ),
+            )
+
+    def _log_installed_spacy_packages(self) -> None:
+        """Emit debug lines for installed configured spaCy model packages."""
+        models_by_language: dict[str, Any] = self.cfg.get_dict(
+            "_SPACY_MODELS_BY_ACTIVE_LANGUAGE", {}, silent=True
+        )
+        if not models_by_language:
+            return
+
+        code_to_name = get_lang_code_to_name(self.cfg)
+        active_codes = sorted(get_active_language_codes(self.cfg))
+
+        for language_code in active_codes:
+            model_name = str(models_by_language.get(language_code, "")).strip()
+            if not model_name:
+                continue
+            if not self._is_spacy_package_installed(model_name):
+                continue
+
+            language_name = str(
+                code_to_name.get(language_code, language_code)
+            ).capitalize()
+            self.pretty.write(
+                "D",
+                "spaCy",
+                self._format_installed_inventory_line(
+                    kind="Pkg:",
+                    name=model_name,
+                    code=language_code,
+                    suffix=language_name,
+                ),
+            )
 
     # -------------------------
     # Normalization / token helpers
@@ -223,7 +304,9 @@ class SharedHelpers(SingletonMixin):
                         "W",
                         "Translate",
                         f"No Argos translation pair {src_norm}\u2192{tgt_norm} "
-                        f"installed \u2014 returning text unchanged. Add "
+                        f"installed \u2014 returning text unchanged. Ensure both "
+                        f"languages are listed in "
+                        f"_ARGOS_DEFINITIONS.ACTIVE_LANGUAGES, add "
                         f"('{src_norm}', '{tgt_norm}') to "
                         f"_ARGOS_DEFINITIONS.ARGOS_LANGUAGES and run "
                         f"src/Scripts/ArgosTranslatePackages.py to install it.",
@@ -292,27 +375,15 @@ class SharedHelpers(SingletonMixin):
         # missing. Pair-specific misses are logged by translate_text().
         if tgt_lang is None and target_code not in self.warned_langs:
             self.warned_langs.add(target_code)
-            stanza_download = os.environ.get("ARGOS_STANZA_DOWNLOAD", "0").strip()
-            if stanza_download != "1":
-                self.pretty.write(
-                    "W",
-                    "Translate Banned",
-                    f"Language '{target_code}' not installed locally — "
-                    f"banned words to target language translation skipped, "
-                    f"using English fallback. Set ARGOS_STANZA_DOWNLOAD=1 to allow network downloads "
-                    f"or run src/Scripts/ArgosTranslatePackages.py to install languages "
-                    f"defined in Config_Global _ARGOS_DEFINITIONS.ARGOS_LANGUAGES)",
-                    color=ORANGE,
-                )
-            else:
-                self.pretty.write(
-                    "W",
-                    "Translate Banned",
-                    f"Language '{target_code}' not installed — "
-                    f"banned words to target language translation skipped, using English fallback. "
-                    f"(Add the language pair to ARGOS_LANGUAGES and reinstall packages)",
-                    color=ORANGE,
-                )
+            self.pretty.write(
+                "W",
+                "Translate Banned",
+                f"Language '{target_code}' not installed locally — "
+                f"banned words to target language translation skipped, using English fallback. "
+                "Run src/Scripts/ArgosTranslatePackages.py install to add the required "
+                "language pairs and refresh consent metadata.",
+                color=ORANGE,
+            )
         return None
 
     def merge_banlists(

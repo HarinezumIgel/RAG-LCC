@@ -254,3 +254,107 @@ def _cfg_with_action(action: str):
             return super().get(key, default)
 
     return _Cfg()
+
+
+class TestInstalledInventoryAlignment:
+    def test_argos_and_spacy_installed_lines_use_aligned_columns(
+        self,
+        monkeypatch,
+    ):
+        class _Lang:
+            def __init__(self, name, code):
+                self.name = name
+                self.code = code
+
+        class _CollectingPretty:
+            def __init__(self):
+                self.calls = []
+
+            def write(self, *a, **kw):
+                self.calls.append((a, kw))
+                return None
+
+        class _Cfg:
+            def __init__(self):
+                self.mapping = {
+                    "DEBUG_LEVEL": "10",
+                    "_LEET_MAP": {},
+                    "_CONFUSABLES": {},
+                    "_SPACY_MODELS_BY_ACTIVE_LANGUAGE": {
+                        "de": "de_core_news_sm",
+                        "en": "en_core_web_sm",
+                        "es": "es_core_news_sm",
+                        "fr": "fr_core_news_sm",
+                        "it": "it_core_news_sm",
+                    },
+                    "_ARGOS_DEFINITIONS.ACTIVE_LANGUAGES": [
+                        "en",
+                        "de",
+                        "es",
+                        "fr",
+                        "it",
+                    ],
+                    "_ARGOS_DEFINITIONS.LANG_CODE_TO_NAME": {
+                        "en": "english",
+                        "de": "german",
+                        "es": "spanish",
+                        "fr": "french",
+                        "it": "italian",
+                    },
+                }
+
+            def get(self, key, default=None):
+                return self.mapping.get(key, default)
+
+            def get_int(self, key, default=0):
+                return int(self.get(key, default))
+
+            def get_str(self, key, default=""):
+                return str(self.get(key, default))
+
+            def get_bool(self, key, default=False):
+                return bool(self.get(key, default))
+
+            def get_float(self, key, default=0.0):
+                return float(self.get(key, default))
+
+            def get_list(self, key, default=None, silent=False):
+                _ = silent
+                value = self.get(key, default if default is not None else [])
+                return value if isinstance(value, list) else []
+
+            def get_dict(self, key, default=None, silent=False):
+                _ = silent
+                value = self.get(key, default if default is not None else {})
+                return value if isinstance(value, dict) else {}
+
+        monkeypatch.setattr(
+            "Compliance.SharedHelpers.translate.get_installed_languages",
+            lambda: [
+                _Lang("Italian", "it"),
+                _Lang("Spanish", "es"),
+            ],
+        )
+        monkeypatch.setattr(
+            SharedHelpers,
+            "_is_spacy_package_installed",
+            staticmethod(lambda _name: True),
+        )
+
+        pretty = _CollectingPretty()
+        _ = SharedHelpers(cfg=_Cfg(), pretty=pretty)
+
+        messages = [str(call[0][2]) for call in pretty.calls if len(call[0]) >= 3]
+        argos_lines = [m for m in messages if m.startswith("Lang:")]
+        spacy_lines = [m for m in messages if m.startswith("Pkg:")]
+
+        assert argos_lines
+        assert spacy_lines
+
+        installed_positions = {m.index("Installed") for m in argos_lines + spacy_lines}
+        code_open_positions = {m.index("(") for m in argos_lines + spacy_lines}
+        code_close_positions = {m.index(")") for m in argos_lines + spacy_lines}
+
+        assert len(installed_positions) == 1
+        assert len(code_open_positions) == 1
+        assert len(code_close_positions) == 1

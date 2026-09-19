@@ -11,6 +11,7 @@ from AI.ModelsCache import ModelsCache
 from Commons.SingletonMixin import SingletonMixin
 from Config.Config import Config
 from Globals.Session import Session
+from Gui.Colors import BRIGHT_MAGENTA
 from Gui.PrettyWriter import PrettyWriter
 from Helpers.ChromaDBHelper import ChromaDBHelper
 from Helpers.DebugHelper import DebugHelper
@@ -118,6 +119,10 @@ class ChatContext(SingletonMixin):
         """
         Store one chat_name+assistant turn with an internal turn counter,
         and tag it with session.chat_name.
+
+        History text keeps the raw user turn (chat_message) for pronoun
+        resolution fidelity. Normalized retrieval forms are stored as metadata
+        for debugging/audit only.
         """
         if not self.conversation_id:
             self._start_conversation()
@@ -132,6 +137,18 @@ class ChatContext(SingletonMixin):
         else:
             combined = f"[No file filter]\nUSER: {chat_message}\nASSISTANT: {assistant_response}"
         query_lang: str = getattr(session, "current_query_lang", None) or "english"
+        orig_translated_query_en: str = str(
+            getattr(session, "orig_translated_query_en", None) or ""
+        ).strip()
+        post_rewrite_query_en: str = str(
+            getattr(session, "post_rewrite_query_en", None) or ""
+        ).strip()
+        effective_query: str = str(
+            getattr(session, "effective_query", None) or ""
+        ).strip()
+        effective_query_reason: str = str(
+            getattr(session, "effective_query_reason", None) or ""
+        ).strip()
         meta: dict[str, Any] = {
             "conversation_id": self.conversation_id,
             "turn_index": self.turn_index,
@@ -139,6 +156,11 @@ class ChatContext(SingletonMixin):
             "chat_name": session.chat_name,
             "file_tag": file_tag,
             "query_lang": query_lang,
+            "query_user_original": chat_message,
+            "query_orig_translated_en": orig_translated_query_en,
+            "query_post_rewrite_en": post_rewrite_query_en,
+            "query_effective": effective_query,
+            "query_effective_reason": effective_query_reason,
         }
         doc_id = str(uuid.uuid4())
         self._upsert_to_collection(
@@ -154,6 +176,18 @@ class ChatContext(SingletonMixin):
                 "Add chat context",
                 f"Upserted turn {self.turn_index} for chat_name={session.chat_name} "
                 f"file_tag='{file_tag}' lang='{query_lang}' to {session.collection_name}_ChatContext",
+            )
+
+        if DebugHelper.check_session(session, 28):
+            self.pretty.write(
+                "D",
+                "Retrieval Orchestration",
+                "Stored query history forms "
+                f"orig={chat_message!r} "
+                f"t1={orig_translated_query_en!r} "
+                f"t2={post_rewrite_query_en!r} "
+                f"effective_reason={effective_query_reason!r}",
+                color=BRIGHT_MAGENTA,
             )
 
     def fetch_context_docs(self, session: Session) -> List[LangchainDocument]:

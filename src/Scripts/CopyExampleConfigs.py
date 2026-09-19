@@ -23,19 +23,29 @@ Options
 from __future__ import annotations
 
 import argparse
-# Refuse to run from a drive/filesystem root before doing anything
-import os
 import shutil
 import sys
 from pathlib import Path
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from Commons.DriveRootGuard import assert_not_drive_root  # noqa: E402
+# Resolve and validate project root before doing any file work.
+_SCRIPT_DIR = Path(__file__).resolve().parent
+_SRC_DIR = _SCRIPT_DIR.parent
+if str(_SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(_SRC_DIR))
 
-assert_not_drive_root(__file__)
+import Configuration.Config_Global as _ConfigGlobal  # noqa: E402
+from Commons.DriveRootGuard import assert_script_project_root  # noqa: E402
 
-_EXAMPLES_DIR = Path(__file__).resolve().parents[2] / "Examples"
-_CONFIG_DIR = Path(__file__).resolve().parent.parent / "Configuration"
+_PROJECT_ROOT = Path(
+    assert_script_project_root(
+        __file__,
+        configured_project_root=getattr(_ConfigGlobal, "_ABSOLUTE_PATH", None),
+        require_cwd_match=True,
+    )
+)
+
+_EXAMPLES_DIR = _PROJECT_ROOT / "Examples"
+_CONFIG_DIR = _PROJECT_ROOT / "src" / "Configuration"
 _PREFIX = "Example_"
 _PREFERRED_EXAMPLES = [
     "Example_Config_Models.py",

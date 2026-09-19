@@ -19,16 +19,26 @@ from __future__ import annotations
 
 import argparse
 import base64
-# Refuse to run from a drive/filesystem root before doing anything
-import os
 import sys
 from pathlib import Path
 from typing import NamedTuple
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from Commons.DriveRootGuard import assert_not_drive_root  # noqa: E402
+# Resolve and validate project root before verification actions.
+_SCRIPT_DIR = Path(__file__).resolve().parent
+_SRC_DIR = _SCRIPT_DIR.parent
+if str(_SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(_SRC_DIR))
 
-assert_not_drive_root(__file__)
+import Configuration.Config_Global as _ConfigGlobal  # noqa: E402
+from Commons.DriveRootGuard import assert_script_project_root  # noqa: E402
+
+_PROJECT_ROOT = Path(
+    assert_script_project_root(
+        __file__,
+        configured_project_root=getattr(_ConfigGlobal, "_ABSOLUTE_PATH", None),
+        require_cwd_match=True,
+    )
+)
 
 try:
     from cryptography.hazmat.primitives import hashes, serialization
@@ -253,8 +263,8 @@ def main() -> None:
     parser.add_argument(
         "--input-dir",
         type=Path,
-        default=Path.cwd(),
-        help="Root directory to scan (default: current directory)",
+        default=_PROJECT_ROOT,
+        help="Root directory to scan (default: project root from script path)",
     )
     parser.add_argument(
         "--include-dirs",

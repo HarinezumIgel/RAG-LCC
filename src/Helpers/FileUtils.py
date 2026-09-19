@@ -14,11 +14,13 @@ import json5
 import nltk  # type: ignore[reportMissingTypeStubs]
 from nltk.corpus import stopwords  # type: ignore[reportMissingTypeStubs]
 
+from Commons.DriveRootGuard import is_drive_root, resolve_guard_path
 from Config.Config import Config
 from Globals.CounterInstance import FailedCount, ProcessedCount
 from Globals.Globals import Globals
 from Gui.PrettyWriter import PrettyWriter
 from Helpers.DebugHelper import DebugHelper
+from Helpers.LanguageConfig import get_lang_code_to_name
 
 
 class _LangResult:
@@ -247,9 +249,7 @@ class FileUtils:
         """Reverse-lookup ISO code for an NLTK language name (e.g. ``"german"``
         \u2192 ``"de"``). Returns ``None`` if the name is unknown."""
         if FileUtils._name_to_code is None:
-            lang_map: dict[str, str] = self.cfg.get_dict(
-                "_ARGOS_DEFINITIONS.LANG_CODE_TO_NAME"
-            )
+            lang_map: dict[str, str] = get_lang_code_to_name(self.cfg)
             FileUtils._name_to_code = {v.lower(): k for k, v in lang_map.items()}
         return FileUtils._name_to_code.get(lang_name.lower())
 
@@ -278,9 +278,7 @@ class FileUtils:
         display_threshold: float = (
             effective_conf if effective_conf is not None else min_conf
         )
-        lang_map: dict[str, str] = self.cfg.get_dict(
-            "_ARGOS_DEFINITIONS.LANG_CODE_TO_NAME"
-        )
+        lang_map: dict[str, str] = get_lang_code_to_name(self.cfg)
         friendly: str = lang_map.get(lang, lang).capitalize()
 
         if override_applied:
@@ -383,9 +381,7 @@ class FileUtils:
 
         if output == "iso-639":
             return lang
-        lang_map: dict[str, str] = self.cfg.get_dict(
-            "_ARGOS_DEFINITIONS.LANG_CODE_TO_NAME"
-        )
+        lang_map: dict[str, str] = get_lang_code_to_name(self.cfg)
         return lang_map.get(lang, lang)
 
     def get_user_text_language(
@@ -490,9 +486,7 @@ class FileUtils:
 
         if output == "iso-639":
             return lang
-        lang_map: dict[str, str] = self.cfg.get_dict(
-            "_ARGOS_DEFINITIONS.LANG_CODE_TO_NAME"
-        )
+        lang_map: dict[str, str] = get_lang_code_to_name(self.cfg)
         return lang_map.get(lang, lang)
 
     def removeStopwords(self, text: str, stopWords: set[str]) -> str:
@@ -556,9 +550,9 @@ class FileUtils:
             self.pretty.write("E", "", "No filepath specified.")
             return False
 
-        abs_fp = os.path.normpath(os.path.abspath(filepath))
+        normalized_target = resolve_guard_path(filepath)
         raw_absolute_path = self.cfg.get_str("_ABSOLUTE_PATH")
-        project_root = os.path.normpath(os.path.abspath(raw_absolute_path))
+        project_root = resolve_guard_path(raw_absolute_path)
 
         # If project root could not be resolved, refuse all deletions
         if not raw_absolute_path or not project_root:
@@ -571,8 +565,7 @@ class FileUtils:
             return False
 
         # Refuse if the configured project root is itself a drive/fs root
-        _, root_tail = os.path.splitdrive(project_root)
-        if len(root_tail) <= 2:
+        if is_drive_root(project_root):
             self.pretty.write(
                 "E",
                 "Path Guard",
@@ -582,22 +575,24 @@ class FileUtils:
             return False
 
         # Block drive roots / very short paths (e.g. "C:\" or "/")
-        _, tail = os.path.splitdrive(abs_fp)
-        if len(tail) <= 2:
+        if is_drive_root(normalized_target):
             self.pretty.write(
                 "E",
                 "Path Guard",
-                f"Refusing to delete root or drive path '{abs_fp}'. "
+                f"Refusing to delete root or drive path '{normalized_target}'. "
                 "This looks like a path jailbreak attempt.",
             )
             return False
 
         # Block any path outside the project root
-        if not abs_fp.startswith(project_root + os.sep) and abs_fp != project_root:
+        if (
+            not normalized_target.startswith(project_root + os.sep)
+            and normalized_target != project_root
+        ):
             self.pretty.write(
                 "E",
                 "Path Guard",
-                f"Refusing to delete '{abs_fp}': path is outside the project root "
+                f"Refusing to delete '{normalized_target}': path is outside the project root "
                 f"'{project_root}'. This looks like a path jailbreak attempt.",
             )
             return False

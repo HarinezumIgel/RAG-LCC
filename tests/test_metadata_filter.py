@@ -168,8 +168,8 @@ class TestRetrieverMatchers:
     BM25 and Graph AND via their identical _matches_filter predicate."""
 
     def _matchers(self):
-        from Strategies.BM25Retriever import BM25Retriever
-        from Strategies.GraphRetriever import GraphRetriever
+        from Retrievers.BM25Retriever import BM25Retriever
+        from Retrievers.GraphRetriever import GraphRetriever
 
         return BM25Retriever._matches_filter, GraphRetriever._matches_filter
 

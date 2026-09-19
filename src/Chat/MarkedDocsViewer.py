@@ -1,7 +1,8 @@
 """Marked-document viewer helpers for the RAGChat CLI.
 
-Deliberately kept stdlib-only so it can be imported and tested without
-any of the heavy RAG-pipeline dependencies.
+Deliberately kept lightweight (stdlib + Commons.DriveRootGuard, which is also
+stdlib-only) so it can be imported and tested without heavy RAG-pipeline
+dependencies.
 """
 
 from __future__ import annotations
@@ -13,6 +14,8 @@ import sys
 import tempfile
 from pathlib import Path
 from typing import Any, Protocol
+
+from Commons.DriveRootGuard import is_drive_root, resolve_guard_path
 
 
 class _Pretty(Protocol):
@@ -210,29 +213,35 @@ def _open_with_os(path: Path) -> None:
 def _cleanup_dir(path: str, project_root: str = "") -> None:
     import shutil
 
-    abs_path = os.path.normpath(os.path.abspath(path))
+    normalized_path = resolve_guard_path(path)
     if not project_root:
         raise RuntimeError(
-            f"_cleanup_dir: project_root is not set; refusing to delete '{abs_path}'."
+            f"_cleanup_dir: project_root is not set; refusing to delete '{normalized_path}'."
         )
-    abs_root = os.path.normpath(os.path.abspath(project_root))
+    normalized_root = resolve_guard_path(project_root)
+
     # Refuse drive/filesystem roots ("C:\" or "/"): rmtree there is catastrophic
-    # and the abs_path == abs_root branch below would otherwise pass the guard.
-    for candidate in (abs_root, abs_path):
-        _, tail = os.path.splitdrive(candidate)
-        if len(tail) <= 2:
+    # and the normalized_path == normalized_root branch below would otherwise pass the guard.
+    for candidate in (normalized_root, normalized_path):
+        if is_drive_root(candidate):
             raise RuntimeError(
                 f"_cleanup_dir: refusing to operate on drive/filesystem root "
                 f"'{candidate}'."
             )
+
     # Jailbreak guard: refuse to delete anything outside the project root.
-    if not (abs_path.startswith(abs_root + os.sep) or abs_path == abs_root):
+    if not (
+        normalized_path.startswith(normalized_root + os.sep)
+        or normalized_path == normalized_root
+    ):
         raise RuntimeError(
-            f"_cleanup_dir: '{abs_path}' is outside the project root "
-            f"'{abs_root}'; refusing to delete."
+            f"_cleanup_dir: '{normalized_path}' is outside the project root "
+            f"'{normalized_root}'; refusing to delete."
         )
-    if not os.path.exists(abs_path):
+
+    if not os.path.exists(normalized_path):
         raise RuntimeError(
-            f"_cleanup_dir: '{abs_path}' does not exist; refusing to delete."
+            f"_cleanup_dir: '{normalized_path}' does not exist; refusing to delete."
         )
-    shutil.rmtree(abs_path, ignore_errors=True)
+
+    shutil.rmtree(normalized_path, ignore_errors=True)

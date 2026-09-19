@@ -13,7 +13,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from Strategies.RegexRetriever import RegexRetriever, _RegexIndexData
+from Retrievers.RegexRetriever import RegexRetriever, _RegexIndexData
 
 # ---------------------------------------------------------------------------
 # Stubs
@@ -26,6 +26,7 @@ class StubConfig:
     _DEFAULTS: Dict[str, Any] = {
         "_REGEX_INDEX.REGEX_INDEX_DIR": "/tmp/regex",
         "_REGEX_INDEX.spacy_model": "en_core_web_sm",
+        "_REGEX_INDEX.spacy_models_by_language": {},
         "_REGEX_INDEX.max_candidates": 50,
         "_REGEX_INDEX.min_token_chars": 3,
         "_REGEX_INDEX.noun_pos_tags": ["NOUN", "PROPN"],
@@ -54,6 +55,7 @@ class StubConfig:
         "_REGEX_INDEX.both_match_bonus": 0.25,
         "_REGEX_INDEX.fallback_score_scale": 0.6,
         "_GRAPH_INDEX.spacy_model": "en_core_web_sm",
+        "_ARGOS_DEFINITIONS.LANG_CODE_TO_NAME": {"en": "english", "de": "german"},
     }
 
     def get(self, key, default=None):
@@ -173,6 +175,9 @@ def _make_retriever(nlp: Any = None, **overrides: Any) -> RegexRetriever:
     r._both_match_bonus = overrides.get("both_match_bonus", 0.25)
     r._fallback_score_scale = overrides.get("fallback_score_scale", 0.6)
     r._spacy_model = "en_core_web_sm"
+    r._spacy_models_by_language = dict(overrides.get("spacy_models_by_language", {}))
+    r._spacy_loader = overrides.get("spacy_loader", None)
+    r._nlp_by_model = dict(overrides.get("nlp_by_model", {"en_core_web_sm": nlp}))
     r._nlp = nlp
     file_utils = overrides.get("file_utils", MagicMock())
     file_utils.is_safe_delete_path.return_value = True
@@ -536,6 +541,101 @@ class TestQuery:
         assert meta["bm25_score"] == 0.0
         assert meta["chroma_score"] == meta["regex_score"]
         assert meta["chroma_sim"] == 1.0
+
+
+class TestLanguageAwareSpaCy:
+    def test_add_and_query_use_language_specific_model(self):
+        en_nlp = StubNLP({})
+        de_tokens = {
+            "Bienen bauen Nester.": [
+                ("biene", "NOUN"),
+                ("bauen", "VERB"),
+                ("nest", "NOUN"),
+            ],
+            "bauen nester": [
+                ("bauen", "VERB"),
+                ("nest", "NOUN"),
+            ],
+        }
+        de_nlp = StubNLP(de_tokens)
+
+        def _spacy_loader(model_name: str) -> Any:
+            if model_name == "de_core_news_sm":
+                return de_nlp
+            return en_nlp
+
+        r = _make_retriever(
+            nlp=en_nlp,
+            spacy_models_by_language={"de": "de_core_news_sm"},
+            spacy_loader=_spacy_loader,
+        )
+
+        _add(
+            r,
+            [
+                {
+                    "id": "de1",
+                    "text": "Bienen bauen Nester.",
+                    "meta": {
+                        "FilePath": "de.txt",
+                        "FileName": "de.txt",
+                        "Language": "de",
+                    },
+                }
+            ],
+        )
+
+        docs = r.query("bauen nester", k=5, file_filter={"Language": "de"})
+        assert [d.id for d in docs] == ["de1"]
+
+    def test_language_model_loader_is_cached_by_model_name(self):
+        en_nlp = StubNLP({})
+        de_nlp = StubNLP(
+            {
+                "Bienen bauen Nester.": [
+                    ("biene", "NOUN"),
+                    ("bauen", "VERB"),
+                    ("nest", "NOUN"),
+                ],
+                "bauen nester": [
+                    ("bauen", "VERB"),
+                    ("nest", "NOUN"),
+                ],
+            }
+        )
+        load_calls: list[str] = []
+
+        def _spacy_loader(model_name: str) -> Any:
+            load_calls.append(model_name)
+            if model_name == "de_core_news_sm":
+                return de_nlp
+            return en_nlp
+
+        r = _make_retriever(
+            nlp=en_nlp,
+            spacy_models_by_language={"de": "de_core_news_sm"},
+            spacy_loader=_spacy_loader,
+        )
+
+        _add(
+            r,
+            [
+                {
+                    "id": "de1",
+                    "text": "Bienen bauen Nester.",
+                    "meta": {
+                        "FilePath": "de.txt",
+                        "FileName": "de.txt",
+                        "Language": "de",
+                    },
+                }
+            ],
+        )
+
+        _ = r.query("bauen nester", k=5, file_filter={"Language": "de"})
+        _ = r.query("bauen nester", k=5, file_filter={"Language": "de"})
+
+        assert load_calls == ["de_core_news_sm"]
 
 
 # ===========================================================================

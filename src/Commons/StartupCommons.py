@@ -20,7 +20,7 @@ import logging
 import traceback
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, NoReturn
+from typing import Any, Callable, NoReturn, cast
 
 import requests
 
@@ -37,12 +37,13 @@ from Commons.Exceptions import (ArgosConsentMissingError, ArgosPermissionError,
                                 LLMResultError, LocalLLMEndpointNotAvailable,
                                 ModelLoadError, NoVirtualEnvError,
                                 PersistDirError, PromptComplianceError,
-                                RerankError, TesseractPathError,
-                                UserNoDownLoadAccept)
+                                RerankError, SpacyConsentMissingError,
+                                TesseractPathError, UserNoDownLoadAccept)
 from Config.AddConstantsFromConfigFile import AddConstantsFromConfigFile
 from Config.Config import Config
 from Gui.Banner import Banner
-from Gui.Colors import BRIGHT_BLUE, BRIGHT_ORANGE, MAGENTA, ORANGE, RED, VIOLET
+from Gui.Colors import (BRIGHT_BLUE, BRIGHT_MAGENTA, BRIGHT_ORANGE, CYAN,
+                        MAGENTA, ORANGE, RED, VIOLET, WHITE)
 from Gui.PrettyWriter import PrettyWriter
 from Gui.Symbols import Symbols
 from Helpers.DebugHelper import DebugHelper
@@ -52,15 +53,165 @@ from Helpers.Helpers import Helpers
 def suppress_argos_logging(debug_level: int = 0) -> None:
     """Suppress noisy argostranslate/stanza log messages.
 
-    With ARGOS_CHUNK_TYPE=SPACY (the default) stanza is not used for
-    sentence boundary detection, but argostranslate still emits warnings
-    from its utils logger.  Silence them unless DEBUG_LEVEL is very high.
+    RAG-LCC enforces the Argos SPACY slot internally and patches it to use
+    blingfire sentence splitting. Argos may still emit warnings from its
+    utils logger. Silence them unless DEBUG_LEVEL is very high.
     """
     if debug_level < 55:
         logging.getLogger("argostranslate.utils").setLevel(logging.ERROR)
 
 
 class StartupCommons:
+    @staticmethod
+    def _path_slot_is_file_like(slot_name: str, raw_path: str) -> bool:
+        """Return True when slot/value should be treated as a file path."""
+        normalized_slot = slot_name.upper()
+        for sep in (".", "[", "]", "-", " "):
+            normalized_slot = normalized_slot.replace(sep, "_")
+        tokens = {token for token in normalized_slot.split("_") if token}
+
+        value_hint = raw_path.strip().rstrip("/\\")
+        _, value_ext = os.path.splitext(value_hint)
+        return ("FILE" in tokens) or ("LOG" in tokens) or bool(value_ext)
+
+    @staticmethod
+    def _path_slot_present(slot_name: str, raw_path: str, resolved_path: str) -> bool:
+        """Return presence state for a config path slot.
+
+        Directory-like slots must exist as directories. File-like slots
+        (for example LOG_FILE) are considered present when their parent
+        directory exists.
+        """
+        file_like = StartupCommons._path_slot_is_file_like(slot_name, raw_path)
+        if not file_like:
+            return os.path.isdir(resolved_path)
+
+        parent_dir = os.path.dirname(resolved_path) or resolved_path
+        return os.path.isdir(parent_dir)
+
+    @staticmethod
+    def _collect_path_slots(cfg: Config) -> list[tuple[str, str]]:
+        """Return path-like config slots as (slot_name, raw_path_candidate).
+
+        The scan runs on effective values after top-level CLI overrides have
+        been merged (for overrideable non-underscore constants).
+        """
+        from Commons.DriveRootGuard import (is_path_like_slot,
+                                            split_path_candidates)
+
+        collected: list[tuple[str, str]] = []
+        seen: set[tuple[str, str]] = set()
+
+        # Config.get(...) applies CLI overrides lazily. For full-slot traversal
+        # we materialize an effective root dict with top-level CLI values merged.
+        effective_cfg: dict[str, Any] = dict(cfg.cfg)
+        for key, value in cfg.args.items():
+            if value is None:
+                continue
+            effective_cfg[str(key)] = value
+
+        def _walk(node: Any, prefix: str) -> None:
+            if isinstance(node, dict):
+                node_dict = cast(dict[str, Any], node)
+                for key, value in node_dict.items():
+                    child = f"{prefix}.{key}" if prefix else str(key)
+                    _walk(value, child)
+                return
+
+            if isinstance(node, list):
+                node_list = cast(list[Any], node)
+                for idx, value in enumerate(node_list):
+                    child = f"{prefix}[{idx}]" if prefix else f"[{idx}]"
+                    _walk(value, child)
+                return
+
+            if isinstance(node, tuple):
+                node_tuple = cast(tuple[Any, ...], node)
+                for idx, value in enumerate(node_tuple):
+                    child = f"{prefix}[{idx}]" if prefix else f"[{idx}]"
+                    _walk(value, child)
+                return
+
+            if not prefix or not is_path_like_slot(prefix, node):
+                return
+
+            raw_value = str(node)
+            for candidate in split_path_candidates(raw_value):
+                path_value = candidate.strip()
+                if not path_value:
+                    continue
+                entry = (prefix, path_value)
+                if entry in seen:
+                    continue
+                seen.add(entry)
+                collected.append(entry)
+
+        _walk(effective_cfg, "")
+        return collected
+
+    @staticmethod
+    def _validate_config_path_slots(cfg: Config) -> None:
+        """Fail fast on root-path config slots and print presence for each path."""
+        from Commons.DriveRootGuard import is_drive_root, resolve_guard_path
+
+        pretty = PrettyWriter(always_on=True)
+        project_root = StartupCommons._resolve_project_root(cfg)
+        path_slots = StartupCommons._collect_path_slots(cfg)
+
+        pretty.write(
+            "I",
+            "Config path",
+            "Checking configured filesystem path slots (root guard + presence check).",
+            color=BRIGHT_MAGENTA,
+        )
+        pretty.write(
+            "I",
+            "Config path",
+            "For file-like slots, present means the containing directory exists.",
+            color=BRIGHT_BLUE,
+        )
+
+        for slot_name, raw_path in path_slots:
+            resolved = resolve_guard_path(raw_path, base_dir=str(project_root))
+            if is_drive_root(resolved):
+                raise ConfigurationError(
+                    "Invalid root path in configuration: "
+                    f"{slot_name}={raw_path!r} resolves to {resolved!r}. "
+                    "Path slots must not resolve to a drive/filesystem root."
+                )
+
+            present = (
+                "YES"
+                if StartupCommons._path_slot_present(slot_name, raw_path, resolved)
+                else "NO"
+            )
+            presence_detail = (
+                " (containing dir)"
+                if StartupCommons._path_slot_is_file_like(slot_name, raw_path)
+                else ""
+            )
+            pretty.write(
+                "I",
+                "Config path",
+                f"{slot_name} -> {resolved} present{presence_detail}: {present}",
+                color=(BRIGHT_BLUE if present == "YES" else WHITE),
+            )
+
+    @staticmethod
+    def _environment_checks() -> dict[str, tuple[str | None, bool]]:
+        """Return startup environment settings and warning policy."""
+        return {
+            "HF_HUB_OFFLINE": ("1", True),
+            "HF_DATASETS_OFFLINE": ("1", True),
+            "TRANSFORMERS_OFFLINE": ("1", True),
+            "LICENSE_DOWNLOAD": ("0", True),
+            "RAG_LCC_NW_TRACE": ("0", False),
+            "RAG_LCC_STACK_TRACE": ("0", False),
+            "NLTK_STOPWORDS_DOWNLOAD": ("0", True),
+            "ARGOS_MODEL_PROVIDER": ("OPENNMT", True),
+            "HF_HUB_DISABLE_PROGRESS_BARS": (None, False),
+        }
+
     @staticmethod
     def _resolve_project_root(cfg: Config) -> Path:
         configured_root = cfg.get("_ABSOLUTE_PATH", None)
@@ -175,6 +326,7 @@ class StartupCommons:
             emoji_ok: bool = Symbols.store_emoji_preference(cfg)
             StartupCommons._ensure_safe_startup_root(cfg)
             StartupCommons._validate_collection_config(cfg)
+            StartupCommons._validate_config_path_slots(cfg)
 
             banner = Banner(cfg)
             banner.startup_banner()
@@ -206,30 +358,18 @@ class StartupCommons:
             level = "O"
             color = BRIGHT_BLUE
             warn_print = False
-            #                                   (expected, triggers_warn)
-            _env_checks: dict[str, tuple[str | None, bool]] = {
-                "HF_HUB_OFFLINE": ("1", True),
-                "HF_DATASETS_OFFLINE": ("1", True),
-                "TRANSFORMERS_OFFLINE": ("1", True),
-                "LICENSE_DOWNLOAD": ("0", True),
-                "RAG_LCC_NW_TRACE": ("0", False),
-                "RAG_LCC_STACK_TRACE": ("0", False),
-                "NLTK_STOPWORDS_DOWNLOAD": ("0", True),
-                "ARGOS_MODEL_PROVIDER": ("OPENNMT", True),
-                "ARGOS_CHUNK_TYPE": ("SPACY", True),
-                "ARGOS_STANZA_DOWNLOAD": ("0", True),
-                "HF_HUB_DISABLE_PROGRESS_BARS": (None, False),
-            }
+            _env_checks = StartupCommons._environment_checks()
             friendly_name: str = cfg.get_str("_FRIENDLY_NAME", "")
             for key, (target_value, triggers_warn_flag) in _env_checks.items():
-                if target_value is not None and os.environ[key] != target_value:
+                current_value = os.environ.get(key, "")
+                if target_value is not None and current_value != target_value:
                     color = ORANGE
                     if triggers_warn_flag:
                         warn_print = True
                 else:
                     color = BRIGHT_BLUE
                 pretty.write(
-                    "I", "Environment variable", f"{key}={os.environ[key]}", color=color
+                    "I", "Environment variable", f"{key}={current_value}", color=color
                 )
             if friendly_name in ("RAGChat", "RAGChatService"):
                 _web_mode_env = (
@@ -265,8 +405,7 @@ class StartupCommons:
                     f"{level}",
                     "Outbound downloads",
                     "One or more settings allow outbound model/data downloads "
-                    "(HuggingFace hub, NLTK, Argos, etc.). "
-                    "Set the relevant offline flags to prevent unexpected network access.",
+                    "Set the relevant offline flags if you want to prevent network access.",
                     color=ORANGE,
                 )
 
@@ -511,9 +650,24 @@ class StartupCommons:
                 pretty.write(
                     "I",
                     "ARGOS LICENSE",
-                    "Run:  python src/Scripts/ArgosTranslatePackages.py install  "
+                    "Run:  python ./src/Scripts/ArgosTranslatePackages.py install  "
                     "to accept the Argos Translate license and then restart.",
-                    color=ORANGE,
+                    color=CYAN,
+                )
+                StartupCommons._die()
+            if isinstance(exc, SpacyConsentMissingError):
+                pretty.write(
+                    "E",
+                    "SPACY LICENSE",
+                    f"{exc.args[0]}",
+                    color=RED,
+                )
+                pretty.write(
+                    "I",
+                    "SPACY LICENSE",
+                    "Run:  python ./src/Scripts/SpacyLanguageModels.py install  "
+                    "to accept the spaCy model-package license and then restart.",
+                    color=CYAN,
                 )
                 StartupCommons._die()
             pretty.write(
@@ -573,12 +727,32 @@ class StartupCommons:
             StartupCommons._die()
 
         if isinstance(exc, ModelLoadError):
-            pretty.write(
-                "E",
-                "Model Load Error",
-                f"Execution stopped due to: {exc.args[0]}",
-                color=ORANGE,
-            )
+            model_load_msg = f"Execution stopped due to: {exc.args[0]}"
+            run_marker = "Run: python "
+            run_idx = model_load_msg.find(run_marker)
+            if run_idx == -1:
+                pretty.write(
+                    "E",
+                    "Model Load Error",
+                    model_load_msg,
+                    color=ORANGE,
+                )
+            else:
+                details = model_load_msg[:run_idx].rstrip()
+                run_hint = model_load_msg[run_idx:].strip()
+                if details:
+                    pretty.write(
+                        "E",
+                        "Model Load Error",
+                        details,
+                        color=ORANGE,
+                    )
+                pretty.write(
+                    "I",
+                    "Model Load Error",
+                    run_hint,
+                    color=CYAN,
+                )
             StartupCommons._die()
 
         if isinstance(exc, DataProcessingError):

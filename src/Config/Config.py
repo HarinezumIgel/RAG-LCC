@@ -9,6 +9,7 @@ from typing import Any, Optional, Tuple, Union, cast
 import Configuration.Config_Banned as Config_Banned
 import Configuration.Config_DocClassify as Config_DocClassify
 import Configuration.Config_Global as Config_Global
+import Configuration.Config_Languages as Config_Languages
 import Configuration.Config_Models as Config_Models
 import Configuration.Config_RAGChat as Config_RAGChat
 import Configuration.Config_RAGChatService as Config_RAGChatService
@@ -27,6 +28,7 @@ config_modules = {
     "Config_RAGLoad": Config_RAGLoad,
     "Config_DocClassify": Config_DocClassify,
     "Config_Global": Config_Global,
+    "Config_Languages": Config_Languages,
     "Config_WebSearch": Config_WebSearch,
 }
 # Case-insensitive lookup table (Windows preserves typed casing in sys.argv[0])
@@ -49,6 +51,7 @@ class Config(SingletonMixin):
         )
         self.cfgPy: Any = _config_modules_lower.get(config_name.lower())
         self.globalConfigPy: Any = Config_Global
+        self.cfgLanguages: Any = Config_Languages
         self.cfgModels: Any = Config_Models
         self.cfgBanned: Any = Config_Banned
         self.cfgWebSearch: Any = Config_WebSearch
@@ -79,28 +82,37 @@ class Config(SingletonMixin):
             for k in dir(self.globalConfigPy)
             if k.isupper()
         }
-        # 2) Config_Models
+
+        # 2) Config_Languages — active language sets and Argos pair catalog
+        glob_languages = {
+            k: getattr(self.cfgLanguages, k)
+            for k in dir(self.cfgLanguages)
+            if k.isupper()
+        }
+
+        # 3) Config_Models
         glob_models = {
             k: getattr(self.cfgModels, k) for k in dir(self.cfgModels) if k.isupper()
         }
 
-        # 3) Config_Banned
+        # 4) Config_Banned
         glob_banned = {
             k: getattr(self.cfgBanned, k) for k in dir(self.cfgBanned) if k.isupper()
         }
 
-        # 4) Config_WebSearch
+        # 5) Config_WebSearch
         glob_websearch = {
             k: getattr(self.cfgWebSearch, k)
             for k in dir(self.cfgWebSearch)
             if k.isupper()
         }
 
-        # 5) App-specific (Config_RAGChat / Config_RAGLoad / Config_DocClassify) — highest file priority
+        # 6) App-specific (Config_RAGChat / Config_RAGLoad / Config_DocClassify) — highest file priority
         prog_raw = {k: getattr(self.cfgPy, k) for k in dir(self.cfgPy) if k.isupper()}
 
         # Merge: each layer overrides the previous; CLI args override everything (see _get)
         raw = glob_raw.copy()
+        raw.update(glob_languages)
         raw.update(glob_models)
         raw.update(glob_banned)
         raw.update(glob_websearch)
@@ -126,6 +138,9 @@ class Config(SingletonMixin):
         """
         Follow string indirections in self.cfg up to max_depth.
 
+        Indirection targets may reference either top-level slots (``_SLOT``)
+        or nested dotted paths (``_SLOT.sub.key``).
+
         Returns:
             Tuple[value, last_slot]
             - value: the resolved final value (or `default` if not found)
@@ -134,16 +149,32 @@ class Config(SingletonMixin):
         """
         current = key
         last_slot: Optional[str] = key
+        INDIRECT_PREFIX = "$"
+        _MISSING = object()
 
         for _ in range(max_depth):
             # Avoid re-triggering indirect-prefix logic while following indirections
-            value = self.get(current, None, allow_indirect=False)
+            value = self.get(current, None, allow_indirect=False, silent=True)
 
-            # If value is a string AND is a valid key → follow indirection
-            if isinstance(value, str) and value in self.cfg:
-                last_slot = value
-                current = value
-                continue
+            # If value is a string and points to a key, follow indirection.
+            # Accept both plain key names ("_SLOT") and prefixed aliases
+            # ("$_SLOT") for consistent config notation.
+            if isinstance(value, str):
+                next_key = value
+                if next_key.startswith(INDIRECT_PREFIX):
+                    next_key = next_key[len(INDIRECT_PREFIX) :]
+
+                # Follow both top-level and dotted-path aliases.
+                target_value = self.get(
+                    next_key,
+                    _MISSING,
+                    allow_indirect=False,
+                    silent=True,
+                )
+                if next_key in self.cfg or target_value is not _MISSING:
+                    last_slot = next_key
+                    current = next_key
+                    continue
 
             # Otherwise treat it as final value
             return (value if value is not None else default, last_slot)
@@ -307,10 +338,58 @@ class Config(SingletonMixin):
             return val
         return str(val)
 
+    def _indirect_value(
+        self,
+        key: str,
+        default: Any = None,
+        *,
+        silent: bool = False,
+    ) -> Any:
+        """Resolve an indirect key and return only the resolved value."""
+        indirect_key = key if key.startswith("$") else f"${key}"
+        result: Any = self.get(indirect_key, default, silent=silent)
+        if isinstance(result, tuple):
+            resolved = cast(tuple[Any, Optional[str]], result)
+            return resolved[0]
+        return result
+
+    def indirect_list(
+        self, key: str, default: list[Any] | None = None, *, silent: bool = False
+    ) -> list[Any]:
+        """Return a *list* resolved through indirect lookup semantics."""
+        val: Any = self._indirect_value(key, default, silent=silent)
+        if val is None:
+            return default if default is not None else []
+        if isinstance(val, list):
+            return cast(list[Any], val)
+        raise TypeError(
+            "Config key "
+            f"'{key}' expected list via indirect lookup, got {type(val).__name__}"
+        )
+
+    def indirect_dict(
+        self, key: str, default: dict[str, Any] | None = None, *, silent: bool = False
+    ) -> dict[str, Any]:
+        """Return a *dict* resolved through indirect lookup semantics."""
+        val: Any = self._indirect_value(key, default, silent=silent)
+        if val is None:
+            return default if default is not None else {}
+        if isinstance(val, dict):
+            return cast(dict[str, Any], val)
+        raise TypeError(
+            "Config key "
+            f"'{key}' expected dict via indirect lookup, got {type(val).__name__}"
+        )
+
     def get_list(
         self, key: str, default: list[Any] | None = None, *, silent: bool = False
     ) -> list[Any]:
         """Return a config value that is expected to be a *list*."""
+        if key.startswith("$"):
+            raise TypeError(
+                "Config key "
+                f"'{key}' uses indirect prefix '$'; use indirect_list(...) instead"
+            )
         val: Any = self.get(key, default, silent=silent)
         if val is None:
             return default if default is not None else []
@@ -322,6 +401,11 @@ class Config(SingletonMixin):
         self, key: str, default: dict[str, Any] | None = None, *, silent: bool = False
     ) -> dict[str, Any]:
         """Return a config value that is expected to be a *dict*."""
+        if key.startswith("$"):
+            raise TypeError(
+                "Config key "
+                f"'{key}' uses indirect prefix '$'; use indirect_dict(...) instead"
+            )
         val: Any = self.get(key, default, silent=silent)
         if val is None:
             return default if default is not None else {}

@@ -1,9 +1,10 @@
-# pyright: reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownVariableType=false, reportUnknownMemberType=false
+# pyright: reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownVariableType=false, reportUnknownMemberType=false, reportPrivateUsage=false
 """Tests for the SlideChunker."""
 
 import sys
 import os
-from unittest.mock import MagicMock, patch, PropertyMock
+from typing import Any
+from unittest.mock import MagicMock, patch
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 SOURCE = os.path.join(ROOT, "src")
@@ -14,7 +15,7 @@ from Strategies.Chunkers.PageBasedChunker import PageBasedChunker
 from Strategies.Chunkers.SlideChunker import SlideChunker
 
 
-def _make_chunker(max_chunk_size: int = 256):
+def _make_chunker(max_chunk_size: int = 256) -> SlideChunker:
     """Create a SlideChunker with mocked config."""
     cfg = MagicMock()
     helpers = MagicMock()
@@ -22,15 +23,18 @@ def _make_chunker(max_chunk_size: int = 256):
 
     helpers.get_chunker_config_slot.return_value = "_CHUNKERS.SLIDE"
 
-    def get_int(key, default=0):
+    def get_int(key: str, default: int = 0) -> int:
         if "MAX_CHUNK_SIZE" in key:
             return max_chunk_size
         return default
 
+    def count_words(text: str) -> int:
+        return len(text.split())
+
     cfg.get_int.side_effect = get_int
     cfg.get_list.return_value = ["\n", " ", "."]
 
-    file_utils.count_words.side_effect = lambda t: len(t.split())
+    file_utils.count_words.side_effect = count_words
 
     return SlideChunker(cfg=cfg, helpers=helpers, file_utils=file_utils)
 
@@ -62,7 +66,8 @@ class TestInheritance:
 # ---------------------------------------------------------------------------
 
 
-def _mock_shape(text, is_title=False):
+def _mock_shape(text: str, is_title: bool = False) -> MagicMock:
+    _ = is_title
     shape = MagicMock()
     shape.text = text
 
@@ -78,12 +83,12 @@ def _mock_shape(text, is_title=False):
     return shape
 
 
-def _mock_slide(title_text, body_texts):
+def _mock_slide(title_text: str, body_texts: list[str]) -> MagicMock:
     """Build a mock slide with a title shape and body shapes."""
     slide = MagicMock()
-    shapes = []
+    shapes: list[Any] = []
 
-    title_shape = None
+    title_shape: MagicMock | None = None
     if title_text:
         title_shape = _mock_shape(title_text, is_title=True)
         shapes.append(title_shape)
@@ -94,13 +99,11 @@ def _mock_slide(title_text, body_texts):
     slide.shapes = MagicMock()
     slide.shapes.__iter__ = MagicMock(return_value=iter(shapes))
     slide.shapes.title = title_shape
-    if title_shape:
-        slide.shapes.title.text = title_text
 
     return slide
 
 
-def _mock_presentation(slides_spec):
+def _mock_presentation(slides_spec: list[tuple[str, list[str]]]) -> MagicMock:
     """Build a mock Presentation from a list of (title, [body_texts]) tuples."""
     prs = MagicMock()
     slides = [_mock_slide(t, b) for t, b in slides_spec]
@@ -111,57 +114,63 @@ def _mock_presentation(slides_spec):
 class TestSlideChunkerWithMockPptx:
     """Test _parse_pptx by patching python-pptx Presentation."""
 
-    def _chunk_with_mock(self, slides_spec, max_chunk_size=256):
+    def _chunk_with_mock(
+        self,
+        slides_spec: list[tuple[str, list[str]]],
+        max_chunk_size: int = 256,
+    ) -> list[Any]:
         chunker = _make_chunker(max_chunk_size)
         prs = _mock_presentation(slides_spec)
+
+        def _patched_parse(
+            self: SlideChunker,
+            file_path: str,
+        ) -> list[tuple[int, str, str]]:
+            _ = self
+            _ = file_path
+            # Simulate what _parse_pptx does but with our mock.
+            slides: list[tuple[int, str, str]] = []
+            for idx, slide in enumerate(prs.slides, start=1):
+                title = ""
+                body_parts: list[str] = []
+                if slide.shapes.title and slide.shapes.title.text:
+                    title = str(slide.shapes.title.text).strip()
+                for shape in slide.shapes:
+                    if not hasattr(shape, "text"):
+                        continue
+                    text = str(shape.text).strip()
+                    if not text:
+                        continue
+                    if shape == slide.shapes.title:
+                        continue
+                    if hasattr(shape, "text_frame"):
+                        for para in shape.text_frame.paragraphs:
+                            line = str(para.text).strip()
+                            if line:
+                                body_parts.append(line)
+                    else:
+                        body_parts.append(text)
+                body = "\n".join(body_parts)
+                if title or body:
+                    slides.append((idx, title, body))
+            return slides
 
         with patch(
             "Strategies.Chunkers.SlideChunker.Presentation",
             return_value=prs,
             create=True,
         ):
-            # We need to patch the import inside _parse_pptx
-            import Strategies.Chunkers.SlideChunker as mod
-
-            original_parse = mod.SlideChunker._parse_pptx
-
-            def patched_parse(file_path):
-                # Simulate what _parse_pptx does but with our mock
-                slides = []
-                for idx, slide in enumerate(prs.slides, start=1):
-                    title = ""
-                    body_parts = []
-                    if slide.shapes.title and slide.shapes.title.text:
-                        title = slide.shapes.title.text.strip()
-                    for shape in slide.shapes:
-                        if not hasattr(shape, "text"):
-                            continue
-                        text = shape.text.strip()
-                        if not text:
-                            continue
-                        if shape == slide.shapes.title:
-                            continue
-                        if hasattr(shape, "text_frame"):
-                            for para in shape.text_frame.paragraphs:
-                                line = para.text.strip()
-                                if line:
-                                    body_parts.append(line)
-                        else:
-                            body_parts.append(text)
-                    body = "\n".join(body_parts)
-                    if title or body:
-                        slides.append((idx, title, body))
-                return slides
-
-            mod.SlideChunker._parse_pptx = staticmethod(patched_parse)
-            try:
+            with patch.object(
+                SlideChunker,
+                "_parse_pptx",
+                autospec=True,
+                side_effect=_patched_parse,
+            ):
                 meta = dict(META_PPTX)
                 meta["FilePath"] = (
                     __file__  # needs to be a real file for os.path.isfile
                 )
                 docs, _ = chunker.chunk("ignored", meta)
-            finally:
-                mod.SlideChunker._parse_pptx = original_parse
 
         return docs
 

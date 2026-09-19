@@ -24,7 +24,8 @@ from Compliance.SharedHelpers import SharedHelpers
 from Config.Config import Config
 from Gui.PrettyWriter import PrettyWriter
 from Helpers.FileUtils import FileUtils
-from Helpers.PerfLogger import PerfLogger
+from Helpers.LanguageConfig import get_active_language_codes
+from Retrievers.RetrieverBase import RetrieverBase
 
 
 class _RegexIndexData:
@@ -48,7 +49,7 @@ class _RegexIndexData:
         self.doc_count_at_build: int = 0
 
 
-class RegexRetriever(SingletonMixin):
+class RegexRetriever(SingletonMixin, RetrieverBase):
     """Singleton that manages a per-collection verb/noun regex-style index."""
 
     INDEX_FILENAME = "regex_index.pkl.gz"
@@ -66,7 +67,7 @@ class RegexRetriever(SingletonMixin):
 
         self.cfg: Config = cfg or Config()
         self.pretty: PrettyWriter = pretty or PrettyWriter()
-        self.perf_logger: PerfLogger = PerfLogger()
+        RetrieverBase.__init__(self, perf_component="RegexRetriever")
         self._file_utils: FileUtils = FileUtils(cfg=self.cfg, pretty=self.pretty)
         self._data: _RegexIndexData = _RegexIndexData()
 
@@ -122,20 +123,35 @@ class RegexRetriever(SingletonMixin):
             0.6,
         )
 
-        self._spacy_model: str = self.cfg.get_str("_REGEX_INDEX.spacy_model")
+        spacy_model_value, _ = self.cfg.indirect_get(
+            "_REGEX_INDEX.spacy_model",
+            "en_core_web_sm",
+        )
+        self._spacy_model: str = str(spacy_model_value or "en_core_web_sm").strip()
+        self._spacy_models_by_language: Dict[str, str] = (
+            self._load_spacy_models_by_language()
+        )
 
         if nlp is not None:
             self._nlp = nlp
+            self._spacy_loader = None
         else:
             try:
                 import spacy  # type: ignore[import-untyped]
 
-                self._nlp = spacy.load(self._spacy_model)
+                self._spacy_loader = spacy.load
+                self._nlp = self._load_spacy_model(
+                    self._spacy_model,
+                    language="en",
+                )
             except OSError as exc:
                 raise ModelLoadError(
                     f"spaCy model '{self._spacy_model}' not found. "
-                    f"Run: python -m spacy download {self._spacy_model}"
+                    "Run: python ./src/Scripts/SpacyLanguageModels.py install "
+                    f"(or python -m spacy download {self._spacy_model})"
                 ) from exc
+
+        self._nlp_by_model: Dict[str, Any] = {self._spacy_model: self._nlp}
 
         if self._exclude_auxiliaries:
             self._prime_active_aux_lemmas_cache()
@@ -286,6 +302,16 @@ class RegexRetriever(SingletonMixin):
     # Public API -- query
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _language_from_filter(file_filter: Optional[Dict[str, Any]]) -> str | None:
+        if not isinstance(file_filter, dict):
+            return None
+        language_value = file_filter.get("Language")
+        if isinstance(language_value, dict):
+            language_value = cast(Dict[str, Any], language_value).get("$eq")
+        text = str(language_value or "").strip()
+        return text or None
+
     def query(
         self,
         query_text: str,
@@ -296,13 +322,13 @@ class RegexRetriever(SingletonMixin):
         if not self._data.chunk_texts:
             return []
 
-        query_verbs, query_nouns = self._extract_terms(query_text, "en")
+        query_language = self._language_from_filter(file_filter)
+        query_verbs, query_nouns = self._extract_terms(query_text, query_language)
         if not query_verbs and not query_nouns:
             return []
 
-        self.perf_logger.log(
-            "RegexRetriever.query",
-            "retriever",
+        self._perf_log(
+            "query",
             f"start regex query q={query_text[:60]!r}",
         )
         _t0 = time.perf_counter()
@@ -417,9 +443,8 @@ class RegexRetriever(SingletonMixin):
                 )
             )
 
-        self.perf_logger.log(
-            "RegexRetriever.query",
-            "retriever",
+        self._perf_log(
+            "query",
             f"stop  regex query n={len(docs)} elapsed={time.perf_counter() - _t0:.3f}s",
         )
         return docs
@@ -438,26 +463,62 @@ class RegexRetriever(SingletonMixin):
             return lang
         return shared.lang_name_to_code.get(lang, lang)
 
-    def _active_aux_languages(self) -> List[str]:
-        """Return active language set from configured Argos translation pairs."""
-        langs: Set[str] = {"en"}
-        pairs: list[Any] = self.cfg.get_list(
-            "_ARGOS_DEFINITIONS.ARGOS_LANGUAGES",
-            [],
-            silent=True,
+    def _load_spacy_models_by_language(self) -> Dict[str, str]:
+        """Load optional language->spaCy model overrides from config."""
+        raw_mapping = self.cfg.indirect_dict(
+            "_REGEX_INDEX.spacy_models_by_language",
+            {},
         )
-        for pair in pairs:
-            if not isinstance(pair, (list, tuple)):
-                continue
-            pair_items = cast(list[Any] | tuple[Any, ...], pair)
-            if len(pair_items) != 2:
-                continue
-            src = self._normalize_lang_code(str(pair_items[0]))
-            dst = self._normalize_lang_code(str(pair_items[1]))
-            if src:
-                langs.add(src)
-            if dst:
-                langs.add(dst)
+        if not isinstance(raw_mapping, dict):
+            return {}
+        active_codes = get_active_language_codes(self.cfg)
+
+        normalized_mapping: Dict[str, str] = {}
+        for language, model in raw_mapping.items():
+            language_code = self._normalize_lang_code(str(language))
+            model_name = str(model or "").strip()
+            if language_code and model_name and language_code in active_codes:
+                normalized_mapping[language_code] = model_name
+        return normalized_mapping
+
+    def _spacy_model_for_language(self, language: str | None) -> str:
+        language_code = self._normalize_lang_code(language)
+        return self._spacy_models_by_language.get(language_code, self._spacy_model)
+
+    def _load_spacy_model(self, model_name: str, *, language: str | None = None) -> Any:
+        loader = getattr(self, "_spacy_loader", None)
+        if not callable(loader):
+            return self._nlp
+        try:
+            return loader(model_name)
+        except OSError as exc:
+            language_code = self._normalize_lang_code(language)
+            raise ModelLoadError(
+                f"spaCy model '{model_name}' not found for language "
+                f"'{language_code}'. Run: python ./src/Scripts/SpacyLanguageModels.py "
+                f"install (or python -m spacy download {model_name})"
+            ) from exc
+
+    def _get_nlp_for_language(self, language: str | None) -> Any:
+        model_name = self._spacy_model_for_language(language)
+        cached_nlp = self._nlp_by_model.get(model_name)
+        if cached_nlp is not None:
+            return cached_nlp
+
+        loaded_nlp = self._load_spacy_model(model_name, language=language)
+        self._nlp_by_model[model_name] = loaded_nlp
+        return loaded_nlp
+
+    def _active_aux_languages(self) -> List[str]:
+        """Return active language set from shared ACTIVE_LANGUAGES config."""
+        active_codes = get_active_language_codes(self.cfg)
+        langs: Set[str] = {
+            self._normalize_lang_code(code)
+            for code in active_codes
+            if str(code or "").strip()
+        }
+        if not langs:
+            langs = {"en"}
         return sorted(langs)
 
     def _aux_lemmas_for_lang(self, language: str | None) -> Set[str]:
@@ -517,7 +578,8 @@ class RegexRetriever(SingletonMixin):
         language: str | None = None,
     ) -> Tuple[Set[str], Set[str]]:
         """Extract content-verb and noun lemmas from *text*."""
-        doc = self._nlp(text or "")
+        nlp = self._get_nlp_for_language(language)
+        doc = nlp(text or "")
         verbs: Set[str] = set()
         nouns: Set[str] = set()
         aux_lemmas: Set[str] = set()

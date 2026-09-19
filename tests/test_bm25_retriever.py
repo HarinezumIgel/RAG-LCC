@@ -19,7 +19,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from langchain_core.documents.base import Document as LangchainDocument
 
-from Strategies.BM25Retriever import BM25Retriever, _BM25IndexData
+from Retrievers.BM25Retriever import BM25Retriever, _BM25IndexData
 
 # ---------------------------------------------------------------------------
 # Stubs
@@ -33,6 +33,8 @@ class StubConfig:
         "_BM25_INDEX.k1": 1.2,
         "_BM25_INDEX.b": 0.75,
         "_BM25_INDEX.rrf_k": 60,
+        "_BM25_INDEX.spacy_model": "",
+        "_BM25_INDEX.spacy_models_by_language": {},
     }
 
     def get(self, key, default=None):
@@ -98,6 +100,11 @@ def _make_retriever(**overrides: Any) -> BM25Retriever:
     r._k1 = overrides.get("k1", 1.2)
     r._b = overrides.get("b", 0.75)
     r._rrf_k = overrides.get("rrf_k", 60)
+    r._spacy_model = overrides.get("spacy_model", "")
+    r._spacy_models_by_language = overrides.get("spacy_models_by_language", {})
+    r._spacy_loader = overrides.get("spacy_loader", None)
+    r._nlp_by_model = overrides.get("nlp_by_model", {})
+    r._warned_spacy_model_unavailable = set()
     file_utils = overrides.get("file_utils", MagicMock())
     file_utils.is_safe_delete_path.return_value = True
     r._file_utils = file_utils
@@ -436,6 +443,60 @@ class TestScoring:
         docs = r.query("dog", k=10)
         # Should still return results (scoring still works)
         assert len(docs) > 0
+
+
+class _LemmaToken:
+    def __init__(self, text: str, lemma: str) -> None:
+        self.text = text
+        self.lemma_ = lemma
+
+
+class _SimpleLemmaNLP:
+    def __init__(self, lemma_map: Dict[str, str]) -> None:
+        self._lemma_map = lemma_map
+        self.calls: list[str] = []
+
+    def __call__(self, text: str) -> list[_LemmaToken]:
+        self.calls.append(text)
+        words = [w for w in text.replace("!", " ").replace("?", " ").split() if w]
+        tokens: list[_LemmaToken] = []
+        for word in words:
+            norm = word.strip().lower()
+            lemma = self._lemma_map.get(norm, norm)
+            tokens.append(_LemmaToken(norm, lemma))
+        return tokens
+
+
+class TestLanguageAwareTokenization:
+    def test_query_uses_spacy_lemmas_for_language_filter(self):
+        nlp = _SimpleLemmaNLP({"lauft": "laufen", "laufen": "laufen"})
+        r = _make_retriever(
+            spacy_model="",
+            spacy_models_by_language={"de": "de_core_news_sm"},
+            nlp_by_model={"de_core_news_sm": nlp},
+        )
+
+        r.add_chunks(
+            ["d1"],
+            ["laufen"],
+            [{"FilePath": "de.txt", "FileName": "de.txt", "Language": "de"}],
+        )
+
+        docs = r.query("lauft", k=5, file_filter={"Language": "de"})
+        assert [doc.id for doc in docs] == ["d1"]
+
+    def test_missing_language_keeps_legacy_tokenizer(self):
+        nlp = _SimpleLemmaNLP({"dogs": "dog"})
+        r = _make_retriever(
+            spacy_model="en_core_web_sm",
+            spacy_models_by_language={"en": "en_core_web_sm"},
+            nlp_by_model={"en_core_web_sm": nlp},
+        )
+
+        tokens = r._tokenize_for_language("Dogs running", None)
+
+        assert tokens == ["dogs", "running"]
+        assert nlp.calls == []
 
 
 # ===========================================================================

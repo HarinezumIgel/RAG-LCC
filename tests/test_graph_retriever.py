@@ -17,7 +17,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from langchain_core.documents.base import Document as LangchainDocument
 
-from Strategies.GraphRetriever import GraphRetriever, _GraphIndexData
+from Retrievers.GraphRetriever import GraphRetriever, _GraphIndexData
 
 # ---------------------------------------------------------------------------
 # Stubs
@@ -33,6 +33,8 @@ class StubConfig:
         "_GRAPH_INDEX.max_candidates": 50,
         "_GRAPH_INDEX.min_edge_weight": 1,
         "_GRAPH_INDEX.spacy_model": "en_core_web_sm",
+        "_GRAPH_INDEX.spacy_models_by_language": {},
+        "_ARGOS_DEFINITIONS.LANG_CODE_TO_NAME": {"en": "english", "de": "german"},
         "_GRAPH_INDEX.noun_chunk_min_chars": 3,
         "_GRAPH_INDEX.noun_chunk_drop_leading": "[({<",
         "_GRAPH_INDEX.GRAPH_INDEX_DIR": "/tmp/graph",
@@ -144,6 +146,20 @@ def _make_retriever(nlp: Any = None, **overrides: Any) -> GraphRetriever:
     r._max_candidates = overrides.get("max_candidates", 50)
     r._min_edge_weight = overrides.get("min_edge_weight", 1)
     r._spacy_model = "en_core_web_sm"
+    r._lang_name_to_code = dict(
+        overrides.get(
+            "lang_name_to_code",
+            {
+                "en": "en",
+                "english": "en",
+                "de": "de",
+                "german": "de",
+            },
+        )
+    )
+    r._spacy_models_by_language = dict(overrides.get("spacy_models_by_language", {}))
+    r._spacy_loader = overrides.get("spacy_loader", None)
+    r._nlp_by_model = dict(overrides.get("nlp_by_model", {"en_core_web_sm": nlp}))
     r._noun_chunk_min_chars = overrides.get("noun_chunk_min_chars", 3)
     r._noun_chunk_drop_leading = overrides.get("noun_chunk_drop_leading", "[({<")
     file_utils = overrides.get("file_utils", MagicMock())
@@ -481,6 +497,87 @@ class TestQuery:
         # c1 is a direct hit (seed 'apple' maps to c1), but c2 shouldn't be reached
         # because the edge apple->tim cook has weight 1 < 99
         assert "c2" not in doc_ids
+
+
+class TestLanguageAwareSpaCy:
+    def test_add_and_query_use_language_specific_model(self):
+        en_nlp = StubNLP({})
+        de_map = {
+            "Berlin steht an der Spree.": [("Berlin", "GPE")],
+            "hauptstadt": [("Berlin", "GPE")],
+        }
+        de_nlp = StubNLP(de_map)
+
+        def _spacy_loader(model_name: str) -> Any:
+            if model_name == "de_core_news_sm":
+                return de_nlp
+            return en_nlp
+
+        r = _make_retriever(
+            nlp=en_nlp,
+            spacy_models_by_language={"de": "de_core_news_sm"},
+            spacy_loader=_spacy_loader,
+        )
+
+        _add(
+            r,
+            [
+                {
+                    "id": "de1",
+                    "text": "Berlin steht an der Spree.",
+                    "meta": {
+                        "FilePath": "de.txt",
+                        "FileName": "de.txt",
+                        "Language": "de",
+                    },
+                }
+            ],
+        )
+
+        docs = r.query("hauptstadt", k=5, file_filter={"Language": "de"})
+        assert [d.id for d in docs] == ["de1"]
+
+    def test_language_model_loader_is_cached_by_model_name(self):
+        en_nlp = StubNLP({})
+        de_nlp = StubNLP(
+            {
+                "Berlin steht an der Spree.": [("Berlin", "GPE")],
+                "hauptstadt": [("Berlin", "GPE")],
+            }
+        )
+        load_calls: list[str] = []
+
+        def _spacy_loader(model_name: str) -> Any:
+            load_calls.append(model_name)
+            if model_name == "de_core_news_sm":
+                return de_nlp
+            return en_nlp
+
+        r = _make_retriever(
+            nlp=en_nlp,
+            spacy_models_by_language={"de": "de_core_news_sm"},
+            spacy_loader=_spacy_loader,
+        )
+
+        _add(
+            r,
+            [
+                {
+                    "id": "de1",
+                    "text": "Berlin steht an der Spree.",
+                    "meta": {
+                        "FilePath": "de.txt",
+                        "FileName": "de.txt",
+                        "Language": "de",
+                    },
+                }
+            ],
+        )
+
+        _ = r.query("hauptstadt", k=5, file_filter={"Language": "de"})
+        _ = r.query("hauptstadt", k=5, file_filter={"Language": "de"})
+
+        assert load_calls == ["de_core_news_sm"]
 
 
 # ===========================================================================

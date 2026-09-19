@@ -15,6 +15,7 @@ from AI.TokenBudget import TokenBudget
 from Chat.ChatContext import ChatContext
 from Chat.PromptRewrite import PromptRewrite
 from Chat.RetrievalGate import RetrievalGate
+from Chat.RetrievalOrchestrator import RetrievalOrchestrator
 from Commons.Exceptions import CollectionNotFoundError, RerankError
 from Commons.SingletonMixin import SingletonMixin
 from Compliance.SharedHelpers import SharedHelpers
@@ -28,14 +29,14 @@ from Helpers.FileUtils import FileUtils
 from Helpers.Helpers import (Helpers, align_retriever_sources_for_print,
                              truncate_for_print)
 from Helpers.PerfLogger import PerfLogger
-from Strategies.BM25Retriever import BM25Retriever
-from Strategies.GraphRetriever import GraphRetriever
+from Retrievers.BM25Retriever import BM25Retriever
+from Retrievers.GraphRetriever import GraphRetriever
+from Retrievers.RegexRetriever import RegexRetriever
+from Retrievers.RetrieverProtocol import RetrieverProtocol
+from Retrievers.WebPreFilter import WebPreFilter
+from Retrievers.WebRetriever import WebRetriever
+from Retrievers.WebSearchFilter import WebSearchFilter
 from Strategies.HomeBrewChunkSelector import ChunkSelectionService
-from Strategies.RegexRetriever import RegexRetriever
-from Strategies.RetrieverProtocol import RetrieverProtocol
-from Strategies.WebPreFilter import WebPreFilter
-from Strategies.WebRetriever import WebRetriever
-from Strategies.WebSearchFilter import WebSearchFilter
 
 # ── Third-Party Libraries ──
 
@@ -123,6 +124,7 @@ class RAGChatImpl(SingletonMixin):
         self.vector_store: Chroma | None = None
         self.collection: Collection | None = None
         self._lock = threading.Lock()
+        self.retrieval_orchestrator: RetrievalOrchestrator = RetrievalOrchestrator(self)
 
     def set_vector_store(self, mySession: Session) -> bool:
         """Thread-safe wrapper — acquires ``self._lock`` then delegates."""
@@ -454,40 +456,7 @@ class RAGChatImpl(SingletonMixin):
             return self._retrieve(mySession)
 
     def _retrieve(self, mySession: Session) -> Tuple[str, int]:
-        if not self._set_vector_store(mySession):
-            return "", 0
-        self.perf_logger.log("RAGChatImpl._retrieve", "chat", "start retrieve")
-        user_query_original = self._prepare_session(mySession)
-        final_query, alternate_queries = self._normalize_query(
-            mySession, user_query_original
-        )
-        if self._check_gates(mySession, final_query):
-            return "", 0
-        retrieve_mode: str = (mySession.retrieve_mode or "VECTOR").upper()
-        bm25_query: str = mySession.query or ""
-        orig_translated_query_en: str = (
-            getattr(mySession, "orig_translated_query_en", None)
-            or getattr(mySession, "seed_retrieval_query", None)
-            or getattr(mySession, "t1_query", None)
-            or ""
-        )
-        vector_docs, bm25_docs, graph_docs, regex_docs = self._fetch_local_docs(
-            mySession,
-            retrieve_mode,
-            bm25_query,
-            alternate_queries,
-            orig_translated_query_en,
-        )
-        web_docs = self._fetch_web_docs(mySession, retrieve_mode, user_query_original)
-        chosen = self._merge_and_select(
-            mySession,
-            vector_docs,
-            bm25_docs,
-            graph_docs,
-            regex_docs,
-            web_docs,
-        )
-        return self._build_context(mySession, chosen)
+        return self.retrieval_orchestrator.run(mySession)
 
     def _prepare_session(self, mySession: Session) -> str:
         """Reset per-turn flags, handle mode-change and topic-switch resets.
@@ -778,134 +747,37 @@ class RAGChatImpl(SingletonMixin):
 
         Returns (final_query, alternate_queries).
         """
-        # Some unit tests dynamically load only this method into a minimal shell
-        # object. Keep behavior identical by falling back to local logic when
-        # split helper methods are not present on `self`.
-        if hasattr(self, "_resolve_turn_translation_backend"):
-            backend, translator = self._resolve_turn_translation_backend(mySession)
-        else:
-            backend = (
-                getattr(mySession, "translation_backend", None)
-                or getattr(self, "_translation_backend", "off")
-                or "off"
-            ).lower()
-            translator = self._get_translator(backend)
+        backend, translator = self._resolve_turn_translation_backend(mySession)
 
-        was_translated: bool = False
         raw_query: str = mySession.query or ""
-
-        if hasattr(self, "_detect_raw_query_language"):
-            raw_query_language: str = self._detect_raw_query_language(
-                mySession,
-                raw_query,
-            )
-        else:
-            raw_query_language = (
-                self._fileUtils.get_user_text_language(
-                    raw_query,
-                    output="nltk",
-                    native_lang=mySession.preferred_response_language,
-                )
-                if raw_query
-                else "english"
-            )
-            # Keep chat-history language filtering on the user language, not
-            # the retrieval language, so language-specific contexts remain
-            # isolated.
-            mySession.user_language = raw_query_language
-            mySession.current_query_lang = raw_query_language
-            mySession.retrieval_language = "english"
+        raw_query_language: str = self._detect_raw_query_language(
+            mySession,
+            raw_query,
+        )
 
         # Build the original translated retrieval query before rewrite.
-        if hasattr(self, "_translate_query_to_english"):
-            orig_translated_query_en, translated_orig_query = (
-                self._translate_query_to_english(
-                    raw_query,
-                    raw_query_language,
-                    translator,
-                    backend,
-                    "Normalized user query",
-                )
+        orig_translated_query_en, translated_orig_query = (
+            self._translate_query_to_english(
+                raw_query,
+                raw_query_language,
+                translator,
+                backend,
+                "Normalized user query",
             )
-        else:
-            orig_translated_query_en = raw_query
-            translated_orig_query = False
-            if translator is not None and raw_query and raw_query_language != "english":
-                translated: str = translator.translate_text(
-                    raw_query,
-                    target_lang="en",
-                    source_lang=raw_query_language,
-                )
-                if translated and translated != raw_query:
-                    orig_translated_query_en = translated
-                    self.pretty.write(
-                        "I",
-                        "QueryNorm",
-                        f"Normalized user query [{raw_query_language}→english, "
-                        f"backend={backend}]: "
-                        f"{raw_query!r} → {orig_translated_query_en!r}",
-                    )
-                    translated_orig_query = True
-
-        was_translated = was_translated or translated_orig_query
+        )
+        was_translated: bool = translated_orig_query
 
         mySession.orig_translated_query_en = orig_translated_query_en
+        # Seed retrieval query = the original user query normalized to English
+        # before rewrite. Guardrail retrieval can reuse this form when the
+        # post-rewrite query drifts and misses relevant chunks.
         mySession.seed_retrieval_query = orig_translated_query_en
         mySession.t1_query = orig_translated_query_en
         mySession.query = orig_translated_query_en
 
-        if hasattr(self, "_rewrite_query_with_strict_retry"):
-            rewrite_language, was_rewritten = self._rewrite_query_with_strict_retry(
-                mySession
-            )
-        else:
-            pre_rewrite_query: str = mySession.query or ""
-            if mySession.use_chat_context:
-                mySession.query = self.promptRewrite.rewrite(mySession)
-
-            rewritten_query: str = mySession.query or ""
-            was_rewritten = rewritten_query != pre_rewrite_query
-
-            rewrite_language = (
-                self._fileUtils.get_user_text_language(
-                    rewritten_query,
-                    output="nltk",
-                    native_lang=None,
-                )
-                if rewritten_query
-                else "english"
-            )
-            mySession.rewritten_query = rewritten_query
-            mySession.rewrite_language = rewrite_language
-
-            # If rewrite drifted out of English, retry with stricter instructions
-            # before falling back to translation.
-            if (
-                rewrite_language != "english"
-                and mySession.use_chat_context
-                and not mySession.force_skip_rewrite
-            ):
-                strict_candidate: str = (
-                    self.promptRewrite.rewrite(mySession, strict_english=True) or ""
-                ).strip()
-                if strict_candidate:
-                    strict_lang: str = self._fileUtils.get_user_text_language(
-                        strict_candidate,
-                        output="nltk",
-                        native_lang=None,
-                    )
-                    if strict_lang == "english":
-                        mySession.query = strict_candidate
-                        rewritten_query = strict_candidate
-                        rewrite_language = strict_lang
-                        mySession.rewritten_query = rewritten_query
-                        mySession.rewrite_language = rewrite_language
-                        was_rewritten = rewritten_query != pre_rewrite_query
-                        self.pretty.write(
-                            "I",
-                            "QueryNorm",
-                            "Strict English rewrite retry succeeded.",
-                        )
+        rewrite_language, was_rewritten = self._rewrite_query_with_strict_retry(
+            mySession
+        )
 
         # Build the post-rewrite English retrieval query.
         translated_post_rewrite = self._apply_post_rewrite_translation(
@@ -938,14 +810,17 @@ class RAGChatImpl(SingletonMixin):
         )
 
         alternate_queries: list[str] = self._generate_alternate_queries(
-            final_query, mySession
+            final_query,
+            mySession,
         )
         if alternate_queries and DebugHelper.check_session(mySession, 29):
+            query_lines = [f"{i+1}: {q!r}" for i, q in enumerate(alternate_queries)]
             self.pretty.write(
                 "D",
                 "MultiQuery",
-                f"Alternate queries ({len(alternate_queries)}): "
-                + " | ".join(f"{i+1}: {q!r}" for i, q in enumerate(alternate_queries)),
+                f"Alternate queries ({len(alternate_queries)})"
+                + "\n"
+                + "\n".join(query_lines),
                 color=CYAN,
             )
 
@@ -985,24 +860,322 @@ class RAGChatImpl(SingletonMixin):
                 )
         return False
 
-    def _fetch_local_docs(
+    @staticmethod
+    def _resolve_file_filter(mySession: Session) -> dict[str, Any] | None:
+        """Extract the shared metadata file/path filter from base_kwargs."""
+        if mySession.base_kwargs and "filter" in mySession.base_kwargs:
+            return mySession.base_kwargs["filter"]
+        return None
+
+    def _query_language_label(
         self,
         mySession: Session,
-        retrieve_mode: str,
-        bm25_query: str,
-        alternate_queries: list[str],
-        orig_translated_query_en: str = "",
-    ) -> tuple[list[Any], list[Any], list[Any], list[Any]]:
-        """Run Vector/BM25/Graph/Regex retrievers with seed/final guardrail fusion.
+        *,
+        file_filter: dict[str, Any] | None = None,
+    ) -> str:
+        """Resolve a compact language label for retrieval query logs."""
+        if isinstance(file_filter, dict) and "Language" in file_filter:
+            language_value = file_filter.get("Language")
+            if isinstance(language_value, dict):
+                language_dict = cast(dict[str, Any], language_value)
+                language_value = language_dict.get("$eq")
+            normalized = self._normalize_language_bucket(language_value)
+            if normalized:
+                return normalized
 
-        Local retrieval runs on `post_rewrite_query_en` (primary query) and,
-        when distinct, also on `orig_translated_query_en` (guardrail query).
-        The two result sets are
-        fused per retriever via RRF to avoid single-point failures from a bad
-        rewrite or bad post-rewrite translation.
+        for candidate in (
+            getattr(mySession, "retrieval_language", None),
+            getattr(mySession, "current_query_lang", None),
+            getattr(mySession, "user_language", None),
+        ):
+            normalized = self._normalize_language_bucket(candidate)
+            if normalized:
+                return normalized
 
-        Returns (vector_docs, bm25_docs, graph_docs, regex_docs).
+        return "default"
+
+    def _normalize_language_bucket(self, language: Any) -> str | None:
+        """Normalize language names/codes to lower-case ISO-ish bucket code."""
+        text = str(language or "").strip().lower()
+        if not text:
+            return None
+
+        mapping_obj = getattr(self._shared, "lang_name_to_code", None)
+        if isinstance(mapping_obj, dict):
+            mapping = cast(dict[str, Any], mapping_obj)
+            mapped = mapping.get(text)
+            if mapped is not None:
+                mapped_text = str(mapped).strip().lower()
+                if mapped_text:
+                    return mapped_text
+
+        return text
+
+    def _shape_graph_regex_stage_queries(
+        self,
+        mySession: Session,
+        *,
+        language_bucket: str | None,
+        primary_query: str,
+        guardrail_query: str,
+    ) -> tuple[str, str]:
+        """Shape Graph/Regex stage queries for one language bucket.
+
+        Retrieval queries are normalized to English upstream. For non-English
+        stage buckets, translate from English to the bucket language only when
+        the configured query-translation backend is Argos.
         """
+        _ = mySession
+        target_language = self._normalize_language_bucket(language_bucket)
+        if not target_language:
+            return primary_query, guardrail_query
+
+        if not target_language:
+            return primary_query, guardrail_query
+        if target_language == "en" or target_language.startswith("en-"):
+            return primary_query, guardrail_query
+
+        backend = str(getattr(self, "_translation_backend", "off") or "off")
+        if backend.strip().lower() != "argos":
+            return primary_query, guardrail_query
+
+        translate_text = getattr(self._shared, "translate_text", None)
+        if not callable(translate_text):
+            return primary_query, guardrail_query
+
+        def _translate_query(query: str) -> str:
+            if not query:
+                return query
+            try:
+                translated_obj = translate_text(query, target_language, "en")
+            except Exception:
+                return query
+            translated = str(translated_obj or "").strip()
+            return translated or query
+
+        return _translate_query(primary_query), _translate_query(guardrail_query)
+
+    def _run_indexed_retriever_with_guardrail(
+        self,
+        *,
+        mySession: Session,
+        retriever: Any,
+        label: str,
+        primary_query: str,
+        guardrail_query: str,
+        use_guardrail: bool,
+        file_filter: dict[str, Any] | None,
+    ) -> tuple[list[Any], int, int]:
+        """Run one indexed retriever on final and optional guardrail query.
+
+        The guardrail query is the pre-rewrite English seed retrieval query
+        (``orig_translated_query_en``), used as a second retrieval leg when it
+        differs from the final rewritten query.
+
+        Returns:
+            (docs, top_k_orig_query_en, top_k_post_rewrite_query_en)
+        """
+        assert self.collection is not None
+
+        label_lower = label.lower()
+        query_language = self._query_language_label(
+            mySession,
+            file_filter=file_filter,
+        )
+        self.pretty.write(
+            "I",
+            label,
+            f"Querying {label_lower} index on collection {self.collection_name} "
+            f"for language {query_language}",
+        )
+        self.perf_logger.log(
+            "RAGChatImpl._retrieve",
+            "chat",
+            f"start {label_lower} block collection={self.collection_name}",
+        )
+        _t_block = time.perf_counter()
+
+        index_dir = retriever.get_index_dir(self.collection_name)
+        retriever.load_or_rebuild(
+            index_dir,
+            self.collection_name,
+            self.collection,
+        )
+
+        docs_final = retriever.query(
+            primary_query,
+            k=mySession.retriever_k or 100,
+            file_filter=file_filter,
+        )
+        for doc in docs_final:
+            doc.metadata["retriever_sources"] = label
+
+        docs = docs_final
+        top_k_orig_query_en: int = 0
+        top_k_post_rewrite_query_en: int = len(docs_final)
+
+        if use_guardrail:
+            # Guardrail leg: query again with the pre-rewrite English seed
+            # retrieval query to recover when rewrite/post-rewrite translation
+            # drifts away from the user intent.
+            docs_seed = retriever.query(
+                guardrail_query,
+                k=mySession.retriever_k or 100,
+                file_filter=file_filter,
+            )
+            for doc in docs_seed:
+                doc.metadata["retriever_sources"] = label
+            top_k_orig_query_en = len(docs_seed)
+            if docs_seed:
+                docs = BM25Retriever.reciprocal_rank_fusion(
+                    docs_final,
+                    docs_seed,
+                    k=self.bm25_retriever.rrf_k,
+                    labels=[label, label],
+                    weights=[1.0, 1.0],
+                )
+
+        self.pretty.write(
+            "O",
+            label,
+            f"{label} retrieval returned {len(docs)} chunks",
+        )
+        self.perf_logger.log(
+            "RAGChatImpl._retrieve",
+            "chat",
+            f"stop  {label_lower} block n={len(docs)} elapsed={time.perf_counter() - _t_block:.3f}s",
+        )
+
+        return docs, top_k_orig_query_en, top_k_post_rewrite_query_en
+
+    def _run_vector_retriever_with_guardrail(
+        self,
+        *,
+        mySession: Session,
+        primary_query: str,
+        guardrail_query: str,
+        use_guardrail: bool,
+        alternate_queries: list[str],
+    ) -> tuple[list[Any], int, int]:
+        """Run vector retrieval on final and optional guardrail query.
+
+        The guardrail query is the pre-rewrite English seed retrieval query
+        (``orig_translated_query_en``), used as a second retrieval leg when it
+        differs from the final rewritten query.
+
+        Also runs alternate-query fanout and de-duplicates added chunks by id.
+
+        Returns:
+            (docs, top_k_orig_query_en, top_k_post_rewrite_query_en)
+        """
+        query_language = self._query_language_label(mySession)
+        self.pretty.write(
+            "I",
+            "Chroma",
+            f"Querying Chroma DB on vector store {self.persist_directory} "
+            f"for language {query_language}",
+        )
+        assert (
+            self.vector_store is not None
+        ), "vector_store not initialized; call set_vector_store first"
+
+        self.perf_logger.log(
+            "RAGChatImpl._retrieve",
+            "chat",
+            "start vector similarity_search",
+        )
+        _t_vec = time.perf_counter()
+        vector_kwargs = self._vector_kwargs(mySession)
+
+        hits_final: list[Any] = self.vector_store.similarity_search_with_score(
+            primary_query,
+            **vector_kwargs,
+        )
+        vector_docs_final = self.chatContext.annotate_chunks(hits_final)
+        for doc in vector_docs_final:
+            doc.metadata["retriever_sources"] = "Vector"
+
+        vector_docs = vector_docs_final
+        top_k_orig_query_en: int = 0
+        top_k_post_rewrite_query_en: int = len(vector_docs_final)
+
+        if use_guardrail:
+            try:
+                # Guardrail leg mirrors indexed retrievers: fuse final-query and
+                # pre-rewrite English seed-retrieval-query hits so retrieval
+                # remains resilient to rewrite drift.
+                hits_seed: list[Any] = self.vector_store.similarity_search_with_score(
+                    guardrail_query,
+                    **vector_kwargs,
+                )
+                vector_docs_seed = self.chatContext.annotate_chunks(hits_seed)
+                for doc in vector_docs_seed:
+                    doc.metadata["retriever_sources"] = "Vector"
+                top_k_orig_query_en = len(vector_docs_seed)
+                if vector_docs_seed:
+                    vector_docs = BM25Retriever.reciprocal_rank_fusion(
+                        vector_docs_final,
+                        vector_docs_seed,
+                        k=self.bm25_retriever.rrf_k,
+                        labels=["Vector", "Vector"],
+                        weights=[1.0, 1.0],
+                    )
+            except Exception as seed_exc:
+                # Vector guardrail failures should not abort the whole turn.
+                # We keep the primary-query result set and continue.
+                self.pretty.write(
+                    "W",
+                    "MultiQuery",
+                    f"Seed-query vector search failed: {seed_exc}",
+                )
+
+        self.perf_logger.log(
+            "RAGChatImpl._retrieve",
+            "chat",
+            f"stop  vector similarity_search n={len(vector_docs)} elapsed={time.perf_counter() - _t_vec:.3f}s",
+        )
+
+        if alternate_queries:
+            existing_ids: set[str] = {
+                str(doc.metadata.get("id", doc.page_content)) for doc in vector_docs
+            }
+            for query_index, alt_query in enumerate(alternate_queries, start=1):
+                try:
+                    alt_hits: list[Any] = (
+                        self.vector_store.similarity_search_with_score(
+                            alt_query,
+                            **vector_kwargs,
+                        )
+                    )
+                    alt_docs = self.chatContext.annotate_chunks(alt_hits)
+                    for doc in alt_docs:
+                        doc_id = str(doc.metadata.get("id", doc.page_content))
+                        if doc_id not in existing_ids:
+                            doc.metadata["retriever_sources"] = "Vector"
+                            vector_docs.append(doc)
+                            existing_ids.add(doc_id)
+                except Exception as alt_exc:
+                    self.pretty.write(
+                        "W",
+                        "MultiQuery",
+                        f"Alternate query {query_index} vector search failed: {alt_exc}",
+                    )
+
+        if DebugHelper.check_session(mySession, 10):
+            self._print_chroma_debug(vector_docs)
+        self.pretty.write(
+            "O",
+            "Chroma",
+            f"Querying Chroma DB query returned {len(vector_docs)} chunks",
+        )
+
+        return vector_docs, top_k_orig_query_en, top_k_post_rewrite_query_en
+
+    @staticmethod
+    def _mode_flags_for_local_retrievers(
+        retrieve_mode: str,
+    ) -> tuple[bool, bool, bool, bool]:
+        """Return enabled flags for Vector/BM25/Graph/Regex local retrievers."""
         mode_upper = (retrieve_mode or "VECTOR").upper()
         mode_parts = set(mode_upper.split("_"))
         mode_all = mode_upper == "ALL"
@@ -1011,333 +1184,197 @@ class RAGChatImpl(SingletonMixin):
         bm25_enabled = mode_all or "BM25" in mode_parts
         graph_enabled = mode_all or "GRAPH" in mode_parts
         regex_enabled = mode_all or "REGEX" in mode_parts
+        return vector_enabled, bm25_enabled, graph_enabled, regex_enabled
 
-        primary_query: str = bm25_query or ""
-        guardrail_query: str = (orig_translated_query_en or "").strip()
-        use_guardrail: bool = bool(
+    @staticmethod
+    def _is_guardrail_query_active(primary_query: str, guardrail_query: str) -> bool:
+        """Return True when the pre-rewrite English seed query should run.
+
+        The second guardrail leg runs only when this seed retrieval query is
+        distinct from the final rewritten retrieval query.
+        """
+        return bool(
             guardrail_query and guardrail_query.lower() != primary_query.strip().lower()
         )
-        top_k_orig_query_en: int = 0
-        top_k_post_rewrite_query_en: int = 0
 
-        # --- VECTOR retrieval ---
-        vector_docs: list[Any] = []
-        vector_weight = float(
-            mySession.vector_weight if mySession.vector_weight is not None else 1.0
+    def _resolve_guardrail_queries(
+        self,
+        *,
+        bm25_query: str,
+        orig_translated_query_en: str,
+    ) -> tuple[str, str, bool]:
+        """Resolve primary and guardrail retrieval query forms.
+
+        ``primary_query`` is the final rewritten retrieval query.
+        ``guardrail_query`` is the pre-rewrite English seed retrieval query.
+        The guardrail leg is active only when both forms differ.
+        """
+        primary_query: str = bm25_query or ""
+        guardrail_query: str = (orig_translated_query_en or "").strip()
+        use_guardrail: bool = self._is_guardrail_query_active(
+            primary_query,
+            guardrail_query,
         )
-        if vector_enabled and vector_weight != 0.0:
-            self.pretty.write(
-                "I",
-                "Chroma",
-                f"Querying Chroma DB on vector store {self.persist_directory}",
-            )
-            assert (
-                self.vector_store is not None
-            ), "vector_store not initialized; call set_vector_store first"
-            self.perf_logger.log(
-                "RAGChatImpl._retrieve", "chat", "start vector similarity_search"
-            )
-            _t_vec = time.perf_counter()
-            vector_kwargs = self._vector_kwargs(mySession)
-            hits_final: list[Any] = self.vector_store.similarity_search_with_score(
-                primary_query, **vector_kwargs
-            )
-            vector_docs_final = self.chatContext.annotate_chunks(hits_final)
-            for d in vector_docs_final:
-                d.metadata["retriever_sources"] = "Vector"
-            top_k_post_rewrite_query_en += len(vector_docs_final)
+        return primary_query, guardrail_query, use_guardrail
 
-            vector_docs = vector_docs_final
-            if use_guardrail:
-                try:
-                    hits_seed: list[Any] = (
-                        self.vector_store.similarity_search_with_score(
-                            guardrail_query,
-                            **vector_kwargs,
-                        )
-                    )
-                    vector_docs_seed = self.chatContext.annotate_chunks(hits_seed)
-                    for d in vector_docs_seed:
-                        d.metadata["retriever_sources"] = "Vector"
-                    top_k_orig_query_en += len(vector_docs_seed)
-                    if vector_docs_seed:
-                        vector_docs = BM25Retriever.reciprocal_rank_fusion(
-                            vector_docs_final,
-                            vector_docs_seed,
-                            k=self.bm25_retriever.rrf_k,
-                            labels=["Vector", "Vector"],
-                            weights=[1.0, 1.0],
-                        )
-                except Exception as t1_exc:
-                    self.pretty.write(
-                        "W",
-                        "MultiQuery",
-                        f"Seed-query vector search failed: {t1_exc}",
-                    )
+    @staticmethod
+    def _accumulate_topk_counts(
+        current_orig_query_en: int,
+        current_post_rewrite_query_en: int,
+        add_orig_query_en: int,
+        add_post_rewrite_query_en: int,
+    ) -> tuple[int, int]:
+        """Return updated guardrail counters after adding one retriever leg."""
+        return (
+            current_orig_query_en + add_orig_query_en,
+            current_post_rewrite_query_en + add_post_rewrite_query_en,
+        )
 
-            self.perf_logger.log(
-                "RAGChatImpl._retrieve",
-                "chat",
-                f"stop  vector similarity_search n={len(vector_docs)} elapsed={time.perf_counter() - _t_vec:.3f}s",
-            )
-
-            if alternate_queries:
-                existing_ids: set[str] = {
-                    str(d.metadata.get("id", d.page_content)) for d in vector_docs
-                }
-                for qi, aq in enumerate(alternate_queries, start=1):
-                    try:
-                        aq_hits: list[Any] = (
-                            self.vector_store.similarity_search_with_score(
-                                aq, **vector_kwargs
-                            )
-                        )
-                        aq_docs = self.chatContext.annotate_chunks(aq_hits)
-                        for d in aq_docs:
-                            doc_id = str(d.metadata.get("id", d.page_content))
-                            if doc_id not in existing_ids:
-                                d.metadata["retriever_sources"] = "Vector"
-                                vector_docs.append(d)
-                                existing_ids.add(doc_id)
-                    except Exception as aq_exc:
-                        self.pretty.write(
-                            "W",
-                            "MultiQuery",
-                            f"Alternate query {qi} vector search failed: {aq_exc}",
-                        )
-            if DebugHelper.check_session(mySession, 10):
-                self._print_chroma_debug(vector_docs)
-            self.pretty.write(
-                "O",
-                "Chroma",
-                f"Querying Chroma DB query returned {len(vector_docs)} chunks",
-            )
-
-        # --- BM25 retrieval ---
-        bm25_docs: list[Any] = []
+    def _indexed_retriever_specs(
+        self,
+        mySession: Session,
+        *,
+        bm25_enabled: bool,
+        graph_enabled: bool,
+        regex_enabled: bool,
+    ) -> list[tuple[str, bool, float, Any, int, Any]]:
+        """Build retrieval specs for indexed local retrievers."""
         bm25_weight = float(
             mySession.bm25_weight if mySession.bm25_weight is not None else 1.0
         )
-        if bm25_enabled and bm25_weight != 0.0:
-            self.pretty.write(
-                "I",
-                "BM25",
-                f"Querying BM25 index on collection {self.collection_name}",
-            )
-            assert self.collection is not None
-            assert self.persist_directory is not None
-            self.perf_logger.log(
-                "RAGChatImpl._retrieve",
-                "chat",
-                f"start bm25 block collection={self.collection_name}",
-            )
-            _t_bm25 = time.perf_counter()
-            bm25_dir = self.bm25_retriever.get_index_dir(self.collection_name)
-            self.bm25_retriever.load_or_rebuild(
-                bm25_dir,
-                self.collection_name,
-                self.collection,
-            )
-            bm25_filter: dict[str, Any] | None = None
-            if mySession.base_kwargs and "filter" in mySession.base_kwargs:
-                bm25_filter = mySession.base_kwargs["filter"]
-
-            bm25_docs_final = self.bm25_retriever.query(
-                primary_query,
-                k=mySession.retriever_k or 100,
-                file_filter=bm25_filter,
-            )
-            for d in bm25_docs_final:
-                d.metadata["retriever_sources"] = "BM25"
-            top_k_post_rewrite_query_en += len(bm25_docs_final)
-
-            bm25_docs = bm25_docs_final
-            if use_guardrail:
-                bm25_docs_seed = self.bm25_retriever.query(
-                    guardrail_query,
-                    k=mySession.retriever_k or 100,
-                    file_filter=bm25_filter,
-                )
-                for d in bm25_docs_seed:
-                    d.metadata["retriever_sources"] = "BM25"
-                top_k_orig_query_en += len(bm25_docs_seed)
-                if bm25_docs_seed:
-                    bm25_docs = BM25Retriever.reciprocal_rank_fusion(
-                        bm25_docs_final,
-                        bm25_docs_seed,
-                        k=self.bm25_retriever.rrf_k,
-                        labels=["BM25", "BM25"],
-                        weights=[1.0, 1.0],
-                    )
-
-            self.pretty.write(
-                "O",
-                "BM25",
-                f"BM25 retrieval returned {len(bm25_docs)} chunks",
-            )
-            self.perf_logger.log(
-                "RAGChatImpl._retrieve",
-                "chat",
-                f"stop  bm25 block n={len(bm25_docs)} elapsed={time.perf_counter() - _t_bm25:.3f}s",
-            )
-            if DebugHelper.check_session(mySession, 10):
-                self._print_bm25_debug(bm25_docs)
-
-        # --- Graph retrieval ---
-        graph_docs: list[Any] = []
         graph_weight = float(
             mySession.graph_weight if mySession.graph_weight is not None else 1.0
         )
-        if graph_enabled and graph_weight != 0.0:
-            self.pretty.write(
-                "I",
-                "Graph",
-                f"Querying graph index on collection {self.collection_name}",
-            )
-            assert self.collection is not None
-            self.perf_logger.log(
-                "RAGChatImpl._retrieve",
-                "chat",
-                f"start graph block collection={self.collection_name}",
-            )
-            _t_graph = time.perf_counter()
-            graph_dir = self.graph_retriever.get_index_dir(self.collection_name)
-            self.graph_retriever.load_or_rebuild(
-                graph_dir,
-                self.collection_name,
-                self.collection,
-            )
-            graph_filter: dict[str, Any] | None = None
-            if mySession.base_kwargs and "filter" in mySession.base_kwargs:
-                graph_filter = mySession.base_kwargs["filter"]
-
-            graph_docs_final = self.graph_retriever.query(
-                primary_query,
-                k=mySession.retriever_k or 100,
-                file_filter=graph_filter,
-            )
-            for d in graph_docs_final:
-                d.metadata["retriever_sources"] = "Graph"
-            top_k_post_rewrite_query_en += len(graph_docs_final)
-
-            graph_docs = graph_docs_final
-            if use_guardrail:
-                graph_docs_seed = self.graph_retriever.query(
-                    guardrail_query,
-                    k=mySession.retriever_k or 100,
-                    file_filter=graph_filter,
-                )
-                for d in graph_docs_seed:
-                    d.metadata["retriever_sources"] = "Graph"
-                top_k_orig_query_en += len(graph_docs_seed)
-                if graph_docs_seed:
-                    graph_docs = BM25Retriever.reciprocal_rank_fusion(
-                        graph_docs_final,
-                        graph_docs_seed,
-                        k=self.bm25_retriever.rrf_k,
-                        labels=["Graph", "Graph"],
-                        weights=[1.0, 1.0],
-                    )
-
-            self.pretty.write(
-                "O",
-                "Graph",
-                f"Graph retrieval returned {len(graph_docs)} chunks",
-            )
-            self.perf_logger.log(
-                "RAGChatImpl._retrieve",
-                "chat",
-                f"stop  graph block n={len(graph_docs)} elapsed={time.perf_counter() - _t_graph:.3f}s",
-            )
-            if DebugHelper.check_session(mySession, 30):
-                self._print_graph_debug(graph_docs)
-
-        # --- Regex retrieval ---
-        regex_docs: list[Any] = []
         regex_weight = float(
             mySession.regex_weight if mySession.regex_weight is not None else 1.0
         )
-        if regex_enabled and regex_weight != 0.0:
-            self.pretty.write(
-                "I",
+        return [
+            (
+                "BM25",
+                bm25_enabled,
+                bm25_weight,
+                self.bm25_retriever,
+                10,
+                self._print_bm25_debug,
+            ),
+            (
+                "Graph",
+                graph_enabled,
+                graph_weight,
+                self.graph_retriever,
+                30,
+                self._print_graph_debug,
+            ),
+            (
                 "Regex",
-                f"Querying regex index on collection {self.collection_name}",
-            )
-            assert self.collection is not None
-            self.perf_logger.log(
-                "RAGChatImpl._retrieve",
-                "chat",
-                f"start regex block collection={self.collection_name}",
-            )
-            _t_regex = time.perf_counter()
-            regex_dir = self.regex_retriever.get_index_dir(self.collection_name)
-            self.regex_retriever.load_or_rebuild(
-                regex_dir,
-                self.collection_name,
-                self.collection,
-            )
-            regex_filter: dict[str, Any] | None = None
-            if mySession.base_kwargs and "filter" in mySession.base_kwargs:
-                regex_filter = mySession.base_kwargs["filter"]
+                regex_enabled,
+                regex_weight,
+                self.regex_retriever,
+                30,
+                self._print_regex_debug,
+            ),
+        ]
 
-            regex_docs_final = self.regex_retriever.query(
-                primary_query,
-                k=mySession.retriever_k or 100,
-                file_filter=regex_filter,
-            )
-            for d in regex_docs_final:
-                d.metadata["retriever_sources"] = "Regex"
-            top_k_post_rewrite_query_en += len(regex_docs_final)
+    def _run_indexed_local_retrievers(
+        self,
+        mySession: Session,
+        *,
+        indexed_specs: list[tuple[str, bool, float, Any, int, Any]],
+        primary_query: str,
+        guardrail_query: str,
+        use_guardrail: bool,
+        file_filter: dict[str, Any] | None,
+    ) -> tuple[dict[str, list[Any]], int, int]:
+        """Run BM25/Graph/Regex retrieval specs and collect guardrail counters.
 
-            regex_docs = regex_docs_final
-            if use_guardrail:
-                regex_docs_seed = self.regex_retriever.query(
-                    guardrail_query,
-                    k=mySession.retriever_k or 100,
-                    file_filter=regex_filter,
-                )
-                for d in regex_docs_seed:
-                    d.metadata["retriever_sources"] = "Regex"
-                top_k_orig_query_en += len(regex_docs_seed)
-                if regex_docs_seed:
-                    regex_docs = BM25Retriever.reciprocal_rank_fusion(
-                        regex_docs_final,
-                        regex_docs_seed,
-                        k=self.bm25_retriever.rrf_k,
-                        labels=["Regex", "Regex"],
-                        weights=[1.0, 1.0],
-                    )
+        Guardrail counters compare hits from the pre-rewrite English seed
+        retrieval query versus the final rewritten retrieval query.
+        """
+        indexed_docs: dict[str, list[Any]] = {
+            "BM25": [],
+            "Graph": [],
+            "Regex": [],
+        }
+        top_k_orig_query_en: int = 0
+        top_k_post_rewrite_query_en: int = 0
 
-            self.pretty.write(
-                "O",
-                "Regex",
-                f"Regex retrieval returned {len(regex_docs)} chunks",
-            )
-            self.perf_logger.log(
-                "RAGChatImpl._retrieve",
-                "chat",
-                f"stop  regex block n={len(regex_docs)} elapsed={time.perf_counter() - _t_regex:.3f}s",
-            )
-            if DebugHelper.check_session(mySession, 30):
-                self._print_regex_debug(regex_docs)
+        for (
+            label,
+            enabled,
+            weight,
+            retriever,
+            debug_level,
+            debug_printer,
+        ) in indexed_specs:
+            if not enabled or weight == 0.0:
+                continue
+            if label == "BM25":
+                assert self.persist_directory is not None
 
-        if use_guardrail:
-            mySession.retrieval_top_k_orig_query_en = top_k_orig_query_en
-            mySession.retrieval_top_k_post_rewrite_query_en = (
-                top_k_post_rewrite_query_en
+            (
+                docs,
+                top_k_orig,
+                top_k_post,
+            ) = self._run_indexed_retriever_with_guardrail(
+                mySession=mySession,
+                retriever=retriever,
+                label=label,
+                primary_query=primary_query,
+                guardrail_query=guardrail_query,
+                use_guardrail=use_guardrail,
+                file_filter=file_filter,
             )
-            mySession.retrieval_top_k_seed_query = top_k_orig_query_en
-            mySession.retrieval_top_k_final_query = top_k_post_rewrite_query_en
-            mySession.retrieval_top_k_before_t2 = top_k_orig_query_en
-            mySession.retrieval_top_k_after_t2 = top_k_post_rewrite_query_en
-            self.pretty.write(
-                "I",
-                "LangDrift",
-                f"retrieval_top_k_orig_query_en={top_k_orig_query_en}  "
-                f"retrieval_top_k_post_rewrite_query_en={top_k_post_rewrite_query_en}",
-            )
+            indexed_docs[label] = docs
+            top_k_orig_query_en += top_k_orig
+            top_k_post_rewrite_query_en += top_k_post
+            if DebugHelper.check_session(mySession, debug_level):
+                debug_printer(docs)
 
-        return vector_docs, bm25_docs, graph_docs, regex_docs
+        return indexed_docs, top_k_orig_query_en, top_k_post_rewrite_query_en
+
+    def _store_guardrail_retrieval_topk(
+        self,
+        mySession: Session,
+        *,
+        top_k_orig_query_en: int,
+        top_k_post_rewrite_query_en: int,
+    ) -> None:
+        """Store guardrail dual-query retrieval counts on the session.
+
+        ``*_orig_query_en`` fields track the pre-rewrite English seed retrieval
+        query. ``*_post_rewrite_query_en`` fields track the final rewritten
+        retrieval query.
+        """
+        # These counters are only meaningful when the guardrail second leg ran.
+        mySession.retrieval_top_k_orig_query_en = top_k_orig_query_en
+        mySession.retrieval_top_k_post_rewrite_query_en = top_k_post_rewrite_query_en
+        mySession.retrieval_top_k_seed_query = top_k_orig_query_en
+        mySession.retrieval_top_k_final_query = top_k_post_rewrite_query_en
+        mySession.retrieval_top_k_before_t2 = top_k_orig_query_en
+        mySession.retrieval_top_k_after_t2 = top_k_post_rewrite_query_en
+        self.pretty.write(
+            "I",
+            "LangDrift",
+            f"retrieval_top_k_orig_query_en={top_k_orig_query_en}  "
+            f"retrieval_top_k_post_rewrite_query_en={top_k_post_rewrite_query_en}",
+        )
+
+    def _fetch_local_docs(
+        self,
+        mySession: Session,
+        retrieve_mode: str,
+        bm25_query: str,
+        alternate_queries: list[str],
+        orig_translated_query_en: str = "",
+    ) -> tuple[list[Any], list[Any], list[Any], list[Any]]:
+        """Delegate local retrieval orchestration to RetrievalOrchestrator."""
+        return self.retrieval_orchestrator.run_local_retrievers(
+            mySession,
+            retrieve_mode,
+            bm25_query,
+            alternate_queries,
+            orig_translated_query_en,
+        )
 
     def _fetch_web_docs(
         self,
@@ -1345,129 +1382,12 @@ class RAGChatImpl(SingletonMixin):
         retrieve_mode: str,
         user_query_original: str,
     ) -> list[Any]:
-        """Run web retrieval and apply BM25/cosine pre-filters.
-
-        Returns web_docs (empty list when web search is disabled or blocked).
-        """
-        web_docs: list[Any] = []
-        web_triggered: bool = mySession.web_search or retrieve_mode == "WEB"
-        if not web_triggered:
-            return web_docs
-
-        web_mode: str = str(os.environ.get("WEB_SEARCH_MODE", "0")).strip().lower()
-        if web_mode == "0":
-            if retrieve_mode == "WEB":
-                self.pretty.write(
-                    "W",
-                    "Web",
-                    'retrieve_mode=WEB requested but WEB_SEARCH_MODE="0" '
-                    "— no results will be returned.",
-                )
-            else:
-                self.pretty.write(
-                    "W",
-                    "Web",
-                    'Web search blocked by administrator (WEB_SEARCH_MODE = "0") — skipping',
-                )
-            return web_docs
-        if web_mode != "1":
-            self.pretty.write(
-                "W",
-                "Web",
-                f"Web search blocked (WEB_SEARCH_MODE = {web_mode!r}) — skipping",
-            )
-            return web_docs
-
-        label = (
-            "retrieve_mode=WEB — querying web only..."
-            if retrieve_mode == "WEB"
-            else "Querying web search..."
+        """Delegate web retrieval orchestration to RetrievalOrchestrator."""
+        return self.retrieval_orchestrator.run_web_retriever(
+            mySession,
+            retrieve_mode,
+            user_query_original,
         )
-        self.pretty.write("I", "Web", label)
-        self.perf_logger.log("RAGChatImpl._retrieve", "chat", "start web block")
-        _t_web = time.perf_counter()
-        web_docs = self.web_retriever.query(
-            mySession.query or "",
-            k=self.cfg.get_int("_WEB_SEARCH.max_results") or 5,
-            fetch_page_content=bool(mySession.fetch_page_content),
-            original_query=user_query_original,
-            collection=mySession.collection_name or "",
-        )
-        self.pretty.write(
-            "O",
-            "Web",
-            f"Web search returned {len(web_docs)} results",
-            color=CYAN,
-        )
-        self.perf_logger.log(
-            "RAGChatImpl._retrieve",
-            "chat",
-            f"stop  web block n={len(web_docs)} elapsed={time.perf_counter() - _t_web:.3f}s",
-        )
-        if DebugHelper.check_session(mySession, 10):
-            self._print_web_debug(web_docs)
-
-        # --- Web pre-filters (BM25 and/or cosine against query) ---
-        # Each filter is a no-op when its threshold is 0.0 (default).
-        # BM25 runs first (cheap), cosine second (embedding calls).
-        pre_bm25: float = self.cfg.get_float("_WEB_SEARCH.bm25_pre_filter") or 0.0
-        pre_cosine: float = self.cfg.get_float("_WEB_SEARCH.cosine_pre_filter") or 0.0
-        if web_docs and (pre_bm25 > 0.0 or pre_cosine > 0.0):
-            if DebugHelper.check_session(mySession, 30):
-                self.pretty.write(
-                    "D",
-                    "WebPreFilter",
-                    f"Pre-filtering {len(web_docs)} web result(s) — "
-                    f"bm25_pre_filter={pre_bm25:.3f}, "
-                    f"cosine_pre_filter={pre_cosine:.3f}",
-                    color=CYAN,
-                )
-            before_pre = len(web_docs)
-            if pre_bm25 > 0.0:
-                docs_before_bm25 = web_docs
-                web_docs = self.web_pre_filter.bm25_prefilter(
-                    web_docs, mySession.query or ""
-                )
-                if DebugHelper.check_session(mySession, 30):
-                    self.pretty.write(
-                        "D",
-                        "WebPreFilter",
-                        f"After BM25 pre-filter: {len(web_docs)}/{before_pre} kept",
-                        color=CYAN,
-                    )
-                    kept_set = set(id(d) for d in web_docs)
-                    dropped_bm25 = [
-                        d for d in docs_before_bm25 if id(d) not in kept_set
-                    ]
-                    self._print_web_prefilter_debug(
-                        web_docs, dropped_bm25, "BM25", pre_bm25
-                    )
-            if pre_cosine > 0.0 and web_docs:
-                pre_query_vec: list[float] = self.embedder.embed_query(
-                    mySession.query or ""
-                )
-                docs_before_cosine = web_docs
-                web_docs = self.web_pre_filter.cosine_prefilter(
-                    web_docs,
-                    mySession.query or "",
-                    query_vec=pre_query_vec,
-                )
-                if DebugHelper.check_session(mySession, 30):
-                    self.pretty.write(
-                        "D",
-                        "WebPreFilter",
-                        f"After cosine pre-filter: {len(web_docs)}/{before_pre} kept",
-                        color=CYAN,
-                    )
-                    kept_set = set(id(d) for d in web_docs)
-                    dropped_cosine = [
-                        d for d in docs_before_cosine if id(d) not in kept_set
-                    ]
-                    self._print_web_prefilter_debug(
-                        web_docs, dropped_cosine, "Cosine", pre_cosine
-                    )
-
-        return web_docs
 
     def _merge_and_select(
         self,
@@ -1933,41 +1853,57 @@ class RAGChatImpl(SingletonMixin):
 
     def _print_bm25_debug(self, docs: list[Any]) -> None:
         """Print BM25 retrieval debug table."""
-        header = "{:>6}  {:>12}  {:>24}   {}"
-        row = "{:>6}  {:>12.4f}  {:>24}   {}"
-        self.pretty.write(
-            "D",
-            "BM25",
-            header.format("Pos", "BM25Score", "Retrievers", "File"),
-            color=CYAN,
+        self._print_single_score_retriever_debug(
+            docs,
+            channel="BM25",
+            score_header="BM25Score",
+            score_key="bm25_score",
+            file_header="File",
+            file_key="FileName",
         )
-        self.pretty.write("D", "BM25", "-" * 71, color=CYAN)
-        for i, doc in enumerate(docs[:20], start=1):
-            score = doc.metadata.get("bm25_score", 0.0)
-            sources = align_retriever_sources_for_print(
-                str(doc.metadata.get("retriever_sources", "")), 24
-            )
-            fn = doc.metadata.get("FileName", "<unknown>")
-            self.pretty.write("D", "BM25", row.format(i, score, sources, fn))
 
     def _print_graph_debug(self, docs: list[Any]) -> None:
         """Print graph retrieval debug table (shown at debug_level >= 30)."""
+        self._print_single_score_retriever_debug(
+            docs,
+            channel="Graph",
+            score_header="GraphScore",
+            score_key="graph_score",
+            file_header="File",
+            file_key="FileName",
+        )
+
+    def _print_single_score_retriever_debug(
+        self,
+        docs: list[Any],
+        *,
+        channel: str,
+        score_header: str,
+        score_key: str,
+        file_header: str,
+        file_key: str,
+    ) -> None:
+        """Print a standard single-score retriever debug table."""
         header = "{:>6}  {:>12}  {:>24}   {}"
         row = "{:>6}  {:>12.4f}  {:>24}   {}"
         self.pretty.write(
             "D",
-            "Graph",
-            header.format("Pos", "GraphScore", "Retrievers", "File"),
+            channel,
+            header.format("Pos", score_header, "Retrievers", file_header),
             color=CYAN,
         )
-        self.pretty.write("D", "Graph", "-" * 71, color=CYAN)
+        self.pretty.write("D", channel, "-" * 71, color=CYAN)
         for i, doc in enumerate(docs[:20], start=1):
-            score = doc.metadata.get("graph_score", 0.0)
+            score = doc.metadata.get(score_key, 0.0)
             sources = align_retriever_sources_for_print(
                 str(doc.metadata.get("retriever_sources", "")), 24
             )
-            fn = doc.metadata.get("FileName", "<unknown>")
-            self.pretty.write("D", "Graph", row.format(i, score, sources, fn))
+            file_value = doc.metadata.get(file_key, "<unknown>")
+            self.pretty.write(
+                "D",
+                channel,
+                row.format(i, score, sources, file_value),
+            )
 
     def _print_regex_debug(self, docs: list[Any]) -> None:
         """Print regex retrieval debug table (shown at debug_level >= 30)."""
@@ -2027,22 +1963,14 @@ class RAGChatImpl(SingletonMixin):
 
     def _print_web_debug(self, docs: list[Any]) -> None:
         """Print web retrieval debug table (shown at debug_level >= 10)."""
-        header = "{:>6}  {:>12}  {:>24}   {}"
-        row = "{:>6}  {:>12.4f}  {:>24}   {}"
-        self.pretty.write(
-            "D",
-            "Web",
-            header.format("Pos", "WebScore", "Retrievers", "URL"),
-            color=CYAN,
+        self._print_single_score_retriever_debug(
+            docs,
+            channel="Web",
+            score_header="WebScore",
+            score_key="chroma_score",
+            file_header="URL",
+            file_key="FilePath",
         )
-        self.pretty.write("D", "Web", "-" * 71, color=CYAN)
-        for i, doc in enumerate(docs[:20], start=1):
-            score = doc.metadata.get("chroma_score", 0.0)
-            sources = align_retriever_sources_for_print(
-                str(doc.metadata.get("retriever_sources", "")), 24
-            )
-            url = doc.metadata.get("FilePath", "<unknown>")
-            self.pretty.write("D", "Web", row.format(i, score, sources, url))
 
     def _print_merged_debug(self, docs: list[Any]) -> None:
         """Print RRF-merged results debug table with retriever origin and filename.
@@ -2126,6 +2054,12 @@ class RAGChatImpl(SingletonMixin):
 
         try:
             from AI.LLMCaller import LLMCaller
+
+            self.pretty.write(
+                "I",
+                "LLM Plan",
+                f"Alternate queries: generating up to {num_variants} retrieval variants from the normalized query.",
+            )
 
             result: dict[str, str] = LLMCaller().call_llm(
                 model=llm_model,

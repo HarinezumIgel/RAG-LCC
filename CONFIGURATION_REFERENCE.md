@@ -268,13 +268,13 @@ This reference covers both a **quick-scan overview** (tables by topic and by con
 | **Default Algorithms** | `Config_Banned.py` | `_DEFAULT_ALGOS` | List of algorithms in default pipeline |
 | **Algorithm Name Constants** | `Config_Banned.py` | `_COSINE`, `_JACCARD`, `_REGEX`, `_KEYBERT`, `_LEVENSHTEIN`, `_BM25` | Single source of truth for names |
 | **CSV Keys** | `Config_Banned.py` | `_KEYS_FOR_HUMAN_REVIEW_CSV` | Column names in banned-word detection CSVs |
-| **WordNet Enabled** | `Config_Global.py` | `_WORDNET["ENABLED"]` | Toggle synonym expansion |
-| **WordNet Depth** | `Config_Global.py` | `_WORDNET["DEPTH"]` | Synonym lookup depth (1-2) |
-| **WordNet Max Synonyms** | `Config_Global.py` | `_WORDNET["MAX_SYNONYMS_PER_PHRASE"]` | Per-phrase synonym limit |
-| **WordNet POS Filter** | `Config_Global.py` | `_WORDNET["POS_FILTER"]` | Restrict to noun/verb/etc. |
-| **WordNet Stoplist** | `Config_Global.py` | `_WORDNET["STOPLIST"]` | Generic words to exclude |
-| **Leet Speak Map** | `Config_Global.py` | `_LEET_MAP` | Character substitution dict |
-| **Unicode Confusables** | `Config_Global.py` | `_CONFUSABLES` | Lookalike character normalization |
+| **WordNet Enabled** | `Config_Languages.py` | `_WORDNET["ENABLED"]` | Toggle synonym expansion |
+| **WordNet Depth** | `Config_Languages.py` | `_WORDNET["DEPTH"]` | Synonym lookup depth (1-2) |
+| **WordNet Max Synonyms** | `Config_Languages.py` | `_WORDNET["MAX_SYNONYMS_PER_PHRASE"]` | Per-phrase synonym limit |
+| **WordNet POS Filter** | `Config_Languages.py` | `_WORDNET["POS_FILTER"]` | Restrict to noun/verb/etc. |
+| **WordNet Stoplist** | `Config_Languages.py` | `_WORDNET["STOPLIST"]` | Generic words to exclude |
+| **Leet Speak Map** | `Config_Languages.py` | `_LEET_MAP` | Character substitution dict |
+| **Unicode Confusables** | `Config_Languages.py` | `_CONFUSABLES` | Lookalike character normalization |
 | **Compliance Log** | `Config_Global.py` | `LOG_FILE` | Legal compliance log filename |
 
 ### 🌍 Language & Translation
@@ -282,8 +282,9 @@ This reference covers both a **quick-scan overview** (tables by topic and by con
 | **Component** | **Config File** | **Slot Name / Path** | **Notes** |
 |---------------|----------------|----------------------|-----------|
 | **Language Detection** | `Config_Global.py` | `_LANGUAGE_DETECTION["MIN_WORDS"]`, `["MIN_CONFIDENCE"]`, `["CONF_FULL_WORDS"]` | Lingua detector tuning |
-| **Language Code Mapping** | `Config_Global.py` | `_ARGOS_DEFINITIONS["LANG_CODE_TO_NAME"]` | ISO code → NLTK name dict |
-| **Argos Language Pairs** | `Config_Global.py` | `_ARGOS_DEFINITIONS["ARGOS_LANGUAGES"]` | List of (from_code, to_code) tuples |
+| **Language Code Mapping** | `Config_Languages.py` | `_ARGOS_DEFINITIONS["LANG_CODE_TO_NAME"]` | ISO code → NLTK name dict |
+| **Argos Language Pairs** | `Config_Languages.py` | `_ARGOS_DEFINITIONS["ARGOS_LANGUAGES"]` | List of (from_code, to_code) tuples |
+| **Active Languages** | `Config_Languages.py` | `_ARGOS_DEFINITIONS["ACTIVE_LANGUAGES"]` | Languages enabled at runtime (filters Argos/spaCy routing) |
 | **Unsupported Language Action** | `Config_Global.py` | `UNSUPPORTED_LANGUAGE_ACTION` | "NOT_OK" or "FALLBACK_EN" |
 | **NLTK Stopwords Path** | `Config_Global.py` | `_CUSTOM_NLTK_DATA_DIRECTORY` | Custom NLTK data location |
 | **NLTK Stopwords Download** | `Config_Internet_Env.py` | `os.environ["NLTK_STOPWORDS_DOWNLOAD"]` | Auto-download NLTK data |
@@ -370,7 +371,7 @@ mode! WEB          # Web search only
 
 **Adjust BM25 parameters:**
 ```python
-# Config_Global.py
+# Config_Languages.py
 _BM25_INDEX["k1"] = 1.2      # Term-frequency saturation
 _BM25_INDEX["b"] = 0.75      # Length normalization
 ```
@@ -438,7 +439,7 @@ set debug none     # Disable debugging
 
 ## 📑 Lookup order
 
-RAG-LCC uses **six** configuration files, all located under `src/Configuration/`. They are loaded in a fixed precedence order (highest wins):
+RAG-LCC uses **seven** configuration files, all located under `src/Configuration/`. Six are merged by `Config()` in a fixed precedence order (highest wins):
 
 > **CLI args** are checked before any file and override everything (except `_`-prefixed keys).
 
@@ -446,17 +447,19 @@ RAG-LCC uses **six** configuration files, all located under `src/Configuration/`
 2. **Config_WebSearch.py** — web search master switch, backend, compliance gates
 3. **Config_Banned.py** — detection algorithms, thresholds, banned words, masking rules
 4. **Config_Models.py** — embedding, cross-encoder, and LLM model definitions
-5. **Config_Global.py** — shared defaults (paths, hardware, ChromaDB, token budget, debug)
-6. **Config_Internet_Env.py** — internet access, network tracing, and offline toggles (environment variables only)
+5. **Config_Languages.py** — active language set, Argos pair catalog, per-language spaCy maps, BM25/Graph/Regex language-aware slots
+6. **Config_Global.py** — shared defaults (paths, hardware, ChromaDB, token budget, debug)
+
+`Config_Internet_Env.py` is separate from `Config()` merge order: it sets environment variables for internet access, tracing, and offline toggles.
 
 **Notes:**
 
-- Files 1-5 are loaded as Python modules and therefore require valid Python syntax.
+- Files 1-6 are loaded as Python modules and therefore require valid Python syntax.
 - `Config_Internet_Env.py` contains **only environment variables** (no regular config keys).
 - Keys starting with `_` are internal and **cannot** be overridden via CLI arguments.
 - Keys starting with `$` are indirect lookups (the value names another config key).
 - Top-level settings must be **UPPERCASE**.
-- CLI overrides apply **only** to `Config_Global.py` and the **app-specific** config (`Config_RAGChat.py`, `Config_RAGLoad.py`, or `Config_DocClassify.py`). Keys in `Config_Models.py`, `Config_Banned.py`, `Config_WebSearch.py`, and `Config_Internet_Env.py` are **not** exposed as CLI arguments.
+- CLI overrides apply **only** to `Config_Global.py` and the **app-specific** config (`Config_RAGChat.py`, `Config_RAGLoad.py`, or `Config_DocClassify.py`). Keys in `Config_Languages.py`, `Config_Models.py`, `Config_Banned.py`, `Config_WebSearch.py`, and `Config_Internet_Env.py` are **not** exposed as CLI arguments.
 
 ## 🌐 1. Config_Global.py — Shared Defaults
 
@@ -602,9 +605,17 @@ RAG‑LCC maintains four retrieval stores per collection:
 BM25, graph, and regex indexes are built automatically during `RAGLoad` and loaded on demand during `RAGChat`. When `RETRIEVAL_STORES_KEEP = False` all four local stores are deleted together before a reload.
 
 **Graph index and spaCy**
-The graph retriever uses [spaCy](https://spacy.io/) (`en_core_web_sm`, **MIT license**, © Explosion AI) for named-entity recognition (NER) and noun-phrase extraction. The `en_core_web_sm` model is downloaded as a separate step (`python -m spacy download en_core_web_sm`); it is not bundled with this project. Entity types and extraction behaviour are configured in `_GRAPH_INDEX` in `Config_Global.py`.
+The graph retriever uses [spaCy](https://spacy.io/) (`en_core_web_sm`, **MIT license**, © Explosion AI) for named-entity recognition (NER) and noun-phrase extraction. The `en_core_web_sm` model is installed as a separate step (`python src/Scripts/SpacyLanguageModels.py install`); it is not bundled with this project. Running `python src/Scripts/SpacyLanguageModels.py` without arguments shows install status. Entity types and extraction behaviour are configured in `_GRAPH_INDEX` in `Config_Languages.py`.
 
-The `_BM25_INDEX` slot in `Config_Global.py` controls BM25 Okapi scoring and
+Language-specific model routing for Graph/Regex retrieval is optional:
+
+- `_GRAPH_INDEX.spacy_model` and `_REGEX_INDEX.spacy_model` define the default model.
+- `_GRAPH_INDEX.spacy_models_by_language` and `_REGEX_INDEX.spacy_models_by_language` can override per language (keys accept code or name, e.g. `"de"` or `"german"`).
+- Configure only installed model package names (for example `"de_core_news_sm"`).
+- `python src/Scripts/SpacyLanguageModels.py install` installs the union of default and per-language model entries.
+- `python src/Scripts/SpacyLanguageModels.py` (no arguments) shows status.
+
+The `_BM25_INDEX` slot in `Config_Languages.py` controls BM25 Okapi scoring and
 Reciprocal Rank Fusion (RRF) parameters:
 
 ```python
@@ -744,6 +755,8 @@ For individual configuration switches such as `TRY_FIX_JSON_LLM_REPLY` (automati
 
 ### 🔤 Unicode Normalisation & Leet-Speak Detection
 
+These keys are defined in `Config_Languages.py` and merged into the runtime config by `Config()`.
+
 | Key | Default used in this repository | Purpose |
 | --- | --- | --- |
 | `_LEET_MAP` | See config file | Character mapping for leet-speak normalization (e.g. `0`→`o`, `1`→`i`, `3`→`e`). Used to detect obfuscated banned words. |
@@ -760,7 +773,7 @@ For individual configuration switches such as `TRY_FIX_JSON_LLM_REPLY` (automati
 
 ### 📚 WordNet Synonym Expansion (Optional)
 
-When enabled (`_WORDNET.ENABLED = True`), the banned-word list is expanded with English synonyms from [NLTK WordNet](https://wordnet.princeton.edu/) before translation and detection. See [WordNet Synonym Expansion in ARCHITECTURE.md](ARCHITECTURE.md#-wordnet-synonym-expansion-optional) for full details.
+When enabled (`_WORDNET.ENABLED = True` in `Config_Languages.py`), the banned-word list is expanded with English synonyms from [NLTK WordNet](https://wordnet.princeton.edu/) before translation and detection. See [WordNet Synonym Expansion in ARCHITECTURE.md](ARCHITECTURE.md#-wordnet-synonym-expansion-optional) for full details.
 
 | Key | Default used in this repository | Purpose |
 | --- | --- | --- |
@@ -772,10 +785,11 @@ When enabled (`_WORDNET.ENABLED = True`), the banned-word list is expanded with 
 
 ### 🌍 Argos Translate Definitions
 
-Groups language-code mapping and translation pairs. Used for banned-word translation (EN→X), query normalization (X→EN), and language detection. See [Argos Translate in INSTALL.md](INSTALL.md#-7-install-argos-translate) for installation instructions.
+Defined in `Config_Languages.py`. Groups active-language selection, language-code mapping, and translation pairs. Used for banned-word translation (EN→X), query normalization (X→EN), and language detection. See [Argos Translate in INSTALL.md](INSTALL.md#-7-install-argos-translate) for installation instructions.
 
 | Key | Default used in this repository | Purpose |
 | --- | --- | --- |
+| `_ARGOS_DEFINITIONS.ACTIVE_LANGUAGES` | `$_ACTIVE_LANGUAGES` | Runtime language enable-list consumed across Argos and spaCy-aware retrievers. |
 | `_ARGOS_DEFINITIONS.LANG_CODE_TO_NAME` | See config file | ISO-639-1 language codes mapped to NLTK human-readable names (e.g. `"de"`→`"german"`). |
 | `_ARGOS_DEFINITIONS.ARGOS_LANGUAGES` | `[("de", "en"), ("en", "de"), ("es", "en"), ("en", "es"), ("fr", "en"), ("en", "fr"), ("it", "en"), ("en", "it")]` | List of (from_code, to_code) tuples for Argos Translate language pairs. Keep EN→X for banlist localization and X→EN for query normalization. |
 
@@ -1810,8 +1824,6 @@ This file controls all internet connectivity and diagnostic toggles. It is descr
 | `HF_HUB_OFFLINE` | `"1"` | Disable Hugging Face Hub downloads when `"1"` (safe default). Set to `"0"` to allow model downloads. |
 | `TRANSFORMERS_OFFLINE` | `"1"` | Disable transformers library hub access when `"1"`. |
 | `HF_DATASETS_OFFLINE` | `"1"` | Disable HF datasets hub access when `"1"`. |
-| `ARGOS_STANZA_DOWNLOAD` | `"0"` | Control Argos Translate consent and package downloads. `"0"` = only use pre-installed language pairs. `"1"` = prompt for Argos license consent and download language packages at startup if consent has not yet been recorded. |
-| `ARGOS_CHUNK_TYPE` | `"SPACY"` | Sentence boundary detection backend for Argos Translate. `"SPACY"` = SpaCy sentencizer (offline, default). `"STANZA"` = stanza Pipeline (broken offline in argos-translate ≥ 1.11). |
 | `ARGOS_MODEL_PROVIDER` | `"OPENNMT"` | Force Argos Translate to use local packages only. |
 | `SERVE_OPENWEBUI_CHAT` | `"0"` | When `"1"`, RAGChatService accepts connections from OpenWebUI (inbound only). Printed as an info banner at startup. |
 | `SERVE_IN_MEMORY_DOCS_HTTP` | `"0"` | Enable the in-memory document HTTP server used by RAGChatService for `/marked/<token>` links. `"0"` = disabled (no in-memory docs store). `"1"` = enabled. See `_SERVE_DOCS` in `Config_RAGChatService.py` for TTL and size limits. |
@@ -1855,17 +1867,19 @@ UNSUPPORTED_LANGUAGE_ACTION = "NOT_OK"   # "NOT_OK" | "FALLBACK_EN"
 ## 🌍 Translation configuration (Argos)
 
 Argos Translate settings live in a single `_ARGOS_DEFINITIONS` slot inside
-`Config_Global.py`. It contains two keys:
+`Config_Languages.py`. It contains three keys:
 
 | Key | Type | Purpose |
 | --- | --- | --- |
+| `ACTIVE_LANGUAGES` | `list[str]` | Runtime language enable-list shared across Argos and spaCy-aware retrievers. Entries can be ISO codes (e.g. `"de"`) or language names (e.g. `"german"`). |
 | `LANG_CODE_TO_NAME` | `dict` | Maps ISO-639-1 codes (e.g. `"de"`) to NLTK / human-readable names (e.g. `"german"`). Used for language detection, stopword lookup, and the reverse mapping (name → code) in `SharedHelpers`. |
-| `ARGOS_LANGUAGES` | `list[tuple]` | Translation pairs `(from_code, to_code)` that the install script and startup consent check use to download and verify Argos Translate packages. Keep `(en, X)` for Compliance banlist localization and `(X, en)` for query normalization when `_QUERY_REWRITE.TRANSLATION_BACKEND="argos"`. Only uncommented pairs are active. |
+| `ARGOS_LANGUAGES` | `list[tuple]` | Translation pair catalog `(from_code, to_code)` used by install and startup consent checks. Keep `(en, X)` for Compliance banlist localization and `(X, en)` for query normalization when `_QUERY_REWRITE.TRANSLATION_BACKEND="argos"`. Runtime only activates pairs that intersect with `ACTIVE_LANGUAGES`. |
 
 > Note: The legacy HF/M2M translator path (`HfTranslator` / `ArgosThenM2MTranslator`) was removed. Query translation backends now support only `"argos"` and `"off"`.
 
 ```python
 _ARGOS_DEFINITIONS = {
+    "ACTIVE_LANGUAGES": ["en", "de", "es", "fr", "it"],
     "LANG_CODE_TO_NAME": {
         "ar": "arabic",
         "de": "german",
@@ -1873,7 +1887,7 @@ _ARGOS_DEFINITIONS = {
         "es": "spanish",
         "fr": "french",
         "it": "italian",
-        # … full list in Config_Global.py
+        # … full list in Config_Languages.py
     },
     "ARGOS_LANGUAGES": [
         # Uncomment the pairs you need — each pair downloads ~100 MB.
@@ -1890,7 +1904,7 @@ _ARGOS_DEFINITIONS = {
         ("en", "it"),    # English → Italian
         # ("ja", "en"),  # Japanese → English
         # ("en", "ja"),  # English → Japanese
-        # … 48 pairs available, see Config_Global.py for the full list
+        # … 48 pairs available, see Config_Languages.py for the full list
     ],
 }
 ```
@@ -1900,6 +1914,12 @@ newly enabled packages:
 
 ```bash
 python src/Scripts/ArgosTranslatePackages.py install
+```
+
+To show current Argos package status, run without arguments:
+
+```bash
+python src/Scripts/ArgosTranslatePackages.py
 ```
 
 To remove all installed packages, stanza models, and consent metadata:

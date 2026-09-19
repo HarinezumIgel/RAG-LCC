@@ -2,6 +2,7 @@ Required python modules:
 Module: InquirerPy
 Module: Pillow
 Module: argostranslate
+Module: blingfire
 Module: chardet
 Module: charset_normalizer
 Module: chromadb

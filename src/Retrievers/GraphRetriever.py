@@ -26,7 +26,9 @@ from Commons.SingletonMixin import SingletonMixin
 from Config.Config import Config
 from Gui.PrettyWriter import PrettyWriter
 from Helpers.FileUtils import FileUtils
-from Helpers.PerfLogger import PerfLogger
+from Helpers.LanguageConfig import (get_active_language_codes,
+                                    get_lang_name_to_code)
+from Retrievers.RetrieverBase import RetrieverBase
 
 
 # ---------------------------------------------------------------------------
@@ -72,7 +74,7 @@ class _GraphIndexData:
 # ---------------------------------------------------------------------------
 # GraphRetriever
 # ---------------------------------------------------------------------------
-class GraphRetriever(SingletonMixin):
+class GraphRetriever(SingletonMixin, RetrieverBase):
     """Singleton that manages a per-collection entity co-occurrence graph index."""
 
     INDEX_FILENAME = "graph_index.pkl.gz"
@@ -82,7 +84,7 @@ class GraphRetriever(SingletonMixin):
         *,
         cfg: "Config | None" = None,
         pretty: "PrettyWriter | None" = None,
-        nlp: Any = None,  # injectable spaCy model for tests
+        nlp: Any = None,  # optional preloaded spaCy pipeline
     ) -> None:
         if self._initialized:
             return
@@ -92,14 +94,22 @@ class GraphRetriever(SingletonMixin):
         self.pretty: PrettyWriter = pretty or PrettyWriter()
         self._file_utils: FileUtils = FileUtils(cfg=self.cfg, pretty=self.pretty)
         self._data: _GraphIndexData = _GraphIndexData()
-        self.perf_logger: PerfLogger = PerfLogger()
+        RetrieverBase.__init__(self, perf_component="GraphRetriever")
 
         # Graph hyper-parameters from _GRAPH_INDEX config slot
         self._entity_types: List[str] = self.cfg.get_list("_GRAPH_INDEX.entity_types")
         self._max_hops: int = self.cfg.get_int("_GRAPH_INDEX.max_hops")
         self._max_candidates: int = self.cfg.get_int("_GRAPH_INDEX.max_candidates")
         self._min_edge_weight: int = self.cfg.get_int("_GRAPH_INDEX.min_edge_weight")
-        self._spacy_model: str = self.cfg.get_str("_GRAPH_INDEX.spacy_model")
+        spacy_model_value, _ = self.cfg.indirect_get(
+            "_GRAPH_INDEX.spacy_model",
+            "en_core_web_sm",
+        )
+        self._spacy_model: str = str(spacy_model_value or "en_core_web_sm").strip()
+        self._lang_name_to_code: Dict[str, str] = self._load_lang_name_to_code()
+        self._spacy_models_by_language: Dict[str, str] = (
+            self._load_spacy_models_by_language()
+        )
         self._noun_chunk_min_chars: int = self.cfg.get_int(
             "_GRAPH_INDEX.noun_chunk_min_chars", 3
         )
@@ -108,18 +118,26 @@ class GraphRetriever(SingletonMixin):
         )
 
         if nlp is not None:
-            # Injected in tests — skip real spaCy load
+            # Caller provided a pipeline explicitly.
             self._nlp = nlp
+            self._spacy_loader = None
         else:
             try:
                 import spacy  # type: ignore[import-untyped]
 
-                self._nlp = spacy.load(self._spacy_model)
+                self._spacy_loader = spacy.load
+                self._nlp = self._load_spacy_model(
+                    self._spacy_model,
+                    language="en",
+                )
             except OSError as exc:
                 raise ModelLoadError(
                     f"spaCy model '{self._spacy_model}' not found. "
-                    f"Run: python -m spacy download {self._spacy_model}"
+                    "Run: python ./src/Scripts/SpacyLanguageModels.py install "
+                    f"(or python -m spacy download {self._spacy_model})"
                 ) from exc
+
+        self._nlp_by_model: Dict[str, Any] = {self._spacy_model: self._nlp}
 
     # ------------------------------------------------------------------
     # Public API — directory helpers
@@ -244,7 +262,8 @@ class GraphRetriever(SingletonMixin):
     ) -> None:
         """Extract entities from chunks, add to ground-truth, rebuild derived data."""
         for chunk_id, text, meta in zip(ids, texts, metas):
-            entities = self._extract_entities(text)
+            language = str((meta or {}).get("Language", "en"))
+            entities = self._extract_entities(text, language)
             self._data.chunk_entities[chunk_id] = entities
             self._data.chunk_metas[chunk_id] = dict(meta)
             self._data.chunk_texts[chunk_id] = text
@@ -282,6 +301,72 @@ class GraphRetriever(SingletonMixin):
     # Public API — query
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _language_from_filter(
+        file_filter: Optional[Dict[str, Any]],
+    ) -> str | None:
+        if not isinstance(file_filter, dict):
+            return None
+        language_value = file_filter.get("Language")
+        if isinstance(language_value, dict):
+            language_value = cast(Dict[str, Any], language_value).get("$eq")
+        text = str(language_value or "").strip()
+        return text or None
+
+    def _load_lang_name_to_code(self) -> Dict[str, str]:
+        """Build a normalization map from language codes/names to codes."""
+        return get_lang_name_to_code(self.cfg)
+
+    def _normalize_language_code(self, language: str | None) -> str:
+        text = str(language or "").strip().lower()
+        if not text:
+            return "en"
+        return self._lang_name_to_code.get(text, text)
+
+    def _load_spacy_models_by_language(self) -> Dict[str, str]:
+        """Load optional language->spaCy model overrides from config."""
+        raw_mapping = self.cfg.indirect_dict(
+            "_GRAPH_INDEX.spacy_models_by_language",
+            {},
+        )
+        active_codes = get_active_language_codes(self.cfg)
+
+        normalized_mapping: Dict[str, str] = {}
+        for language, model in raw_mapping.items():
+            language_code = self._normalize_language_code(str(language))
+            model_name = str(model or "").strip()
+            if language_code and model_name and language_code in active_codes:
+                normalized_mapping[language_code] = model_name
+        return normalized_mapping
+
+    def _spacy_model_for_language(self, language: str | None) -> str:
+        language_code = self._normalize_language_code(language)
+        return self._spacy_models_by_language.get(language_code, self._spacy_model)
+
+    def _load_spacy_model(self, model_name: str, *, language: str | None = None) -> Any:
+        loader = getattr(self, "_spacy_loader", None)
+        if not callable(loader):
+            return self._nlp
+        try:
+            return loader(model_name)
+        except OSError as exc:
+            language_code = self._normalize_language_code(language)
+            raise ModelLoadError(
+                f"spaCy model '{model_name}' not found for language "
+                f"'{language_code}'. Run: python ./src/Scripts/SpacyLanguageModels.py "
+                f"install (or python -m spacy download {model_name})"
+            ) from exc
+
+    def _get_nlp_for_language(self, language: str | None) -> Any:
+        model_name = self._spacy_model_for_language(language)
+        cached_nlp = self._nlp_by_model.get(model_name)
+        if cached_nlp is not None:
+            return cached_nlp
+
+        loaded_nlp = self._load_spacy_model(model_name, language=language)
+        self._nlp_by_model[model_name] = loaded_nlp
+        return loaded_nlp
+
     def query(
         self,
         query_text: str,
@@ -304,15 +389,15 @@ class GraphRetriever(SingletonMixin):
         if not self._data.chunk_entities:
             return []
 
-        self.perf_logger.log(
-            "GraphRetriever.query",
-            "retriever",
+        self._perf_log(
+            "query",
             f"start graph query q={query_text[:60]!r}",
         )
         _t0 = time.perf_counter()
+        query_language = self._language_from_filter(file_filter)
         seed_entities = [
             e
-            for e in self._extract_entities(query_text)
+            for e in self._extract_entities(query_text, query_language)
             if e in self._data.entity_to_chunks
         ]
         if not seed_entities:
@@ -376,9 +461,8 @@ class GraphRetriever(SingletonMixin):
                     id=cid,
                 )
             )
-        self.perf_logger.log(
-            "GraphRetriever.query",
-            "retriever",
+        self._perf_log(
+            "query",
             f"stop  graph query n={len(docs)} elapsed={time.perf_counter() - _t0:.3f}s",
         )
         return docs
@@ -387,7 +471,7 @@ class GraphRetriever(SingletonMixin):
     # Internal — entity extraction
     # ------------------------------------------------------------------
 
-    def _extract_entities(self, text: str) -> List[str]:
+    def _extract_entities(self, text: str, language: str | None = None) -> List[str]:
         """Run spaCy NER (and optionally noun-chunk extraction) on *text*.
 
         If ``"NOUN_CHUNK"`` is present in *entity_types*, all noun phrases
@@ -395,7 +479,7 @@ class GraphRetriever(SingletonMixin):
         any named entities whose label matches the remaining entries.
         Named-entity labels and ``"NOUN_CHUNK"`` can be combined freely.
         """
-        doc = self._nlp(text)
+        doc = self._get_nlp_for_language(language)(text)
         seen: set[str] = set()
         entities: List[str] = []
 
@@ -485,7 +569,8 @@ class GraphRetriever(SingletonMixin):
 
         for chunk_id, text, meta in zip(ids, documents, metadatas):
             text = text or ""
-            entities = self._extract_entities(text)
+            language = str((meta or {}).get("Language", "en"))
+            entities = self._extract_entities(text, language)
             data.chunk_entities[chunk_id] = entities
             data.chunk_metas[chunk_id] = dict(meta) if meta else {}
             data.chunk_texts[chunk_id] = text

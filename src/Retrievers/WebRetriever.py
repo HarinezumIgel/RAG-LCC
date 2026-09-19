@@ -48,10 +48,11 @@ with local results only — the web leg never aborts a query.
 """
 
 import datetime
+import importlib
 import os
 import time
 from html.parser import HTMLParser
-from typing import Any, Dict, List, cast
+from typing import Any, Dict, List
 from urllib.parse import urlparse
 
 from langchain_core.documents.base import Document as LangchainDocument
@@ -60,8 +61,8 @@ from Config.Config import Config
 from Configuration.Config_Banned import HARDBLOCK_PATTERNS, INJECTION_PATTERNS
 from Configuration.Config_WebSearch import WEB_SEARCH_INTENT_EXTENSIONS
 from Gui.PrettyWriter import PrettyWriter
-from Helpers.PerfLogger import PerfLogger
-from Strategies.WebSearchFilter import WebSearchFilter
+from Retrievers.RetrieverBase import RetrieverBase
+from Retrievers.WebSearchFilter import WebSearchFilter
 
 # Hard-blocked content patterns and injection patterns are defined in
 # Configuration.Config_Banned (HARDBLOCK_PATTERNS, INJECTION_PATTERNS).
@@ -69,7 +70,7 @@ from Strategies.WebSearchFilter import WebSearchFilter
 # All three are imported above.
 
 
-class WebRetriever:
+class WebRetriever(RetrieverBase):
     """Fetches web search results and wraps them as LangchainDocuments.
 
     Not a singleton — no persistent state between queries.  Instantiated once
@@ -83,6 +84,7 @@ class WebRetriever:
         cfg: "Config | None" = None,
         pretty: "PrettyWriter | None" = None,
     ) -> None:
+        RetrieverBase.__init__(self, perf_component="WebRetriever")
         self.cfg: Config = cfg or Config()
         self.pretty: PrettyWriter = pretty or PrettyWriter()
         self._backend: str = (
@@ -113,7 +115,6 @@ class WebRetriever:
             extensions_cfg=WEB_SEARCH_INTENT_EXTENSIONS,
             log_path=intent_log_path,
         )
-        self.perf_logger: PerfLogger = PerfLogger()
 
     # ------------------------------------------------------------------
     # Public API
@@ -190,9 +191,8 @@ class WebRetriever:
             "Web",
             f"Internet search started — backend: {self._backend!r}  query: {sanitized!r}",
         )
-        self.perf_logger.log(
-            "WebRetriever.query",
-            "retriever",
+        self._perf_log(
+            "query",
             f"start web query backend={self._backend!r} q={sanitized[:60]!r}",
         )
         _t0 = time.perf_counter()
@@ -321,9 +321,8 @@ class WebRetriever:
                 )
             )
 
-        self.perf_logger.log(
-            "WebRetriever.query",
-            "retriever",
+        self._perf_log(
+            "query",
             f"stop  web query n={len(docs)} elapsed={time.perf_counter() - _t0:.3f}s",
         )
         return docs
@@ -473,21 +472,21 @@ class WebRetriever:
         - ddgs (preferred/newer)
         - duckduckgo_search (legacy)
         """
+        DDGS_cls: Any
         try:
-            from ddgs import DDGS  # type: ignore[import-untyped]
+            from ddgs import DDGS as DDGS_cls  # type: ignore[import-untyped]
         except ImportError:
             try:
-                from duckduckgo_search import \
-                    DDGS  # type: ignore[import-untyped]
-            except ImportError as exc:
+                legacy_module = importlib.import_module("duckduckgo_search")
+                DDGS_cls = getattr(legacy_module, "DDGS")
+            except Exception as exc:
                 raise RuntimeError(
                     "DuckDuckGo client is not installed. "
                     "Install one of: pip install ddgs  OR  pip install duckduckgo_search"
                 ) from exc
 
-        DDGS_cls: Any = DDGS  # pyright: ignore[reportUnknownVariableType]
         with DDGS_cls() as ddgs_client:  # pyright: ignore[reportUnknownVariableType]
-            raw_results: Any = cast(Any, ddgs_client).text(query, max_results=k)
+            raw_results: Any = ddgs_client.text(query, max_results=k)
             results: List[Dict[str, Any]] = list(raw_results)
         return results
 
