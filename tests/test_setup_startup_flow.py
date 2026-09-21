@@ -170,7 +170,6 @@ class TestStartupEnvironmentChecks:
             "LICENSE_DOWNLOAD",
             "RAG_LCC_NW_TRACE",
             "RAG_LCC_STACK_TRACE",
-            "NLTK_STOPWORDS_DOWNLOAD",
             "ARGOS_MODEL_PROVIDER",
             "HF_HUB_DISABLE_PROGRESS_BARS",
         }

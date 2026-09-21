@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
-## [Unreleased] — 2026-09-19
+## [Unreleased] — 2026-09-21
 
 ### 🛡️ Changed — NLTK stopwords now validated at startup for all apps
 
@@ -17,6 +17,39 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Runtime behavior is now aligned across app entrypoints
   (`RAGLoad`, `DocClassify`, `RAGChat`, `RAGChatService`) because all use
   `StartupCommons.common_start(...)`.
+
+### 🛡️ Changed — Grounding now skips very short answers in `mark_text` mode
+
+- Grounding checks in `Chatter.run()` are now gated by `session.mark_text`.
+- Added a short-answer guard via `_is_answer_too_short_for_grounding()`.
+- When the answer is too short, a dedicated notice from
+  `_build_grounding_skipped_short_answer_notice()` is shown and the original
+  answer is returned instead of forcing no-evidence replacement.
+- Added an explicit `skip_grounding_for_short_answer` flow that bypasses
+  `_apply_answer_grounding(...)` and `_mark_sources(...)`, and clears stale
+  `session.marked_documents` for that turn.
+
+### 🎛️ Changed — Unified chat-output icons through `Symbols.sym_icon()`
+
+- Added a keyed inline icon map in `src/Gui/Symbols.py` with
+  `Symbols.sym_icon(kind)` fallback behavior.
+- Updated `Chatter` output call sites to use keyed icons for query notices,
+  web-source links, document-source links, and the default chat answer prefix.
+- `sym_warning()` now resolves through the same keyed icon path.
+
+### 🐛 Fixed — `Chatter.py` import/static-analysis cleanup
+
+- Hoisted GUI symbol usage to top-level imports instead of local imports.
+- Added explicit pyright suppression at the intentional protected
+  `self.rag._mark_sources(...)` call site.
+
+### ✅ Tests
+
+- Expanded `tests/test_chatter_grounding_guard.py` with short-answer grounding
+  guard coverage (including brief bullet-list responses) and grounding-skip
+  notice assertions.
+- Updated the helper-method compile harness in that test to inject a `Symbols`
+  stub after the import-hoist changes.
 
 ## [2026-09-19]
 
@@ -288,7 +321,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### 🛡️ Startup safeguards — drive-root and working-directory checks
 
 - **`DriveRootExecutionError`** (new, `src/Commons/Exceptions.py`) — raised when
-  the project root resolves to a drive or filesystem root (`C:\` / `/`).
+  the project root resolves to a drive or filesystem root (`C:/` / `/`).
 - **`Helpers.is_in_drive_root()`** (new) — detects drive/filesystem-root installs
   via `os.path.splitdrive` (`len(tail) <= 2`); emits an **UPPERCASE message in
   `BRIGHT_RED`** and raises `DriveRootExecutionError` when `required=True`.
@@ -308,7 +341,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   confirmation before deletion.
 - **`ArgosDownloader.remove_all`** — lists all packages to be uninstalled and
   requires `y` confirmation before proceeding.
-- **Tests** — `TestCleanupDir` extended with mocked drive-root cases (`C:\` and
+- **Tests** — `TestCleanupDir` extended with mocked drive-root cases (`C:/` and
   `/`); `TestRemoveStanzaModels` extended with removal confirmation and cancel cases.
 
 ---
@@ -2373,7 +2406,7 @@ from `StubSession`. All 37 prompt-rewrite tests pass.
   fallback message.
 - **`SERVE_OPENWEBUI_CHAT`** environment variable added to `Config_Internet_Env.py`
   (default `"1"`).  Documented launch command:
-  `.venv\Scripts\python.exe src/Apps/RAGChatService.py`.
+  `.venv/Scripts/python.exe src/Apps/RAGChatService.py`.
 
 #### 🏗️ _MODELS Hierarchy — Centralised Model Registry
 

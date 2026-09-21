@@ -210,7 +210,7 @@ This overview is provided for informational purposes only. Signing attests only 
 | uuid_utils | 0.17.1 | BSD-3-Clause | Amin Alaee <mohammadamin.alaee@gmail.com> |
 | uvicorn | 0.53.0 | BSD-3-Clause | Tom Christie <tom@tomchristie.com> |
 | wasabi | 1.1.3 | MIT | Explosion |
-| watchfiles | 1.2.0 | MIT License | Samuel Colvin <s@muelcolvin.com> |
+| watchfiles | 1.3.0 | MIT License | Samuel Colvin <s@muelcolvin.com> |
 | wcwidth | 0.8.4 | MIT | Jeff Quast <contact@jeffquast.com> |
 | weasel | 1.0.0 | MIT License | Explosion |
 | webencodings | 0.6.1 | BSD License | Simon Sapin <simon.sapin@exyr.org> |
@@ -19608,7 +19608,7 @@ THE SOFTWARE.
 
 ```
 
-### watchfiles 1.2.0
+### watchfiles 1.3.0
 
 **License:** MIT License
 

@@ -476,7 +476,7 @@ RAG-LCC uses **seven** configuration files, all located under `src/Configuration
 | `DOC_DIR` | `<project>/TestDocs` | Root folder for documents to load or classify. Searched recursively (subdirectories are included). |
 | `_EXCLUSIONS_DIR` | `<project>/Exclusions` | Directory for per-collection exclusion CSVs. |
 | `_CHROMA_DB_DIR` | `<project>/chromadb/docs` | ChromaDB persistent storage. |
-| `TESSERACT_PATH` (env var) | `C:\Program Files\Tesseract-OCR\tesseract.exe\|/usr/bin/tesseract` | OS-aware Tesseract OCR path. Format: `"windows_path\|linux_path"`. The framework automatically selects the appropriate path based on the current platform. Set in `Config_Internet_Env.py`. |
+| `TESSERACT_PATH` (env var) | `C:/Program Files/Tesseract-OCR/tesseract.exe\|/usr/bin/tesseract` | OS-aware Tesseract OCR path. Format: `"windows_path\|linux_path"`. The framework automatically selects the appropriate path based on the current platform. Set in `Config_Internet_Env.py`. |
 
 ### 🦙 Ollama
 
@@ -768,7 +768,7 @@ These keys are defined in `Config_Languages.py` and merged into the runtime conf
 
 | Key | Default used in this repository | Purpose |
 | --- | --- | --- |
-| `_CUSTOM_NLTK_DATA_DIRECTORY` | Windows: `<project>\AppData\Roaming\nltk_data\corpora\stopwords`<br>Linux/macOS: `/home/vscode/nltk_data` | Custom directory for NLTK stopwords data. Override if NLTK data is installed in a non-standard location. |
+| `_CUSTOM_NLTK_DATA_DIRECTORY` | Windows: `<project>/AppData/Roaming/nltk_data/corpora/stopwords`<br>Linux/macOS: `/home/vscode/nltk_data` | Custom directory for NLTK stopwords data. Override if NLTK data is installed in a non-standard location. |
 
 ### 📚 WordNet Synonym Expansion (Optional)
 
@@ -1818,7 +1818,7 @@ This file controls all internet connectivity and diagnostic toggles. It is descr
 | `RAG_LCC_NW_TRACE` | `"0"` | Socket-level network tracing (debug). |
 | `RAG_LCC_STACK_TRACE` | `"0"` | Stack traces on errors. |
 | `WEB_SEARCH_MODE` | `"0"` | **Master web-search switch.** `"0"` = disabled (safe default); `"1"` = internet search enabled (user queries may be sent to DuckDuckGo). Operators enabling `"1"` must review `LEGAL.md § Web Search` and `SECURITY.md`. |
-| `TESSERACT_PATH` | `r"C:\Program Files\Tesseract-OCR\tesseract.exe\|/usr/bin/tesseract"` | OS-aware Tesseract OCR path. Format: `"windows_path\|linux_path"`. The framework selects the appropriate half at runtime. Set via `os.environ.setdefault` (only applied when not already set in the environment). |
+| `TESSERACT_PATH` | `r"C:/Program Files/Tesseract-OCR/tesseract.exe\|/usr/bin/tesseract"` | OS-aware Tesseract OCR path. Format: `"windows_path\|linux_path"`. The framework selects the appropriate half at runtime. Set via `os.environ.setdefault` (only applied when not already set in the environment). |
 | `HF_HUB_OFFLINE` | `"1"` | Disable Hugging Face Hub downloads when `"1"` (safe default). Set to `"0"` to allow model downloads. |
 | `TRANSFORMERS_OFFLINE` | `"1"` | Disable transformers library hub access when `"1"`. |
 | `HF_DATASETS_OFFLINE` | `"1"` | Disable HF datasets hub access when `"1"`. |

@@ -27,10 +27,10 @@
 # -----------------------------------------------------------------------------
 # RAG‑LCC can use the NLTK stopwords corpus during text preprocessing.
 #
-# If the stopwords corpus is not available:
-#   - when NLTK_STOPWORDS_DOWNLOAD is set to "0", an empty stopword list is used
-#   - when NLTK_STOPWORDS_DOWNLOAD is set to "1", the system may attempt to
-#     retrieve the required NLTK stopwords resource automatically
+# NLTK install/consent is script-managed:
+#   python src/Scripts/NLTK_Stopwords_WordNet.py install
+# Runtime components rely on this script-managed install and emit setup hints
+# when required corpora are missing.
 #
 # Stopwords are treated as small, commonly distributed linguistic resources.
 # Their use does not introduce additional per‑language consent handling within
@@ -45,9 +45,6 @@ import os
 
 # (License files for LLMs defined in Config_Models.py, NLTK stopwords)
 os.environ["LICENSE_DOWNLOAD"] = "0"
-
-# (NLTK stopwords)
-os.environ["NLTK_STOPWORDS_DOWNLOAD"] = "0"
 
 # RAG_LCC_NW_TRACE: Enable network-level socket tracing for debugging
 # Set to "1" to see detailed network activity

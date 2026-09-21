@@ -211,7 +211,7 @@ The easiest way to work with the containerized environment is using VS Code:
    # Unix
    source .venv/bin/activate
    # Windows PowerShell
-   .venv\Scripts\Activate.ps1
+   .venv/Scripts/Activate.ps1
    # Then continue with the guided setup script:
    python ./src/Scripts/Setup.py
 ```
@@ -244,7 +244,7 @@ docker run --rm -it --gpus all -p 11435:11435 rag-lcc:latest bash
 >
 > # Windows host (PowerShell)
 > docker run --rm -it -p 11435:11435 `
->   -v "${env:USERPROFILE}\.cache\huggingface:/home/vscode/.cache/huggingface" `
+>   -v "${env:USERPROFILE}/.cache/huggingface:/home/vscode/.cache/huggingface" `
 >   rag-lcc:latest bash
 > ```
 >
@@ -334,7 +334,7 @@ Core folders used by setup and runtime:
 Run the signature verification script to confirm that shipped files have not been tampered with. The public key is in `verify_sign/`.
 
 ```python
-.\src\Scripts\VerifySignatures.py -InputDir .
+./src/Scripts/VerifySignatures.py -InputDir .
 ```
 
 ## 📥 3. Install Dependencies (manual/reference)
@@ -353,7 +353,7 @@ If pip reports a **dependency conflict** (`ResolutionImpossible`), the most comm
 To generate a new third-party license report based upon your **actual** `.venv` run in powershell:
 
 ```powershell
-.\scripts_posh\Show3rdPartyLicenses.ps1 -ProjectPath . -VenvName <your venv> -ContainingLicenseDirectoryName <directory for license summary files>
+./scripts_posh/Show3rdPartyLicenses.ps1 -ProjectPath . -VenvName <your venv> -ContainingLicenseDirectoryName <directory for license summary files>
 ```
 
 You may need to install pip-licenses first.
@@ -426,14 +426,14 @@ Install/remove language packages using the provided helper script:
 # Packages may include model/tokenizer/vocabulary/data artifacts and
 # can carry additional third-party licenses.
 # The script shows what will be installed and asks for confirmation before proceeding.
-python src\Scripts\ArgosTranslatePackages.py install
+python src/Scripts/ArgosTranslatePackages.py install
 
 # Show package install status for active language pairs (default action).
-python src\Scripts\ArgosTranslatePackages.py
+python src/Scripts/ArgosTranslatePackages.py
 
 # Remove all installed Argos Translate language packages.
 # The script shows what will be removed and asks for confirmation before proceeding.
-python src\Scripts\ArgosTranslatePackages.py remove
+python src/Scripts/ArgosTranslatePackages.py remove
 ```
 
 Enable the languages you need, see [Translation configuration (Argos)](CONFIGURATION_REFERENCE.md#-translation-configuration-argos).
@@ -487,7 +487,7 @@ Adjust the NLTK data path in `Configuration/Config_Global.py` if needed:
 
 ```python
 _CUSTOM_NLTK_DATA_DIRECTORY = (
-    _ABSOLUTE_PATH + r"\AppData\Roaming\nltk_data\corpora\stopwords"
+   _ABSOLUTE_PATH + "/AppData/Roaming/nltk_data/corpora/stopwords"
 )
 ```
 
@@ -550,7 +550,7 @@ RAG‑LCC uses [Tesseract OCR](https://github.com/tesseract-ocr/tesseract) ([Apa
 Download and install the official installer:
 <https://github.com/UB-Mannheim/tesseract/wiki> ([Apache-2.0 License](https://github.com/UB-Mannheim/tesseract/blob/main/LICENSE))
 
-Default installation path: `C:\Program Files\Tesseract-OCR\tesseract.exe`
+Default installation path: `C:/Program Files/Tesseract-OCR/tesseract.exe`
 
 **Linux:**
 
@@ -577,7 +577,7 @@ The framework uses an OS-aware path format in `Configuration/Config_Internet_Env
 # Format: "windows_path|linux_path"
 os.environ.setdefault(
     "TESSERACT_PATH",
-    r"C:\Program Files\Tesseract-OCR\tesseract.exe|/usr/bin/tesseract"
+   r"C:/Program Files/Tesseract-OCR/tesseract.exe|/usr/bin/tesseract"
 )
 ```
 
@@ -587,7 +587,7 @@ The system automatically selects the correct path based on the current platform.
 # Custom installation paths
 os.environ.setdefault(
     "TESSERACT_PATH",
-    r"C:\Custom\Path\tesseract.exe|/opt/tesseract/bin/tesseract"
+   r"C:/Custom/Path/tesseract.exe|/opt/tesseract/bin/tesseract"
 )
 ```
 
@@ -703,7 +703,7 @@ Without an activated venv, use the interpreter directly:
 
 ```powershell
 # PowerShell — no activated venv
-.venv\Scripts\python.exe -m pytest tests -q --tb=short *>&1 | Out-String
+.venv/Scripts/python.exe -m pytest tests -q --tb=short *>&1 | Out-String
 ```
 
 ```bash
@@ -862,7 +862,7 @@ to return only the LLM answer.
 2. **Start RAGChatService**:
 
    ```powershell
-   python .\src\Apps\RAGChatService.py
+   python ./src/Apps/RAGChatService.py
    ```
 
    The service listens on the configured host and port
@@ -950,7 +950,7 @@ You can either copy the expected value from the startup message into
 required hashes and rewrites `_CRITICAL_CONFIG_HASHES` in `Config_Global.py` in-place:
 
 ```powershell
-python src\Scripts\RecalcConfigHashes.py
+python src/Scripts/RecalcConfigHashes.py
 ```
 
 The script prints the old and new hash for each pinned config file and updates
@@ -1045,7 +1045,7 @@ The master switch overrides every other web-search setting, including
 `_CRITICAL_CONFIG_HASHES["Config_Internet_Env"]` in `Config_Global.py`:
 
 ```powershell
-python src\Scripts\RecalcConfigHashes.py
+python src/Scripts/RecalcConfigHashes.py
 ```
 
 (or copy the expected hash from the startup error message into
@@ -1110,7 +1110,7 @@ web-search question) lives in `Config_WebSearch.py`. Operators can extend it
 without editing that file by populating `WEB_SEARCH_INTENT_EXTENSIONS` in
 `Config_Banned.py` (`entity_extensions`, `entity_categories_extra`,
 `threshold_overrides`). After editing, rerun
-`python src\Scripts\RecalcConfigHashes.py` to refresh `_CRITICAL_CONFIG_HASHES["Config_Banned"]`.
+`python src/Scripts/RecalcConfigHashes.py` to refresh `_CRITICAL_CONFIG_HASHES["Config_Banned"]`.
 
 See also: [Web Search — Admin Knobs in CONFIGURATION_REFERENCE.md](CONFIGURATION_REFERENCE.md#-web-search--admin-knobs)
 and [Web-Search Intent Filter Extensions in CONFIGURATION_REFERENCE.md](CONFIGURATION_REFERENCE.md#-web-search-intent-filter-extensions).
@@ -1151,7 +1151,7 @@ Same for remaining models.
 - If internet access is disabled, you get:
 
 🔴 INTERNET ACCESS DISABLED       Model 'snowflake/snowflake-arctic-embed-l-v2.0' (revision 'None') was not found in the local cache. Searched cache:
-↳                                 C:\Users\YOUR_USER\.cache\huggingface\hub Internet access is disabled (HF_HUB_OFFLINE="1"). Enable internet or place the model in
+↳                                 C:/Users/YOUR_USER/.cache/huggingface/hub Internet access is disabled (HF_HUB_OFFLINE="1"). Enable internet or place the model in
 ↳                                 the cache directory. (Probably change internet access flags in Configuration/Config_Internet_Env.py)
 
 > **Note:** After completing these steps, internet access is typically no longer required,
@@ -1159,7 +1159,7 @@ Same for remaining models.
 
 ## 🌍 Argos
 
-When language packages are installed with the install script (`python src\Scripts\ArgosTranslatePackages.py install`), the script requires license consent for Argos Translate before downloading any packages. The consent is recorded in `ModelGovernance/consents/argos_translate/`.
+When language packages are installed with the install script (`python src/Scripts/ArgosTranslatePackages.py install`), the script requires license consent for Argos Translate before downloading any packages. The consent is recorded in `ModelGovernance/consents/argos_translate/`.
 
 At runtime, consent metadata is verified for the active language-pair
 configuration. If metadata is missing, stale, or no longer matches the active
@@ -1173,25 +1173,25 @@ script again.
 Use the provided test documents in the `./TestDocs` directory. Load them into the Test Chroma DB collection.
 
 ```Windows
-python .\src\Apps\RAGLoad.py --doc-dir TestDocs --collection Test
+python ./src/Apps/RAGLoad.py --doc-dir TestDocs --collection Test
 or, since `Config_Global.py` defines  `DOC_DIR` as "TestDocs" and `COLLECTION` as "Test"
-python .\src\Apps\RAGLoad.py
+python ./src/Apps/RAGLoad.py
 ```
 
 ## 💬 Chat with the documents in the Test Collection
 
 ```Windows
-python .\src\Apps\RAGChat.py --collection Test
+python ./src/Apps/RAGChat.py --collection Test
 or, since `Config_Global.py` defines `COLLECTION` as "Test"
-python .\src\Apps\RAGChat.py
+python ./src/Apps/RAGChat.py
 ```
 
 ## 🏷️ Classify the documents in the TestDocs folder
 
 ```Windows
-python .\src\Apps\DocClassify.py --doc-dir TestDocs
+python ./src/Apps/DocClassify.py --doc-dir TestDocs
 or, since `Config_Global.py` defines `DOC_DIR` as "TestDocs"
-python .\src\Apps\DocClassify.py
+python ./src/Apps/DocClassify.py
 ```
 
 The classification results can be viewed in the file ./logs/DocClassify_OK*
@@ -1207,7 +1207,7 @@ into `RAGLoad` by pointing it at a classification CSV. Pass
 directory) or an absolute path:
 
 ```Windows
-python .\src\Apps\RAGLoad.py --load-from-classify-csv DocClassify_OK_20260325_141005.csv
+python ./src/Apps/RAGLoad.py --load-from-classify-csv DocClassify_OK_20260325_141005.csv
 ```
 
 To further narrow ingestion to only rows whose classification columns match a
@@ -1216,11 +1216,11 @@ into an in-memory SQLite table, so standard SQLite syntax is supported (`LIKE`,
 `AND`, `OR`, `NOT LIKE`, `=`, `!=`, `IN`, etc.):
 
 ```Windows
-python .\src\Apps\RAGLoad.py --load-from-classify-csv DocClassify_OK_20260325_141005.csv --classify-csv-query "Mammal LIKE '%%Yes%%'"
+python ./src/Apps/RAGLoad.py --load-from-classify-csv DocClassify_OK_20260325_141005.csv --classify-csv-query "Mammal LIKE '%%Yes%%'"
 ```
 
 ```Windows
-python .\src\Apps\RAGLoad.py --load-from-classify-csv DocClassify_OK_20260325_141005.csv --classify-csv-query "Mammal LIKE '%%Yes%%' AND Language = 'English'"
+python ./src/Apps/RAGLoad.py --load-from-classify-csv DocClassify_OK_20260325_141005.csv --classify-csv-query "Mammal LIKE '%%Yes%%' AND Language = 'English'"
 ```
 
 The same settings can be made permanent in `Config_RAGLoad.py`:

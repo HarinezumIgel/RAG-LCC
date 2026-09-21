@@ -25,13 +25,13 @@ Default collection name is from COLLECTION key in Config_Global.py.
 If you work with many collection, you must specify the collection you want to use: `--collection some_collection`.
 
 ```Windows
-python .\src\Apps\RAGLoad.py --doc-dir TestDocs --collection MyTestDocs
+python ./src/Apps/RAGLoad.py --doc-dir TestDocs --collection MyTestDocs
 ```
 
 ## 💬 Chat with the documents in the Test folder
 
 ```Windows
-python .\src\Apps\RAGChat.py --collection MyTestDocs
+python ./src/Apps/RAGChat.py --collection MyTestDocs
 ```
 
 ```text
@@ -149,7 +149,7 @@ press enter
 At the query prompt this appears:
 
 ```text
-🔍 Path filter ON: D:\\...\\YourFolder
+🔍 Path filter ON: D:/.../YourFolder
 ```
 
 The metadata picker intentionally excludes `FileName` and `FilePath`.
@@ -302,13 +302,13 @@ The next example shows how you can switch between different collections you crea
 Place some documents in a folder `yourpath` or use the TestDocs documents and load them
 
 ```Windows
-python .\src\Apps\RAGLoad.py  --doc-dir `yourpath|TestDocs` --collection My2ndCollection
+python ./src/Apps/RAGLoad.py  --doc-dir `yourpath|TestDocs` --collection My2ndCollection
 ```
 
 Start RAGChat.py:
 
 ```Windows
-python .\src\Apps\RAGChat.py --collection My2ndCollection
+python ./src/Apps/RAGChat.py --collection My2ndCollection
 ```
 
 Select the collection (if not passed as `--collection` parameter). We use the ULTRA_WIDE strategy for exploring.
@@ -365,7 +365,7 @@ This demonstrates the classify‑then‑load workflow: first classify your docum
 ### Step 1 — Classify your documents
 
 ```Windows
-python .\src\Apps\DocClassify.py --doc-dir TestDocs
+python ./src/Apps/DocClassify.py --doc-dir TestDocs
 ```
 
 When finished, note the OK CSV filename printed at the end, e.g. `DocClassify_OK_20260325_182503.csv`.
@@ -378,7 +378,7 @@ Use the CSV from Step 1 as input for `RAGLoad`. The `--classify-csv-query` flag 
 Load only documents where the `Animal` column mentions "cat":
 
 ```Windows
-python .\src\Apps\RAGLoad.py --doc-dir TestDocs --collection AnimalDocs --load-from-classify-csv DocClassify_OK_20260325_182503.csv --classify-csv-query "Animal LIKE '%cat%'"
+python ./src/Apps/RAGLoad.py --doc-dir TestDocs --collection AnimalDocs --load-from-classify-csv DocClassify_OK_20260325_182503.csv --classify-csv-query "Animal LIKE '%cat%'"
 ```
 
 Only files whose classification row matches the query are ingested; all other files are skipped.
@@ -386,7 +386,7 @@ Only files whose classification row matches the query are ingested; all other fi
 You can combine multiple conditions:
 
 ```Windows
-python .\src\Apps\RAGLoad.py --doc-dir TestDocs --collection AnimalDocs --load-from-classify-csv DocClassify_OK_20260325_182503.csv --classify-csv-query "Mammal LIKE '%Yes%' AND Language = 'English'"
+python ./src/Apps/RAGLoad.py --doc-dir TestDocs --collection AnimalDocs --load-from-classify-csv DocClassify_OK_20260325_182503.csv --classify-csv-query "Mammal LIKE '%Yes%' AND Language = 'English'"
 ```
 
 > **Note:** When the classify CSV filter is active, exclusion checks are bypassed —
@@ -400,7 +400,7 @@ python .\src\Apps\RAGLoad.py --doc-dir TestDocs --collection AnimalDocs --load-f
 This demonstrates `DocClassify.py`.
 
 ```Windows
-python .\src\Apps\DocClassify.py --doc-dir yourpath
+python ./src/Apps/DocClassify.py --doc-dir yourpath
 ```
 
 When the program is done, you see a message where the output `.csv` / `.xlsx` files can be viewed (in the logs directory).
@@ -411,11 +411,11 @@ Open the one labeled `DocClassify_OK<date>.csv` / `.xlsx`.
 **Step 1 — Classify the test documents:**
 
 ```Windows
-python .\src\Apps\DocClassify.py --doc-dir TestDocs
+python ./src/Apps/DocClassify.py --doc-dir TestDocs
 ```
 
 When the run finishes, the summary shows the path to the result CSV, e.g.
-`logs\DocClassify_OK_20260416_143012.csv`. Note this path — you will need
+`logs/DocClassify_OK_20260416_143012.csv`. Note this path — you will need
 it in Step 2.
 
 **Step 2 — Load only matching documents into ChromaDB:**
@@ -424,10 +424,10 @@ Use the CSV from Step 1 together with a SQL WHERE clause to ingest only
 English documents classified as mammals:
 
 ```Windows
-python .\src\Apps\RAGLoad.py --doc-dir TestDocs --collection AnimalDocs --load-from-classify-csv logs\DocClassify_OK_20260416_143012.csv --classify-csv-query "Mammal LIKE '%%Yes%%' AND Language = 'English'"
+python ./src/Apps/RAGLoad.py --doc-dir TestDocs --collection AnimalDocs --load-from-classify-csv logs/DocClassify_OK_20260416_143012.csv --classify-csv-query "Mammal LIKE '%%Yes%%' AND Language = 'English'"
 ```
 
-Replace `logs\DocClassify_OK_20260416_143012.csv` with the actual path
+Replace `logs/DocClassify_OK_20260416_143012.csv` with the actual path
 printed in the Step 1 summary.
 
 The `--classify-csv-query` value is a SQL WHERE expression evaluated against
@@ -541,7 +541,7 @@ Requirement: Argostranslate and language package en → de must be installed. Se
 Edit `Config_Banned.py` and add `Pferd` (german for horse) to the `_STRICT_BANNED` wordlist. Start RAGLoad.py:
 
 ```Windows
-python .\src\Apps\RAGLoad.py  --doc-dir `TestDocs` --collection BannedHorseCollection
+python ./src/Apps/RAGLoad.py  --doc-dir `TestDocs` --collection BannedHorseCollection
 ```
 
 You may observe that the `Pferde.pdf` triggers a message similar to:
@@ -689,7 +689,7 @@ The `DETAILED` profile routes each file type to a specialised chunker — PDFs u
 Re-load the test documents into a new collection so you can compare:
 
 ```Windows
-python .\src\Apps\RAGLoad.py --doc-dir TestDocs --collection FastChunks
+python ./src/Apps/RAGLoad.py --doc-dir TestDocs --collection FastChunks
 ```
 
 Then open RAGChat and switch between the two collections:

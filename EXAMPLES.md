@@ -91,13 +91,13 @@ b: back to settings / ↵ to enter query / ↵↵ to quit RAGChat  · type new: 
 🟢 CheckPrompt                    Provided prompt is considered compliant by: llama-guard3:8b. Reason: Prompt classified as safe
 🔵                                Chatter RAG Query LMM: mistral:7b
 🟢 Chroma Collection              Using Chroma DB collection Test
-🔵 VectorStore                    Set Chroma vector store. Name: Test Path: D:\RAG-LCC\chromadb\docs\Test
+🔵 VectorStore                    Set Chroma vector store. Name: Test Path: D:/RAG-LCC/chromadb/docs/Test
 🔵 UserQuery                      Original user query: 'how much ram has the blazingfast workstation?'
 🔵 LangDetect                     Detected language: English (en) — confidence: 100% (threshold: 90%)
 🔵 QueryRewrite                   No conversation history — skipping rewrite
 🔵 LangDetect                     Detected language: English (en) — confidence: 100% (threshold: 90%)
 🔵 FinalQuery                     Final query for retrieval: 'how much ram has the blazingfast workstation?' (unchanged)
-🔵 Chroma                         Querying Chroma DB on vector store D:\RAG-LCC\chromadb\docs\Test
+🔵 Chroma                         Querying Chroma DB on vector store D:/RAG-LCC/chromadb/docs/Test
    ⚪ Chroma                            Pos   ChromaScore  ChromaSim  Distance         Retrievers   File
    ⚪ Chroma                         ------------------------------------------------------------------------------------------
    ⚪ Chroma                              1        0.6656     0.3344    0.3344             Vector   BlazingFast_Workstation.md

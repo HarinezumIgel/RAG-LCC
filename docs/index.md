@@ -8,11 +8,13 @@ description: Experimental RAG under constraints
   <img src="assets/AI_Igel.png" alt="RAG-LCC hedgehog icon" width="260" />
 </p>
 
-# RAG-LCC
+## Overview
 
 Experimental Retrieval-Augmented Generation under constraints.
 
 RAG-LCC is a practical lab for understanding where RAG systems fail and how to fix them: retrieval misses, context poisoning, multilingual drift, and compliance edge cases.
+
+Short: If you want to understand *why* your RAG fails, RAG-LCC gives you a playground to experiment with the parameters that matter. You can tune settings, compare alternatives on a small test corpus, and carry those insights back into your own RAG. In other words, RAG-LCC is an insight tool with reusable ideas, not an everyday production RAG.
 
 Current release: v0.5.1/1480 (2026-09-19)
 
@@ -46,7 +48,7 @@ Most RAG stacks optimize only retrieval score. RAG-LCC also optimizes context qu
 ## Quick start
 
 1. Read installation guide
-   https://github.com/HarinezumIgel/RAG-LCC/blob/main/INSTALL.md
+  [INSTALL.md](https://github.com/HarinezumIgel/RAG-LCC/blob/main/INSTALL.md)
 2. Load docs
    python ./src/Apps/RAGLoad.py --doc-dir TestDocs
 3. Start chat
@@ -55,20 +57,20 @@ Most RAG stacks optimize only retrieval score. RAG-LCC also optimizes context qu
 ## Documentation hub
 
 - Project overview
-  https://github.com/HarinezumIgel/RAG-LCC/blob/main/README.md
+  [README.md](https://github.com/HarinezumIgel/RAG-LCC/blob/main/README.md)
 - Installation
-  https://github.com/HarinezumIgel/RAG-LCC/blob/main/INSTALL.md
+  [INSTALL.md](https://github.com/HarinezumIgel/RAG-LCC/blob/main/INSTALL.md)
 - Full configuration reference
-  https://github.com/HarinezumIgel/RAG-LCC/blob/main/CONFIGURATION_REFERENCE.md
+  [CONFIGURATION_REFERENCE.md](https://github.com/HarinezumIgel/RAG-LCC/blob/main/CONFIGURATION_REFERENCE.md)
 - Architecture deep dive
-  https://github.com/HarinezumIgel/RAG-LCC/blob/main/ARCHITECTURE.md
+  [ARCHITECTURE.md](https://github.com/HarinezumIgel/RAG-LCC/blob/main/ARCHITECTURE.md)
 - End-to-end examples
-  https://github.com/HarinezumIgel/RAG-LCC/blob/main/EXAMPLES.md
+  [EXAMPLES.md](https://github.com/HarinezumIgel/RAG-LCC/blob/main/EXAMPLES.md)
 - Hands-on tour
-  https://github.com/HarinezumIgel/RAG-LCC/blob/main/HANDS_ON_TOUR.md
+  [HANDS_ON_TOUR.md](https://github.com/HarinezumIgel/RAG-LCC/blob/main/HANDS_ON_TOUR.md)
 - Legal and compliance notes
-  https://github.com/HarinezumIgel/RAG-LCC/blob/main/LEGAL.md
+  [LEGAL.md](https://github.com/HarinezumIgel/RAG-LCC/blob/main/LEGAL.md)
 
 ## Source repository
 
-https://github.com/HarinezumIgel/RAG-LCC
+[HarinezumIgel/RAG-LCC](https://github.com/HarinezumIgel/RAG-LCC)

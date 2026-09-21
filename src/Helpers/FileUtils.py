@@ -15,6 +15,7 @@ import nltk  # type: ignore[reportMissingTypeStubs]
 from nltk.corpus import stopwords  # type: ignore[reportMissingTypeStubs]
 
 from Commons.DriveRootGuard import is_drive_root, resolve_guard_path
+from Commons.Exceptions import NLTKStopwordsMissingError
 from Config.Config import Config
 from Globals.CounterInstance import FailedCount, ProcessedCount
 from Globals.Globals import Globals
@@ -53,9 +54,6 @@ class FileUtils:
         self.pretty: PrettyWriter = pretty or PrettyWriter()
         self.cfg: Config = cfg or Config()
         self.custom_ntlk_data_dir: str = self.cfg.get_str("_CUSTOM_NLTK_DATA_DIRECTORY")
-        self.stopwords_download: str | None = os.environ.get(
-            "NLTK_STOPWORDS_DOWNLOAD", "0"
-        )
         if self.custom_ntlk_data_dir not in nltk.data.path:  # type: ignore[reportUnknownMemberType]
             nltk.data.path.append(self.custom_ntlk_data_dir)  # type: ignore[reportUnknownMemberType]
         self.label_alias: dict[str, str] = self.cfg.get_dict("_LABEL_ALIAS")
@@ -501,31 +499,19 @@ class FileUtils:
 
     def get_stopwords(self, text: str) -> list[str]:
         """
-        Retrieve stopwords for detected language, downloading if needed.
+        Retrieve stopwords for detected language from local NLTK data.
         """
         stopword_lang: str = self.get_text_language(text, "nltk")
         if stopword_lang in self._stopwords_cache:
             return self._stopwords_cache[stopword_lang]
         try:
             nltk.data.find("corpora/stopwords")  # type: ignore[reportUnknownMemberType]
-        except LookupError:
-            if self.stopwords_download == "1":
-                try:
-                    nltk.download("stopwords", quiet=True)  # type: ignore[reportUnknownMemberType]
-                except Exception as e:
-                    self.pretty.write(
-                        "W", "Stopwords", f"Failed to download stopwords corpus: {e}"
-                    )
-                    self._stopwords_cache[stopword_lang] = []
-                    return []
-            else:
-                self.pretty.write(
-                    "W",
-                    "Stopwords",
-                    "Stopwords corpus not found and internet access is disabled.",
-                )
-                self._stopwords_cache[stopword_lang] = []
-                return []
+        except LookupError as exc:
+            msg = (
+                "NLTK stopwords corpus is not installed. "
+                "Run: python ./src/Scripts/NLTK_Stopwords_WordNet.py install"
+            )
+            raise NLTKStopwordsMissingError(msg) from exc
         try:
             stop_words: list[str] = stopwords.words(stopword_lang)  # type: ignore[reportUnknownMemberType]
             self._stopwords_cache[stopword_lang] = stop_words

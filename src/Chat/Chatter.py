@@ -82,6 +82,7 @@ from Globals.Globals import Globals
 from Globals.Session import Session
 from Gui.Colors import CYAN, ORANGE, RED, RESET
 from Gui.PrettyWriter import PrettyWriter
+from Gui.Symbols import Symbols
 from Helpers.CSVWriter import CSVWriter
 from Helpers.FileUtils import FileUtils
 from Helpers.Helpers import Helpers
@@ -212,9 +213,8 @@ class Chatter:
         if session.extraOllamaOptions:
             ollama_options.update(session.extraOllamaOptions)
 
-        will_apply_grounding = apiChunkHandler is not None and getattr(
-            session, "mark_text", False
-        )
+        mark_text_enabled = bool(getattr(session, "mark_text", False))
+        will_apply_grounding = apiChunkHandler is not None and mark_text_enabled
 
         # Build chunk handler — wraps real-time streaming to API client when grounding is off
         handler = self.llmCaller.make_on_chunk(ollama_options)
@@ -287,33 +287,50 @@ class Chatter:
         if self._check_answer_compliance(session, answer, content):
             return False, None
 
-        chunk_texts_for_grounding: list[str] = list(
-            getattr(session, "chunk_texts_for_grounding", []) or []
-        )
-        if not self._has_grounded_evidence(
-            session,
-            content,
-            chunk_texts_for_grounding,
-            response_language,
-        ):
-            self.pretty.write(
-                "W",
-                "Grounding",
-                "No supporting evidence found in retrieved context; "
-                "returning no-evidence fallback.",
-                color=ORANGE,
+        grounding_notice: str = ""
+        skip_grounding_for_short_answer: bool = False
+        if mark_text_enabled:
+            chunk_texts_for_grounding: list[str] = list(
+                getattr(session, "chunk_texts_for_grounding", []) or []
             )
-            content = self._build_no_evidence_message()
-            answer.content = content
-            # Avoid presenting unrelated source files for an ungrounded answer.
-            session.last_chosen_chunks = []
-            session.chunk_texts_for_grounding = []
+            if self._is_answer_too_short_for_grounding(content):
+                self.pretty.write(
+                    "I",
+                    "Grounding",
+                    "Answer too short for reliable sentence-level grounding; "
+                    "returning ungrounded answer.",
+                    color=ORANGE,
+                )
+                grounding_notice = self._build_grounding_skipped_short_answer_notice()
+                skip_grounding_for_short_answer = True
+                # Ensure no stale highlighted docs are shown from a previous query.
+                session.marked_documents = []
+            elif not self._has_grounded_evidence(
+                session,
+                content,
+                chunk_texts_for_grounding,
+                response_language,
+            ):
+                self.pretty.write(
+                    "W",
+                    "Grounding",
+                    "No supporting evidence found in retrieved context; "
+                    "returning no-evidence fallback.",
+                    color=ORANGE,
+                )
+                content = self._build_no_evidence_message()
+                answer.content = content
+                # Avoid presenting unrelated source files for an ungrounded answer.
+                session.last_chosen_chunks = []
+                session.chunk_texts_for_grounding = []
 
         if session.use_chat_context:
             self.chatContext.add_chat_turn(session, query, content)
 
         # Post-process answer content
         answer.content = self.masker.mask(content)
+        if grounding_notice:
+            answer.content = grounding_notice + answer.content
         if query_notice:
             answer.content = query_notice + answer.content
         if web_warning and apiChunkHandler is not None:
@@ -324,9 +341,8 @@ class Chatter:
             )
 
         # Apply answer grounding (highlight sentences traceable to source chunks)
-        mark_text_enabled = getattr(session, "mark_text", False)
         cli_answer = answer.content
-        if mark_text_enabled:
+        if mark_text_enabled and not skip_grounding_for_short_answer:
             chunk_texts: list[str] = list(
                 getattr(session, "chunk_texts_for_grounding", []) or []
             )
@@ -340,11 +356,13 @@ class Chatter:
 
         # Mark source documents with grounding highlights and show to user
         session.last_answer_content = answer.content
-        if mark_text_enabled:
+        if mark_text_enabled and not skip_grounding_for_short_answer:
             chosen = getattr(session, "last_chosen_chunks", [])
             if chosen:
                 try:
-                    self.rag._mark_sources(session, chosen)
+                    self.rag._mark_sources(
+                        session, chosen
+                    )  # pyright: ignore[reportPrivateUsage]
                 except Exception as exc:
                     self.pretty.write(
                         "W", "VisualMarker", f"Visual marking failed: {exc}"
@@ -385,7 +403,7 @@ class Chatter:
             "translated+rewritten": "Translated & rewritten query",
         }
         label = notice_labels.get(reason, "Query (changed)")
-        return f'\U0001f50d *{label}: "{effective_q}"*\n\n---\n\n'
+        return f'{Symbols.sym_icon("SEARCH")}*{label}: "{effective_q}"*\n\n---\n\n'
 
     @staticmethod
     def _build_no_evidence_message() -> str:
@@ -394,6 +412,11 @@ class Chatter:
             "I couldn't find evidence in the retrieved context to answer your query.\n\n"
             "Try increasing retriever_k, top_k and lower threshold or change strategy."
         )
+
+    @staticmethod
+    def _build_grounding_skipped_short_answer_notice() -> str:
+        """Return notice prepended when grounding is skipped for short answers."""
+        return f"{Symbols.sym_warning()} Grounding skipped: answer is too short for reliable sentence-level grounding.\n\n"
 
     @staticmethod
     def _extract_answer_section(text: str) -> str:
@@ -406,6 +429,44 @@ class Chatter:
         if idx >= 0:
             return text[:idx].strip()
         return text.strip()
+
+    def _is_answer_too_short_for_grounding(self, answer_text: str) -> bool:
+        """Return True when answer text is too brief for reliable grounding.
+
+        Grounding gets noisy on terse list-style answers (e.g. short bullet lists),
+        so we require both:
+        - at least one sentence at/above min_sentence_tokens, and
+        - a minimum total token volume across the answer body.
+        """
+        answer_body = self._extract_answer_section(answer_text)
+        if not answer_body:
+            return True
+
+        from VisualMarkers.AnswerGrounder import AnswerGrounder
+
+        min_sentence_tokens = max(
+            1,
+            int(getattr(AnswerGrounder(), "min_sentence_tokens", 5)),
+        )
+        min_total_tokens = max(min_sentence_tokens * 2, 10)
+
+        import re as _re
+
+        token_counts: list[int] = []
+        for para in answer_body.splitlines():
+            paragraph = para.strip()
+            if not paragraph:
+                continue
+            for sentence in _re.split(r"(?<=[.!?])\s+", paragraph):
+                token_count = len(_re.findall(r"\w+", sentence, flags=_re.UNICODE))
+                if token_count > 0:
+                    token_counts.append(token_count)
+
+        if not token_counts:
+            return True
+        if sum(token_counts) < min_total_tokens:
+            return True
+        return not any(count >= min_sentence_tokens for count in token_counts)
 
     def _collect_web_grounding_texts(self, session: Session) -> list[str]:
         """Collect deduplicated web snippets/page text from retrieved chunks."""
@@ -791,7 +852,7 @@ class Chatter:
             color=CYAN,
         )
         for url in web_urls:
-            print(f"   🌐 {url}")
+            print(f"   {Symbols.sym_icon('WEB')}{url}")
 
     def _show_original_sources(self, chosen: list[Any]) -> None:
         """Display original source file paths when mark_text=False."""
@@ -818,12 +879,16 @@ class Chatter:
             )
             for path in sorted_paths:
                 abs_path = Path(path).resolve()
-                print(f"   📄 {abs_path.as_uri()}")
+                print(f"   {Symbols.sym_icon('DOC')}{abs_path.as_uri()}")
 
         self._show_web_sources(chosen)
 
     def print_llm_answer(
-        self, answer: str, terminal_width: int, prefix: str = "💡>  ", color: str = ""
+        self,
+        answer: str,
+        terminal_width: int,
+        prefix: str | None = None,
+        color: str = "",
     ) -> None:
         """
         Wrap `answer` by words to fit `terminal_width` and print each line prefixed.
@@ -836,6 +901,9 @@ class Chatter:
         from typing import cast as _cast
 
         import Gui.Colors as _colors
+
+        if prefix is None:
+            prefix = f"{Symbols.sym_icon('CHAT')}>  "
 
         if color:
             style: str = color

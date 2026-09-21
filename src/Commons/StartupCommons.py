@@ -35,10 +35,11 @@ from Commons.Exceptions import (ArgosConsentMissingError, ArgosPermissionError,
                                 InternetConnectionDisabledError,
                                 InvalidCollectionName, LLMComplianceCheckError,
                                 LLMResultError, LocalLLMEndpointNotAvailable,
-                                ModelLoadError, NoVirtualEnvError,
-                                PersistDirError, PromptComplianceError,
-                                RerankError, SpacyConsentMissingError,
-                                TesseractPathError, UserNoDownLoadAccept)
+                                ModelLoadError, NLTKStopwordsMissingError,
+                                NoVirtualEnvError, PersistDirError,
+                                PromptComplianceError, RerankError,
+                                SpacyConsentMissingError, TesseractPathError,
+                                UserNoDownLoadAccept)
 from Config.AddConstantsFromConfigFile import AddConstantsFromConfigFile
 from Config.Config import Config
 from Gui.Banner import Banner
@@ -62,6 +63,75 @@ def suppress_argos_logging(debug_level: int = 0) -> None:
 
 
 class StartupCommons:
+    @staticmethod
+    def _resolve_expected_stopwords_dir(cfg: Config) -> Path | None:
+        """Resolve the expected stopwords directory from configured NLTK path.
+
+        The configured value may point to a data root, ``.../corpora``, or
+        directly to ``.../corpora/stopwords``.
+        """
+        configured = cfg.get_str("_CUSTOM_NLTK_DATA_DIRECTORY", "", silent=True).strip()
+        if not configured:
+            return None
+
+        resolved = Path(configured).expanduser().resolve()
+        parts_lower = [part.lower() for part in resolved.parts]
+
+        if len(parts_lower) >= 2 and parts_lower[-2] == "corpora":
+            if parts_lower[-1] == "stopwords":
+                return resolved
+            if parts_lower[-1] == "corpora":
+                return resolved / "stopwords"
+
+        return resolved / "corpora" / "stopwords"
+
+    @staticmethod
+    def _ensure_nltk_stopwords_installed(cfg: Config) -> None:
+        """Fail fast when NLTK stopwords are missing.
+
+        Applies to all apps started through ``common_start`` so behavior is
+        consistent and installer-driven.
+        """
+        try:
+            import nltk  # type: ignore[import-untyped]  # noqa: PLC0415
+        except Exception as exc:
+            raise NLTKStopwordsMissingError(
+                "NLTK package is not installed. "
+                "Run Setup.py Step 2 (pip install), then run "
+                "python ./src/Scripts/NLTK_Stopwords_WordNet.py install"
+            ) from exc
+
+        expected_stopwords_dir = StartupCommons._resolve_expected_stopwords_dir(cfg)
+        if expected_stopwords_dir is not None:
+            if (
+                not expected_stopwords_dir.exists()
+                or not expected_stopwords_dir.is_dir()
+            ):
+                raise NLTKStopwordsMissingError(
+                    "NLTK stopwords corpus is not installed in the configured path. "
+                    "Run: python ./src/Scripts/NLTK_Stopwords_WordNet.py install"
+                )
+
+            try:
+                has_entries = any(expected_stopwords_dir.iterdir())
+            except OSError:
+                has_entries = False
+            if not has_entries:
+                raise NLTKStopwordsMissingError(
+                    "NLTK stopwords corpus directory is empty. "
+                    "Run: python ./src/Scripts/NLTK_Stopwords_WordNet.py install"
+                )
+            return
+
+        # Fallback if no custom directory is configured.
+        try:
+            nltk.data.find("corpora/stopwords")  # type: ignore[reportUnknownMemberType]
+        except LookupError as exc:
+            raise NLTKStopwordsMissingError(
+                "NLTK stopwords corpus is not installed. "
+                "Run: python ./src/Scripts/NLTK_Stopwords_WordNet.py install"
+            ) from exc
+
     @staticmethod
     def _path_slot_is_file_like(slot_name: str, raw_path: str) -> bool:
         """Return True when slot/value should be treated as a file path."""
@@ -207,7 +277,6 @@ class StartupCommons:
             "LICENSE_DOWNLOAD": ("0", True),
             "RAG_LCC_NW_TRACE": ("0", False),
             "RAG_LCC_STACK_TRACE": ("0", False),
-            "NLTK_STOPWORDS_DOWNLOAD": ("0", True),
             "ARGOS_MODEL_PROVIDER": ("OPENNMT", True),
             "HF_HUB_DISABLE_PROGRESS_BARS": (None, False),
         }
@@ -349,6 +418,9 @@ class StartupCommons:
 
             # Load configuration and writer
             pretty = PrettyWriter(always_on=True)
+
+            # Script-managed prerequisite for all apps.
+            StartupCommons._ensure_nltk_stopwords_installed(cfg)
 
             # HF cache locations
             hf_home = cfg.get_str("_HF_HOME", "")
@@ -667,6 +739,21 @@ class StartupCommons:
                     "SPACY LICENSE",
                     "Run:  python ./src/Scripts/SpacyLanguageModels.py install  "
                     "to accept the spaCy model-package license and then restart.",
+                    color=CYAN,
+                )
+                StartupCommons._die()
+            if isinstance(exc, NLTKStopwordsMissingError):
+                pretty.write(
+                    "E",
+                    "NLTK STOPWORDS",
+                    f"{exc.args[0]}",
+                    color=RED,
+                )
+                pretty.write(
+                    "I",
+                    "NLTK STOPWORDS",
+                    "Run:  python ./src/Scripts/NLTK_Stopwords_WordNet.py install  "
+                    "to install stopwords/WordNet resources and then restart.",
                     color=CYAN,
                 )
                 StartupCommons._die()

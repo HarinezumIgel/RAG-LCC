@@ -44,7 +44,7 @@ Loading weights: 100%|███████████████████�
 🟢 CheckPrompt                    Provided prompt is considered compliant by: llama-guard3:8b. Reason: Prompt classified as safe
 🔵                                Chatter RAG Query LMM: mistral:7b
 🟢 Chroma Collection              Using Chroma DB collection Test
-🔵 VectorStore                    Set Chroma vector store. Name: Test Path: D:\RAG-LCC\chromadb\docs\Test
+🔵 VectorStore                    Set Chroma vector store. Name: Test Path: D:/RAG-LCC/chromadb/docs/Test
 🔵 UserQuery                      Original user query: 'what  is the hedgehog diet'
 🔵 LangDetect                     Detected language: English (en) — confidence: 12% below threshold 81% — falling back to English
 🔵 QueryRewrite                   No conversation history — skipping rewrite
@@ -56,7 +56,7 @@ Loading weights: 100%|███████████████████�
 🔵 Call LLM                       options: {'temperature': 0.5, 'top_k': 40, 'top_p': 0.95, 'num_predict': 2048, 'num_ctx': 32768} streaming: False
 🔵 Call LLM                       Elapsed time calling: mistral:7b took 00:11
    ⚪ MultiQuery                     Alternate queries (3): 1: "Hedgehog's food intake" | 2: 'Nutritional habits of hedgehogs' | 3: 'What does a hedgehog eat?'
-🔵 Chroma                         Querying Chroma DB on vector store D:\RAG-LCC\chromadb\docs\Test
+🔵 Chroma                         Querying Chroma DB on vector store D:/RAG-LCC/chromadb/docs/Test
    ⚪ Chroma                            Pos   ChromaScore  ChromaSim  Distance         Retrievers   File
    ⚪ Chroma                         ------------------------------------------------------------------------------------------
    ⚪ Chroma                              1        0.6189     0.3811    0.3811             Vector   Hedgehogs.pdf

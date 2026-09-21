@@ -83,6 +83,18 @@ class Symbols:
         "N": "",
     }
 
+    # Inline icons used in plain text output (outside PrettyWriter severity labels).
+    # Unknown keys fall back to "INFO" so callers always get a safe neutral symbol.
+    _INLINE_ICONS: dict[str, tuple[str, str]] = {
+        "INFO": ("\u2139\ufe0f ", "\u2139 "),
+        "WARNING": ("\u26a0\ufe0f ", "\u26a0 "),
+        "WEB": ("\U0001f310 ", "\U0001f310 "),
+        "DOC": ("\U0001f4c4 ", "\U0001f4c4 "),
+        "CHAT": ("\U0001f4ac ", "\U0001f4ac "),
+        "SEARCH": ("\U0001f50d ", "\U0001f50d "),
+        "LINK": ("\U0001f4ce ", "\U0001f4ce "),
+    }
+
     @staticmethod
     def store_emoji_preference(cfg: Config) -> bool:
         """Detect emoji support and persist the flag into *cfg*.
@@ -145,6 +157,21 @@ class Symbols:
         return (
             "\U0001f537" if Symbols._use_emoji() else f"{BRIGHT_BLUE}[-]{RESET}"
         )  # 🔷
+
+    @staticmethod
+    def sym_icon(kind: str) -> str:
+        """Return inline icon by key with neutral INFO fallback when unknown."""
+        key = (kind or "").strip().upper()
+        emoji_icon, fallback_icon = Symbols._INLINE_ICONS.get(
+            key,
+            Symbols._INLINE_ICONS["INFO"],
+        )
+        return emoji_icon if Symbols._use_emoji() else fallback_icon
+
+    @staticmethod
+    def sym_warning() -> str:
+        """Warning symbol for inline text without ASCII fallback."""
+        return Symbols.sym_icon("WARNING")
 
     @staticmethod
     def sym_arrow() -> str:

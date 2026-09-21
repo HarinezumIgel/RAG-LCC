@@ -258,6 +258,16 @@ class SpacyConsentMissingError(ComplianceViolationError):
     pass
 
 
+class NLTKStopwordsMissingError(ComplianceViolationError):
+    """Raised when the NLTK stopwords corpus is missing at runtime.
+
+    Resolve by running the installer script that records consent and installs
+    required NLTK corpora.
+    """
+
+    pass
+
+
 class ArgosPermissionError(RAGLCCException):
     """Raised when Argos runtime directories cannot be created or written."""
 

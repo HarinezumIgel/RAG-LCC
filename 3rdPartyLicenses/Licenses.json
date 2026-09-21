@@ -1,6 +1,6 @@
 {
   "disclaimer": "This overview is provided for informational purposes only. Signing attests only to the integrity of this document, not to the legal validity, authorship, or completeness of any third-party licenses referenced herein. Users are responsible for reviewing and complying with all third-party terms.",
-  "generated": "2026-09-19T15:45:13.860253",
+  "generated": "2026-09-21T11:33:38.475807",
   "packages": [
     {
       "Author": "UNKNOWN",
@@ -1805,11 +1805,11 @@
     {
       "Author": "Samuel Colvin <s@muelcolvin.com>",
       "License": "MIT License",
-      "LicenseFile": "<your-venv>/Lib/site-packages/watchfiles-1.2.0.dist-info/licenses/LICENSE",
+      "LicenseFile": "<your-venv>/Lib/site-packages/watchfiles-1.3.0.dist-info/licenses/LICENSE",
       "LicenseText": "The MIT License (MIT)\n\nCopyright (c) 2017 to present Samuel Colvin\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.\n",
       "Name": "watchfiles",
       "URL": "https://github.com/samuelcolvin/watchfiles",
-      "Version": "1.2.0"
+      "Version": "1.3.0"
     },
     {
       "Author": "Jeff Quast <contact@jeffquast.com>",

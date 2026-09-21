@@ -112,6 +112,8 @@ class RetrievalGate:
             msg = (
                 f"{attribute_phrase.capitalize()} can vary — "
                 f"could you clarify what subject or item you'd like information about?"
+                "\nIf it does not help, type new: before your query to start an "
+                "entriely new topic."
             )
         elif pronoun_text:
             # EXAMPLE (first-turn): pronoun_text="it"
@@ -119,12 +121,16 @@ class RetrievalGate:
             msg = (
                 f'I\'m not sure what "{ pronoun_text}" refers to — '
                 f"could you clarify what you'd like information about?"
+                "\nIf it does not help, type new: before your query to start an "
+                "entriely new topic."
             )
         else:
             # EXAMPLE (failure path): no pronoun in sanitized query, but flag set
             #   msg = "Could you clarify your query — what would you like information about?"
             msg = (
                 "Could you clarify your query — what would you like information about?"
+                "\nIf it does not help, type new: before your query to start an "
+                "entriely new topic."
             )
 
         session.clarification_response = msg

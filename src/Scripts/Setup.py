@@ -1040,7 +1040,6 @@ def _run_setup_questions() -> None:
     openwebui_api_key = ""
     hf_hub_offline = True
     hf_api_key = ""
-    nltk_stopwords_download = False
     license_download = False
     web_search_mode = "0"
     openweb_ui_websearch = False
@@ -1232,21 +1231,7 @@ def _run_setup_questions() -> None:
         )
 
         # --------------------------------------------------------------
-        # Group 3: Language resources and corpus downloads
-        # --------------------------------------------------------------
-        _print_setting_context(
-            "Config_Internet_Env.py",
-            "src/Configuration/Config_Internet_Env.py",
-            "Enable NLTK stopwords/WordNet download prompt at startup.",
-        )
-        nltk_stopwords_download = _prompt_bool(
-            "Enable NLTK_STOPWORDS_DOWNLOAD",
-            default=False,
-            correction_value=nltk_stopwords_download if correction_mode else None,
-        )
-
-        # --------------------------------------------------------------
-        # Group 4: Network and compliance settings
+        # Group 3: Network and compliance settings
         # --------------------------------------------------------------
         print()
         print(
@@ -1296,7 +1281,7 @@ def _run_setup_questions() -> None:
             )
 
         # --------------------------------------------------------------
-        # Group 5: Service endpoints
+        # Group 4: Service endpoints
         # --------------------------------------------------------------
         _print_setting_context(
             "Config_Internet_Env.py",
@@ -1326,7 +1311,7 @@ def _run_setup_questions() -> None:
             )
 
         # --------------------------------------------------------------
-        # Group 6: Debug and tracing
+        # Group 5: Debug and tracing
         # --------------------------------------------------------------
         print()
         print(
@@ -1357,9 +1342,6 @@ def _run_setup_questions() -> None:
         )
         print(f"{_WHITE}  HF_HUB_OFFLINE:{_RESET} {'1' if hf_hub_offline else '0'}")
         print(f"{_WHITE}  _HF_API_KEY:{_RESET} {'<set>' if hf_api_key else '<empty>'}")
-        print(
-            f"{_WHITE}  NLTK_STOPWORDS_DOWNLOAD:{_RESET} {'1' if nltk_stopwords_download else '0'}"
-        )
         print(f"{_WHITE}  LICENSE_DOWNLOAD:{_RESET} {'1' if license_download else '0'}")
         print(f"{_WHITE}  WEB_SEARCH_MODE:{_RESET} {web_search_mode}")
         print(
@@ -1446,11 +1428,6 @@ def _run_setup_questions() -> None:
         },
         {
             "conf": "Config_Internet_Env.py",
-            "slot_name": 'os.environ["NLTK_STOPWORDS_DOWNLOAD"]',
-            "value": _as_py_string("1" if nltk_stopwords_download else "0"),
-        },
-        {
-            "conf": "Config_Internet_Env.py",
             "slot_name": 'os.environ["SERVE_OPENWEBUI_CHAT"]',
             "value": _as_py_string("1" if serve_openwebui_chat else "0"),
         },
@@ -1526,7 +1503,6 @@ def _run_setup_questions() -> None:
         license_download=license_download,
         web_search_mode=web_search_mode,
         openweb_ui_websearch=openweb_ui_websearch,
-        nltk_stopwords_download=nltk_stopwords_download,
         serve_openwebui_chat=serve_openwebui_chat,
         serve_in_memory_docs_http=serve_in_memory_docs,
         rag_lcc_nw_trace=network_tracer,

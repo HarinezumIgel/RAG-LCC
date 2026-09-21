@@ -37,6 +37,8 @@ Instead of pushing ever‑larger context sizes, RAG‑LCC treats **classificatio
 
 ## 🧠 What it does — and why it exists
 
+Short: If you want to understand *why* your RAG fails, RAG-LCC gives you a playground to experiment with the parameters that matter. You can tune settings, compare alternatives on a small test corpus, and carry those insights back into your own RAG. In other words, RAG-LCC is an insight tool with reusable ideas, not an everyday production RAG.
+
 Standard RAG is deceptively simple: embed documents, embed query, retrieve by cosine similarity, prompt the LLM. In practice this produces systems that are brittle in exactly the ways that matter most — they hallucinate when the corpus has conflicting information, they drift in multi‑turn chat as pronouns accumulate, they fail silently on minority‑language documents, and they have no principled way to prevent prohibited content from being stored or returned.
 
 **RAG‑LCC** (Retrieval‑Augmented Generation — Local Corpus & Classification) is an experimental lab for studying and addressing these failure modes. Instead of pushing ever‑larger context windows, it treats **classification, chunking, retrieval strategy, and content filtering** as first‑class architectural decisions. Documents are analysed, compressed, filtered, and assembled *before* reaching the LLM — so the model reasons over coherent, non‑contradictory context rather than an arbitrary pile of chunks.
@@ -395,7 +397,7 @@ Read [INSTALL.md](INSTALL.md#-0-guided-setup-first) before running anything. You
 
 ```bash
 git clone <this-repo>; cd RAG-LCC
-python -m venv .venv; .\.venv\Scripts\Activate.ps1   # or source .venv/bin/activate
+python -m venv .venv; ./.venv/Scripts/Activate.ps1   # or source .venv/bin/activate
 # Guided setup, recommended
 python src/Scripts/Setup.py                           # guided first-run setup (copies configs, downloads models)
 # Note: License acceptance is required and recorded on startup
