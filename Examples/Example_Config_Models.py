@@ -1,7 +1,9 @@
 # -------------------------------------------------------------------------
 # - Lookup order (highest priority first):
 #     Config_<RAGChat.py|Config_RAGLoad.py|Config_DocClassify.py>,
-#     Config_WebSearch.py, Config_Banned.py, Config_Models.py, Config_Global.py
+#     Config_WebSearch.py, Config_Banned_Detection.py,
+#     Config_Banned_Content.py, Config_Banned_Prompts.py,
+#     Config_Models.py, Config_Global.py
 # - Entries starting with $ are indirect lookups
 # - Top-level settings must be uppercase
 # -------------------------------------------------------------------------

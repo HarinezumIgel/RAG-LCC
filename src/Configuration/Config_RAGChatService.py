@@ -1,30 +1,20 @@
 import os
 from typing import Any
 
-# import * silently drops _-prefixed names — re-import them explicitly:
-# Re-export the full RAGChat config so the Config loader finds every key
-# (_KEY_BERT, _STRATEGIES, _ALLOWED_STRATEGIES, _HISTORY_DIRECTORY, etc.)
-from Configuration.Config_RAGChat import *  # noqa: F401, F403
-from Configuration.Config_RAGChat import (  # pyright: ignore[reportPrivateUsage, reportUnusedImport, reportUnknownVariableType]; pyright: ignore[reportPrivateUsage, reportUnusedImport]; noqa: F401; pyright: ignore[reportPrivateUsage, reportUnusedImport]
-    _ACTIVE_CHUNK_SELECT_STRATEGY, _ALLOWED_RETRIEVE_MODES,
-    _ALLOWED_STRATEGIES, _CHUNK_DEDUP, _CLASSIFICATION_KEYS,
-    _DEFAULT_CHAT_NAME, _HISTORY_DIRECTORY, _KEY_BERT, _MARKED_DOCS_COLORS,
-    _MARKED_DOCS_GROUNDING, _MULTI_QUERY, _PROMPT_QUERY_EXPAND,
-    _PROMPT_TOPIC_DETECT, _QUERY_REWRITE, _STRATEGIES)
-from Configuration.Config_WebSearch import \
-    _OPENWEB_UI_WEBSEARCH  # noqa: F401; pyright: ignore[reportPrivateUsage, reportUnusedImport]
+# RAGChat split settings are loaded directly by Config._load_from_constants
+# for RAGChatService. This file only defines service-specific overrides.
 
 # -------------------------------------------------------------------------
 # RAGChatService is RAGChat served over HTTP (OpenWebUI-compatible REST API).
 # All RAGChat configuration is reused as-is — only the API host/port are added.
 #
-# _FRIENDLY_NAME = "RAGChatService" matches the alias added in Config_Banned.py
+# _FRIENDLY_NAME = "RAGChatService" matches the alias added in
+# Config_Banned_Detection.py
 # so compliance lookups resolve to the correct RAGChatService pipeline.
 # -------------------------------------------------------------------------
 
-
 _FRIENDLY_NAME = (
-    "RAGChatService"  # Matches the alias in _BANNED_DETECT (Config_Banned.py)
+    "RAGChatService"  # Matches the alias in _BANNED_DETECT (Config_Banned_Detection.py)
 )
 
 _LOG_DIRECTORY = os.path.join(

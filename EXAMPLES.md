@@ -19,7 +19,7 @@ python ./src/Apps/DocClassify.py         --doc-dir TestDocs
 
 ## 📥 RAGLoad
 
-`RAGLoad` upserts only chunks that passed the filter algorithms and prompt check to the vector DB. The filter algorithms and prompt check can be individually configured in `./Configuration/Config_Banned.py`.
+`RAGLoad` upserts only chunks that passed the filter algorithms and prompt check to the vector DB. The filter algorithms and prompt check can be individually configured in `./Configuration/Config_Banned_Detection.py` (phrase lists and masking rules are in `./Configuration/Config_Banned_Content.py`).
 
 ![Accepted and not accepted chunks](Documentation/Pics/RAG_Chat_Chunks_Loaded.jpg)
 
@@ -48,7 +48,7 @@ This produces:
 
 ![Below threshold and accepted chunks](Documentation/Pics/NoHorse.jpg)
 
-Since only 2 algorithms scored above their threshold (depth check) and only 2 different algorithms produced a non-zero score (breadth check), the required consensus is not reached and the chunks are loaded. Adjusting depth, breadth, or threshold values determines whether chunks are loaded or rejected. If you change these values in `./Configuration/Config_Banned.py` for RAGLoad and set them to 1, more chunks will not load into the Vector DB.
+Since only 2 algorithms scored above their threshold (depth check) and only 2 different algorithms produced a non-zero score (breadth check), the required consensus is not reached and the chunks are loaded. Adjusting depth, breadth, or threshold values determines whether chunks are loaded or rejected. If you change these values in `./Configuration/Config_Banned_Detection.py` for RAGLoad and set them to 1, more chunks will not load into the Vector DB.
 
 ```Python
     # How many algos must be above their thresholds to trigger a block
@@ -57,7 +57,7 @@ Since only 2 algorithms scored above their threshold (depth check) and only 2 di
     "REQUIRED_DIFFERENT_ALGOS_HAVE_A_SCORE": 1,
 ```
 
-**Note** if you change values in `./Configuration/Config_Banned.py` you must adjust the hash value for this configuration in `./Configuration/Config_Global.py`. See [Update the hashes](INSTALL.md#-update-the-hashes).
+**Note** if you change values in `./Configuration/Config_Banned_Detection.py`, `./Configuration/Config_Banned_Content.py`, or `./Configuration/Config_Banned_Prompts.py`, you must adjust the matching hash value(s) in `./Configuration/Config_Global.py`. See [Update the hashes](INSTALL.md#-update-the-hashes).
 
 ## 💬 RAGChat
 

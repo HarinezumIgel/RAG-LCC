@@ -58,14 +58,15 @@ from urllib.parse import urlparse
 from langchain_core.documents.base import Document as LangchainDocument
 
 from Config.Config import Config
-from Configuration.Config_Banned import HARDBLOCK_PATTERNS, INJECTION_PATTERNS
+from Configuration.Config_Banned_Content import (HARDBLOCK_PATTERNS,
+                                                 INJECTION_PATTERNS)
 from Configuration.Config_WebSearch import WEB_SEARCH_INTENT_EXTENSIONS
 from Gui.PrettyWriter import PrettyWriter
 from Retrievers.RetrieverBase import RetrieverBase
 from Retrievers.WebSearchFilter import WebSearchFilter
 
 # Hard-blocked content patterns and injection patterns are defined in
-# Configuration.Config_Banned (HARDBLOCK_PATTERNS, INJECTION_PATTERNS).
+# Configuration.Config_Banned_Content (HARDBLOCK_PATTERNS, INJECTION_PATTERNS).
 # WEB_SEARCH_INTENT_EXTENSIONS is defined in Configuration.Config_WebSearch.
 # All three are imported above.
 

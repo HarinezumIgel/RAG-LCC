@@ -670,12 +670,17 @@ Please read `Configuration/Config_Models.py` before enabling internet access or 
 Manually copy the example configuration files into the `Configuration/` folder.
 
 ```powershell
-copy ./Examples/Example_Config_Banned.py    ./src/Configuration/Config_Banned.py
-copy ./Examples/Example_Config_Models.py   ./src/Configuration/Config_Models.py
+copy ./Examples/Example_Config_Banned_Detection.py ./src/Configuration/Config_Banned_Detection.py
+copy ./Examples/Example_Config_Banned_Content.py   ./src/Configuration/Config_Banned_Content.py
+copy ./Examples/Example_Config_Banned_Prompts.py   ./src/Configuration/Config_Banned_Prompts.py
+copy ./Examples/Example_Config_Load_Retrievers.py  ./src/Configuration/Config_Load_Retrievers.py
+copy ./Examples/Example_Config_Load_Chunkers.py    ./src/Configuration/Config_Load_Chunkers.py
+copy ./Examples/Example_Config_Models.py           ./src/Configuration/Config_Models.py
 copy ./Examples/Example_Config_WebSearch.py ./src/Configuration/Config_WebSearch.py
+copy ./Examples/Example_Config_Internet_Env.py ./src/Configuration/Config_Internet_Env.py
 ```
 
-Open `Configuration/Config_Banned.py`, `Configuration/Config_Models.py`, and `Configuration/Config_WebSearch.py` and configure the settings according to your needs.
+Open `Configuration/Config_Banned_Detection.py`, `Configuration/Config_Banned_Content.py`, `Configuration/Config_Banned_Prompts.py`, `Configuration/Config_Load_Retrievers.py`, `Configuration/Config_Load_Chunkers.py`, `Configuration/Config_Models.py`, and `Configuration/Config_WebSearch.py` and configure the settings according to your needs.
 
 ## 🧪 11. Run the tests
 
@@ -826,7 +831,7 @@ When configuring where RAGChatService listens, set the appropriate hostname or I
 **Note:** When RAGChatService runs in a Docker container and needs to be accessible from the host or other machines, bind to `0.0.0.0` to listen on all interfaces. When running on the host machine and only local access is needed, use `127.0.0.1`.
 
 `_FRIENDLY_NAME` is set to `"RAGChatService"` so that compliance lookups
-resolve to the correct detection profile in `Config_Banned.py`.
+resolve to the correct detection profile in `Config_Banned_Detection.py`.
 
 The chat prompt (`_PROMPT_CHAT`) is overridden with an OpenWebUI-specific
 variant that instructs the LLM to suggest adjusting retrieval parameters
@@ -924,7 +929,7 @@ See [Internet Access](#-internet-access) for details on how internet connectivit
 
 You will be guided through a two-step process which ensures that you:
 
-1. Confirm changes to Config_Models.py, Config_Banned.py, and Config_WebSearch.py. See [Update the hashes](#-update-the-hashes).
+1. Confirm changes to Config_Models.py, Config_Banned_Detection.py, Config_Banned_Content.py, Config_Banned_Prompts.py, Config_Load_Retrievers.py, Config_Load_Chunkers.py, Config_WebSearch.py, and Config_Internet_Env.py. See [Update the hashes](#-update-the-hashes).
 2. Consent to the licenses belonging to the models used in Models.py, see [License consent](#-license-consent).
 Both are recorded so in future runs these steps are skipped unless you make changes
 
@@ -939,7 +944,11 @@ The expected configuration hashes are displayed:
 ## 🔒 Update the hashes
 
 - `_CRITICAL_CONFIG_HASHES["Config_Models"] = "<new_hash>"` — update after editing `Configuration/Config_Models.py`
-- `_CRITICAL_CONFIG_HASHES["Config_Banned"] = "<new_hash>"` — update after editing `Configuration/Config_Banned.py`
+- `_CRITICAL_CONFIG_HASHES["Config_Banned_Detection"] = "<new_hash>"` — update after editing `Configuration/Config_Banned_Detection.py`
+- `_CRITICAL_CONFIG_HASHES["Config_Banned_Content"] = "<new_hash>"` — update after editing `Configuration/Config_Banned_Content.py`
+- `_CRITICAL_CONFIG_HASHES["Config_Banned_Prompts"] = "<new_hash>"` — update after editing `Configuration/Config_Banned_Prompts.py`
+- `_CRITICAL_CONFIG_HASHES["Config_Load_Retrievers"] = "<new_hash>"` — update after editing `Configuration/Config_Load_Retrievers.py`
+- `_CRITICAL_CONFIG_HASHES["Config_Load_Chunkers"] = "<new_hash>"` — update after editing `Configuration/Config_Load_Chunkers.py`
 - `_CRITICAL_CONFIG_HASHES["Config_WebSearch"] = "<new_hash>"` — update after editing `Configuration/Config_WebSearch.py`
 - `_CRITICAL_CONFIG_HASHES["Config_Internet_Env"] = "<new_hash>"` — update after editing `Configuration/Config_Internet_Env.py`
 
@@ -1108,9 +1117,9 @@ is appended to `_QUERY_LOG` (default `logs/RAGChat/queries.log`). Set
 The baseline intent classifier (which decides whether a query *looks like* a
 web-search question) lives in `Config_WebSearch.py`. Operators can extend it
 without editing that file by populating `WEB_SEARCH_INTENT_EXTENSIONS` in
-`Config_Banned.py` (`entity_extensions`, `entity_categories_extra`,
+`Config_WebSearch.py` (`entity_extensions`, `entity_categories_extra`,
 `threshold_overrides`). After editing, rerun
-`python src/Scripts/RecalcConfigHashes.py` to refresh `_CRITICAL_CONFIG_HASHES["Config_Banned"]`.
+`python src/Scripts/RecalcConfigHashes.py` to refresh `_CRITICAL_CONFIG_HASHES["Config_WebSearch"]`.
 
 See also: [Web Search — Admin Knobs in CONFIGURATION_REFERENCE.md](CONFIGURATION_REFERENCE.md#-web-search--admin-knobs)
 and [Web-Search Intent Filter Extensions in CONFIGURATION_REFERENCE.md](CONFIGURATION_REFERENCE.md#-web-search-intent-filter-extensions).
@@ -1173,16 +1182,17 @@ script again.
 Use the provided test documents in the `./TestDocs` directory. Load them into the Test Chroma DB collection.
 
 ```Windows
-python ./src/Apps/RAGLoad.py --doc-dir TestDocs --collection Test
-or, since `Config_Global.py` defines  `DOC_DIR` as "TestDocs" and `COLLECTION` as "Test"
+python ./src/Apps/RAGLoad.py --doc-dir TestDocs
+or, since `Config_Global.py` defines `DOC_DIR` as "TestDocs"
 python ./src/Apps/RAGLoad.py
 ```
+
+The startup collection name is `COLLECTION` in `Config_Load_Retrievers.py`
+(default: `"Test"`). Change it there when needed.
 
 ## 💬 Chat with the documents in the Test Collection
 
 ```Windows
-python ./src/Apps/RAGChat.py --collection Test
-or, since `Config_Global.py` defines `COLLECTION` as "Test"
 python ./src/Apps/RAGChat.py
 ```
 

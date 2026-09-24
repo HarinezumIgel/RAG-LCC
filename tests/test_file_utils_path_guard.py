@@ -57,6 +57,18 @@ def _make_file_utils(project_root: str):
     return fu
 
 
+class StubIndirectConfig:
+    """Config stub with invalid indirection for _ABSOLUTE_PATH."""
+
+    def get_str(self, key: str, default: str = "") -> str:
+        if key == "_ABSOLUTE_PATH":
+            return "$_ROOT_ALIAS"
+        return default
+
+    def get(self, key, default=None):
+        return default
+
+
 # ---------------------------------------------------------------------------
 # Safety fixture — patches the two real deletion calls used inside
 # delete_file_or_dir so that if the guard ever has a bug and lets a
@@ -135,6 +147,22 @@ class TestDriveRootProjectRoot:
         fu = object.__new__(FileUtils)
         fu.pretty = StubPrettyWriter()
         fu.cfg = StubConfig(bad_root)
+
+        target = str(tmp_path / "subdir")
+        os.makedirs(target)
+
+        result = fu.delete_file_or_dir(target)
+
+        assert result is False
+        assert os.path.isdir(target), "directory must not have been deleted"
+
+    def test_refuses_when_absolute_path_uses_indirection(
+        self, tmp_path, no_real_deletion
+    ):
+        """_ABSOLUTE_PATH indirection is invalid and must be rejected."""
+        fu = object.__new__(FileUtils)
+        fu.pretty = StubPrettyWriter()
+        fu.cfg = StubIndirectConfig()
 
         target = str(tmp_path / "subdir")
         os.makedirs(target)

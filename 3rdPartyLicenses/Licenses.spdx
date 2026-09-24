@@ -4,7 +4,7 @@ SPDXID: SPDXRef-DOCUMENT
 DocumentName: RAG-LCC-DEPLOY-Licenses
 DocumentNamespace: http://example.org/spdxdocs/RAG-LCC-DEPLOY-Licenses
 Creator: pip-licenses
-Created: 2026-09-21T11:33:38+02:00
+Created: 2026-09-24T10:59:32+02:00
 
 #####
 PackageName: Jinja2
@@ -423,7 +423,7 @@ PackageLicenseDeclared: BSD License
 #####
 PackageName: filelock
 SPDXID: SPDXRef-Package-filelock
-PackageVersion: 4.0.1
+PackageVersion: 4.0.3
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: MIT
@@ -522,7 +522,7 @@ PackageLicenseDeclared: BSD-3-Clause
 #####
 PackageName: httpcore2
 SPDXID: SPDXRef-Package-httpcore2
-PackageVersion: 2.13.0
+PackageVersion: 2.13.1
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: BSD-3-Clause
@@ -549,7 +549,7 @@ PackageLicenseDeclared: BSD License
 #####
 PackageName: httpx2
 SPDXID: SPDXRef-Package-httpx2
-PackageVersion: 2.13.0
+PackageVersion: 2.13.1
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: BSD-3-Clause
@@ -729,7 +729,7 @@ PackageLicenseDeclared: MIT
 #####
 PackageName: langchain-core
 SPDXID: SPDXRef-Package-langchain-core
-PackageVersion: 1.6.3
+PackageVersion: 1.6.4
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: MIT License
@@ -774,7 +774,7 @@ PackageLicenseDeclared: Apache Software License
 #####
 PackageName: langsmith
 SPDXID: SPDXRef-Package-langsmith
-PackageVersion: 0.13.0
+PackageVersion: 0.14.0
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: MIT
@@ -864,7 +864,7 @@ PackageLicenseDeclared: BSD License
 #####
 PackageName: multidict
 SPDXID: SPDXRef-Package-multidict
-PackageVersion: 6.9.0
+PackageVersion: 6.9.1
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: Apache License 2.0
@@ -918,7 +918,7 @@ PackageLicenseDeclared: BSD License
 #####
 PackageName: networkx
 SPDXID: SPDXRef-Package-networkx
-PackageVersion: 3.6.1
+PackageVersion: 3.7
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: BSD-3-Clause
@@ -1170,7 +1170,7 @@ PackageLicenseDeclared: Apache Software License
 #####
 PackageName: platformdirs
 SPDXID: SPDXRef-Package-platformdirs
-PackageVersion: 4.11.11
+PackageVersion: 4.11.12
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: MIT
@@ -1557,7 +1557,7 @@ PackageLicenseDeclared: Apache Software License; MIT License
 #####
 PackageName: soupsieve
 SPDXID: SPDXRef-Package-soupsieve
-PackageVersion: 2.9.2
+PackageVersion: 2.10
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: MIT
@@ -1620,7 +1620,7 @@ PackageLicenseDeclared: Apache License 2.0
 #####
 PackageName: starlette
 SPDXID: SPDXRef-Package-starlette
-PackageVersion: 1.6.0
+PackageVersion: 1.7.0
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: BSD-3-Clause
@@ -1818,11 +1818,11 @@ PackageLicenseDeclared: MIT License
 #####
 PackageName: wcwidth
 SPDXID: SPDXRef-Package-wcwidth
-PackageVersion: 0.8.4
+PackageVersion: 0.9.1
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
-PackageLicenseConcluded: MIT
-PackageLicenseDeclared: MIT
+PackageLicenseConcluded: MIT License
+PackageLicenseDeclared: MIT License
 
 #####
 PackageName: weasel

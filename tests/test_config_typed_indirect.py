@@ -1,4 +1,4 @@
-# pyright: reportUnknownParameterType=false, reportMissingParameterType=false
+# pyright: reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownVariableType=false, reportUnknownMemberType=false, reportArgumentType=false, reportUnknownArgumentType=false, reportPrivateUsage=false, reportAttributeAccessIssue=false, reportReturnType=false
 """Tests for Config typed indirect accessors."""
 
 import threading
@@ -132,3 +132,29 @@ def test_indirect_dict_resolves_dotted_alias_target() -> None:
     value = cfg.indirect_dict("_REGEX_INDEX.spacy_models_by_language")
 
     assert value == {"de": "de_core_news_sm"}
+
+
+def test_config_global_validate_absolute_path_rejects_indirection(
+    tmp_path, monkeypatch
+) -> None:
+    import Configuration.Config_Global as cfg_global
+
+    alias_name = "_TEST_ABSOLUTE_PATH_ALIAS"
+    alias_value = str(tmp_path)
+
+    monkeypatch.setattr(cfg_global, alias_name, alias_value, raising=False)
+
+    with pytest.raises(RuntimeError, match="direct absolute path"):
+        cfg_global._validate_absolute_path(f"${alias_name}", "unit_test")
+
+
+def test_config_global_validate_absolute_path_rejects_relative_alias(
+    monkeypatch,
+) -> None:
+    import Configuration.Config_Global as cfg_global
+
+    alias_name = "_TEST_RELATIVE_PATH_ALIAS"
+    monkeypatch.setattr(cfg_global, alias_name, "relative/path", raising=False)
+
+    with pytest.raises(RuntimeError, match="direct absolute path"):
+        cfg_global._validate_absolute_path(f"${alias_name}", "unit_test")

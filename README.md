@@ -5,6 +5,10 @@
   <img src="Documentation/Pics/AI_Igel.png" alt="RAG-LCC Logo" width="50%" />
 </p>
 
+<p align="center">
+  <img src="Documentation/Presentations/RAG-LCC-Overview.png" alt="RAG-LCC Overview Diagram" width="95%" />
+</p>
+
 ## 🎯 Who this is for
 
 - 🔬 Researchers and practitioners exploring *why* RAG pipelines succeed or fail
@@ -281,7 +285,7 @@ Key capabilities organized by application. Full configuration details, defaults,
 
 - **Compliance pipeline is identical across all apps** — same algorithms (Regex+Levenshtein, Jaccard, BM25, KeyBERT), same banlist, per-app consensus thresholds
 - **12 named debug levels** (0–100) — `Standard 30` shows pipeline flow; `Chunk Content 32` dumps full retrieved text; `Chat Prompt 60` shows the LLM input; all changeable live in-chat with `set debug ge 30`
-- **Config hash verification** — startup rejects runs where `Config_Models.py` or `Config_Banned.py` was edited without updating the stored hash (`python src/Scripts/RecalcConfigHashes.py` to update)
+- **Config hash verification** — startup rejects runs where any hash-pinned config file was edited without updating `_CRITICAL_CONFIG_HASHES` (`python src/Scripts/RecalcConfigHashes.py` to update). This includes `Config_Models.py`, `Config_Banned_Detection.py`, `Config_Banned_Content.py`, `Config_Banned_Prompts.py`, `Config_Load_Retrievers.py`, `Config_Load_Chunkers.py`, `Config_WebSearch.py`, and `Config_Internet_Env.py`.
 - **Fully offline after initial setup** — `HF_HUB_OFFLINE="1"`, `TRANSFORMERS_OFFLINE="1"`, `WEB_SEARCH_MODE="0"` in `Config_Internet_Env.py`
 - **License consent workflows** — RAG‑LCC does not bundle any model; consent is recorded per-model in `ModelGovernance/licenses/` before first use
 

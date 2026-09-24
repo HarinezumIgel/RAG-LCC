@@ -58,6 +58,7 @@ class LocalSessionStub:
         self.current_query_lang: str | None = "english"
         self.user_language: str | None = "english"
         self.retrieval_language: str | None = "english"
+        self.user_query_original: str | None = None
         self.debug_level: int = 0
         self.debug_mode: str = "ge"
 
@@ -67,6 +68,23 @@ class LocalSessionStub:
         self.retrieval_top_k_final_query: int | None = None
         self.retrieval_top_k_before_t2: int | None = None
         self.retrieval_top_k_after_t2: int | None = None
+
+        self.original_query_leg_enabled: bool = False
+        self.original_query_leg_query: str | None = None
+        self.original_query_leg_language: str | None = None
+        self.original_query_leg_reason: str | None = None
+        self.original_query_leg_vector_hits: int | None = None
+        self.original_query_leg_vector_added: int | None = None
+        self.original_query_leg_vector_overlap: int | None = None
+        self.original_query_leg_bm25_hits: int | None = None
+        self.original_query_leg_bm25_added: int | None = None
+        self.original_query_leg_bm25_overlap: int | None = None
+        self.original_query_leg_graph_hits: int | None = None
+        self.original_query_leg_graph_added: int | None = None
+        self.original_query_leg_graph_overlap: int | None = None
+        self.original_query_leg_regex_hits: int | None = None
+        self.original_query_leg_regex_added: int | None = None
+        self.original_query_leg_regex_overlap: int | None = None
 
 
 class WebSessionStub:
@@ -85,6 +103,15 @@ class WebDocStub:
         self.metadata: dict[str, Any] = {
             "FilePath": url,
             "chroma_score": 0.5,
+        }
+
+
+class RetrievalDocStub:
+    def __init__(self, doc_id: str) -> None:
+        self.page_content = doc_id
+        self.metadata: dict[str, Any] = {
+            "id": doc_id,
+            "retriever_sources": "Vector",
         }
 
 
@@ -1095,60 +1122,34 @@ class TestLocalRetrievalOrchestration:
         bm25_stage_labels_seen: list[list[str]] = []
         graph_regex_stage_labels_seen: list[list[str]] = []
 
-        original_bm25_stage = orchestrator._run_bm25_indexed_stage
-        original_graph_regex_stage = orchestrator._run_graph_regex_indexed_stage
+        original_indexed_stage_group = orchestrator._run_indexed_stage_group
 
-        def _wrapped_bm25_stage(
+        def _wrapped_indexed_stage_group(
             mySession: LocalSessionStub,
             *,
-            bm25_specs: list[tuple[str, bool, float, Any, int, Any]],
-            primary_query: str,
-            guardrail_query: str,
+            stage_invocations: list[Any],
+            specs: list[tuple[str, bool, float, Any, int, Any]],
             use_guardrail: bool,
-            file_filter: dict[str, Any] | None,
+            dispatch_per_spec: bool,
         ) -> tuple[dict[str, list[Any]], int, int]:
-            _ = (mySession, primary_query, guardrail_query, use_guardrail, file_filter)
-            bm25_stage_labels_seen.append([spec[0] for spec in bm25_specs])
-            return original_bm25_stage(
+            _ = (mySession, stage_invocations, use_guardrail)
+            labels = [spec[0] for spec in specs]
+            if dispatch_per_spec:
+                graph_regex_stage_labels_seen.append(labels)
+            else:
+                bm25_stage_labels_seen.append(labels)
+            return original_indexed_stage_group(
                 mySession,
-                bm25_specs=bm25_specs,
-                primary_query=primary_query,
-                guardrail_query=guardrail_query,
+                stage_invocations=stage_invocations,
+                specs=specs,
                 use_guardrail=use_guardrail,
-                file_filter=file_filter,
-            )
-
-        def _wrapped_graph_regex_stage(
-            mySession: LocalSessionStub,
-            *,
-            graph_regex_specs: list[tuple[str, bool, float, Any, int, Any]],
-            primary_query: str,
-            guardrail_query: str,
-            use_guardrail: bool,
-            file_filter: dict[str, Any] | None,
-        ) -> tuple[dict[str, list[Any]], int, int]:
-            _ = (mySession, primary_query, guardrail_query, use_guardrail, file_filter)
-            graph_regex_stage_labels_seen.append(
-                [spec[0] for spec in graph_regex_specs]
-            )
-            return original_graph_regex_stage(
-                mySession,
-                graph_regex_specs=graph_regex_specs,
-                primary_query=primary_query,
-                guardrail_query=guardrail_query,
-                use_guardrail=use_guardrail,
-                file_filter=file_filter,
+                dispatch_per_spec=dispatch_per_spec,
             )
 
         monkeypatch.setattr(
             orchestrator,
-            "_run_bm25_indexed_stage",
-            _wrapped_bm25_stage,
-        )
-        monkeypatch.setattr(
-            orchestrator,
-            "_run_graph_regex_indexed_stage",
-            _wrapped_graph_regex_stage,
+            "_run_indexed_stage_group",
+            _wrapped_indexed_stage_group,
         )
 
         vector_docs, bm25_docs, graph_docs, regex_docs = (
@@ -2186,6 +2187,132 @@ class TestLocalRetrievalOrchestration:
             ("Q2", "de", "en"),
             ("Q1", "de", "en"),
         ]
+
+    def test_run_local_retrievers_original_language_leg_runs_vector_and_indexed(
+        self,
+    ) -> None:
+        host = LocalHostStub(
+            use_guardrail=False,
+            mode_flags=(True, True, True, True),
+        )
+        host.collection = _LocalCollectionStub(  # type: ignore[attr-defined]
+            [{"Language": "en"}, {"Language": "de"}]
+        )
+        host._translation_backend = "argos"  # type: ignore[attr-defined]
+        host._shared = _LocalTranslatingSharedStub()  # type: ignore[attr-defined]
+
+        session = LocalSessionStub()
+        session.current_query_lang = "german"
+        session.user_language = "german"
+        session.retrieval_language = "english"
+        session.user_query_original = "Schenkung mit Auflage"
+
+        def _fake_run_vector_retriever_with_guardrail(
+            *,
+            mySession: LocalSessionStub,
+            primary_query: str,
+            guardrail_query: str,
+            use_guardrail: bool,
+            alternate_queries: list[str],
+        ) -> tuple[list[Any], int, int]:
+            _ = (mySession, guardrail_query, use_guardrail, alternate_queries)
+            if primary_query == "Schenkung mit Auflage":
+                return [RetrievalDocStub("v-de")], 0, 1
+            return [RetrievalDocStub("v-en")], 0, 1
+
+        def _fake_run_indexed_local_retrievers(
+            mySession: LocalSessionStub,
+            *,
+            indexed_specs: list[tuple[str, bool, float, Any, int, Any]],
+            primary_query: str,
+            guardrail_query: str,
+            use_guardrail: bool,
+            file_filter: dict[str, Any] | None,
+        ) -> tuple[dict[str, list[Any]], int, int]:
+            _ = mySession
+            active_labels = [
+                label
+                for label, enabled, weight, *_ in indexed_specs
+                if enabled and weight != 0.0
+            ]
+            host.indexed_stage_labels.append(active_labels)
+            host.run_indexed_file_filters.append(file_filter)
+            host.run_indexed_primary_queries.append(primary_query)
+            host.run_indexed_guardrail_queries.append(guardrail_query)
+
+            is_native_leg = primary_query == "Schenkung mit Auflage"
+            docs: dict[str, list[Any]] = {
+                "BM25": [
+                    (
+                        RetrievalDocStub("b-de")
+                        if is_native_leg
+                        else RetrievalDocStub("b-en")
+                    )
+                ],
+                "Graph": [
+                    (
+                        RetrievalDocStub("g-de")
+                        if is_native_leg
+                        else RetrievalDocStub("g-en")
+                    )
+                ],
+                "Regex": [
+                    (
+                        RetrievalDocStub("r-de")
+                        if is_native_leg
+                        else RetrievalDocStub("r-en")
+                    )
+                ],
+            }
+            return docs, 0, len(active_labels)
+
+        host._run_vector_retriever_with_guardrail = _fake_run_vector_retriever_with_guardrail  # type: ignore[attr-defined]
+        host._run_indexed_local_retrievers = _fake_run_indexed_local_retrievers  # type: ignore[attr-defined]
+
+        orchestrator = RetrievalOrchestrator(host)
+        vector_docs, bm25_docs, graph_docs, regex_docs = (
+            orchestrator.run_local_retrievers(
+                session,
+                retrieve_mode="ALL",
+                bm25_query="Q2",
+                alternate_queries=[],
+                orig_translated_query_en="Q2",
+            )
+        )
+
+        vector_ids = [doc.metadata.get("id") for doc in vector_docs]
+        bm25_ids = [doc.metadata.get("id") for doc in bm25_docs]
+        graph_ids = [doc.metadata.get("id") for doc in graph_docs]
+        regex_ids = [doc.metadata.get("id") for doc in regex_docs]
+
+        assert "v-en" in vector_ids
+        assert "v-de" in vector_ids
+        assert "b-en" in bm25_ids
+        assert "b-de" in bm25_ids
+        assert "g-en" in graph_ids
+        assert "g-de" in graph_ids
+        assert "r-en" in regex_ids
+        assert "r-de" in regex_ids
+        assert session.original_query_leg_enabled is True
+        assert session.original_query_leg_language == "de"
+        assert session.original_query_leg_vector_added == 1
+        assert session.original_query_leg_bm25_added == 1
+        assert session.original_query_leg_graph_added == 1
+        assert session.original_query_leg_regex_added == 1
+
+        native_stage_calls = [
+            (filt, query)
+            for filt, query in zip(
+                host.run_indexed_file_filters,
+                host.run_indexed_primary_queries,
+            )
+            if query == "Schenkung mit Auflage"
+        ]
+        assert native_stage_calls
+        assert all(
+            isinstance(filt, dict) and filt.get("Language") == "de"
+            for filt, _query in native_stage_calls
+        )
 
     def test_normalize_language_bucket_prefers_host_seam(self) -> None:
         host = LocalHostStub(use_guardrail=False)

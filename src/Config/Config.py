@@ -6,22 +6,37 @@ import sys
 import threading
 from typing import Any, Optional, Tuple, Union, cast
 
-import Configuration.Config_Banned as Config_Banned
+import Configuration.Config_Banned_Content as Config_Banned_Content
+import Configuration.Config_Banned_Detection as Config_Banned_Detection
+import Configuration.Config_Banned_Prompts as Config_Banned_Prompts
 import Configuration.Config_DocClassify as Config_DocClassify
 import Configuration.Config_Global as Config_Global
 import Configuration.Config_Languages as Config_Languages
+import Configuration.Config_Load_Chunkers as Config_Load_Chunkers
+import Configuration.Config_Load_Retrievers as Config_Load_Retrievers
 import Configuration.Config_Models as Config_Models
 import Configuration.Config_RAGChat as Config_RAGChat
+import Configuration.Config_RAGChat_Display as Config_RAGChat_Display
+import Configuration.Config_RAGChat_Prompts as Config_RAGChat_Prompts
+import Configuration.Config_RAGChat_Rewrite as Config_RAGChat_Rewrite
+import Configuration.Config_RAGChat_Strategies as Config_RAGChat_Strategies
 import Configuration.Config_RAGChatService as Config_RAGChatService
 import Configuration.Config_RAGLoad as Config_RAGLoad
 import Configuration.Config_WebSearch as Config_WebSearch
 from Commons.Exceptions import ConfigPathError
 from Commons.SingletonMixin import SingletonMixin
+from Config.CliOverridePolicy import (app_uses_load_retrievers_cli_scope,
+                                      build_allowed_cli_overrides,
+                                      normalize_cli_overrides)
 from Gui.Colors import RED
 from Gui.PrettyWriter import PrettyWriter
 
 config_modules = {
-    "Config_Banned": Config_Banned,
+    "Config_Banned_Detection": Config_Banned_Detection,
+    "Config_Banned_Content": Config_Banned_Content,
+    "Config_Banned_Prompts": Config_Banned_Prompts,
+    "Config_Load_Retrievers": Config_Load_Retrievers,
+    "Config_Load_Chunkers": Config_Load_Chunkers,
     "Config_Models": Config_Models,
     "Config_RAGChat": Config_RAGChat,
     "Config_RAGChatService": Config_RAGChatService,
@@ -37,6 +52,56 @@ _config_modules_lower = {k.lower(): v for k, v in config_modules.items()}
 
 class Config(SingletonMixin):
 
+    @staticmethod
+    def _collect_indirect_aliases(
+        value: Any,
+        path: str,
+    ) -> list[tuple[str, str]]:
+        """Recursively collect '$'-prefixed alias strings from a config value."""
+        aliases: list[tuple[str, str]] = []
+        if isinstance(value, str):
+            if value.startswith("$"):
+                aliases.append((path, value))
+            return aliases
+
+        if isinstance(value, dict):
+            for child_key, child_value in value.items():
+                child_path = f"{path}.{child_key}" if path else str(child_key)
+                aliases.extend(
+                    Config._collect_indirect_aliases(child_value, child_path)
+                )
+            return aliases
+
+        if isinstance(value, list):
+            for index, child_value in enumerate(value):
+                child_path = f"{path}[{index}]"
+                aliases.extend(
+                    Config._collect_indirect_aliases(child_value, child_path)
+                )
+            return aliases
+
+        return aliases
+
+    def _validate_indirect_lookup_scope(
+        self,
+        module_label: str,
+        module_values: dict[str, Any],
+    ) -> None:
+        """Reject aliases that target top-level keys outside the same module."""
+        top_level_keys = set(module_values.keys())
+        for key, value in module_values.items():
+            aliases = self._collect_indirect_aliases(value, key)
+            for alias_path, alias_target in aliases:
+                target = alias_target[1:]
+                target_top_level = target.split(".", 1)[0]
+                if target_top_level not in top_level_keys:
+                    raise ConfigPathError(
+                        "Invalid cross-module indirect alias in "
+                        f"{module_label}: '{alias_path}' -> '{alias_target}'. "
+                        "The target top-level slot must be defined in the same "
+                        f"module; missing '{target_top_level}'."
+                    )
+
     def __init__(self, args: Any = None, source: str | None = None) -> None:
         # avoid re-init
         if getattr(self, "_initialized", False):
@@ -51,16 +116,46 @@ class Config(SingletonMixin):
         )
         self.cfgPy: Any = _config_modules_lower.get(config_name.lower())
         self.globalConfigPy: Any = Config_Global
+        self.cfgLoadRetrievers: Any = Config_Load_Retrievers
+        self.cfgLoadChunkers: Any = Config_Load_Chunkers
         self.cfgLanguages: Any = Config_Languages
         self.cfgModels: Any = Config_Models
-        self.cfgBanned: Any = Config_Banned
+        self.cfgRagchatCore: Any = Config_RAGChat
+        self.cfgRagchatDisplay: Any = Config_RAGChat_Display
+        self.cfgRagchatPrompts: Any = Config_RAGChat_Prompts
+        self.cfgRagchatRewrite: Any = Config_RAGChat_Rewrite
+        self.cfgRagchatStrategies: Any = Config_RAGChat_Strategies
+        self.cfgBannedDetection: Any = Config_Banned_Detection
+        self.cfgBannedContent: Any = Config_Banned_Content
+        self.cfgBannedPrompts: Any = Config_Banned_Prompts
         self.cfgWebSearch: Any = Config_WebSearch
 
-        # capture CLI args as an uppercase dict
-        self.args: dict[str, Any] = args or {}
+        # CLI overrides are restricted to Config_Global + active app slots.
+        # For RAGLoad/RAGChat/RAGChatService, include Config_Load_Retrievers.
+        load_retrievers_module: Any | None = None
+        if app_uses_load_retrievers_cli_scope(self.cfgPy):
+            load_retrievers_module = self.cfgLoadRetrievers
+
+        self._allowed_cli_override_slots: set[str] = set(
+            build_allowed_cli_overrides(
+                self.globalConfigPy,
+                self.cfgPy,
+                load_retrievers_module,
+            ).keys()
+        )
+
+        # capture CLI args as a validated uppercase dict
+        self.args: dict[str, Any] = {}
         if args:
-            raw_args = cast(dict[str, Any], vars(args))
-            self.args = {k.upper(): v for k, v in raw_args.items()}
+            raw_args = (
+                cast(dict[str, Any], args)
+                if isinstance(args, dict)
+                else cast(dict[str, Any], vars(args))
+            )
+            self.args = normalize_cli_overrides(
+                raw_args,
+                self._allowed_cli_override_slots,
+            )
 
         # final merged config
         self.cfg: dict[str, Any] = {}
@@ -83,39 +178,166 @@ class Config(SingletonMixin):
             if k.isupper()
         }
 
-        # 2) Config_Languages — active language sets and Argos pair catalog
+        # 2) Config_Load_Retrievers — collection and retriever-store settings
+        glob_load_retrievers = {
+            k: getattr(self.cfgLoadRetrievers, k)
+            for k in dir(self.cfgLoadRetrievers)
+            if k.isupper()
+        }
+
+        # 3) Config_Load_Chunkers — chunker routing and metadata extraction settings
+        glob_load_chunkers = {
+            k: getattr(self.cfgLoadChunkers, k)
+            for k in dir(self.cfgLoadChunkers)
+            if k.isupper()
+        }
+
+        # 4) Config_Languages — active language sets and Argos pair catalog
         glob_languages = {
             k: getattr(self.cfgLanguages, k)
             for k in dir(self.cfgLanguages)
             if k.isupper()
         }
 
-        # 3) Config_Models
+        # 5) Config_Models
         glob_models = {
             k: getattr(self.cfgModels, k) for k in dir(self.cfgModels) if k.isupper()
         }
 
-        # 4) Config_Banned
-        glob_banned = {
-            k: getattr(self.cfgBanned, k) for k in dir(self.cfgBanned) if k.isupper()
+        # 6) Config_Banned_Detection
+        glob_banned_detection = {
+            k: getattr(self.cfgBannedDetection, k)
+            for k in dir(self.cfgBannedDetection)
+            if k.isupper()
         }
 
-        # 5) Config_WebSearch
+        # 7) Config_Banned_Content
+        glob_banned_content = {
+            k: getattr(self.cfgBannedContent, k)
+            for k in dir(self.cfgBannedContent)
+            if k.isupper()
+        }
+
+        # 8) Config_Banned_Prompts
+        glob_banned_prompts = {
+            k: getattr(self.cfgBannedPrompts, k)
+            for k in dir(self.cfgBannedPrompts)
+            if k.isupper()
+        }
+
+        # 9) Config_WebSearch
         glob_websearch = {
             k: getattr(self.cfgWebSearch, k)
             for k in dir(self.cfgWebSearch)
             if k.isupper()
         }
 
-        # 6) App-specific (Config_RAGChat / Config_RAGLoad / Config_DocClassify) — highest file priority
+        # 10) RAGChat split modules (loaded by lookup for RAGChat / RAGChatService)
+        use_ragchat_split = self.cfgPy in (Config_RAGChat, Config_RAGChatService)
+        glob_ragchat_core: dict[str, Any] = {}
+        glob_ragchat_strategies: dict[str, Any] = {}
+        glob_ragchat_prompts: dict[str, Any] = {}
+        glob_ragchat_rewrite: dict[str, Any] = {}
+        glob_ragchat_display: dict[str, Any] = {}
+
+        if use_ragchat_split:
+            glob_ragchat_core = {
+                k: getattr(self.cfgRagchatCore, k)
+                for k in dir(self.cfgRagchatCore)
+                if k.isupper()
+            }
+            glob_ragchat_strategies = {
+                k: getattr(self.cfgRagchatStrategies, k)
+                for k in dir(self.cfgRagchatStrategies)
+                if k.isupper()
+            }
+            glob_ragchat_prompts = {
+                k: getattr(self.cfgRagchatPrompts, k)
+                for k in dir(self.cfgRagchatPrompts)
+                if k.isupper()
+            }
+            glob_ragchat_rewrite = {
+                k: getattr(self.cfgRagchatRewrite, k)
+                for k in dir(self.cfgRagchatRewrite)
+                if k.isupper()
+            }
+            glob_ragchat_display = {
+                k: getattr(self.cfgRagchatDisplay, k)
+                for k in dir(self.cfgRagchatDisplay)
+                if k.isupper()
+            }
+
+        # 11) App-specific (Config_RAGChat / Config_RAGLoad / Config_DocClassify) — highest file priority
         prog_raw = {k: getattr(self.cfgPy, k) for k in dir(self.cfgPy) if k.isupper()}
 
-        # Merge: each layer overrides the previous; CLI args override everything (see _get)
+        # Strict alias policy: '$' indirections must stay within the module where
+        # they are declared to avoid ambiguous cross-module coupling.
+        self._validate_indirect_lookup_scope("Config_Global", glob_raw)
+        self._validate_indirect_lookup_scope(
+            "Config_Load_Retrievers",
+            glob_load_retrievers,
+        )
+        self._validate_indirect_lookup_scope(
+            "Config_Load_Chunkers",
+            glob_load_chunkers,
+        )
+        self._validate_indirect_lookup_scope("Config_Languages", glob_languages)
+        self._validate_indirect_lookup_scope("Config_Models", glob_models)
+        self._validate_indirect_lookup_scope(
+            "Config_Banned_Detection",
+            glob_banned_detection,
+        )
+        self._validate_indirect_lookup_scope(
+            "Config_Banned_Content",
+            glob_banned_content,
+        )
+        self._validate_indirect_lookup_scope(
+            "Config_Banned_Prompts",
+            glob_banned_prompts,
+        )
+        self._validate_indirect_lookup_scope("Config_WebSearch", glob_websearch)
+        if use_ragchat_split:
+            self._validate_indirect_lookup_scope(
+                "Config_RAGChat",
+                glob_ragchat_core,
+            )
+            self._validate_indirect_lookup_scope(
+                "Config_RAGChat_Strategies",
+                glob_ragchat_strategies,
+            )
+            self._validate_indirect_lookup_scope(
+                "Config_RAGChat_Prompts",
+                glob_ragchat_prompts,
+            )
+            self._validate_indirect_lookup_scope(
+                "Config_RAGChat_Rewrite",
+                glob_ragchat_rewrite,
+            )
+            self._validate_indirect_lookup_scope(
+                "Config_RAGChat_Display",
+                glob_ragchat_display,
+            )
+        self._validate_indirect_lookup_scope(
+            getattr(self.cfgPy, "__name__", "AppConfig"),
+            prog_raw,
+        )
+
+        # Merge: each layer overrides the previous; eligible CLI args override
+        # merged slots via _get.
         raw = glob_raw.copy()
+        raw.update(glob_load_retrievers)
+        raw.update(glob_load_chunkers)
         raw.update(glob_languages)
         raw.update(glob_models)
-        raw.update(glob_banned)
+        raw.update(glob_banned_detection)
+        raw.update(glob_banned_content)
+        raw.update(glob_banned_prompts)
         raw.update(glob_websearch)
+        raw.update(glob_ragchat_core)
+        raw.update(glob_ragchat_strategies)
+        raw.update(glob_ragchat_prompts)
+        raw.update(glob_ragchat_rewrite)
+        raw.update(glob_ragchat_display)
         raw.update(prog_raw)
 
         # build the resolved config

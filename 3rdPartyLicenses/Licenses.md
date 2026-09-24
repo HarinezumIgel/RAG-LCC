@@ -56,7 +56,7 @@ This overview is provided for informational purposes only. Signing attests only 
 | executing | 2.2.1 | MIT License | Alex Hall |
 | fastapi | 0.141.1 | MIT | =?utf-8?q?Sebasti=C3=A1n_Ram=C3=ADrez?= <tiangolo@gmail.com> |
 | fastjsonschema | 2.22.2 | BSD License | Michal Horejsek |
-| filelock | 4.0.1 | MIT | UNKNOWN |
+| filelock | 4.0.3 | MIT | UNKNOWN |
 | flatbuffers | 25.12.19 | Apache Software License | Derek Bailey |
 | frozenlist | 1.8.0 | Apache-2.0 | UNKNOWN |
 | fsspec | 2026.9.0 | BSD-3-Clause | UNKNOWN |
@@ -67,10 +67,10 @@ This overview is provided for informational purposes only. Signing attests only 
 | hf-xet | 1.6.0 | Apache-2.0 | UNKNOWN |
 | html2text | 2025.4.15 | GPL-3.0-or-later | Aaron Swartz <me@aaronsw.com> |
 | httpcore | 1.0.9 | BSD-3-Clause | Tom Christie <tom@tomchristie.com> |
-| httpcore2 | 2.13.0 | BSD-3-Clause | Tom Christie <tom@tomchristie.com> |
+| httpcore2 | 2.13.1 | BSD-3-Clause | Tom Christie <tom@tomchristie.com> |
 | httptools | 0.8.0 | MIT | Yury Selivanov <yury@magic.io> |
 | httpx | 0.28.1 | BSD License | Tom Christie <tom@tomchristie.com> |
-| httpx2 | 2.13.0 | BSD-3-Clause | Tom Christie <tom@tomchristie.com> |
+| httpx2 | 2.13.1 | BSD-3-Clause | Tom Christie <tom@tomchristie.com> |
 | huggingface_hub | 1.32.0 | Apache Software License | Hugging Face, Inc. |
 | idna | 3.20 | BSD-3-Clause | Kim Davies <kim+pypi@gumleaf.org> |
 | importlib_resources | 7.1.0 | Apache-2.0 | Barry Warsaw <barry@python.org> |
@@ -90,12 +90,12 @@ This overview is provided for informational purposes only. Signing attests only 
 | keybert | 0.9.0 | MIT License | Maarten Grootendorst <maartengrootendorst@gmail.com> |
 | kubernetes | 36.0.3 | Apache Software License | Kubernetes |
 | langchain-chroma | 1.1.0 | MIT | UNKNOWN |
-| langchain-core | 1.6.3 | MIT License | UNKNOWN |
+| langchain-core | 1.6.4 | MIT License | UNKNOWN |
 | langchain-huggingface | 1.2.2 | MIT License | UNKNOWN |
 | langchain-protocol | 0.0.19 | MIT License | UNKNOWN |
 | langchain-text-splitters | 1.1.2 | MIT License | UNKNOWN |
 | langdetect | 1.0.9 | Apache Software License | Michal Mimino Danilak |
-| langsmith | 0.13.0 | MIT | LangChain <support@langchain.dev> |
+| langsmith | 0.14.0 | MIT | LangChain <support@langchain.dev> |
 | lingua-language-detector | 2.2.0 | Apache Software License | "Peter M. Stahl" <pemistahl@gmail.com> |
 | lxml | 6.1.3 | BSD-3-Clause | lxml dev team |
 | markdown-it-py | 4.2.0 | MIT License | Chris Sewell <chrisj_sewell@hotmail.com> |
@@ -105,13 +105,13 @@ This overview is provided for informational purposes only. Signing attests only 
 | mistune | 3.3.4 | BSD License | Hsiaoming Yang <me@lepture.com> |
 | mmh3 | 5.3.0 | MIT License | Hajime Senuma <hajime.senuma@gmail.com> |
 | mpmath | 1.3.0 | BSD License | Fredrik Johansson |
-| multidict | 6.9.0 | Apache License 2.0 | Andrew Svetlov |
+| multidict | 6.9.1 | Apache License 2.0 | Andrew Svetlov |
 | murmurhash | 1.0.15 | MIT License | Explosion |
 | narwhals | 2.26.0 | MIT | Marco Gorelli |
 | nbclient | 0.11.0 | BSD License | Jupyter Development Team <jupyter@googlegroups.com> |
 | nbconvert | 7.17.1 | BSD License | Jupyter Development Team <jupyter@googlegroups.com> |
 | nbformat | 5.11.1 | BSD License | Jupyter Development Team <jupyter@googlegroups.com> |
-| networkx | 3.6.1 | BSD-3-Clause | Aric Hagberg <hagberg@lanl.gov> |
+| networkx | 3.7 | BSD-3-Clause | Aric Hagberg <hagberg@lanl.gov> |
 | nltk | 3.9.2 | Apache Software License | NLTK Team |
 | numpy | 2.5.3 | BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0 | Travis E. Oliphant et al. |
 | oauthlib | 3.3.1 | BSD-3-Clause | The OAuthlib Community |
@@ -139,7 +139,7 @@ This overview is provided for informational purposes only. Signing attests only 
 | pip-licenses | 5.5.5 | MIT | Mr. Walls |
 | pip-review | 1.3.0 | BSD License | Julian Gonggrijp, Vincent Driessen |
 | pipreqs | 0.5.0 | Apache Software License | Vadim Kravcenko |
-| platformdirs | 4.11.11 | MIT | UNKNOWN |
+| platformdirs | 4.11.12 | MIT | UNKNOWN |
 | pluggy | 1.6.0 | MIT License | Holger Krekel <holger@merlinux.eu> |
 | preshed | 3.0.13 | MIT License | Explosion |
 | prettytable | 3.18.0 | BSD-3-Clause | Luke Maurits <luke@maurits.id.au> |
@@ -182,14 +182,14 @@ This overview is provided for informational purposes only. Signing attests only 
 | six | 1.17.0 | MIT License | Benjamin Peterson |
 | smart_open | 8.0.1 | MIT License | Radim Rehurek <me@radimrehurek.com> |
 | sniffio | 1.3.1 | Apache Software License; MIT License | "Nathaniel J. Smith" <njs@pobox.com> |
-| soupsieve | 2.9.2 | MIT | Isaac Muse <Isaac.Muse@gmail.com> |
+| soupsieve | 2.10 | MIT | Isaac Muse <Isaac.Muse@gmail.com> |
 | spacy | 3.8.16 | MIT License | Explosion |
 | spacy-legacy | 3.0.12 | MIT License | Explosion |
 | spacy-loggers | 1.0.5 | MIT | Explosion |
 | srsly | 2.5.3 | MIT License | Explosion |
 | stack-data | 0.6.3 | MIT License | Alex Hall |
 | stanza | 1.10.1 | Apache License 2.0 | Stanford Natural Language Processing Group |
-| starlette | 1.6.0 | BSD-3-Clause | Tom Christie <tom@tomchristie.com> |
+| starlette | 1.7.0 | BSD-3-Clause | Tom Christie <tom@tomchristie.com> |
 | sympy | 1.14.0 | BSD License | SymPy development team |
 | tenacity | 9.1.4 | Apache Software License | Julien Danjou |
 | thinc | 8.3.13 | MIT License | Explosion |
@@ -211,7 +211,7 @@ This overview is provided for informational purposes only. Signing attests only 
 | uvicorn | 0.53.0 | BSD-3-Clause | Tom Christie <tom@tomchristie.com> |
 | wasabi | 1.1.3 | MIT | Explosion |
 | watchfiles | 1.3.0 | MIT License | Samuel Colvin <s@muelcolvin.com> |
-| wcwidth | 0.8.4 | MIT | Jeff Quast <contact@jeffquast.com> |
+| wcwidth | 0.9.1 | MIT License | Jeff Quast <contact@jeffquast.com> |
 | weasel | 1.0.0 | MIT License | Explosion |
 | webencodings | 0.6.1 | BSD License | Simon Sapin <simon.sapin@exyr.org> |
 | websocket-client | 1.9.2 | Apache-2.0 | liris |
@@ -3501,7 +3501,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ```
 
-### filelock 4.0.1
+### filelock 4.0.3
 
 **License:** MIT
 
@@ -5632,7 +5632,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ```
 
-### httpcore2 2.13.0
+### httpcore2 2.13.1
 
 **License:** BSD-3-Clause
 
@@ -5723,7 +5723,7 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 
 ```
 
-### httpx2 2.13.0
+### httpx2 2.13.1
 
 **License:** BSD-3-Clause
 
@@ -7057,7 +7057,7 @@ SOFTWARE.
 
 ```
 
-### langchain-core 1.6.3
+### langchain-core 1.6.4
 
 **License:** MIT License
 
@@ -7183,7 +7183,7 @@ UNKNOWN
 
 ```
 
-### langsmith 0.13.0
+### langsmith 0.14.0
 
 **License:** MIT
 
@@ -8332,7 +8332,7 @@ DAMAGE.
 
 ```
 
-### multidict 6.9.0
+### multidict 6.9.1
 
 **License:** Apache License 2.0
 
@@ -8727,7 +8727,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ```
 
-### networkx 3.6.1
+### networkx 3.7
 
 **License:** BSD-3-Clause
 
@@ -8738,7 +8738,7 @@ NetworkX is distributed with the 3-clause BSD license.
 
 ::
 
-   Copyright (c) 2004-2025, NetworkX Developers
+   Copyright (c) 2004-2026, NetworkX Developers
    Aric Hagberg <hagberg@lanl.gov>
    Dan Schult <dschult@colgate.edu>
    Pieter Swart <swart@lanl.gov>
@@ -13932,7 +13932,7 @@ UNKNOWN
 
 ```
 
-### platformdirs 4.11.11
+### platformdirs 4.11.12
 
 **License:** MIT
 
@@ -17714,7 +17714,7 @@ made under the terms of *both* these licenses.
 
 ```
 
-### soupsieve 2.9.2
+### soupsieve 2.10
 
 **License:** MIT
 
@@ -17923,7 +17923,7 @@ limitations under the License.
 
 ```
 
-### starlette 1.6.0
+### starlette 1.7.0
 
 **License:** BSD-3-Clause
 
@@ -19639,9 +19639,9 @@ SOFTWARE.
 
 ```
 
-### wcwidth 0.8.4
+### wcwidth 0.9.1
 
-**License:** MIT
+**License:** MIT License
 
 **Author:** Jeff Quast <contact@jeffquast.com>
 

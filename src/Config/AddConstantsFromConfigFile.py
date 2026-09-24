@@ -6,14 +6,18 @@ from typing import Any, cast
 
 import Configuration.Config_DocClassify as Config_DocClassify
 import Configuration.Config_Global as Config_Global
+import Configuration.Config_Load_Retrievers as Config_Load_Retrievers
 import Configuration.Config_RAGChat as Config_RAGChat
+import Configuration.Config_RAGChatService as Config_RAGChatService
 import Configuration.Config_RAGLoad as Config_RAGLoad
+from Config.CliOverridePolicy import (app_uses_load_retrievers_cli_scope,
+                                      build_allowed_cli_overrides)
 
 config_modules = {
     "Config_RAGChat": Config_RAGChat,
+    "Config_RAGChatService": Config_RAGChatService,
     "Config_RAGLoad": Config_RAGLoad,
     "Config_DocClassify": Config_DocClassify,
-    "Config_Global": Config_Global,
 }
 # Case-insensitive lookup table (Windows preserves typed casing in sys.argv[0])
 _config_modules_lower = {k.lower(): v for k, v in config_modules.items()}
@@ -48,19 +52,19 @@ class AddConstantsFromConfigFile(argparse.ArgumentParser):
             parser.print_help()
 
             # 2) figure out which Config_<script>.py applied
-            script_base = os.path.splitext(os.path.basename(sys.argv[0]))[0]
-            cfg_mod = _config_modules_lower.get(f"Config_{script_base}".lower())
+            cfg_mod = parser._active_app_module()  # type: ignore[attr-defined]
 
             # 3) extract your constants
-            global_consts: dict[str, Any] = cast(dict[str, Any], parser._extract_flat_constants(Config_Global))  # type: ignore[attr-defined]
-            script_consts: dict[str, Any] = cast(dict[str, Any], parser._extract_flat_constants(cfg_mod)) if cfg_mod else {}  # type: ignore[attr-defined]
+            allowed_consts: dict[str, Any] = cast(
+                dict[str, Any],
+                parser._allowed_constants_for_active_app(cfg_mod),  # type: ignore[attr-defined]
+            )
 
             # 4) print them
             print("\nAllowed overrideable constants and their defaults:\n")
-            for dct in (global_consts, script_consts):
-                for key, val in dct.items():
-                    flag = f"--{key.lower().replace('_','-')}"
-                    print(f"  {flag:<30} {val!r}")
+            for key, val in allowed_consts.items():
+                flag = f"--{key.lower().replace('_','-')}"
+                print(f"  {flag:<30} {val!r}")
             print("\n")
             parser.exit()
 
@@ -91,18 +95,25 @@ class AddConstantsFromConfigFile(argparse.ArgumentParser):
             return False
         raise argparse.ArgumentTypeError(f"Boolean value expected, got {v!r}")
 
-    def _extract_flat_constants(self, module: Any) -> dict[str, Any]:
-        mod_vars = cast(dict[str, Any], vars(module))
-        return {
-            name: value
-            for name, value in mod_vars.items()
-            if (
-                name.isupper()
-                and not name.startswith("_")
-                and not name.startswith("INTERNAL_")
-                and not isinstance(value, dict)
-            )
-        }
+    def _active_app_module(self) -> Any | None:
+        script_base = os.path.splitext(os.path.basename(sys.argv[0]))[0]
+        config_name = f"Config_{script_base}"
+        return _config_modules_lower.get(config_name.lower())
+
+    def _allowed_constants_for_active_app(
+        self,
+        app_module: Any | None = None,
+    ) -> dict[str, Any]:
+        if app_module is None:
+            app_module = self._active_app_module()
+        load_retrievers_module: Any | None = None
+        if app_uses_load_retrievers_cli_scope(app_module):
+            load_retrievers_module = Config_Load_Retrievers
+        return build_allowed_cli_overrides(
+            Config_Global,
+            app_module,
+            load_retrievers_module,
+        )
 
     def _add_flag(self, key: str, default: Any) -> None:
         flag = f"--{key.lower().replace('_','-')}"
@@ -127,26 +138,6 @@ class AddConstantsFromConfigFile(argparse.ArgumentParser):
             )
 
     def _add_constants_flags(self):
-        script_base = os.path.splitext(os.path.basename(sys.argv[0]))[0]
-        config_name = f"Config_{script_base}"
-        config_py = _config_modules_lower.get(config_name.lower())
-        if not config_py:
-            return
-
-        global_consts = self._extract_flat_constants(Config_Global)
-        script_consts = self._extract_flat_constants(config_py)
-
-        added: set[str] = set()
-        # globals first (unless overridden by script)
-        for key, default in global_consts.items():
-            if key in script_consts:
-                continue
+        allowed_consts = self._allowed_constants_for_active_app()
+        for key, default in allowed_consts.items():
             self._add_flag(key, default)
-            added.add(key)
-
-        # then script‐specific constants
-        for key, default in script_consts.items():
-            if key in added:
-                continue
-            self._add_flag(key, default)
-            added.add(key)

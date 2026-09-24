@@ -2,14 +2,15 @@
 """Update / clear the config hash entries in Config_Global.py.
 
 Recomputes the SHA-256 file hashes of ``Config_Models.py``,
-``Config_Banned.py``, ``Config_WebSearch.py``, and ``Config_Internet_Env.py``
-and writes them into the
+``Config_Banned_Detection.py``,
+``Config_Banned_Content.py``, ``Config_Banned_Prompts.py``,
+``Config_Load_Retrievers.py``, ``Config_Load_Chunkers.py``, ``Config_WebSearch.py``, and ``Config_Internet_Env.py`` and writes them into the
 ``_CRITICAL_CONFIG_HASHES`` dict in ``Config_Global.py`` (matching the format
 ``Compliance._check_models_config_hash`` validates against at startup).
 
 Usage:
-    python src/Scripts/config_hashes.py          # write current hashes
-    python src/Scripts/config_hashes.py clean    # clear all slots ("")
+    python src/Scripts/RecalcConfigHashes.py          # write current hashes
+    python src/Scripts/RecalcConfigHashes.py clean    # clear all slots ("")
 """
 
 from __future__ import annotations
@@ -103,13 +104,27 @@ def main() -> int:
 
     CONFIG_GLOBAL = os.path.join(cfg_dir, "Config_Global.py")
     CONFIG_MODELS = os.path.join(cfg_dir, "Config_Models.py")
-    CONFIG_BANNED = os.path.join(cfg_dir, "Config_Banned.py")
+    CONFIG_BANNED_DETECTION = os.path.join(cfg_dir, "Config_Banned_Detection.py")
+    CONFIG_BANNED_CONTENT = os.path.join(cfg_dir, "Config_Banned_Content.py")
+    CONFIG_BANNED_PROMPTS = os.path.join(cfg_dir, "Config_Banned_Prompts.py")
+    CONFIG_LOAD_RETRIEVERS = os.path.join(
+        cfg_dir,
+        "Config_Load_Retrievers.py",
+    )
+    CONFIG_LOAD_CHUNKERS = os.path.join(
+        cfg_dir,
+        "Config_Load_Chunkers.py",
+    )
     CONFIG_WEB_SEARCH = os.path.join(cfg_dir, "Config_WebSearch.py")
     CONFIG_INTERNET_ENV = os.path.join(cfg_dir, "Config_Internet_Env.py")
 
     _SLOTS = [
         ("Config_Models", CONFIG_MODELS),
-        ("Config_Banned", CONFIG_BANNED),
+        ("Config_Banned_Detection", CONFIG_BANNED_DETECTION),
+        ("Config_Banned_Content", CONFIG_BANNED_CONTENT),
+        ("Config_Banned_Prompts", CONFIG_BANNED_PROMPTS),
+        ("Config_Load_Retrievers", CONFIG_LOAD_RETRIEVERS),
+        ("Config_Load_Chunkers", CONFIG_LOAD_CHUNKERS),
         ("Config_WebSearch", CONFIG_WEB_SEARCH),
         ("Config_Internet_Env", CONFIG_INTERNET_ENV),
     ]
@@ -117,7 +132,11 @@ def main() -> int:
     for path in (
         CONFIG_GLOBAL,
         CONFIG_MODELS,
-        CONFIG_BANNED,
+        CONFIG_BANNED_DETECTION,
+        CONFIG_BANNED_CONTENT,
+        CONFIG_BANNED_PROMPTS,
+        CONFIG_LOAD_RETRIEVERS,
+        CONFIG_LOAD_CHUNKERS,
         CONFIG_WEB_SEARCH,
         CONFIG_INTERNET_ENV,
     ):
@@ -128,13 +147,21 @@ def main() -> int:
     if args.action == "update":
         print(
             "\nThis script rewrites the _CRITICAL_CONFIG_HASHES entries in Config_Global.py "
-            "to match the current state of Config_Models.py, Config_Banned.py, "
-            "Config_WebSearch.py, and Config_Internet_Env.py.\n"
+            "to match the current state of Config_Models.py, "
+            "Config_Banned_Detection.py, Config_Banned_Content.py, "
+            "Config_Banned_Prompts.py, Config_Load_Retrievers.py, "
+            "Config_Load_Chunkers.py, Config_WebSearch.py, and "
+            "Config_Internet_Env.py.\n"
         )
         print(
             f"{CYAN}Hint: run this only after you have intentionally edited one of "
             "those files (src/Configuration/Config_Models.py, "
-            "src/Configuration/Config_Banned.py, src/Configuration/Config_WebSearch.py, "
+            "src/Configuration/Config_Banned_Detection.py, "
+            "src/Configuration/Config_Banned_Content.py, "
+            "src/Configuration/Config_Banned_Prompts.py, "
+            "src/Configuration/Config_Load_Retrievers.py, "
+            "src/Configuration/Config_Load_Chunkers.py, "
+            "src/Configuration/Config_WebSearch.py, "
             f"or src/Configuration/Config_Internet_Env.py).{RESET}\n"
         )
         while True:

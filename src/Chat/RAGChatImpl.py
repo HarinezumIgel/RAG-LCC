@@ -482,6 +482,23 @@ class RAGChatImpl(SingletonMixin):
         mySession.retrieval_top_k_final_query = None
         mySession.retrieval_top_k_before_t2 = None
         mySession.retrieval_top_k_after_t2 = None
+        mySession.user_query_original = None
+        mySession.original_query_leg_enabled = False
+        mySession.original_query_leg_query = None
+        mySession.original_query_leg_language = None
+        mySession.original_query_leg_reason = None
+        mySession.original_query_leg_vector_hits = None
+        mySession.original_query_leg_vector_added = None
+        mySession.original_query_leg_vector_overlap = None
+        mySession.original_query_leg_bm25_hits = None
+        mySession.original_query_leg_bm25_added = None
+        mySession.original_query_leg_bm25_overlap = None
+        mySession.original_query_leg_graph_hits = None
+        mySession.original_query_leg_graph_added = None
+        mySession.original_query_leg_graph_overlap = None
+        mySession.original_query_leg_regex_hits = None
+        mySession.original_query_leg_regex_added = None
+        mySession.original_query_leg_regex_overlap = None
 
         if (
             mySession.last_web_search is not None
@@ -524,6 +541,7 @@ class RAGChatImpl(SingletonMixin):
         mySession.last_fetch_page_content = mySession.fetch_page_content
 
         user_query_original: str = mySession.query or ""
+        mySession.user_query_original = user_query_original
         self.pretty.write(
             "I",
             "UserQuery",
@@ -1479,6 +1497,43 @@ class RAGChatImpl(SingletonMixin):
                 )
 
         if mySession.rerank == 1:
+            web_count = sum(
+                1
+                for doc in capped_docs
+                if str((getattr(doc, "metadata", {}) or {}).get("Source", "")).lower()
+                == "web"
+            )
+            local_count = len(capped_docs) - web_count
+            original_leg_enabled = bool(
+                getattr(mySession, "original_query_leg_enabled", False)
+            )
+            original_leg_lang = str(
+                getattr(mySession, "original_query_leg_language", None) or "n/a"
+            )
+            original_leg_vector_added = int(
+                getattr(mySession, "original_query_leg_vector_added", 0) or 0
+            )
+            original_leg_bm25_added = int(
+                getattr(mySession, "original_query_leg_bm25_added", 0) or 0
+            )
+            original_leg_graph_added = int(
+                getattr(mySession, "original_query_leg_graph_added", 0) or 0
+            )
+            original_leg_regex_added = int(
+                getattr(mySession, "original_query_leg_regex_added", 0) or 0
+            )
+            self.pretty.write(
+                "I",
+                "Rerank",
+                "Pre-rerank pool "
+                f"local={local_count} web={web_count} total={len(capped_docs)} "
+                f"original_leg={'on' if original_leg_enabled else 'off'} "
+                f"lang={original_leg_lang} "
+                f"added[V/B/G/R]={original_leg_vector_added}/"
+                f"{original_leg_bm25_added}/{original_leg_graph_added}/"
+                f"{original_leg_regex_added}",
+                color=CYAN,
+            )
             capped_docs = self._rerank(mySession, capped_docs)
 
         chosen: list[Any] = cast(list[Any], ChunkSelectionService(mySession).select_chunks(capped_docs))  # type: ignore[reportUnknownMemberType]

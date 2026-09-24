@@ -60,9 +60,12 @@ Execution order:
 
     7. Recalculate configuration hashes
              Compute fresh SHA-256 hashes for Config_Models.py,
-             Config_Banned.py, Config_WebSearch.py, and
+             Config_Banned_Detection.py, Config_Banned_Content.py,
+             Config_Banned_Prompts.py, Config_Load_Retrievers.py,
+             Config_Load_Chunkers.py, Config_WebSearch.py, and
              Config_Internet_Env.py, then write them into
-             the corresponding *_CONFIG_HASH values in Config_Global.py.
+             the corresponding _CRITICAL_CONFIG_HASHES entries in
+             Config_Global.py.
 
 Run from the project root with the project virtual environment activated:
 
@@ -324,8 +327,60 @@ def _ensure_project_root() -> None:
         sys.exit(1)
 
 
+def _venv_python_path(venv_dir: Path) -> Path:
+    """Return the Python executable path inside the project virtual environment."""
+    if _is_windows():
+        return venv_dir / "Scripts" / "python.exe"
+    return venv_dir / "bin" / "python"
+
+
+def _print_venv_activation_hint(venv_dir: Path) -> None:
+    """Print shell-specific virtual environment activation hints."""
+    print(f"{_YELLOW}     Activate it first, for example:{_RESET}")
+    if _is_windows():
+        print(f"{_WHITE}     PowerShell: .\\.venv\\Scripts\\Activate.ps1{_RESET}")
+        print(f"{_WHITE}     cmd.exe   : .venv\\Scripts\\activate.bat{_RESET}")
+    else:
+        print(f"{_WHITE}     source {venv_dir}/bin/activate{_RESET}")
+
+
+def _relaunch_setup_with_venv(venv_python: Path) -> None:
+    """Run Setup.py using the venv interpreter and mirror its exit code."""
+    relaunch_depth_raw = os.environ.get("RAG_LCC_SETUP_RELAUNCH_DEPTH", "0")
+    try:
+        relaunch_depth = int(relaunch_depth_raw)
+    except ValueError:
+        relaunch_depth = 0
+
+    if relaunch_depth >= 2:
+        print(
+            f"{_RED}  ✖  Setup relaunch loop detected while switching to virtual environment.{_RESET}"
+        )
+        print(
+            f"{_YELLOW}     Run this interpreter manually: {venv_python} src/Scripts/Setup.py{_RESET}"
+        )
+        sys.exit(1)
+
+    env = os.environ.copy()
+    env["RAG_LCC_SETUP_RELAUNCH_DEPTH"] = str(relaunch_depth + 1)
+
+    print(f"{_DIM}  Launching setup with venv Python: {venv_python}{_RESET}")
+    sys.stdout.flush()
+    sys.stderr.flush()
+
+    try:
+        result = subprocess.run([str(venv_python)] + sys.argv, env=env)
+    except OSError as exc:
+        print(
+            f"{_RED}  ✖  Failed to launch setup with virtual environment Python: {exc}{_RESET}"
+        )
+        sys.exit(1)
+
+    sys.exit(result.returncode)
+
+
 def _ensure_venv() -> None:
-    """Abort unless a .venv directory exists and we're running inside a virtual environment."""
+    """Ensure a project virtual environment exists and run setup from it."""
     venv_dir = _PROJECT_ROOT / ".venv"
 
     if not venv_dir.exists():
@@ -383,38 +438,37 @@ def _ensure_venv() -> None:
             print(f"{_RED}     {result.stderr.strip()}{_RESET}")
             sys.exit(1)
         print(f"{_GREEN}  ✔  Virtual environment created: {venv_dir}{_RESET}")
-        print()
-        print(f"{_BOLD}{_YELLOW}  ➜  Activate it, then re-run Setup.py:{_RESET}")
-        if _is_windows():
-            print(f"{_WHITE}     .venv\\Scripts\\activate{_RESET}")
-        else:
-            print(f"{_WHITE}     source {venv_dir}/bin/activate{_RESET}")
-        print(f"{_WHITE}     python src/Scripts/Setup.py{_RESET}")
-        print()
-        sys.exit(0)
+
+        venv_python = _venv_python_path(venv_dir)
+        if not venv_python.exists():
+            print()
+            print(
+                f"{_RED}  ✖  venv created but Python executable not found at: {venv_python}{_RESET}"
+            )
+            _print_venv_activation_hint(venv_dir)
+            print(f"{_WHITE}     python src/Scripts/Setup.py{_RESET}")
+            print()
+            sys.exit(1)
+
+        print(
+            f"{_DIM}  Continuing setup inside the newly created virtual environment...{_RESET}"
+        )
+        _relaunch_setup_with_venv(venv_python)
 
     if sys.prefix == sys.base_prefix:
-        # Not inside a venv — re-exec using the venv Python so the user
+        # Not inside a venv — launch setup with the venv Python so the user
         # doesn't have to activate manually.
-        if _is_windows():
-            venv_python = venv_dir / "Scripts" / "python.exe"
-        else:
-            venv_python = venv_dir / "bin" / "python"
+        venv_python = _venv_python_path(venv_dir)
 
         if venv_python.exists():
-            print(f"{_DIM}  Not inside venv — re-launching with {venv_python}{_RESET}")
-            os.execv(str(venv_python), [str(venv_python)] + sys.argv)
-            # execv replaces the current process; code below is unreachable
+            print(f"{_DIM}  Not inside venv — switching to {venv_python}{_RESET}")
+            _relaunch_setup_with_venv(venv_python)
 
         print()
         print(
             f"{_RED}  ✖  Setup must run inside the project virtual environment.{_RESET}"
         )
-        print(f"{_YELLOW}     Activate it first, for example:{_RESET}")
-        if _is_windows():
-            print(f"{_WHITE}     .venv\\Scripts\\activate{_RESET}")
-        else:
-            print(f"{_WHITE}     source .venv/bin/activate{_RESET}")
+        _print_venv_activation_hint(venv_dir)
         print()
         sys.exit(1)
 
@@ -1872,7 +1926,11 @@ def _collect_example_files() -> list[tuple[str, str, Path]]:
     # Define which examples are critical
     critical_examples = {
         "Example_Config_Models.py",
-        "Example_Config_Banned.py",
+        "Example_Config_Banned_Detection.py",
+        "Example_Config_Banned_Content.py",
+        "Example_Config_Banned_Prompts.py",
+        "Example_Config_Load_Retrievers.py",
+        "Example_Config_Load_Chunkers.py",
         "Example_Config_WebSearch.py",
         "Example_Config_Internet_Env.py",
     }
@@ -2716,9 +2774,12 @@ def main() -> None:
                 label="Recalculate SHA-256 config hashes",
                 script="RecalcConfigHashes.py",
                 description=(
-                    "Recomputes hashes for Config_Models.py, Config_Banned.py, "
-                    "Config_WebSearch.py, and Config_Internet_Env.py and writes "
-                    "them into Config_Global.py."
+                    "Recomputes hashes for Config_Models.py, "
+                    "Config_Banned_Detection.py, Config_Banned_Content.py, "
+                    "Config_Banned_Prompts.py, Config_Load_Retrievers.py, "
+                    "Config_Load_Chunkers.py, Config_WebSearch.py, and "
+                    "Config_Internet_Env.py and writes them into "
+                    "Config_Global.py."
                 ),
                 required=True,
             )
@@ -3092,9 +3153,11 @@ def main() -> None:
             label="Recalculate SHA-256 config hashes",
             script="RecalcConfigHashes.py",
             description=(
-                "Recomputes hashes for Config_Models.py, Config_Banned.py, "
-                "Config_WebSearch.py, and Config_Internet_Env.py and writes "
-                "them into Config_Global.py."
+                "Recomputes hashes for Config_Models.py, "
+                "Config_Banned_Detection.py, Config_Banned_Content.py, "
+                "Config_Banned_Prompts.py, Config_Load_Retrievers.py, "
+                "Config_Load_Chunkers.py, Config_WebSearch.py, and "
+                "Config_Internet_Env.py and writes them into Config_Global.py."
             ),
             required=True,
         )

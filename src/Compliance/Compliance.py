@@ -42,8 +42,12 @@ from urllib.parse import urlparse
 
 import requests
 
-import Configuration.Config_Banned as Config_Banned
+import Configuration.Config_Banned_Content as Config_Banned_Content
+import Configuration.Config_Banned_Detection as Config_Banned_Detection
+import Configuration.Config_Banned_Prompts as Config_Banned_Prompts
 import Configuration.Config_Internet_Env as Config_Internet_Env
+import Configuration.Config_Load_Chunkers as Config_Load_Chunkers
+import Configuration.Config_Load_Retrievers as Config_Load_Retrievers
 import Configuration.Config_Models as Config_Models
 import Configuration.Config_WebSearch as Config_WebSearch
 from Commons.Exceptions import (ComplianceViolationError,
@@ -469,10 +473,18 @@ class Compliance(SingletonMixin):
         # Deleting any entry from the dict in Config_Global.py will be detected as a mismatch.
         modules = [
             (Config_Models, "Config_Models"),
-            (Config_Banned, "Config_Banned"),
+            (Config_Banned_Detection, "Config_Banned_Detection"),
+            (Config_Banned_Content, "Config_Banned_Content"),
+            (Config_Banned_Prompts, "Config_Banned_Prompts"),
+            (Config_Load_Retrievers, "Config_Load_Retrievers"),
+            (Config_Load_Chunkers, "Config_Load_Chunkers"),
             (Config_WebSearch, "Config_WebSearch"),
             (Config_Internet_Env, "Config_Internet_Env"),
         ]
+        module_label_width = max(
+            30,
+            max(len(getattr(module, "__name__", str(module))) for module, _ in modules),
+        )
         hashes: dict[str, Any] = self.cfg.get_dict("_CRITICAL_CONFIG_HASHES", {})
         mismatches: list[tuple[str, str | None, str, str | None, str]] = []
 
@@ -492,6 +504,7 @@ class Compliance(SingletonMixin):
                     "O",
                     module_name,
                     f"No change detected in config file {module_path}",
+                    label_width=module_label_width,
                     color=GREEN,
                 )
 
@@ -499,23 +512,45 @@ class Compliance(SingletonMixin):
             for module_name, module_path, slot_key, ref_hash, module_hash in mismatches:
                 msg = f"Detected modification of {module_name} ({module_path})"
                 self.logger.warning(msg)
-                self.pretty.write("W", module_name, msg)
+                self.pretty.write(
+                    "W",
+                    module_name,
+                    msg,
+                    label_width=module_label_width,
+                )
 
                 msg = (
                     f'Reference hash _CRITICAL_CONFIG_HASHES["{slot_key}"]: {ref_hash} '
                 )
                 self.logger.error(msg)
-                self.pretty.write("E", module_name, msg)
+                self.pretty.write(
+                    "E",
+                    module_name,
+                    msg,
+                    label_width=module_label_width,
+                )
                 msg = f"Expected {module_name} hash: {module_hash}"
                 self.logger.error(msg)
-                self.pretty.write("W", module_name, msg, color=ORANGE)
+                self.pretty.write(
+                    "W",
+                    module_name,
+                    msg,
+                    label_width=module_label_width,
+                    color=ORANGE,
+                )
 
                 msg = (
                     f"Update Configuration/Config_Global.py "
                     f'_CRITICAL_CONFIG_HASHES["{slot_key}"] to match expected hash'
                 )
                 self.logger.error(msg)
-                self.pretty.write("E", module_name, msg, color=ORANGE)
+                self.pretty.write(
+                    "E",
+                    module_name,
+                    msg,
+                    label_width=module_label_width,
+                    color=ORANGE,
+                )
 
             changed = ", ".join(m[0] for m in mismatches)
             msg = f"The goal of this is that you consent your changes in: {changed}"

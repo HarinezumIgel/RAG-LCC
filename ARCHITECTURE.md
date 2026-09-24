@@ -41,6 +41,10 @@ Four applications share the same core infrastructure:
 - **RAGChatService** — exposes the same RAG pipeline as RAGChat over an OpenAI-compatible REST API; entry point is a network listener instead of the terminal GUI.
 - **DocClassify** — classifies documents in a directory using keyword extraction, stemming, and optional LLM-assisted label generation; writes results to CSV.
 
+## 🖼️ Overview Diagram
+
+![RAG-LCC Overview Diagram](Documentation/Presentations/RAG-LCC-Overview.png)
+
 ## 🎯 Core Design Principles
 
 1. **Configuration-Driven**: All behavior parameterized via Python config files (`Config_*.py`) with CLI override support
@@ -63,14 +67,18 @@ src/
 │   └── resources/                 Static assets (favicon, etc.)
 │
 ├── Configuration/                 Config files read at startup
-│   ├── Config_Global.py           Shared defaults (paths, hardware, chunking, debug)
+│   ├── Config_Global.py           Shared defaults (paths, hardware, debug)
+│   ├── Config_Load_Retrievers.py  Collection/store lifecycle and HNSW retrieval params
+│   ├── Config_Load_Chunkers.py    Chunker routing, chunker params, metadata extraction
 │   ├── Config_Languages.py        Active languages, Argos pairs, spaCy language maps, BM25/Graph/Regex language slots
 │   ├── Config_Models.py           Model definitions and endpoint metadata
-│   ├── Config_Banned.py           Banned-phrase lists, detection thresholds, masking rules
+│   ├── Config_Banned_Detection.py Detection pipelines, thresholds, and per-app checks
+│   ├── Config_Banned_Content.py   Banned-word lists and masking regex configuration
+│   ├── Config_Banned_Prompts.py   Prompt-check templates for compliance LLMs
 │   ├── Config_WebSearch.py        Web search backend and intent-filter settings
 │   ├── Config_Internet_Env.py     Internet access and network-tracing env vars
 │   ├── Config_RAGChat.py          Chat strategies, query rewrite, multi-query, grounding
-│   ├── Config_RAGChatService.py   Service-specific overrides (re-exports Config_RAGChat)
+│   ├── Config_RAGChatService.py   Service-specific overrides for REST/OpenWebUI mode
 │   ├── Config_RAGLoad.py          Ingestion-specific settings
 │   └── Config_DocClassify.py      Classification model params and extraction keys
 │
@@ -284,14 +292,18 @@ Configuration is hierarchically resolved:
 1. **Defaults** - Default used in this repository
 2. **Configuration Files** - `Configuration/Config_*.py` files
 3. **Environment Variables** - Override via ENV
-4. **CLI Flags** - Command-line argument override (applies to `Config_Global.py` and the app-specific config only; `Config_Languages.py`, `Config_Models.py`, `Config_Banned.py`, and `Config_WebSearch.py` are not exposed as CLI flags)
+4. **CLI Flags** - Command-line argument override (applies only to `Config_Global.py` and the active app config; keys must not start with `_` or `$`)
 
 Each application loads from:
 
 - `Config_Global.py` - Common settings
+- `Config_Load_Retrievers.py` - Collection/store lifecycle and HNSW retrieval parameters
+- `Config_Load_Chunkers.py` - Chunker routing, chunker parameters, metadata extraction
 - `Config_Languages.py` - Active languages, Argos language pairs, per-language spaCy maps
 - `Config_Models.py` - Model selections
-- `Config_Banned.py` - Detection, compliance rules
+- `Config_Banned_Detection.py` - Detection pipelines and thresholds
+- `Config_Banned_Content.py` - Banned-word lists and masking regexes
+- `Config_Banned_Prompts.py` - Prompt-check templates
 - `Config_WebSearch.py` - Web search settings
 - Application-specific `Config_*.py`
 
@@ -301,8 +313,8 @@ Parameters are accessible via `Config().get(key_path)` using dot notation.
 
 **Notes:**
 
-- CLI overrides apply **only** to `Config_Global.py` and the app-specific config files (`Config_RAGChat.py`, `Config_RAGLoad.py`, `Config_DocClassify.py`).
-- Keys in `Config_Languages.py`, `Config_Models.py`, `Config_Banned.py`, `Config_WebSearch.py`, and `Config_Internet_Env.py` are **not** exposed as CLI arguments — edit these files directly to change their values.
+- CLI overrides apply **only** to `Config_Global.py` and the app-specific config files (`Config_RAGChat.py`, `Config_RAGLoad.py`, `Config_DocClassify.py`, `Config_RAGChatService.py`).
+- Keys in `Config_Load_Retrievers.py`, `Config_Load_Chunkers.py`, `Config_Languages.py`, `Config_Models.py`, `Config_Banned_Detection.py`, `Config_Banned_Content.py`, `Config_Banned_Prompts.py`, `Config_WebSearch.py`, and `Config_Internet_Env.py` are **not** exposed as CLI arguments — edit these files directly to change their values.
 - Keys starting with `_` are internal and cannot be overridden via CLI arguments.
 - Keys starting with `$` are indirect lookups (the value names another config key).
 
@@ -313,9 +325,9 @@ Parameters are accessible via `Config().get(key_path)` using dot notation.
 | Models | `Config_Models.py` | Embedding, cross-encoder, LLM | ❌ No |
 | RAGLoad | `Config_RAGLoad.py` | Chunking, batch sizes | ✅ Yes |
 | RAGChat | `Config_RAGChat.py` | Retrieval thresholds, re-ranking | ✅ Yes |
-| RAGChatService | `Config_RAGChatService.py` | HTTP listener, API key, thread pool, CLI-like algo results toggle (re-exports `Config_RAGChat.py`) | ✅ Yes (via re-export) |
+| RAGChatService | `Config_RAGChatService.py` | HTTP listener, API key, thread pool, CLI-like algo results toggle (plus direct lookup of RAGChat split modules) | ✅ Yes |
 | DocClassify | `Config_DocClassify.py` | Classification settings, `REVERSE_STEMMING` | ✅ Yes |
-| Compliance | `Config_Banned.py` | Keyword/phrase lists, detection thresholds | ❌ No |
+| Compliance | `Config_Banned_Detection.py`, `Config_Banned_Content.py`, `Config_Banned_Prompts.py` | Detection pipelines, keyword/phrase lists, masking rules, prompt-check templates | ❌ No |
 | Web Search | `Config_WebSearch.py` | Web search mode, backend, query compliance gates | ❌ No |
 | Network | `Config_Internet_Env.py` | Network connection, network trace | ❌ No |
 
@@ -419,13 +431,13 @@ The pattern is used consistently across five config files:
 | Config file | Selector variable | Dictionary | Variants (default **bold**) | Purpose |
 | --- | --- | --- | --- | --- |
 | `Config_Models.py` | `_ACTIVE_LLM`, `_ACTIVE_LLM_CHK`, `_ACTIVE_LLM_REWRITE_PROMPT`, `_ACTIVE_EMBED`, `_ACTIVE_CROSS`, `_ACTIVE_ENDPOINT`, `_ACTIVE_OPENWEBUI`, `_ACTIVE_RAGCHATSERVICE` | `_MODELS[<impl>][<role>]` | see [Model Implementation Selectors](#-model-implementation-selectors) | Model selection per role |
-| `Config_Global.py` | `_ACTIVE_CHROMA_EMBED_AND_RETRIEVE_PARAMS_CONFIG` | `_CHROMA_EMBED_AND_RETRIEVE_PARAMS` | **`THOROUGH`**, `COMPACT` | HNSW neighbor counts |
-| `Config_Global.py` | `_ACTIVE_CHUNKER_CONFIG` | `_CHUNK_STRATEGY` | **`DETAILED`**, `FAST` | Chunker strategy profile and per-file-type routing (see [Chunking Architecture](#-chunking-architecture)) |
+| `Config_Load_Retrievers.py` | `_ACTIVE_CHROMA_EMBED_AND_RETRIEVE_PARAMS_CONFIG` | `_CHROMA_EMBED_AND_RETRIEVE_PARAMS` | **`THOROUGH`**, `COMPACT` | HNSW neighbor counts |
+| `Config_Load_Chunkers.py` | `_ACTIVE_CHUNKER_CONFIG` | `_CHUNK_STRATEGY` | **`DETAILED`**, `FAST` | Chunker strategy profile and per-file-type routing (see [Chunking Architecture](#-chunking-architecture)) |
 | `Config_DocClassify.py` | `_ACTIVE_EXTRACTION_CONFIG` | `_EXTRACTION_MODEL_PARAMS` | **`STRICT`**, `BALANCED`, `RECALL` | LLM sampling (temperature, top-k, top-p) |
 | `Config_DocClassify.py` | `_ACTIVE_KEYBERT_CONFIG` | `_KEY_BERT` | **`STRICT`**, `BALANCED`, `RECALL` | KeyBERT two-pass keyword extraction |
-| `Config_Banned.py` | `_ACTIVE_DETECTION_CONFIG` | `_BANNED_DETECT` | **`STRICT_DETECT_CONFIG`** | Detection pipeline thresholds per app |
-| `Config_Banned.py` | `_ACTIVE_BANNED_CONFIG` | (named dict) | **`_STRICT_BANNED`** | Banned keyword lists |
-| `Config_Banned.py` | `_ACTIVE_MASKING_CONFIG` | (named dict) | **`_STRICT_MASKING_REGEXES`** | Masking regex rules |
+| `Config_Banned_Detection.py` | `_ACTIVE_DETECTION_CONFIG` | `_BANNED_DETECT` | **`STRICT_DETECT_CONFIG`** | Detection pipeline thresholds per app |
+| `Config_Banned_Content.py` | `_ACTIVE_BANNED_CONFIG` | (named dict) | **`_STRICT_BANNED`** | Banned keyword lists |
+| `Config_Banned_Content.py` | `_ACTIVE_MASKING_CONFIG` | (named dict) | **`_STRICT_MASKING_REGEXES`** | Masking regex rules |
 | `Config_RAGChat.py` | `_ACTIVE_CHUNK_SELECT_STRATEGY` | `_STRATEGIES` | `NARROW`, `BALANCED_FILE_CAP`, `WIDE`, `ULTRA_WIDE`, **`DEFAULT`** | Retrieval strategy profiles |
 
 At runtime, consumers read the selector once and resolve parameters via
@@ -635,7 +647,7 @@ GENERATION & RESPONSE VALIDATION PHASE:
 
 ### ⚙️ Configuring the Chain
 
-- **Control algorithm strictness**: Adjust individual thresholds in `Config_Banned.py`
+- **Control algorithm strictness**: Adjust individual thresholds in `Config_Banned_Detection.py`
 - **Set consensus rules**: Configure which algorithms must agree for blocking
 - **Enable/disable prompt check**: Balance between latency and coverage
 - **Chain is OR-based**: If ANY check detects issue, content is flagged
@@ -752,7 +764,7 @@ Config slot template used by scorers:
 - Optional LLM-based screening that sends the user prompt (or document text) to a dedicated compliance model
 - Only executes when algorithm checks produce no flag — acts as a supplementary safety net
 - The compliance model is selected via `_ACTIVE_LLM_CHK` in `Config_Models.py` (`llama_guard` default; `llama` and `mistral` also available)
-- Each application defines its own `PROMPT_CHECK` block inside `_BANNED_DETECT` (`Config_Banned.py`):
+- Each application defines its own `PROMPT_CHECK` block inside `_BANNED_DETECT` (`Config_Banned_Detection.py`):
 
 | Application | `Check` | `LLM_PARAM` | Own `PIPELINE`? |
 | --- | --- | --- | --- |
@@ -825,12 +837,12 @@ This means:
 
 Results combined via:
 
-1. **Individual threshold application** - Adjust per-algorithm thresholds in `Config_Banned.py`
+1. **Individual threshold application** - Adjust per-algorithm thresholds in `Config_Banned_Detection.py`
 2. **Depth consensus** - Raise `REQUIRED_ALGOS_ABOVE_THRESHOLD` for stricter consensus
 3. **Breadth consensus** - Raise `REQUIRED_DIFFERENT_ALGOS_HAVE_A_SCORE` to require more algos detecting weakly
 4. **Algorithm mix** - Enable/disable algorithms in `ALGOS_TO_PROCESS` to change available voters
 
-**Lab note**: Depth and breadth are adjustable via `Config_Banned.py` to explore different detection behaviours. Results will vary significantly with different configurations, and you are responsible for validating the settings match your operational requirements.
+**Lab note**: Depth and breadth are adjustable via `Config_Banned_Detection.py` to explore different detection behaviours. Results will vary significantly with different configurations, and you are responsible for validating the settings match your operational requirements.
 
 ## 🏷️ Classification Output Quality
 
@@ -1104,7 +1116,7 @@ Overridable settings include:
 | --- | --- | --- |
 | `max_output_tokens` | `▶ Output` | Warning emitted when override exceeds computed budget |
 | `context_size` | `▶ Output` | Warning emitted when override exceeds computed budget |
-| `terminal_line_size` | `▶ Output` | Controls wrapping width for all terminal output; takes effect immediately on the next printed line. `TERMINAL_LINE_SIZE` in `Config_RAGChat.py` (and `Config_RAGChatService.py` via import) is a `{"debug": 180, "no_debug": 100}` dict; the active branch is resolved at use time from the live `session.debug_level` value, so toggling debug level mid-session changes the width immediately. Other apps read a flat `120` from `Config_Global.py`. |
+| `terminal_line_size` | `▶ Output` | Controls wrapping width for all terminal output; takes effect immediately on the next printed line. `TERMINAL_LINE_SIZE` in `Config_RAGChat.py` (and for `Config_RAGChatService.py` via split-module lookup in `Config.py`) is a `{"debug": 180, "no_debug": 100}` dict; the active branch is resolved at use time from the live `session.debug_level` value, so toggling debug level mid-session changes the width immediately. Other apps read a flat `140` from `Config_Global.py`. |
 | `fetch_k`, `context_chunks` | `▶ Chunk takes` | |
 | `temperature`, `top_p`, `top_k` | `▶ LLM` | |
 | `strategy`, `retrieve_mode`, `rerank`, `threshold` | `▶ Strategies` | |
@@ -1445,7 +1457,7 @@ python src/Scripts/GraphIndexInspector.py -path chromadb/graph/Test -chunks 5 -e
 | Injection patterns | Regex over `block_on_injection` patterns | `_WEB_SEARCH.block_on_injection` |
 | Intent classifier | Weighted intent scoring via `WebSearchFilter` | `WEB_SEARCH_INTENT_EXTENSIONS` in `Config_WebSearch.py` |
 | Length truncation | Queries truncated at `max_query_length` chars | `_WEB_SEARCH.max_query_length` |
-| Prompt/content compliance | Enforced upstream before `WebRetriever` (algorithm + LLM guard chain) | `Config_Banned.py` pipelines + `_ACTIVE_LLM_CHK` / `_MODELS[*]["_LLM_CHK"]` in `Config_Models.py` |
+| Prompt/content compliance | Enforced upstream before `WebRetriever` (algorithm + LLM guard chain) | `Config_Banned_Detection.py` pipelines + `_ACTIVE_LLM_CHK` / `_MODELS[*]["_LLM_CHK"]` in `Config_Models.py` |
 
 **Audit log** — every web query attempt (including blocked ones) is appended to the log file at `_QUERY_LOG` (default: `logs/queries.log`).
 
@@ -1916,9 +1928,13 @@ src/
 │   └── Config.py
 │
 ├── Configuration/                  Static parameter definitions
-│   ├── Config_Banned.py
+│   ├── Config_Banned_Detection.py
+│   ├── Config_Banned_Content.py
+│   ├── Config_Banned_Prompts.py
 │   ├── Config_DocClassify.py
 │   ├── Config_Global.py
+│   ├── Config_Load_Retrievers.py
+│   ├── Config_Load_Chunkers.py
 │   ├── Config_Languages.py
 │   ├── Config_Internet_Env.py
 │   ├── Config_Models.py
@@ -2129,7 +2145,7 @@ class ScorerBase(ABC):
 ```
 
 - Add new algorithm to `AIHelpers` `_run_ensemble_checks()`
-- Add new algorithm to `Config_Banned.py`
+- Add new algorithm to `Config_Banned_Detection.py`
 
 **New Configuration**: Add to appropriate `Config_*.py`
 **Custom Helpers**: Add utilities to `Helpers/`

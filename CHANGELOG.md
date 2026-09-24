@@ -6,6 +6,53 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [2026-09-24]
+
+### 🧭 Planned — Rework configuration structure from a user viewpoint
+
+- Configuration structure must be reorganized around practical user
+  workflows and use cases, so common operational changes are easier to
+  find and apply.
+- CLI/documentation behavior continues to reflect that user-centric
+  structure as it evolves.
+
+### ⚙️ Changed — App-scoped CLI overrides for retriever collection settings
+
+- Added an app-scope gate in `CliOverridePolicy` so
+  `Config_Load_Retrievers.py` slots are CLI-overridable only for
+  `RAGLoad`, `RAGChat`, and `RAGChatService`.
+- `RAGLoad` CLI now exposes `--collection` and
+  `--retrieval-stores-keep` again.
+- `DocClassify` continues to exclude retriever-store flags from its CLI
+  surface.
+
+### 🛡️ Changed — Unified parser/runtime allowlist enforcement
+
+- `AddConstantsFromConfigFile` and `Config` now resolve the same
+  app-scoped allowlist before exposing or accepting CLI overrides.
+- Fail-fast validation remains enforced for unsupported keys and for
+  `_`/`$`-prefixed slots.
+
+### 🌍 Changed — Native-language third retrieval leg and pre-rerank diagnostics
+
+- Added an original-language retrieval leg (in addition to existing
+  post-rewrite/guardrail English legs) for local retrievers:
+  `Vector`, `BM25`, `Graph`, and `Regex`.
+- Native-language local retrieval now uses language-scoped stage filters in
+  orchestration so indexed retrievers can exploit language-specific load-time
+  metadata buckets.
+- Retrieval orchestration now emits explicit native-leg planning/execution
+  status lines and merge counters (hits/added/overlap) before context build.
+- Added a pre-rerank debug/status line in `RAGChatImpl` so pool composition
+  and native-leg contribution details are visible before any low-confidence
+  rerank-skip fallback decision.
+
+### ✅ Validation
+
+- `python ./src/Apps/RAGLoad.py --help` shows `--collection` and
+  `--retrieval-stores-keep`.
+- `python ./src/Apps/DocClassify.py --help` shows neither flag.
+
 ## [Released] — 2026-09-21
 
 ### 🛡️ Changed — NLTK stopwords now validated at startup for all apps

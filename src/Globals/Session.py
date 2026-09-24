@@ -115,6 +115,26 @@ class Session:
         self.retrieval_top_k_final_query: int | None = None
         self.retrieval_top_k_before_t2: int | None = None
         self.retrieval_top_k_after_t2: int | None = None
+        # Raw user query after topic-prefix stripping, captured before
+        # translation/rewrite normalization.
+        self.user_query_original: str | None = None
+        # Original-language retrieval leg diagnostics.
+        self.original_query_leg_enabled: bool = False
+        self.original_query_leg_query: str | None = None
+        self.original_query_leg_language: str | None = None
+        self.original_query_leg_reason: str | None = None
+        self.original_query_leg_vector_hits: int | None = None
+        self.original_query_leg_vector_added: int | None = None
+        self.original_query_leg_vector_overlap: int | None = None
+        self.original_query_leg_bm25_hits: int | None = None
+        self.original_query_leg_bm25_added: int | None = None
+        self.original_query_leg_bm25_overlap: int | None = None
+        self.original_query_leg_graph_hits: int | None = None
+        self.original_query_leg_graph_added: int | None = None
+        self.original_query_leg_graph_overlap: int | None = None
+        self.original_query_leg_regex_hits: int | None = None
+        self.original_query_leg_regex_added: int | None = None
+        self.original_query_leg_regex_overlap: int | None = None
         # Set by RAGChatImpl to the effective (translated / rewritten) retrieval
         # query when it differs from the user's original input.  Chatter uses
         # this to show a notice at the top of the answer.

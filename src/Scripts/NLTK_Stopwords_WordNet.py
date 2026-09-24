@@ -76,6 +76,7 @@ import Configuration.Config_Global as _ConfigGlobal  # noqa: E402
 # Resolve and validate project root before any setup actions.
 from Commons.DriveRootGuard import (assert_script_project_root,  # noqa: E402
                                     is_drive_root, resolve_guard_path)
+from Gui.PrettyWriter import PrettyWriter  # noqa: E402
 
 _PROJECT_ROOT = Path(
     assert_script_project_root(
@@ -118,6 +119,17 @@ _NLTK_DATA_INDEX_URL = (
 _WORDNET_LICENSE_URL = (
     "https://raw.githubusercontent.com/spdx/license-list-data/main/text/WordNet.txt"
 )
+
+_pretty_writer_instance: PrettyWriter | None = None
+
+
+def _pretty_writer() -> PrettyWriter:
+    """Return a cached PrettyWriter configured for always-on installer output."""
+    global _pretty_writer_instance
+    if _pretty_writer_instance is None:
+        _pretty_writer_instance = PrettyWriter(always_on=True)
+    return _pretty_writer_instance
+
 
 # ---------------------------------------------------------------------------
 # Helpers: network
@@ -279,6 +291,8 @@ def _record_consent(
     lic_path = lic_dir / "LICENSE.txt"
     lic_meta_path = lic_dir / "license_meta.json"
     consent_path = consent_dir / "install_meta.json"
+    had_license_meta = lic_meta_path.is_file()
+    had_download_meta = consent_path.is_file()
 
     lic_hash = _compute_hash(license_text)
 
@@ -310,8 +324,20 @@ def _record_consent(
     with consent_path.open("w", encoding="utf-8") as fh:
         json.dump(install_meta, fh, indent=2, ensure_ascii=False)
 
-    print(
-        f"{_GREEN}  ✔  Consent recorded: {consent_path.relative_to(_PROJECT_ROOT)}{_RESET}"
+    pretty = _pretty_writer()
+    license_action = "Updated" if had_license_meta else "Created"
+    download_action = "Updated" if had_download_meta else "Created"
+    pretty.write(
+        "O",
+        "NLTK License",
+        f"{display}: {license_action} license consent metadata: {lic_meta_path}",
+        color=_GREEN,
+    )
+    pretty.write(
+        "O",
+        "NLTK Download",
+        f"{display}: {download_action} download consent metadata: {consent_path}",
+        color=_GREEN,
     )
 
 

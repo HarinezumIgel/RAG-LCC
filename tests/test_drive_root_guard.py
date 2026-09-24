@@ -55,6 +55,18 @@ class StubConfig:
         return self._root if key == "_ABSOLUTE_PATH" else default
 
 
+class StubIndirectRootConfig:
+    def get_str(self, key: str, default: str = "", **_kw) -> str:
+        if key == "_ABSOLUTE_PATH":
+            return "$_ROOT_ALIAS"
+        return default
+
+    def get(self, key, default=None):
+        if key == "_ABSOLUTE_PATH":
+            return "$_ROOT_ALIAS"
+        return default, key
+
+
 def _raise_system_exit(code: int = 1) -> None:
     raise SystemExit(code)
 
@@ -330,5 +342,18 @@ class TestEnsureStartedFromProjectRoot:
         )
         monkeypatch.chdir(tmp_path)
         cfg = StubConfig(_FS_ROOT)
+        with pytest.raises(SystemExit):
+            StartupCommons._ensure_safe_startup_root(cfg)
+
+    def test_aborts_when_configured_root_uses_indirection(self, tmp_path, monkeypatch):
+        from Commons.StartupCommons import StartupCommons
+
+        monkeypatch.setattr(
+            StartupCommons,
+            "_die",
+            staticmethod(_raise_system_exit),
+        )
+        monkeypatch.chdir(tmp_path)
+        cfg = StubIndirectRootConfig()
         with pytest.raises(SystemExit):
             StartupCommons._ensure_safe_startup_root(cfg)

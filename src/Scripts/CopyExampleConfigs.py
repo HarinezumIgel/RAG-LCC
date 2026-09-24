@@ -49,7 +49,11 @@ _CONFIG_DIR = _PROJECT_ROOT / "src" / "Configuration"
 _PREFIX = "Example_"
 _PREFERRED_EXAMPLES = [
     "Example_Config_Models.py",
-    "Example_Config_Banned.py",
+    "Example_Config_Banned_Detection.py",
+    "Example_Config_Banned_Content.py",
+    "Example_Config_Banned_Prompts.py",
+    "Example_Config_Load_Retrievers.py",
+    "Example_Config_Load_Chunkers.py",
     "Example_Config_WebSearch.py",
     "Example_Config_Internet_Env.py",
 ]

@@ -100,7 +100,11 @@ class StubConfig:
             "_FRIENDLY_NAME": "TestApp",
             "_CRITICAL_CONFIG_HASHES": {
                 "Config_Models": "fakehash",
-                "Config_Banned": "fakehash",
+                "Config_Banned_Detection": "fakehash",
+                "Config_Banned_Content": "fakehash",
+                "Config_Banned_Prompts": "fakehash",
+                "Config_Load_Retrievers": "fakehash",
+                "Config_Load_Chunkers": "fakehash",
                 "Config_WebSearch": "fakehash",
                 "Config_Internet_Env": "fakehash",
             },
@@ -1100,11 +1104,23 @@ class TestCheckModelsConfigHash:
         # Stub the module objects to have __name__ and __file__
         fake_models = types.ModuleType("Config_Models")
         fake_models.__file__ = "fake_models.py"
-        fake_banned = types.ModuleType("Config_Banned")
-        fake_banned.__file__ = "fake_banned.py"
+        fake_banned_detection = types.ModuleType("Config_Banned_Detection")
+        fake_banned_detection.__file__ = "fake_banned_detection.py"
+        fake_banned_content = types.ModuleType("Config_Banned_Content")
+        fake_banned_content.__file__ = "fake_banned_content.py"
+        fake_banned_prompts = types.ModuleType("Config_Banned_Prompts")
+        fake_banned_prompts.__file__ = "fake_banned_prompts.py"
 
         monkeypatch.setattr("Compliance.Compliance.Config_Models", fake_models)
-        monkeypatch.setattr("Compliance.Compliance.Config_Banned", fake_banned)
+        monkeypatch.setattr(
+            "Compliance.Compliance.Config_Banned_Detection", fake_banned_detection
+        )
+        monkeypatch.setattr(
+            "Compliance.Compliance.Config_Banned_Content", fake_banned_content
+        )
+        monkeypatch.setattr(
+            "Compliance.Compliance.Config_Banned_Prompts", fake_banned_prompts
+        )
 
         # fileUtils.hash_module returns "fakehash" which matches cfg
         c._check_models_config_hash()  # Should not raise
@@ -1114,11 +1130,23 @@ class TestCheckModelsConfigHash:
 
         fake_models = types.ModuleType("Config_Models")
         fake_models.__file__ = "fake_models.py"
-        fake_banned = types.ModuleType("Config_Banned")
-        fake_banned.__file__ = "fake_banned.py"
+        fake_banned_detection = types.ModuleType("Config_Banned_Detection")
+        fake_banned_detection.__file__ = "fake_banned_detection.py"
+        fake_banned_content = types.ModuleType("Config_Banned_Content")
+        fake_banned_content.__file__ = "fake_banned_content.py"
+        fake_banned_prompts = types.ModuleType("Config_Banned_Prompts")
+        fake_banned_prompts.__file__ = "fake_banned_prompts.py"
 
         monkeypatch.setattr("Compliance.Compliance.Config_Models", fake_models)
-        monkeypatch.setattr("Compliance.Compliance.Config_Banned", fake_banned)
+        monkeypatch.setattr(
+            "Compliance.Compliance.Config_Banned_Detection", fake_banned_detection
+        )
+        monkeypatch.setattr(
+            "Compliance.Compliance.Config_Banned_Content", fake_banned_content
+        )
+        monkeypatch.setattr(
+            "Compliance.Compliance.Config_Banned_Prompts", fake_banned_prompts
+        )
 
         # Make hash_module return a non-matching hash
         c.fileUtils.hash_module = lambda mod, algo="sha256": "different_hash"
@@ -1152,11 +1180,23 @@ class TestCheckModelsConfigHash:
 
         fake_models = types.ModuleType("Config_Models")
         fake_models.__file__ = "fake_models.py"
-        fake_banned = types.ModuleType("Config_Banned")
-        fake_banned.__file__ = "fake_banned.py"
+        fake_banned_detection = types.ModuleType("Config_Banned_Detection")
+        fake_banned_detection.__file__ = "fake_banned_detection.py"
+        fake_banned_content = types.ModuleType("Config_Banned_Content")
+        fake_banned_content.__file__ = "fake_banned_content.py"
+        fake_banned_prompts = types.ModuleType("Config_Banned_Prompts")
+        fake_banned_prompts.__file__ = "fake_banned_prompts.py"
 
         monkeypatch.setattr("Compliance.Compliance.Config_Models", fake_models)
-        monkeypatch.setattr("Compliance.Compliance.Config_Banned", fake_banned)
+        monkeypatch.setattr(
+            "Compliance.Compliance.Config_Banned_Detection", fake_banned_detection
+        )
+        monkeypatch.setattr(
+            "Compliance.Compliance.Config_Banned_Content", fake_banned_content
+        )
+        monkeypatch.setattr(
+            "Compliance.Compliance.Config_Banned_Prompts", fake_banned_prompts
+        )
         monkeypatch.setattr("Compliance.Compliance.os.name", platform_name)
 
         c.fileUtils.hash_module = lambda mod, algo="sha256": "different_hash"

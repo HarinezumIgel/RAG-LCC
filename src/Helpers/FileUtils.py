@@ -537,7 +537,15 @@ class FileUtils:
             return False
 
         normalized_target = resolve_guard_path(filepath)
-        raw_absolute_path = self.cfg.get_str("_ABSOLUTE_PATH")
+        raw_absolute_path = self.cfg.get_str("_ABSOLUTE_PATH").strip()
+        if raw_absolute_path.startswith("$"):
+            self.pretty.write(
+                "E",
+                "Path Guard",
+                "Configured _ABSOLUTE_PATH uses indirection ('$...'). "
+                "A direct absolute path is required.",
+            )
+            return False
         project_root = resolve_guard_path(raw_absolute_path)
 
         # If project root could not be resolved, refuse all deletions

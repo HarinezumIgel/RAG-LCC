@@ -63,7 +63,6 @@ def suppress_argos_logging(debug_level: int = 0) -> None:
 
 
 class StartupCommons:
-    @staticmethod
     def _resolve_expected_stopwords_dir(cfg: Config) -> Path | None:
         """Resolve the expected stopwords directory from configured NLTK path.
 
@@ -289,6 +288,21 @@ class StartupCommons:
         return Path(__file__).resolve().parents[2]
 
     @staticmethod
+    def _ensure_absolute_path_not_indirect(cfg: Config) -> None:
+        """Reject indirection for `_ABSOLUTE_PATH` during startup guards."""
+        configured_root = str(cfg.get("_ABSOLUTE_PATH", "") or "").strip()
+        if configured_root.startswith("$"):
+            pretty = PrettyWriter(always_on=True)
+            pretty.write(
+                "E",
+                "Startup",
+                "_ABSOLUTE_PATH must be a direct absolute path. "
+                "Indirection ('$...') is not allowed.",
+                color=RED,
+            )
+            StartupCommons._die()
+
+    @staticmethod
     def _ensure_not_drive_root(project_root: Path) -> None:
         from Commons.DriveRootGuard import drive_root_message, is_drive_root
 
@@ -322,12 +336,14 @@ class StartupCommons:
     @staticmethod
     def _ensure_started_from_project_root(cfg: Config) -> None:
         """Ensure cwd matches the configured project root path."""
+        StartupCommons._ensure_absolute_path_not_indirect(cfg)
         project_root = StartupCommons._resolve_project_root(cfg)
         StartupCommons._ensure_cwd_matches_project_root(project_root)
 
     @staticmethod
     def _ensure_safe_startup_root(cfg: Config) -> None:
         """Ensure project root is not drive/filesystem root and cwd matches it."""
+        StartupCommons._ensure_absolute_path_not_indirect(cfg)
         project_root = StartupCommons._resolve_project_root(cfg)
         StartupCommons._ensure_not_drive_root(project_root)
         StartupCommons._ensure_cwd_matches_project_root(project_root)

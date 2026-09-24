@@ -252,22 +252,22 @@ This reference covers both a **quick-scan overview** (tables by topic and by con
 
 | **Component** | **Config File** | **Slot Name / Path** | **Notes** |
 |---------------|----------------|----------------------|-----------|
-| **Banned Word Detection Config** | `Config_Banned.py` | `_ACTIVE_DETECTION_CONFIG` | "STRICT_DETECT_CONFIG" (active profile) |
-| **Detection Per App** | `Config_Banned.py` | `_BANNED_DETECT[profile][app]` | Per-app (RAGLoad, RAGChat, DocClassify) settings |
-| **Masking** | `Config_Banned.py` | `_BANNED_DETECT[profile][app]["MASKING"]["APPLY_MASKING"]` | Enable/disable redaction |
-| **Prompt Check Enabled** | `Config_Banned.py` | `_BANNED_DETECT[profile][app]["PROMPT_CHECK"]["Check"]` | LLM-based safety check toggle |
-| **Prompt Check LLM Params** | `Config_Banned.py` | `_BANNED_DETECT[profile][app]["PROMPT_CHECK"]["LLM_PARAM"]` | temperature, top_k, top_p for guard model |
-| **Pipeline Algorithms** | `Config_Banned.py` | `_BANNED_DETECT[profile][app]["PIPELINE_CHECK"]["PIPELINE"]["ALGOS_TO_PROCESS"]` | Which algorithms to run |
-| **Algorithm Thresholds** | `Config_Banned.py` | `_BANNED_DETECT[profile][app]["PIPELINE_CHECK"]["PIPELINE"][algo]["THRESHOLD"]` | Per-algorithm detection thresholds |
-| **Required Algorithm Agreement** | `Config_Banned.py` | `_BANNED_DETECT[profile][app]["PIPELINE_CHECK"]["PIPELINE"]["REQUIRED_ALGOS_ABOVE_THRESHOLD"]` | Consensus count |
-| **Jaccard N-gram Range** | `Config_Banned.py` | `...["PIPELINE"][algo]["CHAR_NGRAM_RANGE"]` | Character n-grams for Jaccard |
-| **BM25 Hyperparameters** | `Config_Banned.py` | `...["PIPELINE"]["BM25"]["TERM_FREQ_SATURATION"]`, `["LENGTH_NORMALIZATION"]` | k1 and b parameters |
-| **Regex Fuzzy Settings** | `Config_Banned.py` | `...["PIPELINE"]["Regex"]["WINDOW_MAX_CHARS"]`, `["PREFIX_SUFFIX_LEN"]`, `["SOFT_SCORE_FUZZY"]` | Fuzzy matching parameters |
-| **Levenshtein Threshold** | `Config_Banned.py` | `...["PIPELINE"]["Regex"]["Levenshtein"]["THRESHOLD"]` | Edit distance threshold |
-| **KeyBERT Top-K** | `Config_Banned.py` | `...["PIPELINE"]["Keybert"]["TOP_K"]` | Keyword extraction count |
-| **Default Algorithms** | `Config_Banned.py` | `_DEFAULT_ALGOS` | List of algorithms in default pipeline |
-| **Algorithm Name Constants** | `Config_Banned.py` | `_COSINE`, `_JACCARD`, `_REGEX`, `_KEYBERT`, `_LEVENSHTEIN`, `_BM25` | Single source of truth for names |
-| **CSV Keys** | `Config_Banned.py` | `_KEYS_FOR_HUMAN_REVIEW_CSV` | Column names in banned-word detection CSVs |
+| **Banned Word Detection Config** | `Config_Banned_Detection.py` | `_ACTIVE_DETECTION_CONFIG` | "STRICT_DETECT_CONFIG" (active profile) |
+| **Detection Per App** | `Config_Banned_Detection.py` | `_BANNED_DETECT[profile][app]` | Per-app (RAGLoad, RAGChat, DocClassify) settings |
+| **Masking** | `Config_Banned_Detection.py` | `_BANNED_DETECT[profile][app]["MASKING"]["APPLY_MASKING"]` | Enable/disable redaction |
+| **Prompt Check Enabled** | `Config_Banned_Detection.py` | `_BANNED_DETECT[profile][app]["PROMPT_CHECK"]["Check"]` | LLM-based safety check toggle |
+| **Prompt Check LLM Params** | `Config_Banned_Detection.py` | `_BANNED_DETECT[profile][app]["PROMPT_CHECK"]["LLM_PARAM"]` | temperature, top_k, top_p for guard model |
+| **Pipeline Algorithms** | `Config_Banned_Detection.py` | `_BANNED_DETECT[profile][app]["PIPELINE_CHECK"]["PIPELINE"]["ALGOS_TO_PROCESS"]` | Which algorithms to run |
+| **Algorithm Thresholds** | `Config_Banned_Detection.py` | `_BANNED_DETECT[profile][app]["PIPELINE_CHECK"]["PIPELINE"][algo]["THRESHOLD"]` | Per-algorithm detection thresholds |
+| **Required Algorithm Agreement** | `Config_Banned_Detection.py` | `_BANNED_DETECT[profile][app]["PIPELINE_CHECK"]["PIPELINE"]["REQUIRED_ALGOS_ABOVE_THRESHOLD"]` | Consensus count |
+| **Jaccard N-gram Range** | `Config_Banned_Detection.py` | `...["PIPELINE"][algo]["CHAR_NGRAM_RANGE"]` | Character n-grams for Jaccard |
+| **BM25 Hyperparameters** | `Config_Banned_Detection.py` | `...["PIPELINE"]["BM25"]["TERM_FREQ_SATURATION"]`, `["LENGTH_NORMALIZATION"]` | k1 and b parameters |
+| **Regex Fuzzy Settings** | `Config_Banned_Detection.py` | `...["PIPELINE"]["Regex"]["WINDOW_MAX_CHARS"]`, `["PREFIX_SUFFIX_LEN"]`, `["SOFT_SCORE_FUZZY"]` | Fuzzy matching parameters |
+| **Levenshtein Threshold** | `Config_Banned_Detection.py` | `...["PIPELINE"]["Regex"]["Levenshtein"]["THRESHOLD"]` | Edit distance threshold |
+| **KeyBERT Top-K** | `Config_Banned_Detection.py` | `...["PIPELINE"]["Keybert"]["TOP_K"]` | Keyword extraction count |
+| **Default Algorithms** | `Config_Banned_Detection.py` | `_DEFAULT_ALGOS` | List of algorithms in default pipeline |
+| **Algorithm Name Constants** | `Config_Banned_Detection.py` | `_COSINE`, `_JACCARD`, `_REGEX`, `_KEYBERT`, `_LEVENSHTEIN`, `_BM25` | Single source of truth for names |
+| **CSV Keys** | `Config_Banned_Detection.py` | `_KEYS_FOR_HUMAN_REVIEW_CSV` | Column names in banned-word detection CSVs |
 | **WordNet Enabled** | `Config_Languages.py` | `_WORDNET["ENABLED"]` | Toggle synonym expansion |
 | **WordNet Depth** | `Config_Languages.py` | `_WORDNET["DEPTH"]` | Synonym lookup depth (1-2) |
 | **WordNet Max Synonyms** | `Config_Languages.py` | `_WORDNET["MAX_SYNONYMS_PER_PHRASE"]` | Per-phrase synonym limit |
@@ -318,7 +318,7 @@ This reference covers both a **quick-scan overview** (tables by topic and by con
 | **Request Timeout** | `Config_Global.py` | `REQUEST_TIMEOUT` | API timeout in seconds |
 | **JSON Repair** | `Config_Global.py` | `TRY_FIX_JSON_LLM_REPLY` | Attempt JSON fix |
 | **HF Home** | `Config_Global.py` | `_HF_HOME`, `_HF_HUB_CACHE` | Hugging Face cache directories |
-| **Config Hashes** | `Config_Global.py` | `_CRITICAL_CONFIG_HASHES` | Hash verification for Config_Models, Config_Banned, Config_WebSearch, Config_Internet_Env |
+| **Config Hashes** | `Config_Global.py` | `_CRITICAL_CONFIG_HASHES` | Hash verification for Config_Models, Config_Banned_Detection, Config_Banned_Content, Config_Banned_Prompts, Config_WebSearch, Config_Internet_Env |
 | **HF Offline Mode** | `Config_Internet_Env.py` | `os.environ["HF_HUB_OFFLINE"]`, `["TRANSFORMERS_OFFLINE"]`, `["HF_DATASETS_OFFLINE"]` | Disable HF Hub access |
 | **License Download** | `Config_Internet_Env.py` | `os.environ["LICENSE_DOWNLOAD"]` | Auto-download license files |
 | **HF High-Performance Transfer** | `Config_Internet_Env.py` | `os.environ["HF_XET_HIGH_PERFORMANCE"]` | Use Xet protocol for faster downloads |
@@ -411,13 +411,13 @@ _WEB_SEARCH["default_web_weight"] = 0.5  # 0.0-1.0+
 ### 🛡️ Compliance
 **Change banned word detection strictness:**
 ```python
-# Config_Banned.py
+# Config_Banned_Detection.py
 _BANNED_DETECT["STRICT_DETECT_CONFIG"]["RAGChat"]["PIPELINE_CHECK"]["PIPELINE"]["REQUIRED_ALGOS_ABOVE_THRESHOLD"] = 3  # 2-4
 ```
 
 **Enable/disable masking:**
 ```python
-# Config_Banned.py
+# Config_Banned_Detection.py
 _BANNED_DETECT["STRICT_DETECT_CONFIG"]["RAGChat"]["MASKING"]["APPLY_MASKING"] = True
 ```
 
@@ -438,27 +438,31 @@ set debug none     # Disable debugging
 
 ## 📑 Lookup order
 
-RAG-LCC uses **seven** configuration files, all located under `src/Configuration/`. Six are merged by `Config()` in a fixed precedence order (highest wins):
+RAG-LCC uses **nine** configuration files, all located under `src/Configuration/`. Eight are merged by `Config()` in a fixed precedence order (highest wins):
 
-> **CLI args** are checked before any file and override everything (except `_`-prefixed keys).
+> **CLI args** are validated first and may override only keys from
+> `Config_Global.py` and the active app config. Keys starting with `_` or `$`
+> are rejected.
 
-1. **App-specific** — `Config_RAGChat.py`, `Config_RAGLoad.py`, or `Config_DocClassify.py` (highest file priority)
+1. **App-specific** — `Config_RAGChat.py`, `Config_RAGLoad.py`, `Config_DocClassify.py`, or `Config_RAGChatService.py` (highest file priority)
 2. **Config_WebSearch.py** — web search master switch, backend, compliance gates
-3. **Config_Banned.py** — detection algorithms, thresholds, banned words, masking rules
-4. **Config_Models.py** — embedding, cross-encoder, and LLM model definitions
-5. **Config_Languages.py** — active language set, Argos pair catalog, per-language spaCy maps, BM25/Graph/Regex language-aware slots
-6. **Config_Global.py** — shared defaults (paths, hardware, ChromaDB, token budget, debug)
+3. **Config_Banned_Detection.py** — detection algorithms, thresholds, app-level compliance pipeline
+4. **Config_Banned_Content.py** — banned words, masking rules, hard-block and injection patterns
+5. **Config_Banned_Prompts.py** — LLM compliance prompt templates and prompt-level extensions
+6. **Config_Models.py** — embedding, cross-encoder, and LLM model definitions
+7. **Config_Languages.py** — active language set, Argos pair catalog, per-language spaCy maps, BM25/Graph/Regex language-aware slots
+8. **Config_Global.py** — shared defaults (paths, hardware, ChromaDB, token budget, debug)
 
 `Config_Internet_Env.py` is separate from `Config()` merge order: it sets environment variables for internet access, tracing, and offline toggles.
 
 **Notes:**
 
-- Files 1-6 are loaded as Python modules and therefore require valid Python syntax.
+- Files 1-8 are loaded as Python modules and therefore require valid Python syntax.
 - `Config_Internet_Env.py` contains **only environment variables** (no regular config keys).
 - Keys starting with `_` are internal and **cannot** be overridden via CLI arguments.
 - Keys starting with `$` are indirect lookups (the value names another config key).
 - Top-level settings must be **UPPERCASE**.
-- CLI overrides apply **only** to `Config_Global.py` and the **app-specific** config (`Config_RAGChat.py`, `Config_RAGLoad.py`, or `Config_DocClassify.py`). Keys in `Config_Languages.py`, `Config_Models.py`, `Config_Banned.py`, `Config_WebSearch.py`, and `Config_Internet_Env.py` are **not** exposed as CLI arguments.
+- CLI overrides apply **only** to `Config_Global.py` and the **app-specific** config (`Config_RAGChat.py`, `Config_RAGLoad.py`, `Config_DocClassify.py`, or `Config_RAGChatService.py`). Keys in `Config_Load_Retrievers.py`, `Config_Load_Chunkers.py`, `Config_Languages.py`, `Config_Models.py`, `Config_Banned_Detection.py`, `Config_Banned_Content.py`, `Config_Banned_Prompts.py`, `Config_WebSearch.py`, and `Config_Internet_Env.py` are **not** exposed as CLI arguments.
 
 ## 🌐 1. Config_Global.py — Shared Defaults
 
@@ -519,13 +523,13 @@ See `Config_Models.py` for model-specific values.
 
 | Key | Default used in this repository | Purpose |
 | --- | --- | --- |
-| `RETRIEVAL_STORES_KEEP` | `False` | `True` = preserve existing collection, BM25 index, and graph index on startup. `False` = wipe and recreate. Applies to `RAGLoad.py` **only** |
-| `COLLECTION` | `"Test"` | Active ChromaDB collection name. Override with `--collection` on the CLI. |
+| `RETRIEVAL_STORES_KEEP` | `False` | `True` = preserve existing collection, BM25 index, and graph index on startup. `False` = wipe and recreate. Defined in `Config_Load_Retrievers.py`; applies to `RAGLoad.py` **only**. |
+| `COLLECTION` | `"Test"` | Active ChromaDB collection name. Defined in `Config_Load_Retrievers.py`; change it in that file when you want a different startup collection. |
 
 All collection-defining settings — HNSW neighbour counts, chunker selection,
 chunk sizes, and AUTO_CHUNK routing — are grouped under the **COLLECTION SCHEMA**
-section in `Config_Global.py`. They live here (not in `Config_RAGLoad.py`)
-so that RAGLoad and RAGChat both refer to the same values
+section in `Config_Load_Retrievers.py` and `Config_Load_Chunkers.py`. They live
+here (not in `Config_RAGLoad.py`) so that RAGLoad and RAGChat both refer to the same values
 ([Lookup order](#-lookup-order)).
 Switching any value requires dropping and reloading the collection
 (`RETRIEVAL_STORES_KEEP = False`).
@@ -546,7 +550,7 @@ _CHROMA_EMBED_AND_RETRIEVE_PARAMS = {
 ```
 
 Chunking strategy, per-file-type routing, and chunker parameters are configured
-via `_ACTIVE_CHUNKER_CONFIG`, `_CHUNK_STRATEGY`, and `_CHUNKERS` — also in the COLLECTION SCHEMA
+via `_ACTIVE_CHUNKER_CONFIG`, `_CHUNK_STRATEGY`, and `_CHUNKERS` in `Config_Load_Chunkers.py`
 section.  `_CHUNKERS.SEMANTIC.MIN_SENTENCE_WORDS` (default **15**) merges
 consecutive short fragments before embedding, which improves retrieval for
 PDF tables and spec sheets. For the full reference and chunker descriptions, see
@@ -792,9 +796,9 @@ Defined in `Config_Languages.py`. Groups active-language selection, language-cod
 | `_ARGOS_DEFINITIONS.LANG_CODE_TO_NAME` | See config file | ISO-639-1 language codes mapped to NLTK human-readable names (e.g. `"de"`→`"german"`). |
 | `_ARGOS_DEFINITIONS.ARGOS_LANGUAGES` | `[("de", "en"), ("en", "de"), ("es", "en"), ("en", "es"), ("fr", "en"), ("en", "fr"), ("it", "en"), ("en", "it")]` | List of (from_code, to_code) tuples for Argos Translate language pairs. Keep EN→X for banlist localization and X→EN for query normalization. |
 
-## 🛡️ 2b. Config_Banned.py — Detection & Compliance
+## 🛡️ 2b. Config_Banned_* — Detection & Compliance
 
-This file defines the detection algorithms, thresholds, banned word lists, and masking rules used by RAGLoad, RAGChat, and DocClassify. After editing it, update `_CRITICAL_CONFIG_HASHES["Config_Banned"]` in `Config_Global.py`.
+This file defines the detection algorithms, thresholds, banned word lists, and masking rules used by RAGLoad, RAGChat, and DocClassify. After editing any `Config_Banned*` file, update `_CRITICAL_CONFIG_HASHES` in `Config_Global.py` (recommended: run `python src/Scripts/RecalcConfigHashes.py`).
 
 ### 🔤 Algorithm Constants (Single Source of Truth)
 
@@ -1700,9 +1704,9 @@ All settings from `Config_RAGChat.py` are available in `Config_RAGChatService.py
 
 `Config_RAGChatService.py` uses `from Configuration.Config_RAGChat import *` to inherit all settings, then adds its own service-specific overrides and additions. This ensures consistent behavior between the CLI and service versions while allowing endpoint-specific configuration.
 
-## 🚧 7. Config_Banned.py — Detection, Thresholds, and Masking
+## 🚧 7. Config_Banned_* — Detection, Thresholds, and Masking
 
-After editing `Config_Banned.py` update `_CRITICAL_CONFIG_HASHES["Config_Banned"]` in `Config_Global.py`.
+After editing any `Config_Banned*` file, run `python src/Scripts/RecalcConfigHashes.py` to update `_CRITICAL_CONFIG_HASHES` in `Config_Global.py`.
 
 ### 🧮 Detection Algorithms
 
@@ -1747,7 +1751,7 @@ Algorithm-specific parameters:
 - **BM25**: `TERM_FREQ_SATURATION` (k1), `LENGTH_NORMALIZATION` (b), `MIN_OVERLAP`, `MIN_RAW_SCORE`, `NORM_PERCENTILE`.
 - **Regex**: Two-step matching controlled by three scoring keys. `SOFT_SCORE_HARD` is the score assigned on a strict (exact word-boundary) match. `SOFT_SCORE_FUZZY` is the lower score assigned when only the fuzzy anchored pattern matches. `FUZZY_REGEX_EVAL_AFTER_HARD` (`True`/`False`) controls whether the fuzzy step runs at all — when `False`, only strict matching is used. Additional parameters: `WINDOW_MAX_CHARS`, `PREFIX_SUFFIX_LEN`, `SEPARATOR_CLASS`, and a nested `Levenshtein.THRESHOLD`.
 - **KeyBERT**: `TOP_K` — number of keywords extracted per check (larger at load time, smaller at chat time).
-- **Cosine**: No additional parameters beyond `THRESHOLD` and `THRESHOLD_MIN`. Disabled by default; enable if embedding vectors are available (commented out in `Config_Banned.py`).
+- **Cosine**: No additional parameters beyond `THRESHOLD` and `THRESHOLD_MIN`. Disabled by default; enable if embedding vectors are available (commented out in `Config_Banned_Detection.py`).
 
 ### 🤝 Consensus Rules
 
@@ -1792,7 +1796,7 @@ To define a custom masking profile, create a new dictionary (for example, `MY_MA
 
 ### 🌐 Web-Search Intent Filter Extensions
 
-`WEB_SEARCH_INTENT_EXTENSIONS` (at the end of `Config_Banned.py`) lets operators
+`WEB_SEARCH_INTENT_EXTENSIONS` (in `Config_WebSearch.py`) lets operators
 extend the baseline web-search intent classifier defined in `Config_WebSearch.py`
 without editing that file. Three keys are supported:
 
@@ -1804,7 +1808,7 @@ without editing that file. Three keys are supported:
 
 All three default to empty dicts — no behavioral change until populated.
 
-> **After editing `WEB_SEARCH_INTENT_EXTENSIONS`**, update `_CRITICAL_CONFIG_HASHES["Config_Banned"]`
+> **After editing `WEB_SEARCH_INTENT_EXTENSIONS`**, update `_CRITICAL_CONFIG_HASHES["Config_WebSearch"]`
 > in `Config_Global.py`. Run `python src/Scripts/RecalcConfigHashes.py` to
 > calculate and apply the new hash automatically.
 
@@ -1832,13 +1836,19 @@ NLTK stopwords corpora are script-managed via `python src/Scripts/NLTK_Stopwords
 
 ## 💻 CLI Parameter Override
 
-You can override any uppercase, non-underscore-prefixed key from `Config_Global.py` or the app-specific config file (`Config_RAGChat.py`, `Config_RAGLoad.py`, `Config_DocClassify.py`, `Config_RAGChatService.py`) via the command line. Keys in `Config_Models.py` and `Config_Banned.py` are not available as CLI arguments — edit those files directly.
+You can override uppercase keys from `Config_Global.py` and the app-specific
+config file (`Config_RAGChat.py`, `Config_RAGLoad.py`, `Config_DocClassify.py`,
+`Config_RAGChatService.py`) via the command line. Keys that start with `_` or `$`
+are rejected. Keys in `Config_Load_Retrievers.py`, `Config_Load_Chunkers.py`,
+`Config_Models.py`, `Config_Languages.py`, `Config_Banned_Detection.py`,
+`Config_Banned_Content.py`, `Config_Banned_Prompts.py`, `Config_WebSearch.py`, and
+`Config_Internet_Env.py` are not available as CLI arguments — edit those files directly.
 
 ```bash
-python ./src/Apps/RAGLoad.py --collection mytest --doc_dir MyDocs --debug_level 6
-python ./src/Apps/RAGChat.py --collection mytest
-python ./src/Apps/RAGChatService.py --collection mytest
-python ./src/Apps/DocClassify.py --collection mytest --debug_level 4
+python ./src/Apps/RAGLoad.py --doc-dir MyDocs --debug-level 6
+python ./src/Apps/RAGChat.py --debug-level 4
+python ./src/Apps/RAGChatService.py --port 11435
+python ./src/Apps/DocClassify.py --doc-dir MyDocs --debug-level 4
 ```
 
 Run with `--help` to see all overridable parameters.
@@ -1933,13 +1943,13 @@ python src/Scripts/ArgosTranslatePackages.py remove
 | Issue | Cause | Solution |
 | --- | --- | --- |
 | `Detected modification of Configuration.Config_Models` / `Reference hash _CRITICAL_CONFIG_HASHES["Config_Models"] ...` | Edited `Config_Models.py` without updating hash | Copy the new hash from the startup message into `_CRITICAL_CONFIG_HASHES["Config_Models"]` in `Config_Global.py`. See [Update the hashes](INSTALL.md#-update-the-hashes). |
-| `Detected modification of Configuration.Config_Banned` / `Reference hash _CRITICAL_CONFIG_HASHES["Config_Banned"] ...` | Edited `Config_Banned.py` without updating hash | Copy the new hash from the startup message into `_CRITICAL_CONFIG_HASHES["Config_Banned"]` in `Config_Global.py`. See [Update the hashes](INSTALL.md#-update-the-hashes). |
-| 'ModuleNotFoundError: No module named 'Configuration.Config_Banned' | You forgot to copy Config_Banned.py | See [Review the example config files](INSTALL.md#-review-the-example-config-files) and [Copy example configs into place](INSTALL.md#-if-ok-copy-example-configs-into-place) |
+| `Detected modification of Configuration.Config_Banned_*` / `Reference hash _CRITICAL_CONFIG_HASHES["Config_Banned_..."] ...` | Edited one of `Config_Banned_Detection.py`, `Config_Banned_Content.py`, or `Config_Banned_Prompts.py` without updating hash | Copy the new hash from the startup message into the matching `_CRITICAL_CONFIG_HASHES[...]` entry in `Config_Global.py`. See [Update the hashes](INSTALL.md#-update-the-hashes). |
+| `ModuleNotFoundError` for `Configuration.Config_Banned_Detection` / `Configuration.Config_Banned_Content` / `Configuration.Config_Banned_Prompts` | One of the split banned config modules is missing or renamed | Restore the missing file under `src/Configuration/` and restart. |
 | 'ModuleNotFoundError: No module named 'Configuration.Config_Models' | You forgot to copy Config_Models.py | See [Review the example config files](INSTALL.md#-review-the-example-config-files) and [Copy example configs into place](INSTALL.md#-if-ok-copy-example-configs-into-place) |
-| `Execution stopped due to compliance check` | Config hash not updated after editing `Config_Models.py` or `Config_Banned.py` | Update `_CRITICAL_CONFIG_HASHES["Config_Models"]` and `_CRITICAL_CONFIG_HASHES["Config_Banned"]` in `Config_Global.py` and restart. See [Update the hashes](INSTALL.md#-update-the-hashes). |
+| `Execution stopped due to compliance check` | Config hash not updated after editing a pinned config file | Update the corresponding entries in `_CRITICAL_CONFIG_HASHES` (for example `Config_Models`, `Config_Banned_Detection`, `Config_Banned_Content`, `Config_Banned_Prompts`, `Config_Load_Retrievers`, `Config_Load_Chunkers`, `Config_WebSearch`, `Config_Internet_Env`) and restart. See [Update the hashes](INSTALL.md#-update-the-hashes). |
 | Embeddings seem wrong | Changed embedding model without re-embedding | Set `RETRIEVAL_STORES_KEEP = False` and re-run RAGLoad or delete the collection manually (`./chromadb/docs`) |
 | RAGChat is slow | Too many `NEIGHBORS_RETRIEVE` or large `CHUNK_SIZE` | Reduce both in `Config_Global.py` |
-| Detection not working | Phrases not in banned list | Add to `Config_Banned.py` and [update the hash](INSTALL.md#-update-the-hashes) |
+| Detection not working | Phrases not in banned list | Add to `Config_Banned_Content.py` and [update the hash](INSTALL.md#-update-the-hashes) |
 | Low retrieval quality | Bad chunk settings | Test `CHUNK_SIZE`: 128, 256, 512. Regenerate (load) the collection |
 | `RequestsDependencyWarning: urllib3 … or chardet … doesn't match a supported version!` | `chardet` ≥ 6 installed but `requests` requires `chardet < 6` | Run `pip install "chardet<6,>=3.0.2"` to downgrade to a compatible version (e.g. 5.2.0) |
 | `Language en package default expects mwt, which has been added` | Stanza (used by Argos Translate) auto-adds the Multi-Word Token processor for the English model | Harmless informational warning — no action required |

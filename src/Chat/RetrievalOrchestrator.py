@@ -37,6 +37,14 @@ class _GuardrailInputs:
 
 
 @dataclass(frozen=True)
+class _OriginalQueryLeg:
+    enabled: bool
+    query: str
+    language_bucket: str | None
+    reason: str
+
+
+@dataclass(frozen=True)
 class _GraphRegexStageIteration:
     language_bucket: str | None
     file_filter: dict[str, Any] | None
@@ -79,6 +87,7 @@ class _LocalStageInputs:
     use_guardrail: bool
     alternate_queries: list[str]
     file_filter: dict[str, Any] | None
+    original_query_leg: _OriginalQueryLeg
 
 
 @dataclass(frozen=True)
@@ -129,6 +138,7 @@ class RetrievalOrchestrator:
             list[_GraphRegexStageIteration] | None
         ) = None
         self._suppress_indexed_retriever_dispatch_trace = False
+        self._indexed_stage_shape_queries = True
 
     def _trace_language_fallback(self, mySession: Session) -> str:
         """Return the best available session language label for trace lines."""
@@ -375,6 +385,166 @@ class RetrievalOrchestrator:
         if len(clipped) <= limit:
             return clipped
         return clipped[: limit - 3] + "..."
+
+    @staticmethod
+    def _is_english_language_bucket(language_bucket: str | None) -> bool:
+        """Return True when *language_bucket* represents English."""
+        text = str(language_bucket or "").strip().lower()
+        if not text:
+            return False
+        return text == "en" or text.startswith("en-") or text == "english"
+
+    def _resolve_original_query_leg(
+        self,
+        mySession: Session,
+        *,
+        primary_query: str,
+        guardrail_query: str,
+    ) -> _OriginalQueryLeg:
+        """Decide whether to run a native-language vector retrieval leg."""
+        original_query = str(
+            getattr(mySession, "user_query_original", None)
+            or getattr(mySession, "query", None)
+            or ""
+        ).strip()
+        if not original_query:
+            return _OriginalQueryLeg(
+                enabled=False,
+                query="",
+                language_bucket=None,
+                reason="missing original query",
+            )
+
+        language_bucket = self._normalize_language_bucket(
+            getattr(mySession, "user_language", None)
+        )
+        if not language_bucket:
+            return _OriginalQueryLeg(
+                enabled=False,
+                query=original_query,
+                language_bucket=None,
+                reason="missing user-language detection",
+            )
+
+        if self._is_english_language_bucket(language_bucket):
+            return _OriginalQueryLeg(
+                enabled=False,
+                query=original_query,
+                language_bucket=language_bucket,
+                reason="user query already in English",
+            )
+
+        lower_original = original_query.lower()
+        if lower_original == (primary_query or "").strip().lower():
+            return _OriginalQueryLeg(
+                enabled=False,
+                query=original_query,
+                language_bucket=language_bucket,
+                reason="original query equals primary retrieval query",
+            )
+        if guardrail_query and lower_original == guardrail_query.strip().lower():
+            return _OriginalQueryLeg(
+                enabled=False,
+                query=original_query,
+                language_bucket=language_bucket,
+                reason="original query equals guardrail retrieval query",
+            )
+
+        return _OriginalQueryLeg(
+            enabled=True,
+            query=original_query,
+            language_bucket=language_bucket,
+            reason="non-English original query differs from English retrieval legs",
+        )
+
+    def _emit_original_query_leg_status(
+        self,
+        *,
+        original_query_leg: _OriginalQueryLeg,
+    ) -> None:
+        """Emit one status line describing original-language leg planning."""
+        status = "on" if original_query_leg.enabled else "off"
+        lang = original_query_leg.language_bucket or "unknown"
+        query_preview = self._clip_message_text(original_query_leg.query)
+        self._write_retrieval_orchestration(
+            severity="I",
+            message=(
+                "original-language vector leg: "
+                f"{status} lang={lang} "
+                f"query={query_preview!r} "
+                f"reason={original_query_leg.reason}"
+            ),
+            color=BRIGHT_MAGENTA,
+        )
+
+    @staticmethod
+    def _doc_identity(doc: Any) -> str:
+        """Return a stable best-effort identity key for deduping documents."""
+        metadata_obj = getattr(doc, "metadata", None)
+        metadata = (
+            cast(dict[str, Any], metadata_obj) if isinstance(metadata_obj, dict) else {}
+        )
+        doc_id = metadata.get("id")
+        if doc_id is not None:
+            doc_id_text = str(doc_id).strip()
+            if doc_id_text:
+                return f"id:{doc_id_text}"
+
+        page_content = getattr(doc, "page_content", None)
+        if isinstance(page_content, str) and page_content:
+            return f"text:{page_content}"
+
+        return f"obj:{id(doc)}"
+
+    @staticmethod
+    def _append_retriever_source_marker(doc: Any, marker: str) -> None:
+        """Append *marker* to doc.metadata['retriever_sources'] when possible."""
+        if not marker:
+            return
+        metadata_obj = getattr(doc, "metadata", None)
+        if not isinstance(metadata_obj, dict):
+            return
+
+        metadata = cast(dict[str, Any], metadata_obj)
+        raw_sources = str(metadata.get("retriever_sources", "") or "").strip()
+        if not raw_sources:
+            metadata["retriever_sources"] = marker
+            return
+
+        source_parts = [part.strip() for part in raw_sources.split(",") if part.strip()]
+        if marker in source_parts:
+            return
+        metadata["retriever_sources"] = ",".join(source_parts + [marker])
+
+    def _merge_docs_with_native_leg(
+        self,
+        *,
+        base_docs: list[Any],
+        native_docs: list[Any],
+        source_marker: str,
+    ) -> tuple[list[Any], int, int]:
+        """Merge native-leg docs into *base_docs* with stable de-duplication."""
+        merged_docs = list(base_docs)
+        existing_by_identity: dict[str, Any] = {
+            self._doc_identity(doc): doc for doc in merged_docs
+        }
+
+        native_added = 0
+        native_overlap = 0
+        for doc in native_docs:
+            identity = self._doc_identity(doc)
+            existing_doc = existing_by_identity.get(identity)
+            if existing_doc is not None:
+                native_overlap += 1
+                self._append_retriever_source_marker(existing_doc, source_marker)
+                continue
+
+            self._append_retriever_source_marker(doc, source_marker)
+            merged_docs.append(doc)
+            existing_by_identity[identity] = doc
+            native_added += 1
+
+        return merged_docs, native_added, native_overlap
 
     def _emit_vector_query_language_flow(self, mySession: Session) -> None:
         """Emit language-flow status only for Vector execution."""
@@ -752,68 +922,108 @@ class RetrievalOrchestrator:
         }
         return normalized_docs, top_k_orig_query_en, top_k_post_rewrite_query_en
 
-    def _run_bm25_indexed_stage(
+    def _stage_invocation_values(
+        self,
+        stage_invocation: Any,
+    ) -> tuple[str | None, dict[str, Any] | None, str, str]:
+        """Extract stage language/filter/query values from an invocation object."""
+        stage_file_filter_obj = getattr(stage_invocation, "file_filter", None)
+        stage_file_filter: dict[str, Any] | None = (
+            cast(dict[str, Any], stage_file_filter_obj)
+            if isinstance(stage_file_filter_obj, dict)
+            else None
+        )
+        stage_primary_query = str(getattr(stage_invocation, "primary_query", "") or "")
+        stage_guardrail_query = str(
+            getattr(stage_invocation, "guardrail_query", "") or ""
+        )
+        stage_language_bucket = self._normalize_language_bucket(
+            getattr(stage_invocation, "language_bucket", None)
+        )
+        if stage_language_bucket is None:
+            stage_language_bucket = self._language_bucket_from_filter(stage_file_filter)
+        return (
+            stage_language_bucket,
+            stage_file_filter,
+            stage_primary_query,
+            stage_guardrail_query,
+        )
+
+    def _run_indexed_stage_group(
         self,
         mySession: Session,
         *,
-        bm25_specs: list[IndexedSpec],
-        primary_query: str,
-        guardrail_query: str,
+        stage_invocations: list[Any],
+        specs: list[IndexedSpec],
         use_guardrail: bool,
-        file_filter: dict[str, Any] | None,
+        dispatch_per_spec: bool,
     ) -> tuple[dict[str, list[Any]], int, int]:
-        """Run BM25 indexed stage with language-bucket iteration support."""
+        """Run indexed stage invocations for one spec group.
+
+        ``dispatch_per_spec=False`` executes all ``specs`` together per stage
+        invocation (BM25 behavior). ``dispatch_per_spec=True`` executes one spec
+        at a time per stage invocation (Graph/Regex behavior).
+        """
         merged_docs: dict[str, list[Any]] = {
             "BM25": [],
             "Graph": [],
             "Regex": [],
         }
-        if not bm25_specs:
+        if not specs or not stage_invocations:
             return merged_docs, 0, 0
 
         total_top_k_orig_query_en = 0
         total_top_k_post_rewrite_query_en = 0
-
-        for stage_invocation in self._bm25_stage_invocations(
-            mySession,
-            file_filter=file_filter,
-            primary_query=primary_query,
-            guardrail_query=guardrail_query,
-        ):
-            if not self._suppress_indexed_retriever_dispatch_trace:
-                self._trace_query_dispatch(
-                    mySession,
-                    retriever_scope="BM25",
-                    language_bucket=self._language_bucket_from_filter(
-                        stage_invocation.file_filter
-                    ),
-                    primary_query=stage_invocation.primary_query,
-                    guardrail_query=stage_invocation.guardrail_query,
-                    use_guardrail=use_guardrail,
+        for stage_invocation in stage_invocations:
+            (
+                stage_language_bucket,
+                stage_file_filter,
+                stage_primary_query,
+                stage_guardrail_query,
+            ) = self._stage_invocation_values(stage_invocation)
+            spec_groups: list[list[IndexedSpec]] = (
+                [[spec] for spec in specs] if dispatch_per_spec else [specs]
+            )
+            for stage_specs in spec_groups:
+                if not stage_specs:
+                    continue
+                dispatch_scope = (
+                    str(stage_specs[0][0])
+                    if len(stage_specs) == 1
+                    else "/".join(str(spec[0]) for spec in stage_specs)
                 )
-            (
-                stage_docs,
-                stage_top_k_orig_query_en,
-                stage_top_k_post_rewrite_query_en,
-            ) = self._run_indexed_specs_stage(
-                mySession,
-                indexed_specs=bm25_specs,
-                primary_query=stage_invocation.primary_query,
-                guardrail_query=stage_invocation.guardrail_query,
-                use_guardrail=use_guardrail,
-                file_filter=stage_invocation.file_filter,
-            )
+                if not self._suppress_indexed_retriever_dispatch_trace:
+                    self._trace_query_dispatch(
+                        mySession,
+                        retriever_scope=dispatch_scope,
+                        language_bucket=stage_language_bucket,
+                        primary_query=stage_primary_query,
+                        guardrail_query=stage_guardrail_query,
+                        use_guardrail=use_guardrail,
+                    )
 
-            merged_docs = self._merge_indexed_stage_docs(merged_docs, stage_docs)
-            (
-                total_top_k_orig_query_en,
-                total_top_k_post_rewrite_query_en,
-            ) = self._host._accumulate_topk_counts(
-                total_top_k_orig_query_en,
-                total_top_k_post_rewrite_query_en,
-                stage_top_k_orig_query_en,
-                stage_top_k_post_rewrite_query_en,
-            )
+                (
+                    stage_docs,
+                    stage_top_k_orig_query_en,
+                    stage_top_k_post_rewrite_query_en,
+                ) = self._run_indexed_specs_stage(
+                    mySession,
+                    indexed_specs=stage_specs,
+                    primary_query=stage_primary_query,
+                    guardrail_query=stage_guardrail_query,
+                    use_guardrail=use_guardrail,
+                    file_filter=stage_file_filter,
+                )
+                merged_docs = self._merge_indexed_stage_docs(merged_docs, stage_docs)
+                (
+                    total_top_k_orig_query_en,
+                    total_top_k_post_rewrite_query_en,
+                ) = self._host._accumulate_topk_counts(
+                    total_top_k_orig_query_en,
+                    total_top_k_post_rewrite_query_en,
+                    stage_top_k_orig_query_en,
+                    stage_top_k_post_rewrite_query_en,
+                )
 
         return (
             merged_docs,
@@ -1224,18 +1434,33 @@ class RetrievalOrchestrator:
     ) -> list[_GraphRegexStageIteration]:
         """Plan Graph/Regex iterations with staged filters and shaped queries."""
         iterations: list[_GraphRegexStageIteration] = []
+        shape_queries = bool(self._indexed_stage_shape_queries)
         for stage_file_filter in self._graph_regex_stage_filters(
             mySession, file_filter
         ):
             stage_language_bucket = self._language_bucket_from_filter(stage_file_filter)
-            stage_primary_query, stage_guardrail_query = (
-                self._shape_graph_regex_stage_queries(
-                    mySession,
-                    language_bucket=stage_language_bucket,
-                    primary_query=primary_query,
-                    guardrail_query=guardrail_query,
+            if shape_queries:
+                stage_primary_query, stage_guardrail_query = (
+                    self._shape_graph_regex_stage_queries(
+                        mySession,
+                        language_bucket=stage_language_bucket,
+                        primary_query=primary_query,
+                        guardrail_query=guardrail_query,
+                    )
                 )
-            )
+            else:
+                stage_primary_query = primary_query
+                stage_guardrail_query = guardrail_query
+                self._write_indexed_stage_query_status(
+                    target_language=self._normalize_language_bucket(
+                        stage_language_bucket
+                    ),
+                    was_translated=False,
+                    primary_query=primary_query,
+                    stage_primary_query=stage_primary_query,
+                    guardrail_query=guardrail_query,
+                    stage_guardrail_query=stage_guardrail_query,
+                )
             iterations.append(
                 _GraphRegexStageIteration(
                     language_bucket=stage_language_bucket,
@@ -1265,74 +1490,6 @@ class RetrievalOrchestrator:
             guardrail_query=guardrail_query,
         )
 
-    def _run_graph_regex_indexed_stage(
-        self,
-        mySession: Session,
-        *,
-        graph_regex_specs: list[IndexedSpec],
-        primary_query: str,
-        guardrail_query: str,
-        use_guardrail: bool,
-        file_filter: dict[str, Any] | None,
-    ) -> tuple[dict[str, list[Any]], int, int]:
-        """Run Graph/Regex indexed stage with per-language query shaping."""
-        merged_docs: dict[str, list[Any]] = {
-            "BM25": [],
-            "Graph": [],
-            "Regex": [],
-        }
-        if not graph_regex_specs:
-            return merged_docs, 0, 0
-
-        total_top_k_orig_query_en = 0
-        total_top_k_post_rewrite_query_en = 0
-
-        # Each planned item represents one Graph/Regex retrieval iteration.
-        for stage_iteration in self._shared_graph_regex_stage_iterations(
-            mySession,
-            file_filter=file_filter,
-            primary_query=primary_query,
-            guardrail_query=guardrail_query,
-        ):
-            for spec in graph_regex_specs:
-                if not self._suppress_indexed_retriever_dispatch_trace:
-                    self._trace_query_dispatch(
-                        mySession,
-                        retriever_scope=str(spec[0]),
-                        language_bucket=stage_iteration.language_bucket,
-                        primary_query=stage_iteration.primary_query,
-                        guardrail_query=stage_iteration.guardrail_query,
-                        use_guardrail=use_guardrail,
-                    )
-                (
-                    stage_docs,
-                    stage_top_k_orig_query_en,
-                    stage_top_k_post_rewrite_query_en,
-                ) = self._run_indexed_specs_stage(
-                    mySession,
-                    indexed_specs=[spec],
-                    primary_query=stage_iteration.primary_query,
-                    guardrail_query=stage_iteration.guardrail_query,
-                    use_guardrail=use_guardrail,
-                    file_filter=stage_iteration.file_filter,
-                )
-                merged_docs = self._merge_indexed_stage_docs(merged_docs, stage_docs)
-                (
-                    total_top_k_orig_query_en,
-                    total_top_k_post_rewrite_query_en,
-                ) = self._host._accumulate_topk_counts(
-                    total_top_k_orig_query_en,
-                    total_top_k_post_rewrite_query_en,
-                    stage_top_k_orig_query_en,
-                    stage_top_k_post_rewrite_query_en,
-                )
-
-        return (
-            merged_docs,
-            total_top_k_orig_query_en,
-            total_top_k_post_rewrite_query_en,
-        )
-
     @staticmethod
     def _merge_indexed_stage_docs(
         first_stage_docs: dict[str, list[Any]],
@@ -1360,6 +1517,14 @@ class RetrievalOrchestrator:
     ) -> _IndexedStageResult:
         """Run BM25 and Graph/Regex indexed stages and merge their outputs."""
         bm25_specs, graph_regex_specs = self._partition_indexed_specs(indexed_specs)
+
+        indexed_docs: dict[str, list[Any]] = {
+            "BM25": [],
+            "Graph": [],
+            "Regex": [],
+        }
+        top_k_orig_query_en = 0
+        top_k_post_rewrite_query_en = 0
 
         shared_stage_iterations: list[_GraphRegexStageIteration] | None = None
         if bm25_specs or graph_regex_specs:
@@ -1392,58 +1557,61 @@ class RetrievalOrchestrator:
         self._active_indexed_stage_iterations = shared_stage_iterations
         self._suppress_indexed_retriever_dispatch_trace = suppress_dispatch_trace
         try:
-            (
-                bm25_docs_map,
-                bm25_top_k_orig_query_en,
-                bm25_top_k_post_rewrite_query_en,
-            ) = self._run_bm25_indexed_stage(
-                mySession,
-                bm25_specs=bm25_specs,
-                primary_query=primary_query,
-                guardrail_query=guardrail_query,
-                use_guardrail=use_guardrail,
-                file_filter=file_filter,
-            )
-
-            (
-                graph_regex_docs_map,
-                graph_regex_top_k_orig_query_en,
-                graph_regex_top_k_post_rewrite_query_en,
-            ) = self._run_graph_regex_indexed_stage(
-                mySession,
-                graph_regex_specs=graph_regex_specs,
-                primary_query=primary_query,
-                guardrail_query=guardrail_query,
-                use_guardrail=use_guardrail,
-                file_filter=file_filter,
-            )
+            stage_groups: list[tuple[list[Any], list[IndexedSpec], bool]] = [
+                (
+                    cast(
+                        list[Any],
+                        self._bm25_stage_invocations(
+                            mySession,
+                            file_filter=file_filter,
+                            primary_query=primary_query,
+                            guardrail_query=guardrail_query,
+                        ),
+                    ),
+                    bm25_specs,
+                    False,
+                ),
+                (
+                    cast(
+                        list[Any],
+                        self._shared_graph_regex_stage_iterations(
+                            mySession,
+                            file_filter=file_filter,
+                            primary_query=primary_query,
+                            guardrail_query=guardrail_query,
+                        ),
+                    ),
+                    graph_regex_specs,
+                    True,
+                ),
+            ]
+            for stage_invocations, specs, dispatch_per_spec in stage_groups:
+                (
+                    stage_docs,
+                    stage_top_k_orig_query_en,
+                    stage_top_k_post_rewrite_query_en,
+                ) = self._run_indexed_stage_group(
+                    mySession,
+                    stage_invocations=stage_invocations,
+                    specs=specs,
+                    use_guardrail=use_guardrail,
+                    dispatch_per_spec=dispatch_per_spec,
+                )
+                indexed_docs = self._merge_indexed_stage_docs(indexed_docs, stage_docs)
+                (
+                    top_k_orig_query_en,
+                    top_k_post_rewrite_query_en,
+                ) = self._host._accumulate_topk_counts(
+                    top_k_orig_query_en,
+                    top_k_post_rewrite_query_en,
+                    stage_top_k_orig_query_en,
+                    stage_top_k_post_rewrite_query_en,
+                )
         finally:
             self._active_indexed_stage_iterations = previous_stage_iterations
             self._suppress_indexed_retriever_dispatch_trace = (
                 previous_suppress_dispatch_trace
             )
-
-        indexed_docs = self._merge_indexed_stage_docs(
-            bm25_docs_map,
-            graph_regex_docs_map,
-        )
-
-        top_k_orig_query_en, top_k_post_rewrite_query_en = (
-            self._host._accumulate_topk_counts(
-                0,
-                0,
-                bm25_top_k_orig_query_en,
-                bm25_top_k_post_rewrite_query_en,
-            )
-        )
-        top_k_orig_query_en, top_k_post_rewrite_query_en = (
-            self._host._accumulate_topk_counts(
-                top_k_orig_query_en,
-                top_k_post_rewrite_query_en,
-                graph_regex_top_k_orig_query_en,
-                graph_regex_top_k_post_rewrite_query_en,
-            )
-        )
 
         return _IndexedStageResult(
             bm25_docs=indexed_docs["BM25"],
@@ -1452,6 +1620,32 @@ class RetrievalOrchestrator:
             top_k_orig_query_en=top_k_orig_query_en,
             top_k_post_rewrite_query_en=top_k_post_rewrite_query_en,
         )
+
+    def _run_indexed_retrieval_with_shape_mode(
+        self,
+        mySession: Session,
+        *,
+        indexed_specs: list[IndexedSpec],
+        primary_query: str,
+        guardrail_query: str,
+        use_guardrail: bool,
+        file_filter: dict[str, Any] | None,
+        shape_queries: bool,
+    ) -> _IndexedStageResult:
+        """Run indexed retrieval while temporarily toggling query shaping."""
+        previous_shape_queries = self._indexed_stage_shape_queries
+        self._indexed_stage_shape_queries = bool(shape_queries)
+        try:
+            return self._run_indexed_retrieval_stages(
+                mySession,
+                indexed_specs=indexed_specs,
+                primary_query=primary_query,
+                guardrail_query=guardrail_query,
+                use_guardrail=use_guardrail,
+                file_filter=file_filter,
+            )
+        finally:
+            self._indexed_stage_shape_queries = previous_shape_queries
 
     def _run_vector_stage(
         self,
@@ -1505,6 +1699,98 @@ class RetrievalOrchestrator:
             alternate_queries=list(alternate_queries),
         )
 
+    def _store_original_query_leg_stats(
+        self,
+        mySession: Session,
+        *,
+        original_query_leg: _OriginalQueryLeg,
+        vector_hits: int,
+        vector_added: int,
+        vector_overlap: int,
+        bm25_hits: int = 0,
+        bm25_added: int = 0,
+        bm25_overlap: int = 0,
+        graph_hits: int = 0,
+        graph_added: int = 0,
+        graph_overlap: int = 0,
+        regex_hits: int = 0,
+        regex_added: int = 0,
+        regex_overlap: int = 0,
+    ) -> None:
+        """Persist original-language leg diagnostics on the session object."""
+        mySession.original_query_leg_enabled = bool(original_query_leg.enabled)  # type: ignore[attr-defined]
+        mySession.original_query_leg_query = original_query_leg.query  # type: ignore[attr-defined]
+        mySession.original_query_leg_language = original_query_leg.language_bucket  # type: ignore[attr-defined]
+        mySession.original_query_leg_reason = original_query_leg.reason  # type: ignore[attr-defined]
+        mySession.original_query_leg_vector_hits = int(vector_hits)  # type: ignore[attr-defined]
+        mySession.original_query_leg_vector_added = int(vector_added)  # type: ignore[attr-defined]
+        mySession.original_query_leg_vector_overlap = int(vector_overlap)  # type: ignore[attr-defined]
+        mySession.original_query_leg_bm25_hits = int(bm25_hits)  # type: ignore[attr-defined]
+        mySession.original_query_leg_bm25_added = int(bm25_added)  # type: ignore[attr-defined]
+        mySession.original_query_leg_bm25_overlap = int(bm25_overlap)  # type: ignore[attr-defined]
+        mySession.original_query_leg_graph_hits = int(graph_hits)  # type: ignore[attr-defined]
+        mySession.original_query_leg_graph_added = int(graph_added)  # type: ignore[attr-defined]
+        mySession.original_query_leg_graph_overlap = int(graph_overlap)  # type: ignore[attr-defined]
+        mySession.original_query_leg_regex_hits = int(regex_hits)  # type: ignore[attr-defined]
+        mySession.original_query_leg_regex_added = int(regex_added)  # type: ignore[attr-defined]
+        mySession.original_query_leg_regex_overlap = int(regex_overlap)  # type: ignore[attr-defined]
+
+    def _run_original_query_vector_leg(
+        self,
+        mySession: Session,
+        *,
+        vector_enabled: bool,
+        original_query_leg: _OriginalQueryLeg,
+    ) -> list[Any]:
+        """Run native-language vector retrieval leg and return native docs."""
+        if not original_query_leg.enabled:
+            return []
+        if not vector_enabled:
+            self._write_retrieval_orchestration(
+                severity="I",
+                message=(
+                    "original-language vector leg skipped "
+                    "(vector retriever disabled by mode or weight)"
+                ),
+                color=BRIGHT_MAGENTA,
+            )
+            return []
+
+        self._trace_query_dispatch(
+            mySession,
+            retriever_scope="VectorRaw",
+            language_bucket=original_query_leg.language_bucket,
+            primary_query=original_query_leg.query,
+            guardrail_query="",
+            use_guardrail=False,
+            include_language=True,
+        )
+
+        (
+            native_docs,
+            _native_top_k_orig,
+            _native_top_k_post,
+        ) = self._host._run_vector_retriever_with_guardrail(
+            mySession=mySession,
+            primary_query=original_query_leg.query,
+            guardrail_query="",
+            use_guardrail=False,
+            alternate_queries=[],
+        )
+        _ = (_native_top_k_orig, _native_top_k_post)
+
+        self._write_retrieval_orchestration(
+            severity="I",
+            message=(
+                "original-language vector leg completed "
+                f"lang={original_query_leg.language_bucket or 'unknown'} "
+                f"hits={len(native_docs)}"
+            ),
+            color=BRIGHT_MAGENTA,
+        )
+
+        return native_docs
+
     def _resolve_local_stage_inputs(
         self,
         mySession: Session,
@@ -1530,6 +1816,12 @@ class RetrievalOrchestrator:
                 orig_translated_query_en=orig_translated_query_en,
             )
 
+        original_query_leg = self._resolve_original_query_leg(
+            mySession,
+            primary_query=guardrail_inputs.primary_query,
+            guardrail_query=guardrail_inputs.guardrail_query,
+        )
+
         return _LocalStageInputs(
             vector_enabled=vector_enabled,
             bm25_enabled=bm25_enabled,
@@ -1540,6 +1832,7 @@ class RetrievalOrchestrator:
             use_guardrail=guardrail_inputs.use_guardrail,
             alternate_queries=list(alternate_queries),
             file_filter=self._host._resolve_file_filter(mySession),
+            original_query_leg=original_query_leg,
         )
 
     def _run_local_retrieval_stages(
@@ -1581,19 +1874,43 @@ class RetrievalOrchestrator:
             )
         )
 
+        native_vector_docs = self._run_original_query_vector_leg(
+            mySession,
+            vector_enabled=local_inputs.vector_enabled,
+            original_query_leg=local_inputs.original_query_leg,
+        )
+        merged_vector_docs, native_added, native_overlap = (
+            self._merge_docs_with_native_leg(
+                base_docs=vector_stage_result.vector_docs,
+                native_docs=native_vector_docs,
+                source_marker="VectorRaw",
+            )
+        )
+        if local_inputs.original_query_leg.enabled:
+            self._write_retrieval_orchestration(
+                severity="I",
+                message=(
+                    "original-language vector merge "
+                    f"added={native_added} overlap={native_overlap} "
+                    f"total_vector={len(merged_vector_docs)}"
+                ),
+                color=BRIGHT_MAGENTA,
+            )
+
         indexed_specs = self._host._indexed_retriever_specs(
             mySession,
             bm25_enabled=local_inputs.bm25_enabled,
             graph_enabled=local_inputs.graph_enabled,
             regex_enabled=local_inputs.regex_enabled,
         )
-        indexed_stage_result = self._run_indexed_retrieval_stages(
+        indexed_stage_result = self._run_indexed_retrieval_with_shape_mode(
             mySession,
             indexed_specs=indexed_specs,
             primary_query=local_inputs.primary_query,
             guardrail_query=local_inputs.guardrail_query,
             use_guardrail=local_inputs.use_guardrail,
             file_filter=local_inputs.file_filter,
+            shape_queries=True,
         )
         top_k_orig_query_en, top_k_post_rewrite_query_en = (
             self._host._accumulate_topk_counts(
@@ -1604,12 +1921,107 @@ class RetrievalOrchestrator:
             )
         )
 
+        merged_bm25_docs = list(indexed_stage_result.bm25_docs)
+        merged_graph_docs = list(indexed_stage_result.graph_docs)
+        merged_regex_docs = list(indexed_stage_result.regex_docs)
+
+        native_bm25_hits = 0
+        native_bm25_added = 0
+        native_bm25_overlap = 0
+        native_graph_hits = 0
+        native_graph_added = 0
+        native_graph_overlap = 0
+        native_regex_hits = 0
+        native_regex_added = 0
+        native_regex_overlap = 0
+
+        indexed_leg_enabled = bool(
+            any(spec[1] and spec[2] != 0.0 for spec in indexed_specs)
+        )
+        if local_inputs.original_query_leg.enabled and indexed_leg_enabled:
+            native_file_filter = self._build_graph_regex_stage_filter(
+                local_inputs.file_filter,
+                local_inputs.original_query_leg.language_bucket,
+            )
+            native_indexed_stage_result = self._run_indexed_retrieval_with_shape_mode(
+                mySession,
+                indexed_specs=indexed_specs,
+                primary_query=local_inputs.original_query_leg.query,
+                guardrail_query="",
+                use_guardrail=False,
+                file_filter=native_file_filter,
+                shape_queries=False,
+            )
+
+            native_bm25_hits = len(native_indexed_stage_result.bm25_docs)
+            native_graph_hits = len(native_indexed_stage_result.graph_docs)
+            native_regex_hits = len(native_indexed_stage_result.regex_docs)
+
+            merged_bm25_docs, native_bm25_added, native_bm25_overlap = (
+                self._merge_docs_with_native_leg(
+                    base_docs=merged_bm25_docs,
+                    native_docs=native_indexed_stage_result.bm25_docs,
+                    source_marker="BM25Raw",
+                )
+            )
+            merged_graph_docs, native_graph_added, native_graph_overlap = (
+                self._merge_docs_with_native_leg(
+                    base_docs=merged_graph_docs,
+                    native_docs=native_indexed_stage_result.graph_docs,
+                    source_marker="GraphRaw",
+                )
+            )
+            merged_regex_docs, native_regex_added, native_regex_overlap = (
+                self._merge_docs_with_native_leg(
+                    base_docs=merged_regex_docs,
+                    native_docs=native_indexed_stage_result.regex_docs,
+                    source_marker="RegexRaw",
+                )
+            )
+
+            self._write_retrieval_orchestration(
+                severity="I",
+                message=(
+                    "original-language indexed merge "
+                    f"bm25(h={native_bm25_hits},a={native_bm25_added},o={native_bm25_overlap}) "
+                    f"graph(h={native_graph_hits},a={native_graph_added},o={native_graph_overlap}) "
+                    f"regex(h={native_regex_hits},a={native_regex_added},o={native_regex_overlap})"
+                ),
+                color=BRIGHT_MAGENTA,
+            )
+        elif local_inputs.original_query_leg.enabled:
+            self._write_retrieval_orchestration(
+                severity="I",
+                message=(
+                    "original-language indexed leg skipped "
+                    "(no indexed retriever enabled by mode or weight)"
+                ),
+                color=BRIGHT_MAGENTA,
+            )
+
+        self._store_original_query_leg_stats(
+            mySession,
+            original_query_leg=local_inputs.original_query_leg,
+            vector_hits=len(native_vector_docs),
+            vector_added=native_added,
+            vector_overlap=native_overlap,
+            bm25_hits=native_bm25_hits,
+            bm25_added=native_bm25_added,
+            bm25_overlap=native_bm25_overlap,
+            graph_hits=native_graph_hits,
+            graph_added=native_graph_added,
+            graph_overlap=native_graph_overlap,
+            regex_hits=native_regex_hits,
+            regex_added=native_regex_added,
+            regex_overlap=native_regex_overlap,
+        )
+
         return _LocalStageResult(
             local_docs=_LocalDocs(
-                vector_docs=vector_stage_result.vector_docs,
-                bm25_docs=indexed_stage_result.bm25_docs,
-                graph_docs=indexed_stage_result.graph_docs,
-                regex_docs=indexed_stage_result.regex_docs,
+                vector_docs=merged_vector_docs,
+                bm25_docs=merged_bm25_docs,
+                graph_docs=merged_graph_docs,
+                regex_docs=merged_regex_docs,
             ),
             top_k_orig_query_en=top_k_orig_query_en,
             top_k_post_rewrite_query_en=top_k_post_rewrite_query_en,
@@ -1737,11 +2149,20 @@ class RetrievalOrchestrator:
             bm25_query=plan.bm25_query,
             orig_translated_query_en=plan.orig_translated_query_en,
         )
+        original_query_leg = self._resolve_original_query_leg(
+            mySession,
+            primary_query=guardrail_inputs.primary_query,
+            guardrail_query=guardrail_inputs.guardrail_query,
+        )
+        self._emit_original_query_leg_status(
+            original_query_leg=original_query_leg,
+        )
         self._trace(
             mySession,
             "stage plan "
             f"mode={plan.retrieve_mode} "
-            f"guardrail={'on' if guardrail_inputs.use_guardrail else 'off'}",
+            f"guardrail={'on' if guardrail_inputs.use_guardrail else 'off'} "
+            f"original_leg={'on' if original_query_leg.enabled else 'off'}",
         )
 
         pipeline_inputs = _PostGatePipelineInputs(

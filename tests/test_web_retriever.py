@@ -947,35 +947,35 @@ class TestWebSearchFilterWebRetrieverIntegration:
 
 
 # ===========================================================================
-# Config_Banned.WEB_SEARCH_INTENT_EXTENSIONS — production config path
+# Config_WebSearch.WEB_SEARCH_INTENT_EXTENSIONS — production config path
 # ===========================================================================
 
 
 class TestConfigBannedExtensionPath:
-    """Verify that entries added to Config_Banned.WEB_SEARCH_INTENT_EXTENSIONS
+    """Verify that entries added to Config_WebSearch.WEB_SEARCH_INTENT_EXTENSIONS
     actually reach the WebSearchFilter the same way they would at runtime.
 
     The production flow is:
-        Config_Banned.WEB_SEARCH_INTENT_EXTENSIONS
+        Config_WebSearch.WEB_SEARCH_INTENT_EXTENSIONS
             → WebRetriever.__init__ / RAGChatImpl.__init__
             → WebSearchFilter.get_instance(extensions_cfg=...)
             → filter._entities, filter._thresholds
 
     These tests mutate the live dict object in place (matching what a user
-    would do by editing Config_Banned.py) and verify end-to-end pickup.
+    would do by editing Config_WebSearch.py) and verify end-to-end pickup.
     """
 
     def test_extra_entity_term_via_config_banned(self, reset_filter_singleton):
-        """A term added to entity_extensions in Config_Banned reaches the filter."""
-        import Configuration.Config_Banned as CB
+        """A term added to entity_extensions in Config_WebSearch reaches the filter."""
+        import Configuration.Config_WebSearch as CWS
 
-        original_ext = CB.WEB_SEARCH_INTENT_EXTENSIONS.get("entity_extensions", {})
+        original_ext = CWS.WEB_SEARCH_INTENT_EXTENSIONS.get("entity_extensions", {})
         try:
-            CB.WEB_SEARCH_INTENT_EXTENSIONS["entity_extensions"] = {
+            CWS.WEB_SEARCH_INTENT_EXTENSIONS["entity_extensions"] = {
                 "illicit_substances": ["testazine_x99"],
             }
             f = WebSearchFilter.get_instance(
-                extensions_cfg=CB.WEB_SEARCH_INTENT_EXTENSIONS,
+                extensions_cfg=CWS.WEB_SEARCH_INTENT_EXTENSIONS,
                 log_path="",
                 log_verbose=False,
             )
@@ -987,21 +987,21 @@ class TestConfigBannedExtensionPath:
             assert outcome == "REFUSE"
             assert "illicit_substances" in reasons
         finally:
-            CB.WEB_SEARCH_INTENT_EXTENSIONS["entity_extensions"] = original_ext
+            CWS.WEB_SEARCH_INTENT_EXTENSIONS["entity_extensions"] = original_ext
 
     def test_extra_category_via_config_banned(self, reset_filter_singleton):
-        """A whole new entity category added in Config_Banned is applied."""
-        import Configuration.Config_Banned as CB
+        """A whole new entity category added in Config_WebSearch is applied."""
+        import Configuration.Config_WebSearch as CWS
 
-        original_extra = CB.WEB_SEARCH_INTENT_EXTENSIONS.get(
+        original_extra = CWS.WEB_SEARCH_INTENT_EXTENSIONS.get(
             "entity_categories_extra", {}
         )
         try:
-            CB.WEB_SEARCH_INTENT_EXTENSIONS["entity_categories_extra"] = {
+            CWS.WEB_SEARCH_INTENT_EXTENSIONS["entity_categories_extra"] = {
                 "fictional_compound": {"weight": 35, "entities": ["xyzcompound_cfg"]},
             }
             f = WebSearchFilter.get_instance(
-                extensions_cfg=CB.WEB_SEARCH_INTENT_EXTENSIONS,
+                extensions_cfg=CWS.WEB_SEARCH_INTENT_EXTENSIONS,
                 log_path="",
                 log_verbose=False,
             )
@@ -1012,43 +1012,43 @@ class TestConfigBannedExtensionPath:
             assert outcome == "REFUSE"
             assert "fictional_compound" in reasons
         finally:
-            CB.WEB_SEARCH_INTENT_EXTENSIONS["entity_categories_extra"] = original_extra
+            CWS.WEB_SEARCH_INTENT_EXTENSIONS["entity_categories_extra"] = original_extra
 
     def test_tighter_threshold_via_config_banned(self, reset_filter_singleton):
-        """A lower refuse threshold set in Config_Banned is honoured."""
-        import Configuration.Config_Banned as CB
+        """A lower refuse threshold set in Config_WebSearch is honoured."""
+        import Configuration.Config_WebSearch as CWS
 
-        original_overrides = CB.WEB_SEARCH_INTENT_EXTENSIONS.get(
+        original_overrides = CWS.WEB_SEARCH_INTENT_EXTENSIONS.get(
             "threshold_overrides", {}
         )
         try:
-            CB.WEB_SEARCH_INTENT_EXTENSIONS["threshold_overrides"] = {"refuse": 45}
+            CWS.WEB_SEARCH_INTENT_EXTENSIONS["threshold_overrides"] = {"refuse": 45}
             f = WebSearchFilter.get_instance(
-                extensions_cfg=CB.WEB_SEARCH_INTENT_EXTENSIONS,
+                extensions_cfg=CWS.WEB_SEARCH_INTENT_EXTENSIONS,
                 log_path="",
                 log_verbose=False,
             )
             assert f._thresholds["refuse"] == 45
         finally:
-            CB.WEB_SEARCH_INTENT_EXTENSIONS["threshold_overrides"] = original_overrides
+            CWS.WEB_SEARCH_INTENT_EXTENSIONS["threshold_overrides"] = original_overrides
 
     def test_relaxed_threshold_in_config_banned_is_ignored(
         self, reset_filter_singleton
     ):
-        """A higher (relaxed) refuse threshold in Config_Banned cannot weaken the baseline."""
-        import Configuration.Config_Banned as CB
+        """A higher (relaxed) refuse threshold in Config_WebSearch cannot weaken the baseline."""
+        import Configuration.Config_WebSearch as CWS
 
-        original_overrides = CB.WEB_SEARCH_INTENT_EXTENSIONS.get(
+        original_overrides = CWS.WEB_SEARCH_INTENT_EXTENSIONS.get(
             "threshold_overrides", {}
         )
         try:
-            CB.WEB_SEARCH_INTENT_EXTENSIONS["threshold_overrides"] = {"refuse": 100}
+            CWS.WEB_SEARCH_INTENT_EXTENSIONS["threshold_overrides"] = {"refuse": 100}
             f = WebSearchFilter.get_instance(
-                extensions_cfg=CB.WEB_SEARCH_INTENT_EXTENSIONS,
+                extensions_cfg=CWS.WEB_SEARCH_INTENT_EXTENSIONS,
                 log_path="",
                 log_verbose=False,
             )
             # Baseline is 60; 100 > 60, so override must be silently ignored.
             assert f._thresholds["refuse"] == 60
         finally:
-            CB.WEB_SEARCH_INTENT_EXTENSIONS["threshold_overrides"] = original_overrides
+            CWS.WEB_SEARCH_INTENT_EXTENSIONS["threshold_overrides"] = original_overrides

@@ -21,21 +21,22 @@ python ./src/Apps/DocClassify.py -h
 
 ## 📥 Load the documents in the Test folder
 
-Default collection name is from COLLECTION key in Config_Global.py.
-If you work with many collection, you must specify the collection you want to use: `--collection some_collection`.
+Default collection name is from `COLLECTION` in `Config_Load_Retrievers.py`.
+If you work with multiple collections, update `COLLECTION` there before running
+`RAGLoad.py`.
 
 ```Windows
-python ./src/Apps/RAGLoad.py --doc-dir TestDocs --collection MyTestDocs
+python ./src/Apps/RAGLoad.py --doc-dir TestDocs
 ```
 
 ## 💬 Chat with the documents in the Test folder
 
 ```Windows
-python ./src/Apps/RAGChat.py --collection MyTestDocs
+python ./src/Apps/RAGChat.py
 ```
 
 ```text
-🛠️  > collection! choose MyTestDocs or collection=MyTestDocs or pass on startup --collection MyTestDocs
+🛠️  > collection! choose MyTestDocs or collection=MyTestDocs
 press enter
 ```
 
@@ -299,19 +300,20 @@ press enter
 
 The next example shows how you can switch between different collections you created. One could be about animals and another about plants.
 
-Place some documents in a folder `yourpath` or use the TestDocs documents and load them
+Set `COLLECTION = "My2ndCollection"` in `Config_Load_Retrievers.py`.
+Then place some documents in a folder `yourpath` or use the TestDocs documents and load them:
 
 ```Windows
-python ./src/Apps/RAGLoad.py  --doc-dir `yourpath|TestDocs` --collection My2ndCollection
+python ./src/Apps/RAGLoad.py  --doc-dir `yourpath|TestDocs`
 ```
 
 Start RAGChat.py:
 
 ```Windows
-python ./src/Apps/RAGChat.py --collection My2ndCollection
+python ./src/Apps/RAGChat.py
 ```
 
-Select the collection (if not passed as `--collection` parameter). We use the ULTRA_WIDE strategy for exploring.
+Select the collection. We use the ULTRA_WIDE strategy for exploring.
 
 ```text
 🛠️  > collection! and choose My2ndCollection
@@ -374,11 +376,12 @@ Open it — you will see columns such as `Animal`, `Mammal`, `Language`, etc. fo
 ### Step 2 — Load only the animal‑related documents
 
 Use the CSV from Step 1 as input for `RAGLoad`. The `--classify-csv-query` flag accepts a SQL WHERE clause (SQLite syntax) to filter the rows.
+Set `COLLECTION = "AnimalDocs"` in `Config_Load_Retrievers.py` before running these commands.
 
 Load only documents where the `Animal` column mentions "cat":
 
 ```Windows
-python ./src/Apps/RAGLoad.py --doc-dir TestDocs --collection AnimalDocs --load-from-classify-csv DocClassify_OK_20260325_182503.csv --classify-csv-query "Animal LIKE '%cat%'"
+python ./src/Apps/RAGLoad.py --doc-dir TestDocs --load-from-classify-csv DocClassify_OK_20260325_182503.csv --classify-csv-query "Animal LIKE '%cat%'"
 ```
 
 Only files whose classification row matches the query are ingested; all other files are skipped.
@@ -386,7 +389,7 @@ Only files whose classification row matches the query are ingested; all other fi
 You can combine multiple conditions:
 
 ```Windows
-python ./src/Apps/RAGLoad.py --doc-dir TestDocs --collection AnimalDocs --load-from-classify-csv DocClassify_OK_20260325_182503.csv --classify-csv-query "Mammal LIKE '%Yes%' AND Language = 'English'"
+python ./src/Apps/RAGLoad.py --doc-dir TestDocs --load-from-classify-csv DocClassify_OK_20260325_182503.csv --classify-csv-query "Mammal LIKE '%Yes%' AND Language = 'English'"
 ```
 
 > **Note:** When the classify CSV filter is active, exclusion checks are bypassed —
@@ -424,7 +427,7 @@ Use the CSV from Step 1 together with a SQL WHERE clause to ingest only
 English documents classified as mammals:
 
 ```Windows
-python ./src/Apps/RAGLoad.py --doc-dir TestDocs --collection AnimalDocs --load-from-classify-csv logs/DocClassify_OK_20260416_143012.csv --classify-csv-query "Mammal LIKE '%%Yes%%' AND Language = 'English'"
+python ./src/Apps/RAGLoad.py --doc-dir TestDocs --load-from-classify-csv logs/DocClassify_OK_20260416_143012.csv --classify-csv-query "Mammal LIKE '%%Yes%%' AND Language = 'English'"
 ```
 
 Replace `logs/DocClassify_OK_20260416_143012.csv` with the actual path
@@ -538,10 +541,11 @@ For the full variant matrix and consumer mapping see
 
 Requirement: Argostranslate and language package en → de must be installed. See [7. Install Argos Translate in INSTALL.md](INSTALL.md#-7-install-argos-translate).
 
-Edit `Config_Banned.py` and add `Pferd` (german for horse) to the `_STRICT_BANNED` wordlist. Start RAGLoad.py:
+Edit `Config_Banned_Content.py` and add `Pferd` (german for horse) to the `_STRICT_BANNED` wordlist. Start RAGLoad.py:
+Set `COLLECTION = "BannedHorseCollection"` in `Config_Load_Retrievers.py`.
 
 ```Windows
-python ./src/Apps/RAGLoad.py  --doc-dir `TestDocs` --collection BannedHorseCollection
+python ./src/Apps/RAGLoad.py  --doc-dir `TestDocs`
 ```
 
 You may observe that the `Pferde.pdf` triggers a message similar to:
@@ -614,7 +618,7 @@ press enter
 
 ### 🔓 1. Loosen the consensus rules to block more documents
 
-In `Config_Banned.py`, the RAGLoad pipeline requires **3** algorithms above threshold (depth) **and** **4** algorithms with any score (breadth) before a chunk is blocked. Try lowering both values:
+In `Config_Banned_Detection.py`, the RAGLoad pipeline requires **3** algorithms above threshold (depth) **and** **4** algorithms with any score (breadth) before a chunk is blocked. Try lowering both values:
 
 ```python
 "REQUIRED_ALGOS_ABOVE_THRESHOLD": 1,
@@ -623,7 +627,7 @@ In `Config_Banned.py`, the RAGLoad pipeline requires **3** algorithms above thre
 
 **What changes:** In this configuration, more chunks are likely to be flagged and rejected during loading. Even a single algorithm scoring above its threshold is enough to block a chunk. This is useful when you want a very strict ingestion policy, but expect more false positives — harmless chunks may be rejected because one algorithm happened to score high.
 
-After editing, update `_CRITICAL_CONFIG_HASHES["Config_Banned"]` in `Config_Global.py` (the required hash is printed at startup).
+After editing, update the matching `_CRITICAL_CONFIG_HASHES` entries in `Config_Global.py` (the required hashes are printed at startup), or run `python src/Scripts/RecalcConfigHashes.py`.
 
 ### 🔒 2. Tighten the consensus rules to let more documents through
 
@@ -638,7 +642,7 @@ Raise the consensus values in the RAGLoad pipeline:
 
 ### 🔧 3. Disable fuzzy regex matching
 
-In the `Regex` section of any pipeline in `Config_Banned.py`, set:
+In the `Regex` section of any pipeline in `Config_Banned_Detection.py`, set:
 
 ```python
 "FUZZY_REGEX_EVAL_AFTER_HARD": False,
@@ -648,7 +652,7 @@ In the `Regex` section of any pipeline in `Config_Banned.py`, set:
 
 ### 🧩 4. Change chunk size and observe retrieval differences
 
-In `Config_Global.py`, change the active variant selector:
+In `Config_Load_Retrievers.py`, change the active variant selector:
 
 The config uses a variant selector — change `_ACTIVE_CHROMA_EMBED_AND_RETRIEVE_PARAMS_CONFIG` from `"THOROUGH"` to `"COMPACT"` to switch to smaller chunks:
 
@@ -671,14 +675,14 @@ _CHROMA_EMBED_AND_RETRIEVE_PARAMS = {
 
 **What changes:** Documents are split into smaller pieces. RAGChat will return more, shorter chunks for each query. This can improve precision (each chunk is more focused) but may lose context that spans across chunk boundaries. Existing embeddings in a collection were created with the old chunk size, so after changing chunk size you **must** re-embed your documents. You have two options:
 
-- **Re-create the existing collection:** set `RETRIEVAL_STORES_KEEP = False` in `Config_Global.py` (or pass `--retrieval-stores-keep False` on the CLI) and run RAGLoad again.
-- **Use a new collection name:** e.g. `--collection Experiment_SmallChunks` so you can compare results side-by-side with the old collection.
+- **Re-create the existing collection:** set `RETRIEVAL_STORES_KEEP = False` in `Config_Load_Retrievers.py` and run RAGLoad again.
+- **Use a new collection name:** set `COLLECTION = "Experiment_SmallChunks"` in `Config_Load_Retrievers.py` so you can compare results side-by-side with the old collection.
 
 You can also add your own variant (e.g. `"LARGE"` with `CHUNK_SIZE: 512`) to experiment with longer chunks that preserve more context but may include irrelevant surrounding text.
 
 ### 🧱 5. Switch the chunking strategy profile
 
-In `Config_Global.py`, change `_ACTIVE_CHUNKER_CONFIG` from `"DETAILED"` to `"FAST"`:
+In `Config_Load_Chunkers.py`, change `_ACTIVE_CHUNKER_CONFIG` from `"DETAILED"` to `"FAST"`:
 
 ```python
 _ACTIVE_CHUNKER_CONFIG = "FAST"   # was "DETAILED"
@@ -687,9 +691,10 @@ _ACTIVE_CHUNKER_CONFIG = "FAST"   # was "DETAILED"
 The `DETAILED` profile routes each file type to a specialised chunker — PDFs use `SEMANTIC`, Markdown uses `HEADING`, presentations use `SLIDE`, plain text uses `SLIDING_WINDOW`, and so on. The `FAST` profile maps **every** file type to `RECURSIVE`, which simply splits by word count without analysing document structure.
 
 Re-load the test documents into a new collection so you can compare:
+Set `COLLECTION = "FastChunks"` in `Config_Load_Retrievers.py`.
 
 ```Windows
-python ./src/Apps/RAGLoad.py --doc-dir TestDocs --collection FastChunks
+python ./src/Apps/RAGLoad.py --doc-dir TestDocs
 ```
 
 Then open RAGChat and switch between the two collections:
@@ -708,11 +713,11 @@ Then open RAGChat and switch between the two collections:
 - **Lower retrieval precision** — chunks may contain mixed topics, diluting the embedding signal
 - **Missed heading context** — a Markdown heading and its body may end up in different chunks
 
-After comparing, switch back to `"DETAILED"` for best results. Because chunker settings are baked into the collection at creation time, you must set `RETRIEVAL_STORES_KEEP = False` (or use a fresh collection name) whenever you change the chunker profile.
+After comparing, switch back to `"DETAILED"` for best results. Because chunker settings are baked into the collection at creation time, you must set `RETRIEVAL_STORES_KEEP = False` (or use a fresh collection name via `COLLECTION`) whenever you change the chunker profile.
 
 ### 🔍 6. Tune HNSW neighbor exploration
 
-The same `_CHROMA_EMBED_AND_RETRIEVE_PARAMS` dict in `Config_Global.py` contains two parameters that control how thoroughly ChromaDB's HNSW index searches for similar vectors:
+The same `_CHROMA_EMBED_AND_RETRIEVE_PARAMS` dict in `Config_Load_Retrievers.py` contains two parameters that control how thoroughly ChromaDB's HNSW index searches for similar vectors:
 
 ```python
 _CHROMA_EMBED_AND_RETRIEVE_PARAMS = {
@@ -760,7 +765,7 @@ Pick one algorithm — for example Jaccard in the RAGLoad pipeline — and lower
 
 ### 🎭 9. Add your own masking rule
 
-In `Config_Banned.py`, find the `_STRICT_MASKING_REGEXES` dictionary and add a new rule:
+In `Config_Banned_Content.py`, find the `_STRICT_MASKING_REGEXES` dictionary and add a new rule:
 
 ```python
 {
@@ -799,7 +804,7 @@ _ACTIVE_KEYBERT_CONFIG = "BALANCED"      # was "STRICT"
 
 ### 🧲 12. Enable the Cosine algorithm
 
-In `Config_Banned.py`, uncomment the Cosine entries in the pipeline and in `ALGOS_TO_PROCESS`:
+In `Config_Banned_Detection.py`, uncomment the Cosine entries in the pipeline and in `ALGOS_TO_PROCESS`:
 
 ```python
 "Cosine": {"THRESHOLD": 0.45, "THRESHOLD_MIN": 0.2},
@@ -821,8 +826,8 @@ In `Config_Banned.py`, uncomment the Cosine entries in the pipeline and in `ALGO
 
 - When experimenting, changing **one thing at a time** can make it easier to observe effects.
 - Use `DEBUG_LEVEL = 4` in `Config_Global.py` to see per-algorithm scores and understand why a chunk was accepted or rejected.
-- After editing `Config_Banned.py` or `Config_Models.py`, remember to update the corresponding hash in `Config_Global.py` — the new hash is printed when you start the application.
-- When experimenting with RAGLoad settings, use a **new collection name** (e.g. `--collection Experiment1`) so you can compare results without overwriting your previous collection.
+- After editing `Config_Banned_Detection.py`, `Config_Banned_Content.py`, `Config_Banned_Prompts.py`, or `Config_Models.py`, remember to update the corresponding hash in `Config_Global.py` — the new hash is printed when you start the application.
+- When experimenting with RAGLoad settings, use a **new collection name** (for example, set `COLLECTION = "Experiment1"` in `Config_Load_Retrievers.py`) so you can compare results without overwriting your previous collection.
 
 ### 🧲 13. Enable Open WebUI
 
@@ -831,7 +836,7 @@ In `Config_Banned.py`, uncomment the Cosine entries in the pipeline and in `ALGO
 - Open a new chat window and select the collection where you previously loaded the TestDocs
 
   ``` python
-  python ./src/Apps/RAGLoad.py --collection AnimalDocs --doc_dir TestDocs
+    python ./src/Apps/RAGLoad.py --doc_dir TestDocs
   ```
 
   Then start the RAGChatService:

@@ -192,7 +192,7 @@ class ClassifyStrategy(SingletonMixin, ProcessingStrategy):
             self.pretty.write(
                 "W",
                 "CheckPrompt",
-                "CHECK PROMPT was disabled in Config_Banned.py",
+                "CHECK PROMPT was disabled in Config_Banned_Detection.py",
                 color=ORANGE,
             )
         else:

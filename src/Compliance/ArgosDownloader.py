@@ -233,6 +233,9 @@ class ArgosDownloader:
             "consent": True,
             "disclaimer": _CONSENT_DISCLAIMER,
         }
+        had_license_meta = os.path.isfile(self.license_meta_path)
+        had_download_meta = os.path.isfile(self.download_meta_path)
+
         os.makedirs(self.license_dir, exist_ok=True)
         with open(self.license_path, "w", encoding="utf-8") as fh:
             fh.write(license_text)
@@ -253,16 +256,19 @@ class ArgosDownloader:
         with open(self.download_meta_path, "w", encoding="utf-8") as fh:
             json.dump(download_meta, fh, indent=2, ensure_ascii=False)
 
+        license_action = "Updated" if had_license_meta else "Created"
+        download_action = "Updated" if had_download_meta else "Created"
+
         self.pretty.write(
             "O",
             "Argos License",
-            f"License consent recorded in {self.license_meta_path}",
+            f"{license_action} license consent metadata: {self.license_meta_path}",
             color=GREEN,
         )
         self.pretty.write(
             "O",
             "Argos Download",
-            f"Download consent recorded in {self.download_meta_path}",
+            f"{download_action} download consent metadata: {self.download_meta_path}",
             color=GREEN,
         )
 
@@ -280,7 +286,7 @@ class ArgosDownloader:
         self.pretty.write(
             "W",
             "Argos License",
-            "If translation from banned words (Config_Banned.py) to the document's target language is not possible,"
+            "If translation from banned words (Config_Banned_Content.py) to the document's target language is not possible,"
             "filter chain results degrade considerably because the English words will be applied to the extracted documents in non-English languages.",
             color=ORANGE,
         )

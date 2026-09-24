@@ -12,6 +12,8 @@ description: Experimental RAG under constraints
 
 Experimental Retrieval-Augmented Generation under constraints.
 
+![RAG-LCC Overview Diagram](../Documentation/Presentations/RAG-LCC-Overview.png)
+
 RAG-LCC is a practical lab for understanding where RAG systems fail and how to fix them: retrieval misses, context poisoning, multilingual drift, and compliance edge cases.
 
 Short: If you want to understand *why* your RAG fails, RAG-LCC gives you a playground to experiment with the parameters that matter. You can tune settings, compare alternatives on a small test corpus, and carry those insights back into your own RAG. In other words, RAG-LCC is an insight tool with reusable ideas, not an everyday production RAG.
