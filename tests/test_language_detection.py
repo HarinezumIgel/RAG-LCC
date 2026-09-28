@@ -137,6 +137,7 @@ def _make_fu(
     fu = object.__new__(FileUtils)
     fu.pretty = StubPrettyWriter()
     fu.cfg = StubConfig(min_words, min_confidence, conf_full_words)
+    fu._lang_detection_events = []
     FileUtils._lingua_detector = _FakeDetector(detector_results or [])
     # Prevent auto-detection of installed Argos codes (SharedHelpers not available).
     FileUtils._argos_codes = set()
@@ -254,6 +255,7 @@ class TestDetectLangIso:
         fu = object.__new__(FileUtils)
         fu.pretty = StubPrettyWriter()
         fu.cfg = StubConfig()
+        fu._lang_detection_events = []
         FileUtils._lingua_detector = _BrokenDetector()
         FileUtils._argos_codes = set()
         FileUtils._name_to_code = None

@@ -366,6 +366,8 @@ class StubSession:
         self.file_name: str | None = file_name
         self.file_path: str | None = file_path
         self.force_skip_rewrite: bool = False
+        self.enable_query_rewrite: bool | None = None
+        self.enable_pronoun_substitution: bool | None = None
         self.rewrite_was_underspecified: bool = False
         self.clarification_response: str | None = None
         self.context_size_override: int | None = context_size_override
@@ -567,6 +569,25 @@ class TestRewriteEarlyReturn:
         session = StubSession(query=None)
         # No history, disabled path - query is ""
         assert rw.rewrite(session) == ""
+
+    def test_session_switch_disables_rewrite(self):
+        docs = [StubDoc("USER: what animals\nASSISTANT: cats, dogs")]
+        rw = _make_rewriter(
+            history_docs=docs,
+            llm_response=_json_resp(
+                depends=True,
+                confidence=0.9,
+                contextual="Which of cats, dogs are mammals?",
+                standalone="Which animals are mammals?",
+            ),
+        )
+        session = StubSession()
+        session.enable_query_rewrite = False
+        result = rw.rewrite(session)
+        assert result == "are they mammals"
+        assert any(
+            "Query rewrite disabled for this turn" in str(c) for c in _pretty_calls(rw)
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -1074,6 +1095,29 @@ class TestTopicDetection:
         rw.rewrite(session)
 
         assert session.last_topic_referents is None
+
+    def test_pronoun_substitution_disabled_preserves_original_pronoun_form(self):
+        docs = [
+            StubDoc("USER: what is blazingfast\nASSISTANT: blazingfast is an animal")
+        ]
+        rw = _make_rewriter(
+            history_docs=docs,
+            llm_response=_json_resp(
+                depends=True,
+                confidence=0.95,
+                contextual="does blazingfast have spines",
+                standalone="does blazingfast have spines",
+                referents=["blazingfast"],
+            ),
+        )
+        session = StubSession(query="does it have spines")
+        session.enable_pronoun_substitution = False
+
+        result = rw.rewrite(session)
+
+        assert result == "does it have spines"
+        assert session.rewrite_was_underspecified is False
+        assert any("Pronoun substitution disabled" in str(c) for c in _pretty_calls(rw))
 
 
 class TestGroundingCheck:

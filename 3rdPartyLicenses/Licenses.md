@@ -56,11 +56,11 @@ This overview is provided for informational purposes only. Signing attests only 
 | executing | 2.2.1 | MIT License | Alex Hall |
 | fastapi | 0.141.1 | MIT | =?utf-8?q?Sebasti=C3=A1n_Ram=C3=ADrez?= <tiangolo@gmail.com> |
 | fastjsonschema | 2.22.2 | BSD License | Michal Horejsek |
-| filelock | 4.0.3 | MIT | UNKNOWN |
+| filelock | 4.0.5 | MIT | UNKNOWN |
 | flatbuffers | 25.12.19 | Apache Software License | Derek Bailey |
 | frozenlist | 1.8.0 | Apache-2.0 | UNKNOWN |
 | fsspec | 2026.9.0 | BSD-3-Clause | UNKNOWN |
-| googleapis-common-protos | 1.75.3 | Apache-2.0 | Google LLC <googleapis-packages@google.com> |
+| googleapis-common-protos | 1.75.4 | Apache-2.0 | Google LLC <googleapis-packages@google.com> |
 | graphviz | 0.21 | MIT | Sebastian Bank <sebastian.bank@uni-leipzig.de> |
 | grpcio | 1.84.0 | Apache-2.0 | The gRPC Authors <grpc-io@googlegroups.com> |
 | h11 | 0.16.0 | MIT License | Nathaniel J. Smith |
@@ -71,7 +71,7 @@ This overview is provided for informational purposes only. Signing attests only 
 | httptools | 0.8.0 | MIT | Yury Selivanov <yury@magic.io> |
 | httpx | 0.28.1 | BSD License | Tom Christie <tom@tomchristie.com> |
 | httpx2 | 2.13.1 | BSD-3-Clause | Tom Christie <tom@tomchristie.com> |
-| huggingface_hub | 1.32.0 | Apache Software License | Hugging Face, Inc. |
+| huggingface_hub | 1.33.0 | Apache Software License | Hugging Face, Inc. |
 | idna | 3.20 | BSD-3-Clause | Kim Davies <kim+pypi@gumleaf.org> |
 | importlib_resources | 7.1.0 | Apache-2.0 | Barry Warsaw <barry@python.org> |
 | iniconfig | 2.3.0 | MIT | Ronny Pfannschmidt <opensource@ronnypfannschmidt.de>, Holger Krekel <holger.krekel@gmail.com> |
@@ -90,12 +90,12 @@ This overview is provided for informational purposes only. Signing attests only 
 | keybert | 0.9.0 | MIT License | Maarten Grootendorst <maartengrootendorst@gmail.com> |
 | kubernetes | 36.0.3 | Apache Software License | Kubernetes |
 | langchain-chroma | 1.1.0 | MIT | UNKNOWN |
-| langchain-core | 1.6.4 | MIT License | UNKNOWN |
+| langchain-core | 1.6.5 | MIT License | UNKNOWN |
 | langchain-huggingface | 1.2.2 | MIT License | UNKNOWN |
 | langchain-protocol | 0.0.19 | MIT License | UNKNOWN |
 | langchain-text-splitters | 1.1.2 | MIT License | UNKNOWN |
 | langdetect | 1.0.9 | Apache Software License | Michal Mimino Danilak |
-| langsmith | 0.14.0 | MIT | LangChain <support@langchain.dev> |
+| langsmith | 0.14.1 | MIT | LangChain <support@langchain.dev> |
 | lingua-language-detector | 2.2.0 | Apache Software License | "Peter M. Stahl" <pemistahl@gmail.com> |
 | lxml | 6.1.3 | BSD-3-Clause | lxml dev team |
 | markdown-it-py | 4.2.0 | MIT License | Chris Sewell <chrisj_sewell@hotmail.com> |
@@ -114,15 +114,16 @@ This overview is provided for informational purposes only. Signing attests only 
 | networkx | 3.7 | BSD-3-Clause | Aric Hagberg <hagberg@lanl.gov> |
 | nltk | 3.9.2 | Apache Software License | NLTK Team |
 | numpy | 2.5.3 | BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0 | Travis E. Oliphant et al. |
-| oauthlib | 3.3.1 | BSD-3-Clause | The OAuthlib Community |
+| oauthlib | 4.0.0 | BSD-3-Clause | The OAuthlib Community |
 | onnxruntime | 1.30.0 | MIT License | Microsoft Corporation |
 | openpyxl | 3.1.5 | MIT License | See AUTHORS |
-| opentelemetry-api | 1.44.0 | Apache-2.0 | OpenTelemetry Authors <cncf-opentelemetry-contributors@lists.cncf.io> |
-| opentelemetry-exporter-otlp-proto-common | 1.44.0 | Apache-2.0 | OpenTelemetry Authors <cncf-opentelemetry-contributors@lists.cncf.io> |
-| opentelemetry-exporter-otlp-proto-grpc | 1.44.0 | Apache-2.0 | OpenTelemetry Authors <cncf-opentelemetry-contributors@lists.cncf.io> |
-| opentelemetry-proto | 1.44.0 | Apache-2.0 | OpenTelemetry Authors <cncf-opentelemetry-contributors@lists.cncf.io> |
-| opentelemetry-sdk | 1.44.0 | Apache-2.0 | OpenTelemetry Authors <cncf-opentelemetry-contributors@lists.cncf.io> |
-| opentelemetry-semantic-conventions | 0.65b0 | Apache-2.0 | OpenTelemetry Authors <cncf-opentelemetry-contributors@lists.cncf.io> |
+| opentelemetry-api | 1.45.0 | Apache-2.0 | OpenTelemetry Authors <cncf-opentelemetry-contributors@lists.cncf.io> |
+| opentelemetry-exporter-otlp-common | 0.66b0 | Apache-2.0 | OpenTelemetry Authors <cncf-opentelemetry-contributors@lists.cncf.io> |
+| opentelemetry-exporter-otlp-proto-common | 1.45.0 | Apache-2.0 | OpenTelemetry Authors <cncf-opentelemetry-contributors@lists.cncf.io> |
+| opentelemetry-exporter-otlp-proto-grpc | 1.45.0 | Apache-2.0 | OpenTelemetry Authors <cncf-opentelemetry-contributors@lists.cncf.io> |
+| opentelemetry-proto | 1.45.0 | Apache-2.0 | OpenTelemetry Authors <cncf-opentelemetry-contributors@lists.cncf.io> |
+| opentelemetry-sdk | 1.45.0 | Apache-2.0 | OpenTelemetry Authors <cncf-opentelemetry-contributors@lists.cncf.io> |
+| opentelemetry-semantic-conventions | 0.66b0 | Apache-2.0 | OpenTelemetry Authors <cncf-opentelemetry-contributors@lists.cncf.io> |
 | orjson | 3.12.0 | MPL-2.0 AND (Apache-2.0 OR MIT) | UNKNOWN |
 | overrides | 7.7.0 | Apache License, Version 2.0 | Mikko Korpela |
 | packaging | 26.3 | Apache-2.0 OR BSD-2-Clause | Donald Stufft <donald@stufft.io> |
@@ -139,7 +140,7 @@ This overview is provided for informational purposes only. Signing attests only 
 | pip-licenses | 5.5.5 | MIT | Mr. Walls |
 | pip-review | 1.3.0 | BSD License | Julian Gonggrijp, Vincent Driessen |
 | pipreqs | 0.5.0 | Apache Software License | Vadim Kravcenko |
-| platformdirs | 4.11.12 | MIT | UNKNOWN |
+| platformdirs | 4.12.1 | MIT | UNKNOWN |
 | pluggy | 1.6.0 | MIT License | Holger Krekel <holger@merlinux.eu> |
 | preshed | 3.0.13 | MIT License | Explosion |
 | prettytable | 3.18.0 | BSD-3-Clause | Luke Maurits <luke@maurits.id.au> |
@@ -186,7 +187,7 @@ This overview is provided for informational purposes only. Signing attests only 
 | spacy | 3.8.16 | MIT License | Explosion |
 | spacy-legacy | 3.0.12 | MIT License | Explosion |
 | spacy-loggers | 1.0.5 | MIT | Explosion |
-| srsly | 2.5.3 | MIT License | Explosion |
+| srsly | 2.5.4 | MIT License | Explosion |
 | stack-data | 0.6.3 | MIT License | Alex Hall |
 | stanza | 1.10.1 | Apache License 2.0 | Stanford Natural Language Processing Group |
 | starlette | 1.7.0 | BSD-3-Clause | Tom Christie <tom@tomchristie.com> |
@@ -208,7 +209,7 @@ This overview is provided for informational purposes only. Signing attests only 
 | tzdata | 2026.4 | Apache-2.0 | Python Software Foundation |
 | urllib3 | 2.8.0 | MIT | Andrey Petrov <andrey.petrov@shazow.net> |
 | uuid_utils | 0.17.1 | BSD-3-Clause | Amin Alaee <mohammadamin.alaee@gmail.com> |
-| uvicorn | 0.53.0 | BSD-3-Clause | Tom Christie <tom@tomchristie.com> |
+| uvicorn | 0.54.0 | BSD-3-Clause | Tom Christie <tom@tomchristie.com> |
 | wasabi | 1.1.3 | MIT | Explosion |
 | watchfiles | 1.3.0 | MIT License | Samuel Colvin <s@muelcolvin.com> |
 | wcwidth | 0.9.1 | MIT License | Jeff Quast <contact@jeffquast.com> |
@@ -217,7 +218,7 @@ This overview is provided for informational purposes only. Signing attests only 
 | websocket-client | 1.9.2 | Apache-2.0 | liris |
 | websockets | 17.1 | BSD-3-Clause | Aymeric Augustin <aymeric.augustin@m4x.org> |
 | wheel | 0.48.0 | MIT | Daniel Holth <dholth@fastmail.fm> |
-| wrapt | 2.4.1 | BSD-2-Clause | Graham Dumpleton <Graham.Dumpleton@gmail.com> |
+| wrapt | 2.5.0 | BSD-2-Clause | Graham Dumpleton <Graham.Dumpleton@gmail.com> |
 | xlsxwriter | 3.2.9 | BSD License | John McNamara |
 | xxhash | 4.0.1 | BSD-2-Clause | Yue Du |
 | yarg | 0.1.9 | MIT License | Kura |
@@ -3501,7 +3502,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ```
 
-### filelock 4.0.3
+### filelock 4.0.5
 
 **License:** MIT
 
@@ -3792,7 +3793,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ```
 
-### googleapis-common-protos 1.75.3
+### googleapis-common-protos 1.75.4
 
 **License:** Apache-2.0
 
@@ -5746,7 +5747,7 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 
 ```
 
-### huggingface_hub 1.32.0
+### huggingface_hub 1.33.0
 
 **License:** Apache Software License
 
@@ -7057,7 +7058,7 @@ SOFTWARE.
 
 ```
 
-### langchain-core 1.6.4
+### langchain-core 1.6.5
 
 **License:** MIT License
 
@@ -7183,7 +7184,7 @@ UNKNOWN
 
 ```
 
-### langsmith 0.14.0
+### langsmith 0.14.1
 
 **License:** MIT
 
@@ -9910,7 +9911,7 @@ Public License instead of this License.  But first, please read
 
 ```
 
-### oauthlib 3.3.1
+### oauthlib 4.0.0
 
 **License:** BSD-3-Clause
 
@@ -10011,7 +10012,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ```
 
-### opentelemetry-api 1.44.0
+### opentelemetry-api 1.45.0
 
 **License:** Apache-2.0
 
@@ -10222,7 +10223,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ```
 
-### opentelemetry-exporter-otlp-proto-common 1.44.0
+### opentelemetry-exporter-otlp-common 0.66b0
 
 **License:** Apache-2.0
 
@@ -10433,7 +10434,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ```
 
-### opentelemetry-exporter-otlp-proto-grpc 1.44.0
+### opentelemetry-exporter-otlp-proto-common 1.45.0
 
 **License:** Apache-2.0
 
@@ -10644,7 +10645,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ```
 
-### opentelemetry-proto 1.44.0
+### opentelemetry-exporter-otlp-proto-grpc 1.45.0
 
 **License:** Apache-2.0
 
@@ -10855,7 +10856,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ```
 
-### opentelemetry-sdk 1.44.0
+### opentelemetry-proto 1.45.0
 
 **License:** Apache-2.0
 
@@ -11066,7 +11067,218 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ```
 
-### opentelemetry-semantic-conventions 0.65b0
+### opentelemetry-sdk 1.45.0
+
+**License:** Apache-2.0
+
+**Author:** OpenTelemetry Authors <cncf-opentelemetry-contributors@lists.cncf.io>
+
+```text
+                                 Apache License
+                           Version 2.0, January 2004
+                        http://www.apache.org/licenses/
+
+   TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
+
+   1. Definitions.
+
+      "License" shall mean the terms and conditions for use, reproduction,
+      and distribution as defined by Sections 1 through 9 of this document.
+
+      "Licensor" shall mean the copyright owner or entity authorized by
+      the copyright owner that is granting the License.
+
+      "Legal Entity" shall mean the union of the acting entity and all
+      other entities that control, are controlled by, or are under common
+      control with that entity. For the purposes of this definition,
+      "control" means (i) the power, direct or indirect, to cause the
+      direction or management of such entity, whether by contract or
+      otherwise, or (ii) ownership of fifty percent (50%) or more of the
+      outstanding shares, or (iii) beneficial ownership of such entity.
+
+      "You" (or "Your") shall mean an individual or Legal Entity
+      exercising permissions granted by this License.
+
+      "Source" form shall mean the preferred form for making modifications,
+      including but not limited to software source code, documentation
+      source, and configuration files.
+
+      "Object" form shall mean any form resulting from mechanical
+      transformation or translation of a Source form, including but
+      not limited to compiled object code, generated documentation,
+      and conversions to other media types.
+
+      "Work" shall mean the work of authorship, whether in Source or
+      Object form, made available under the License, as indicated by a
+      copyright notice that is included in or attached to the work
+      (an example is provided in the Appendix below).
+
+      "Derivative Works" shall mean any work, whether in Source or Object
+      form, that is based on (or derived from) the Work and for which the
+      editorial revisions, annotations, elaborations, or other modifications
+      represent, as a whole, an original work of authorship. For the purposes
+      of this License, Derivative Works shall not include works that remain
+      separable from, or merely link (or bind by name) to the interfaces of,
+      the Work and Derivative Works thereof.
+
+      "Contribution" shall mean any work of authorship, including
+      the original version of the Work and any modifications or additions
+      to that Work or Derivative Works thereof, that is intentionally
+      submitted to Licensor for inclusion in the Work by the copyright owner
+      or by an individual or Legal Entity authorized to submit on behalf of
+      the copyright owner. For the purposes of this definition, "submitted"
+      means any form of electronic, verbal, or written communication sent
+      to the Licensor or its representatives, including but not limited to
+      communication on electronic mailing lists, source code control systems,
+      and issue tracking systems that are managed by, or on behalf of, the
+      Licensor for the purpose of discussing and improving the Work, but
+      excluding communication that is conspicuously marked or otherwise
+      designated in writing by the copyright owner as "Not a Contribution."
+
+      "Contributor" shall mean Licensor and any individual or Legal Entity
+      on behalf of whom a Contribution has been received by Licensor and
+      subsequently incorporated within the Work.
+
+   2. Grant of Copyright License. Subject to the terms and conditions of
+      this License, each Contributor hereby grants to You a perpetual,
+      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
+      copyright license to reproduce, prepare Derivative Works of,
+      publicly display, publicly perform, sublicense, and distribute the
+      Work and such Derivative Works in Source or Object form.
+
+   3. Grant of Patent License. Subject to the terms and conditions of
+      this License, each Contributor hereby grants to You a perpetual,
+      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
+      (except as stated in this section) patent license to make, have made,
+      use, offer to sell, sell, import, and otherwise transfer the Work,
+      where such license applies only to those patent claims licensable
+      by such Contributor that are necessarily infringed by their
+      Contribution(s) alone or by combination of their Contribution(s)
+      with the Work to which such Contribution(s) was submitted. If You
+      institute patent litigation against any entity (including a
+      cross-claim or counterclaim in a lawsuit) alleging that the Work
+      or a Contribution incorporated within the Work constitutes direct
+      or contributory patent infringement, then any patent licenses
+      granted to You under this License for that Work shall terminate
+      as of the date such litigation is filed.
+
+   4. Redistribution. You may reproduce and distribute copies of the
+      Work or Derivative Works thereof in any medium, with or without
+      modifications, and in Source or Object form, provided that You
+      meet the following conditions:
+
+      (a) You must give any other recipients of the Work or
+          Derivative Works a copy of this License; and
+
+      (b) You must cause any modified files to carry prominent notices
+          stating that You changed the files; and
+
+      (c) You must retain, in the Source form of any Derivative Works
+          that You distribute, all copyright, patent, trademark, and
+          attribution notices from the Source form of the Work,
+          excluding those notices that do not pertain to any part of
+          the Derivative Works; and
+
+      (d) If the Work includes a "NOTICE" text file as part of its
+          distribution, then any Derivative Works that You distribute must
+          include a readable copy of the attribution notices contained
+          within such NOTICE file, excluding those notices that do not
+          pertain to any part of the Derivative Works, in at least one
+          of the following places: within a NOTICE text file distributed
+          as part of the Derivative Works; within the Source form or
+          documentation, if provided along with the Derivative Works; or,
+          within a display generated by the Derivative Works, if and
+          wherever such third-party notices normally appear. The contents
+          of the NOTICE file are for informational purposes only and
+          do not modify the License. You may add Your own attribution
+          notices within Derivative Works that You distribute, alongside
+          or as an addendum to the NOTICE text from the Work, provided
+          that such additional attribution notices cannot be construed
+          as modifying the License.
+
+      You may add Your own copyright statement to Your modifications and
+      may provide additional or different license terms and conditions
+      for use, reproduction, or distribution of Your modifications, or
+      for any such Derivative Works as a whole, provided Your use,
+      reproduction, and distribution of the Work otherwise complies with
+      the conditions stated in this License.
+
+   5. Submission of Contributions. Unless You explicitly state otherwise,
+      any Contribution intentionally submitted for inclusion in the Work
+      by You to the Licensor shall be under the terms and conditions of
+      this License, without any additional terms or conditions.
+      Notwithstanding the above, nothing herein shall supersede or modify
+      the terms of any separate license agreement you may have executed
+      with Licensor regarding such Contributions.
+
+   6. Trademarks. This License does not grant permission to use the trade
+      names, trademarks, service marks, or product names of the Licensor,
+      except as required for reasonable and customary use in describing the
+      origin of the Work and reproducing the content of the NOTICE file.
+
+   7. Disclaimer of Warranty. Unless required by applicable law or
+      agreed to in writing, Licensor provides the Work (and each
+      Contributor provides its Contributions) on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+      implied, including, without limitation, any warranties or conditions
+      of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A
+      PARTICULAR PURPOSE. You are solely responsible for determining the
+      appropriateness of using or redistributing the Work and assume any
+      risks associated with Your exercise of permissions under this License.
+
+   8. Limitation of Liability. In no event and under no legal theory,
+      whether in tort (including negligence), contract, or otherwise,
+      unless required by applicable law (such as deliberate and grossly
+      negligent acts) or agreed to in writing, shall any Contributor be
+      liable to You for damages, including any direct, indirect, special,
+      incidental, or consequential damages of any character arising as a
+      result of this License or out of the use or inability to use the
+      Work (including but not limited to damages for loss of goodwill,
+      work stoppage, computer failure or malfunction, or any and all
+      other commercial damages or losses), even if such Contributor
+      has been advised of the possibility of such damages.
+
+   9. Accepting Warranty or Additional Liability. While redistributing
+      the Work or Derivative Works thereof, You may choose to offer,
+      and charge a fee for, acceptance of support, warranty, indemnity,
+      or other liability obligations and/or rights consistent with this
+      License. However, in accepting such obligations, You may act only
+      on Your own behalf and on Your sole responsibility, not on behalf
+      of any other Contributor, and only if You agree to indemnify,
+      defend, and hold each Contributor harmless for any liability
+      incurred by, or claims asserted against, such Contributor by reason
+      of your accepting any such warranty or additional liability.
+
+   END OF TERMS AND CONDITIONS
+
+   APPENDIX: How to apply the Apache License to your work.
+
+      To apply the Apache License to your work, attach the following
+      boilerplate notice, with the fields enclosed by brackets "[]"
+      replaced with your own identifying information. (Don't include
+      the brackets!)  The text should be enclosed in the appropriate
+      comment syntax for the file format. We also recommend that a
+      file or class name and description of purpose be included on the
+      same "printed page" as the copyright notice for easier
+      identification within third-party archives.
+
+   Copyright [yyyy] [name of copyright owner]
+
+   Licensed under the Apache License, Version 2.0 (the "License");
+   you may not use this file except in compliance with the License.
+   You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
+
+```
+
+### opentelemetry-semantic-conventions 0.66b0
 
 **License:** Apache-2.0
 
@@ -13932,7 +14144,7 @@ UNKNOWN
 
 ```
 
-### platformdirs 4.11.12
+### platformdirs 4.12.1
 
 **License:** MIT
 
@@ -17838,7 +18050,7 @@ SOFTWARE.
 
 ```
 
-### srsly 2.5.3
+### srsly 2.5.4
 
 **License:** MIT License
 
@@ -19540,7 +19752,7 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### uvicorn 0.53.0
+### uvicorn 0.54.0
 
 **License:** BSD-3-Clause
 
@@ -20024,7 +20236,7 @@ OTHER DEALINGS IN THE SOFTWARE.
 
 ```
 
-### wrapt 2.4.1
+### wrapt 2.5.0
 
 **License:** BSD-2-Clause
 

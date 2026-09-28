@@ -1,18 +1,21 @@
 # Local module imports
 import math
 import os
+import re
 # Standard library includes
 from abc import ABC, abstractmethod
 from collections import Counter, defaultdict
-from typing import Any
+from typing import Any, cast
 
 from Globals.Session import Session
-from Gui.Colors import CYAN, ORANGE, YELLOW
+from Gui.Colors import BRIGHT_YELLOW, CYAN, ORANGE, YELLOW
 from Gui.FileList import FileList
 from Gui.Symbols import Symbols
 from Helpers.DebugHelper import DebugHelper
 from Helpers.Helpers import (align_retriever_sources_for_print,
                              truncate_for_print)
+
+_QUERY_TOKEN_RE = re.compile(r"[a-z0-9]{3,}", re.IGNORECASE)
 
 
 class ChunkSelector(ABC):
@@ -29,6 +32,7 @@ class ChunkSelector(ABC):
         self.pretty: Any = self.session.pretty
         self.cfg: Any = self.session.cfg
         self.fileHist: FileList = FileList()
+        self._file_utils: Any | None = None
         web_thr = getattr(self.session, "web_rerank_threshold", None)
         if web_thr is None and self.cfg is not None:
             web_thr = self.cfg.get_float("_WEB_SEARCH.rerank_threshold")
@@ -40,6 +44,24 @@ class ChunkSelector(ABC):
         )
         self.single_chunk_boost: float = (
             float(boost_raw) if boost_raw is not None else 1.0
+        )
+        fallback_raw = (
+            self.cfg.get_bool("_RERANK_LOW_SCORE_FALLBACK.enabled", True)
+            if self.cfg is not None
+            else True
+        )
+        self.rerank_low_score_fallback_cfg_enabled: bool = bool(fallback_raw)
+        fallback_flow_raw = getattr(self.session, "enable_low_score_fallback", None)
+        self.rerank_low_score_fallback_flow_enabled: bool = (
+            True if fallback_flow_raw is None else bool(fallback_flow_raw)
+        )
+        self.rerank_low_score_fallback_enabled: bool = bool(
+            self.rerank_low_score_fallback_cfg_enabled
+            and self.rerank_low_score_fallback_flow_enabled
+        )
+        rescue_flow_raw = getattr(self.session, "enable_low_recall_rescue", None)
+        self.rerank_low_recall_rescue_enabled: bool = (
+            True if rescue_flow_raw is None else bool(rescue_flow_raw)
         )
 
     def _get_score(self, c: Any) -> float:
@@ -91,6 +113,221 @@ class ChunkSelector(ABC):
         if hasattr(c, "file_name"):
             return c.file_name
         return c.metadata.get("FileName", c.metadata.get("file_name", ""))
+
+    def _is_web_chunk(self, c: Any) -> bool:
+        sources = str(
+            c.metadata.get("retriever_sources", "") if hasattr(c, "metadata") else ""
+        )
+        return "web" in sources.lower()
+
+    def _query_terms(self) -> set[str]:
+        query_text = str(
+            getattr(self.session, "post_rewrite_query_en", "")
+            or getattr(self.session, "final_retrieval_query", "")
+            or getattr(self.session, "orig_translated_query_en", "")
+            or getattr(self.session, "t1_query", "")
+            or ""
+        ).lower()
+        if not query_text:
+            return set()
+        stopwords_set = self._query_stopwords(query_text)
+        tokens = {
+            tok
+            for tok in _QUERY_TOKEN_RE.findall(query_text)
+            if tok and tok not in stopwords_set
+        }
+        return tokens
+
+    def _query_stopwords(self, query_text: str) -> set[str]:
+        """Return per-query stopwords using shared NLTK implementation.
+
+        Uses FileUtils.get_stopwords so this selector reuses the same language
+        detection + NLTK caching pipeline used elsewhere.
+        """
+        if not query_text:
+            return set()
+
+        try:
+            if self._file_utils is None:
+                from Helpers.FileUtils import FileUtils
+
+                self._file_utils = FileUtils(cfg=self.cfg, pretty=self.pretty)
+            stop_words_obj = self._file_utils.get_stopwords(query_text)
+        except Exception:
+            return set()
+
+        stop_words: list[str]
+        if isinstance(stop_words_obj, list):
+            stop_words = cast(list[str], stop_words_obj)
+        else:
+            stop_words = []
+
+        resolved = {
+            str(word).strip().lower()
+            for word in (stop_words or [])
+            if str(word).strip()
+        }
+        return resolved
+
+    def _query_overlap_count(self, c: Any, query_terms: set[str]) -> int:
+        if not query_terms:
+            return 0
+        content = str(getattr(c, "page_content", "") or "").lower()
+        if not content:
+            return 0
+        terms_in_content = set(_QUERY_TOKEN_RE.findall(content))
+        if not terms_in_content:
+            return 0
+        return len(query_terms.intersection(terms_in_content))
+
+    @staticmethod
+    def _coerce_positive_int(value: Any) -> int | None:
+        try:
+            parsed = int(value)
+        except (TypeError, ValueError):
+            return None
+        return parsed if parsed > 0 else None
+
+    def _resolve_low_recall_rescue_params(
+        self,
+    ) -> tuple[int | None, int | None, int, int, int, int]:
+        """Compute rescue guardrail parameters from session retrieval knobs.
+
+        The returned ``fixed_k`` is local-only and must not be persisted to
+        session state, preserving user intent across turns.
+        """
+        configured_fetch_k = self._coerce_positive_int(
+            getattr(self.session, "retriever_k", None)
+        )
+        configured_context_chunks = self._coerce_positive_int(
+            getattr(self.session, "final_chunks_to_llm", None)
+        )
+
+        # Dynamic base from fetch_k/retriever_k. Preserve legacy behavior when
+        # no explicit user preference is present.
+        fixed_k = configured_fetch_k or 100
+        fixed_k = max(20, fixed_k)
+
+        # Bound rescue by the effective context budget.
+        context_cap = configured_context_chunks or 50
+        context_cap = max(8, context_cap)
+
+        min_local_pool = max(20, int(round(fixed_k * 0.40)))
+        target_min_local_hits = min(
+            context_cap,
+            max(8, int(round(fixed_k * 0.24))),
+        )
+        max_additional = min(
+            target_min_local_hits,
+            max(4, int(round(fixed_k * 0.24))),
+        )
+
+        return (
+            configured_fetch_k,
+            configured_context_chunks,
+            fixed_k,
+            min_local_pool,
+            target_min_local_hits,
+            max_additional,
+        )
+
+    def _rescue_low_recall_local_hits(
+        self,
+        hits: list[tuple[Any, float, float, float]],
+        misses: list[tuple[Any, float, float, float]],
+    ) -> tuple[
+        list[tuple[Any, float, float, float]],
+        list[tuple[Any, float, float, float]],
+        int,
+    ]:
+        """Re-add query-overlap local misses when strict thresholding is sparse.
+
+        Cross-encoder logits can under-rank tabular hardware specs. When a large
+        local pool survives thresholding with very few hits, re-introduce a small
+        set of retrieval-ranked local misses that share lexical overlap with the
+        active query so table rows are still available to the final answer model.
+        """
+
+        local_hits = [item for item in hits if not self._is_web_chunk(item[0])]
+        local_misses = [item for item in misses if not self._is_web_chunk(item[0])]
+
+        local_pool = len(local_hits) + len(local_misses)
+        if not local_hits or not local_misses:
+            return hits, misses, 0
+
+        # Guardrails: run only on large local pools and sparse hit sets, sized
+        # dynamically from fetch_k/context_chunks preferences.
+        (
+            configured_fetch_k,
+            configured_context_chunks,
+            fixed_k,
+            min_local_pool,
+            target_min_local_hits,
+            max_additional,
+        ) = self._resolve_low_recall_rescue_params()
+        if local_pool < min_local_pool or len(local_hits) >= target_min_local_hits:
+            return hits, misses, 0
+
+        query_terms = self._query_terms()
+        if not query_terms:
+            return hits, misses, 0
+
+        hit_paths = {
+            self._get_path(item[0]) for item in local_hits if self._get_path(item[0])
+        }
+        scoped_misses = [
+            item
+            for item in local_misses
+            if (not hit_paths) or (self._get_path(item[0]) in hit_paths)
+        ]
+        if not scoped_misses:
+            return hits, misses, 0
+
+        ranked_candidates: list[tuple[int, float, tuple[Any, float, float, float]]] = []
+        for item in scoped_misses:
+            chunk = item[0]
+            overlap = self._query_overlap_count(chunk, query_terms)
+            if overlap <= 0:
+                continue
+            ranked_candidates.append((overlap, self._get_retrieval_score(chunk), item))
+
+        if not ranked_candidates:
+            return hits, misses, 0
+
+        ranked_candidates.sort(key=lambda row: (row[0], row[1]), reverse=True)
+        need = target_min_local_hits - len(local_hits)
+        add_count = min(max_additional, need, len(ranked_candidates))
+        if add_count <= 0:
+            return hits, misses, 0
+
+        rescued_items = [row[2] for row in ranked_candidates[:add_count]]
+        rescued_ids = {id(item[0]) for item in rescued_items}
+
+        new_hits = list(hits)
+        new_hits.extend(rescued_items)
+        # Keep deterministic sort: still by effective logit so strict hits stay first.
+        new_hits.sort(key=lambda item: item[3], reverse=True)
+        new_misses = [item for item in misses if id(item[0]) not in rescued_ids]
+
+        self.pretty.write(
+            "I",
+            "Rerank fallback",
+            (
+                "Low-recall rescue action: Added "
+                f"{add_count} query-overlap local chunk(s) from retrieval order "
+                f"(input_fetch_k={configured_fetch_k!r} "
+                f"input_context_chunks={configured_context_chunks!r} "
+                f"fixed_k={fixed_k} "
+                f"min_local_pool={min_local_pool} "
+                f"target_min_local_hits={target_min_local_hits} "
+                f"max_additional={max_additional}; "
+                f"local hits {len(local_hits)}->{len(local_hits) + add_count}, "
+                f"pool={local_pool})."
+            ),
+            color=BRIGHT_YELLOW,
+        )
+
+        return new_hits, new_misses, add_count
 
     @staticmethod
     def _sigmoid(x: float) -> float:
@@ -250,9 +487,45 @@ class ChunkSelector(ABC):
             )
         ]
         max_local_raw = max(local_raw_scores, default=0.0)
-        self._rerank_skipped = (
-            bool(local_raw_scores) and self._sigmoid(max_local_raw) < self.threshold
+        below_local_threshold = bool(local_raw_scores) and (
+            self._sigmoid(max_local_raw) < self.threshold
         )
+        if below_local_threshold:
+            if self.rerank_low_score_fallback_enabled:
+                self.pretty.write(
+                    "I",
+                    "Rerank fallback",
+                    "Low-score fallback action: Running because "
+                    "_RERANK_LOW_SCORE_FALLBACK.enabled knob is on "
+                    f"(best final score {self._sigmoid(max_local_raw):.3f} < threshold {self.threshold:.2f}).",
+                    color=BRIGHT_YELLOW,
+                )
+            else:
+                skip_reasons: list[str] = []
+                if not self.rerank_low_score_fallback_cfg_enabled:
+                    skip_reasons.append("_RERANK_LOW_SCORE_FALLBACK.enabled is off")
+                if not self.rerank_low_score_fallback_flow_enabled:
+                    skip_reasons.append("run_low_score_fallback is off")
+                reason_text = (
+                    " and ".join(skip_reasons)
+                    if skip_reasons
+                    else "fallback toggle is off"
+                )
+                self.pretty.write(
+                    "I",
+                    "Rerank fallback",
+                    "Low-score fallback action: Skipped because "
+                    f"{reason_text} "
+                    f"(best final score {self._sigmoid(max_local_raw):.3f} < threshold {self.threshold:.2f}).",
+                    color=YELLOW,
+                )
+        self._rerank_skipped = (
+            self.rerank_low_score_fallback_enabled and below_local_threshold
+        )
+        self.session.rerank_low_confidence_fallback_triggered = bool(
+            self._rerank_skipped
+        )
+        self.session.rerank_partial_recall_rescue_triggered = False
         if self._rerank_skipped:
             self.pretty.write(
                 "W",
@@ -263,6 +536,17 @@ class ChunkSelector(ABC):
                 color=ORANGE,
             )
             return list(chunks)
+        if (
+            not self.rerank_low_score_fallback_enabled
+            and below_local_threshold
+            and DebugHelper.check_session(self.session, 10)
+        ):
+            self.pretty.write(
+                "I",
+                "Rerank fallback",
+                "Low-score fallback is disabled; applying strict threshold filtering.",
+                color=CYAN,
+            )
 
         hits: list[tuple[Any, float, float, float]] = []
         misses: list[tuple[Any, float, float, float]] = []
@@ -274,7 +558,7 @@ class ChunkSelector(ABC):
                 if hasattr(c, "metadata")
                 else ""
             )
-            is_web = "Web" in sources
+            is_web = "web" in sources.lower()
             thr = self.web_rerank_threshold if is_web else self.threshold
             path = self._get_path(c)
             eff = (
@@ -290,6 +574,14 @@ class ChunkSelector(ABC):
         if DebugHelper.check_session(self.session, 10):
             self._print_final_score(misses, hits)
 
+        rescued_count = 0
+        if self.rerank_low_recall_rescue_enabled:
+            hits, misses, rescued_count = self._rescue_low_recall_local_hits(
+                hits,
+                misses,
+            )
+        self.session.rerank_partial_recall_rescue_triggered = rescued_count > 0
+
         strategy: str = self.session.strategy or "m"
         thr_info = (
             f"local={self.threshold:.4f}  web={self.web_rerank_threshold:.4f}"
@@ -297,10 +589,13 @@ class ChunkSelector(ABC):
             else f"{self.threshold:.4f}"
         )
         boost_info = f"  single-chunk boost ×{boost:.2f}" if boost > 1.0 else ""
+        rescue_info = (
+            f"  low-recall rescue +{rescued_count}" if rescued_count > 0 else ""
+        )
         self.pretty.write(
             "I",
             f"Strategy: {strategy.lower()}",
-            f"{len(hits)} chunks remain after applying sigmoid(raw logit) ≥ threshold  {thr_info}{boost_info}",
+            f"{len(hits)} chunks selected after thresholding  {thr_info}{boost_info}{rescue_info}",
             color=CYAN,
         )
         return [c for c, _, _, _ in hits]

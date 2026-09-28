@@ -116,10 +116,29 @@ class PromptRewrite(SingletonMixin):
         original_query: str = session.query or ""
         # EXAMPLE: original_query = "does it have spines"
 
+        session_rewrite_setting = getattr(session, "enable_query_rewrite", None)
+        rewrite_enabled: bool = bool(
+            self.enabled if session_rewrite_setting is None else session_rewrite_setting
+        )
+        session_pronoun_setting = getattr(
+            session,
+            "enable_pronoun_substitution",
+            None,
+        )
+        pronoun_substitution_enabled: bool = bool(
+            True if session_pronoun_setting is None else session_pronoun_setting
+        )
+
         # Reset one-shot underspecified flag from the previous turn.
         session.rewrite_was_underspecified = False
 
-        if not self.enabled:
+        if not rewrite_enabled:
+            if session_rewrite_setting is not None:
+                self.pretty.write(
+                    "I",
+                    "QueryRewrite",
+                    "Query rewrite disabled for this turn.",
+                )
             return original_query
 
         if session.force_skip_rewrite:
@@ -354,6 +373,25 @@ class PromptRewrite(SingletonMixin):
             if s_idx != -1:
                 standalone = standalone[s_idx + 1 :].strip()
 
+        pronoun_rewrite_locked_to_original = False
+        if not pronoun_substitution_enabled:
+            orig_doc_for_toggle = self._nlp(original_query)
+            has_third_person_pronouns = any(
+                tok.pos_ == "PRON" and "3" in tok.morph.get("Person", [])
+                for tok in orig_doc_for_toggle
+            )
+            if has_third_person_pronouns:
+                depends = False
+                contextual = None
+                referents = []
+                standalone = original_query
+                pronoun_rewrite_locked_to_original = True
+                self.pretty.write(
+                    "I",
+                    "QueryRewrite",
+                    "Pronoun substitution disabled - keeping original pronoun form.",
+                )
+
         # ----- Post-hoc grounding check -----
         # When depends=False and referents=[] the model had no prior context to
         # ground a pronoun resolution.  If the standalone rewrite nevertheless
@@ -365,7 +403,7 @@ class PromptRewrite(SingletonMixin):
         #   Execution jumps straight to the decision logic below.
         #
         # EXAMPLE (failure path): depends=False, referents=[] => condition is True => enter block.
-        if not depends and not referents:
+        if not depends and not referents and not pronoun_rewrite_locked_to_original:
             orig_doc = self._nlp(original_query)
             # 3rd-person and demonstrative pronouns — those that require a prior
             # referent from context.  1st/2nd-person forms are excluded because

@@ -28,20 +28,6 @@ _LEVENSHTEIN = "Levenshtein"  # Levenshtein results are added to regex
 _BM25 = "BM25"
 
 # ---------------------------------------------------------------------
-# Human-friendly alias mapping used for CSV headers and CLI summaries.
-# This ensures consistent column names when Regex and Levenshtein are
-# reported together as a single combined label.
-# ---------------------------------------------------------------------
-_REGEX_LEVENSHTEIN = _REGEX + "+" + _LEVENSHTEIN
-
-_LABEL_ALIAS = {
-    _REGEX: _REGEX_LEVENSHTEIN,
-    "Score " + _REGEX: "Score " + _REGEX_LEVENSHTEIN,
-    "Threshold " + _REGEX: "Threshold " + _REGEX_LEVENSHTEIN,
-    "Detail " + _REGEX: "Details " + _REGEX_LEVENSHTEIN,
-}
-
-# ---------------------------------------------------------------------
 # Default algorithms to run in the pipeline when no custom selection
 # is provided. Order here is not enforcement order; it's a default list.
 # ---------------------------------------------------------------------
@@ -51,47 +37,6 @@ _DEFAULT_ALGOS = [
     _REGEX,
     _KEYBERT,
     #   _COSINE,
-]
-
-# ---------------------------------------------------------------------
-# Keys/columns included in the CSV produced for human review.
-# Keep this list stable to avoid breaking downstream analysis scripts.
-# ---------------------------------------------------------------------
-_KEYS_FOR_HUMAN_REVIEW_CSV = [
-    "Status",
-    "Time",
-    "Stage",
-    "Skip Status",
-    "Skipped Chunks",
-    "Inserted Chunks",
-    "Phrase",
-    "Max Score",
-    "Matched Algos Count",
-    "Algos Matched",
-    _JACCARD,
-    "Score " + _JACCARD,
-    "Threshold " + _JACCARD,
-    _REGEX_LEVENSHTEIN,
-    "Score " + _REGEX_LEVENSHTEIN,
-    "Threshold " + _REGEX_LEVENSHTEIN,
-    _BM25,
-    "Score " + _BM25,
-    "Threshold " + _BM25,
-    _KEYBERT,
-    "Score " + _KEYBERT,
-    "Threshold " + _KEYBERT,
-    #   _COSINE,
-    #    "Score " + _COSINE,
-    #    "Threshold " + _COSINE,
-    "WordCount",
-    "Temperature",
-    "Session",
-    "FilePath",
-    "FileType",
-    "Language",
-    "CreationDate",
-    "Chunk",
-    "FileHash",
 ]
 
 # ---------------------------------------------------------------------

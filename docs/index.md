@@ -26,6 +26,8 @@ Current release: v0.5.1/1480 (2026-09-19)
 - Multi-turn chat support with query rewriting and topic switching
 - Multi-query expansion for better recall
 - Cross-encoder reranking and strategy-based context assembly
+- Configurable orchestration flows for per-turn pipeline control
+- Confidence evaluation signals for evidence-quality tuning
 - Compliance filtering during ingestion, query, and answer phases
 - Grounding markers so answer text can be traced to evidence chunks
 
@@ -56,6 +58,28 @@ Most RAG stacks optimize only retrieval score. RAG-LCC also optimizes context qu
 3. Start chat
    python ./src/Apps/RAGChat.py --doc-dir TestDocs
 
+## Query and grounding examples
+
+- [QUERY_OUTPUT_EXAMPLE.md](../QUERY_OUTPUT_EXAMPLE.md)
+  Full CLI transcript of a real RAGChat run, including startup checks,
+  retrieval settings, configurable orchestration decisions, rerank diagnostics,
+  grounding, and confidence-evaluation output.
+
+### CLI grounding example: hedgehog query
+
+![Hedgehog grounded CLI output](../Documentation/Pics/HedgehogQueryGrounded.png)
+
+Shows sentence-level grounding markers in the CLI flow. This helps verify which
+answer parts are directly supported by retrieved evidence chunks.
+
+### OpenWebUI example
+
+![OpenWebUI grounded output](../Documentation/Pics/OpenWebUIGrounded.png)
+
+Shows the same grounding concept through the OpenWebUI integration path
+(`RAGChatService`). Useful for validating that API/UI output preserves
+evidence traceability, not just CLI output.
+
 ## Documentation hub
 
 - Project overview
@@ -66,8 +90,8 @@ Most RAG stacks optimize only retrieval score. RAG-LCC also optimizes context qu
   [CONFIGURATION_REFERENCE.md](https://github.com/HarinezumIgel/RAG-LCC/blob/main/CONFIGURATION_REFERENCE.md)
 - Architecture deep dive
   [ARCHITECTURE.md](https://github.com/HarinezumIgel/RAG-LCC/blob/main/ARCHITECTURE.md)
-- End-to-end examples
-  [EXAMPLES.md](https://github.com/HarinezumIgel/RAG-LCC/blob/main/EXAMPLES.md)
+- Query output walkthrough
+  [QUERY_OUTPUT_EXAMPLE.md](https://github.com/HarinezumIgel/RAG-LCC/blob/main/QUERY_OUTPUT_EXAMPLE.md)
 - Hands-on tour
   [HANDS_ON_TOUR.md](https://github.com/HarinezumIgel/RAG-LCC/blob/main/HANDS_ON_TOUR.md)
 - Legal and compliance notes

@@ -29,6 +29,7 @@ class Session:
         self.metadata_filters: dict[str, str] = {}
         self.query: str | None = None
         self.strategy: str | None = None
+        self.orchestrator_flow: str | None = None
         self.retriever_k: int | None = None
         self.rerank: bool | None = None
         self.final_chunks_to_llm: int | None = None
@@ -72,6 +73,25 @@ class Session:
         # PromptRewrite.rewrite() skips the LLM call for this turn only.
         # RAGChatImpl resets it to False at the start of every _retrieve() call.
         self.force_skip_rewrite: bool = False
+        # Per-turn controls populated by Orchestrator flow selection.
+        # None means "use global PromptRewrite defaults".
+        self.enable_query_rewrite: bool | None = None
+        self.enable_pronoun_substitution: bool | None = None
+        self.enable_rerank: bool | None = None
+        self.enable_low_score_fallback: bool | None = None
+        self.enable_low_recall_rescue: bool | None = None
+        self.enable_grounding: bool | None = None
+        # Per-step confidence labels emitted by Orchestrator.
+        self.orchestration_step_confidence: dict[str, str] = {}
+        self.confidence_step_events: list[dict[str, Any]] = []
+        self.lang_detection_events: list[dict[str, Any]] = []
+        # Final answer confidence derived from selected retrieval evidence.
+        self.answer_confidence_level: str | None = None
+        self.answer_confidence_score: float | None = None
+        self.answer_confidence_summary: str | None = None
+        self.answer_confidence_components: dict[str, float] = {}
+        self.rerank_low_confidence_fallback_triggered: bool = False
+        self.rerank_partial_recall_rescue_triggered: bool = False
         # Preferred language for LLM responses, set interactively via /settings.
         self.preferred_response_language: str | None = None
         # Tracks the web_search state used in the previous query so RAGChatImpl

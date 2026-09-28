@@ -80,6 +80,18 @@ class QueryParts(SingletonMixin):
             "type": "string",
             "attr": "strategy",
         },
+        "orchestrator_flow": {
+            "section": "Retrieval",
+            "prompt": (
+                "Chooses a predefined retrieval-orchestration flow profile. "
+                "Flow profiles are configured in Config_Orchestrator.py and can enable/disable "
+                "query sources, guardrail legs, local/web stages, retriever switches, and shaping behavior. "
+                "Use orchestrator_flow! to pick one of the predefined profiles."
+            ),
+            "mode": "orchestrator_flow",
+            "type": "string",
+            "attr": "orchestrator_flow",
+        },
         "retrieve_mode": {
             "section": "Retrieval",
             "prompt": (
@@ -489,7 +501,7 @@ class QueryParts(SingletonMixin):
         )
         self.compiled_regex: re.Pattern[str] = re.compile(
             r"^\s*\b("
-            r"use_chat_context|fetch_k|file|path|strategy|"
+            r"use_chat_context|fetch_k|file|path|strategy|orchestrator_flow|"
             r"context_chunks|treshold|threshold|"
             r"max_output_tokens|context_size|terminal_line_size|"
             r"temperature|top_p|top_k|"
@@ -517,6 +529,19 @@ class QueryParts(SingletonMixin):
 
         # load allowed strategies
         self.allowed_strategies: list[Any] = self.cfg.get_list("_ALLOWED_STRATEGIES")
+        allowed_orchestration_flows: list[Any] = self.cfg.get_list(
+            "_ALLOWED_ORCHESTRATION_FLOWS",
+            [],
+        )
+        if not allowed_orchestration_flows:
+            allowed_orchestration_flows = list(
+                self.cfg.get_dict("_ORCHESTRATION_FLOWS", {}).keys()
+            )
+        self.allowed_orchestration_flows: list[str] = [
+            str(item).strip().upper()
+            for item in allowed_orchestration_flows
+            if str(item).strip()
+        ]
         self.allowed_debug_levels: dict[str, Any] = self.cfg.get_dict(
             "_ALLOWED_DEBUG_LEVELS"
         )
@@ -531,6 +556,10 @@ class QueryParts(SingletonMixin):
         # initial defaults
         self._defaults(
             "strategy", self.cfg.get_str("_ACTIVE_CHUNK_SELECT_STRATEGY"), True
+        )
+        self.applyOrchestrationFlowDefaults(
+            self.cfg.get_str("_ACTIVE_ORCHESTRATION_FLOW", "THOROUGH_QUERY_REWRITE"),
+            session=self.session,
         )
 
     # ——— Utility: type casting ———
@@ -565,6 +594,7 @@ class QueryParts(SingletonMixin):
             "collection": getattr(s, "collection_name", None),
             "chat_name": getattr(s, "chat_name", None),
             "strategy": getattr(s, "strategy", None),
+            "orchestrator_flow": getattr(s, "orchestrator_flow", None),
             "retrieve_mode": getattr(s, "retrieve_mode", None),
             "fetch_k": getattr(s, "retriever_k", None),
             "context_chunks": getattr(s, "final_chunks_to_llm", None),
@@ -693,6 +723,7 @@ class QueryParts(SingletonMixin):
             _rline(
                 "Strategies",
                 ("strategy", values["strategy"]),
+                ("orchestrator_flow", values["orchestrator_flow"]),
                 ("retrieve_mode", values["retrieve_mode"]),
                 ("rerank", values["rerank"]),
                 ("threshold", values["threshold"]),
@@ -779,6 +810,25 @@ class QueryParts(SingletonMixin):
             ).execute()
             s.strategy = choice
             self._base_defaults(choice)
+            return
+
+        if mode == "orchestrator_flow":
+            if not self.allowed_orchestration_flows:
+                print(
+                    "⚠ No orchestration flows are configured. "
+                    "Define _ORCHESTRATION_FLOWS in Config_Orchestrator.py first."
+                )
+                return
+            choice = inquirer.select(
+                message="Choose orchestration flow:",
+                choices=self.allowed_orchestration_flows,
+                default=s.orchestrator_flow
+                or self.cfg.get_str(
+                    "_ACTIVE_ORCHESTRATION_FLOW",
+                    self.allowed_orchestration_flows[0],
+                ),
+            ).execute()
+            self.applyOrchestrationFlowDefaults(choice)
             return
 
         if mode == "debug":
@@ -1115,6 +1165,8 @@ class QueryParts(SingletonMixin):
             self._print_metadata_filters()
         elif tok == "strategy":
             print(f"[strategy] {s.strategy}")
+        elif tok == "orchestrator_flow":
+            print(f"[orchestrator_flow] {s.orchestrator_flow}")
         elif tok == "chat_name":
             print(f"[chat_name] {s.chat_name}")
         elif tok == "context_chunks":
@@ -1363,6 +1415,7 @@ class QueryParts(SingletonMixin):
             "history_prune",
             "rewrite_context",
             "retrieve_mode",
+            "orchestrator_flow",
             "mark_text",
         ):
             try:
@@ -1398,6 +1451,27 @@ class QueryParts(SingletonMixin):
     ) -> str:
         """Public entry point for loading strategy defaults into Session. Returns the collection name."""
         return self._base_defaults(strategy, session=session)
+
+    def applyOrchestrationFlowDefaults(
+        self,
+        orchestrator_flow: str,
+        session: "Session | None" = None,
+    ) -> str:
+        """Apply orchestration-flow selection to session and return the resolved name."""
+        s = session or self.session
+        configured_flows = list(self.allowed_orchestration_flows)
+        fallback = self.cfg.get_str(
+            "_ACTIVE_ORCHESTRATION_FLOW",
+            configured_flows[0] if configured_flows else "THOROUGH_QUERY_REWRITE",
+        )
+        requested = str(orchestrator_flow or "").strip().upper()
+        resolved = requested or str(fallback).strip().upper()
+        if configured_flows and resolved not in configured_flows:
+            resolved = str(fallback).strip().upper()
+            if configured_flows and resolved not in configured_flows:
+                resolved = configured_flows[0]
+        s.orchestrator_flow = resolved
+        return resolved
 
     def _base_defaults(self, strategy: str, *, session: "Session | None" = None) -> str:
         """Read strategy config values and apply them to the session. Returns the collection name."""
@@ -1495,7 +1569,7 @@ class QueryParts(SingletonMixin):
             f"⚙️{BRIGHT_BLUE}  Setup phase: enter query modifiers.  ? show, = set, * defaults, ! ask (picker), - unset (file and path) {RESET}"
         )
         print("   Values: see below")
-        print("   strategy! gives you an inline ←/→ picker")
+        print("   strategy! / orchestrator_flow! give inline ←/→ pickers")
         print(
             "   file! or path! gives you an inline ←/→ picker based upon your history"
         )
@@ -1583,6 +1657,19 @@ class QueryParts(SingletonMixin):
                 strategy: str = val_cast
                 strategy.upper()
                 self._base_defaults(strategy)
+            if tok == "orchestrator_flow":
+                requested_flow = str(val_cast).strip().upper()
+                allowed_flows = list(self.allowed_orchestration_flows)
+                if allowed_flows and requested_flow not in allowed_flows:
+                    msg = (
+                        f"Invalid orchestrator_flow '{val_cast}'. "
+                        f"Allowed: {', '.join(allowed_flows)}"
+                    )
+                    if from_interactive:
+                        raise ValidationError(message=msg)
+                    print(f"⚠ {msg}")
+                    return
+                self.applyOrchestrationFlowDefaults(requested_flow)
             if tok == "retrieve_mode":
                 allowed = self.cfg.get_list("_ALLOWED_RETRIEVE_MODES")
                 if val_cast.upper() not in allowed:

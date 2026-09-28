@@ -32,8 +32,6 @@ import hashlib
 import nltk  # type: ignore[reportMissingTypeStubs]
 import requests  # type: ignore[reportMissingModuleSource]
 from docx import Document  # type: ignore[reportUnusedImport]  # for Word files
-from langdetect import \
-    detect  # type: ignore[reportMissingTypeStubs]  # noqa: F811,F401
 from nltk.corpus import \
     stopwords  # type: ignore[reportMissingTypeStubs, reportUnusedImport]
 from openpyxl import load_workbook  # type: ignore[reportUnusedImport]
@@ -381,6 +379,75 @@ class Helpers:
         if not emitted:
             return ""
         return "\n\n---\n### Document metadata\n\n" + "\n".join(emitted)
+
+    def build_selected_sources_md(self, chosen: list[Any]) -> str:
+        """Build a deterministic selected-sources section from chosen chunks.
+
+        Includes both local and web sources so API/service consumers can see
+        exactly which distinct sources were selected independent of model output.
+        """
+        if not chosen:
+            return ""
+
+        label_field: str = self.cfg.get_str(
+            "_METADATA_EXTRACTION.PDF_PAGE_LABEL_FIELD", "", silent=True
+        )
+
+        local_order: list[tuple[str, str]] = []
+        local_pages_by_source: dict[tuple[str, str], list[str]] = {}
+        web_order: list[tuple[str, str]] = []
+
+        for doc in chosen:
+            meta: dict[str, Any] = getattr(doc, "metadata", {}) or {}
+            source_kind = str(meta.get("Source", "")).strip().lower()
+            file_name = str(meta.get("FileName", "")).strip()
+            file_path = str(meta.get("FilePath", "")).strip()
+            display_name = file_name or file_path or "<unknown source>"
+            source_key = (display_name, file_path)
+
+            if source_kind == "web":
+                if source_key not in web_order:
+                    web_order.append(source_key)
+                continue
+
+            if source_key not in local_order:
+                local_order.append(source_key)
+                local_pages_by_source[source_key] = []
+
+            page = (
+                meta.get(label_field)
+                if label_field and meta.get(label_field) not in (None, "")
+                else meta.get("PageNumber")
+            )
+            if page is None:
+                continue
+            page_str = str(page).strip()
+            if page_str and page_str not in local_pages_by_source[source_key]:
+                local_pages_by_source[source_key].append(page_str)
+
+        lines: list[str] = []
+        if local_order:
+            lines.append(f"- Local sources ({len(local_order)}):")
+            for display_name, file_path in local_order:
+                source_key = (display_name, file_path)
+                lines.append(f"    - **{display_name}**")
+                if file_path:
+                    lines.append(f"        - FilePath: {file_path}")
+                pages = local_pages_by_source.get(source_key, [])
+                if pages:
+                    lines.append(f"        - Pages: {', '.join(pages)}")
+
+        if web_order:
+            lines.append(f"- Web sources ({len(web_order)}):")
+            for display_name, file_path in web_order:
+                lines.append(f"    - **{display_name}**")
+                if file_path:
+                    lines.append(f"        - FilePath: {file_path}")
+
+        if not lines:
+            return ""
+
+        return "\n\n---\n### Selected sources (deterministic)\n\n" + "\n".join(lines)
 
     def normalize_base_url(self, url: str, default_scheme: str = "http") -> str:
         """

@@ -105,6 +105,18 @@ _CHUNK_DEDUP: dict[str, Any] = {
     # Jaccard similarity threshold: chunks sharing >= this fraction of word
     # tokens are considered near-duplicates; the lower-ranked one is dropped.
     "threshold": 0.85,
+    # When True, near-duplicate removal also applies to web chunks.
+    # Keep True to preserve current behavior.
+    "include_web_chunks": True,
+}
+
+# ── Low-Score Rerank Fallback ────────────────────────────────────────────────
+
+_RERANK_LOW_SCORE_FALLBACK: dict[str, Any] = {
+    # When enabled and no local chunk clears `threshold`, skip strict rerank
+    # filtering and keep all chunks, ordered by retrieval (RRF) score.
+    # This preserves the existing fallback behavior.
+    "enabled": True,
 }
 
 # -----------------------------------------------------------------------------

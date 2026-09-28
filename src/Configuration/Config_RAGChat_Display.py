@@ -7,7 +7,7 @@ from Gui.Colors import \
 from Gui.Colors import MARKED_DOCS_HIGHLIGHT_COLOR as _DEFAULT_HIGHLIGHT_COLOR
 
 TERMINAL_LINE_SIZE = {
-    "debug": 180,
+    "debug": 200,
     "no_debug": 100,
 }
 

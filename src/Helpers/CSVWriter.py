@@ -1,20 +1,77 @@
 import csv
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional, cast
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, cast
 
 import xlsxwriter  # type: ignore[reportMissingTypeStubs]
 
 from Commons.SingletonMixin import SingletonMixin
-from Config.Config import Config
-from Globals.Globals import Globals
-from Gui.PrettyWriter import PrettyWriter
-from Helpers.FileUtils import build_csv_path
-from Helpers.Helpers import Helpers
+
+if TYPE_CHECKING:
+    from Config.Config import Config
+    from Globals.Globals import Globals
+    from Gui.PrettyWriter import PrettyWriter
+    from Helpers.Helpers import Helpers
 
 
 class CSVWriterError(RuntimeError):
     pass
+
+
+def algo_triplet(label: str) -> list[str]:
+    """Build [algo, score, threshold] column labels for CSV output."""
+    return [
+        label,
+        "Score " + label,
+        "Threshold " + label,
+    ]
+
+
+def regex_alias_family(source: str, target: str) -> dict[str, str]:
+    """Build aliases for merged Regex + Levenshtein presentation labels."""
+    return {
+        source: target,
+        "Score " + source: "Score " + target,
+        "Threshold " + source: "Threshold " + target,
+        "Detail " + source: "Details " + target,
+    }
+
+
+def human_review_algo_columns(algo_base_columns: list[str]) -> list[str]:
+    """Expand algo labels into [algo, score, threshold] column triplets."""
+    cols: list[str] = []
+    for label in algo_base_columns:
+        cols.extend(algo_triplet(label))
+    return cols
+
+
+def build_human_review_csv_keys(
+    prefix_columns: list[str],
+    algo_base_columns: list[str],
+    suffix_columns: list[str],
+) -> list[str]:
+    """Build the final HUMAN_REVIEW CSV key order from base config lists."""
+    return [
+        *prefix_columns,
+        *human_review_algo_columns(algo_base_columns),
+        *suffix_columns,
+    ]
+
+
+def resolve_human_review_csv_keys(cfg: "Config") -> list[str]:
+    """Return human-review CSV keys, expanding base schema when needed."""
+    keys: list[str] = cfg.get_list("_KEYS_FOR_HUMAN_REVIEW_CSV", [])
+    if keys:
+        return keys
+
+    prefix_columns: list[str] = cfg.get_list("_HUMAN_REVIEW_PREFIX_COLUMNS", [])
+    algo_base_columns: list[str] = cfg.get_list("_HUMAN_REVIEW_ALGO_BASE_COLUMNS", [])
+    suffix_columns: list[str] = cfg.get_list("_HUMAN_REVIEW_SUFFIX_COLUMNS", [])
+    return build_human_review_csv_keys(
+        prefix_columns,
+        algo_base_columns,
+        suffix_columns,
+    )
 
 
 class CSVWriter(SingletonMixin):
@@ -30,14 +87,21 @@ class CSVWriter(SingletonMixin):
             return
         self._initialized = True
 
-        self.globals: Globals = Globals()
-        self.pretty: PrettyWriter = pretty or PrettyWriter()
-        self.helpers: Helpers = helpers or Helpers()
-        self.cfg: Config = cfg or Config()
+        from Config.Config import Config as _Config
+        from Globals.Globals import Globals as _Globals
+        from Gui.PrettyWriter import PrettyWriter as _PrettyWriter
+        from Helpers.Helpers import Helpers as _Helpers
+
+        self.globals: "Globals" = _Globals()
+        self.pretty: "PrettyWriter" = pretty or _PrettyWriter()
+        self.helpers: "Helpers" = helpers or _Helpers()
+        self.cfg: "Config" = cfg or _Config()
         self.csv_delimiter: str = self.cfg.get_str("CSV_DELIMITER", ";")
 
         # stateMap: status -> { "path": str, "file": IO, "writer": csv.DictWriter, "fieldnames": List[str] }
         self.stateMap: Dict[str, Dict[str, Any]] = {}
+        # cache for dynamic-schema CSV files keyed by absolute file path
+        self._dynamic_header_cache: Dict[str, List[str]] = {}
 
         self._define_csv_files()
 
@@ -53,12 +117,102 @@ class CSVWriter(SingletonMixin):
         if directory and not os.path.exists(directory):
             os.makedirs(directory, exist_ok=True)
 
+    def _load_existing_header(self, csv_path: str) -> List[str]:
+        if not os.path.exists(csv_path) or os.path.getsize(csv_path) == 0:
+            return []
+        try:
+            with open(csv_path, newline="", encoding="utf-8") as handle:
+                reader = csv.reader(handle, delimiter=self.csv_delimiter)
+                for row in reader:
+                    return [str(col) for col in row]
+        except Exception:
+            return []
+        return []
+
+    def _rewrite_csv_with_extended_header(
+        self,
+        csv_path: str,
+        new_header: List[str],
+    ) -> None:
+        existing_rows: List[Dict[str, Any]] = []
+        if os.path.exists(csv_path) and os.path.getsize(csv_path) > 0:
+            with open(csv_path, newline="", encoding="utf-8") as handle:
+                reader = csv.DictReader(handle, delimiter=self.csv_delimiter)
+                for row in reader:
+                    existing_rows.append(dict(row))
+
+        with open(csv_path, "w", newline="", encoding="utf-8") as handle:
+            writer = csv.DictWriter(
+                handle,
+                fieldnames=new_header,
+                delimiter=self.csv_delimiter,
+                quoting=csv.QUOTE_ALL,
+            )
+            writer.writeheader()
+            for row in existing_rows:
+                writer.writerow({key: row.get(key, "") for key in new_header})
+
+    def append_dynamic_row(self, csv_path: str, row: Dict[str, Any]) -> None:
+        """Append one row to a CSV with dynamic columns, extending header as needed."""
+        if not row:
+            return
+
+        self._ensure_dir_for_path(csv_path)
+        normalized_row: Dict[str, Any] = {
+            key: self._normalize_value(value) for key, value in row.items()
+        }
+
+        try:
+            header: List[str] | None = self._dynamic_header_cache.get(csv_path)
+            if header is None:
+                header = self._load_existing_header(csv_path)
+                self._dynamic_header_cache[csv_path] = list(header)
+
+            row_keys: List[str] = list(normalized_row.keys())
+            if not header:
+                header = list(row_keys)
+                with open(csv_path, "w", newline="", encoding="utf-8") as handle:
+                    writer = csv.DictWriter(
+                        handle,
+                        fieldnames=header,
+                        delimiter=self.csv_delimiter,
+                        quoting=csv.QUOTE_ALL,
+                    )
+                    writer.writeheader()
+                    writer.writerow(
+                        {key: normalized_row.get(key, "") for key in header}
+                    )
+                self._dynamic_header_cache[csv_path] = header
+                return
+
+            missing: List[str] = [key for key in row_keys if key not in header]
+            if missing:
+                header = list(header) + missing
+                self._rewrite_csv_with_extended_header(csv_path, header)
+                self._dynamic_header_cache[csv_path] = header
+
+            with open(csv_path, "a", newline="", encoding="utf-8") as handle:
+                writer = csv.DictWriter(
+                    handle,
+                    fieldnames=header,
+                    delimiter=self.csv_delimiter,
+                    quoting=csv.QUOTE_ALL,
+                )
+                writer.writerow({key: normalized_row.get(key, "") for key in header})
+        except Exception as e:
+            self.pretty.write(
+                "E", "CSVWriter", f"Failed writing dynamic CSV {csv_path}: {e}"
+            )
+            raise CSVWriterError(f"Failed writing dynamic CSV {csv_path}: {e}") from e
+
     def _get_desired_keys(self, status: str) -> List[str]:
         if status == "HUMAN_REVIEW":
-            return self.cfg.get_list("_KEYS_FOR_HUMAN_REVIEW_CSV", [])
+            return resolve_human_review_csv_keys(self.cfg)
         return self.cfg.get_list("_CLASSIFICATION_KEYS", [])
 
     def _csv_path_for(self, _FRIENDLY_NAME: str, status: str, log_dir: str) -> str:
+        from Helpers.FileUtils import build_csv_path
+
         date_str: str = self.globals.get_date()
         return build_csv_path(_FRIENDLY_NAME, status, date_str, log_dir)
 

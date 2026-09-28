@@ -47,7 +47,7 @@ class CommandProcessor:
             self._first_configure = False
         print(
             f"{MAGENTA}help? for help   show? for current values\n"
-            f"key=value to set (e.g. strategy=default)   key! to pick (e.g. strategy!)   "
+            f"key=value to set (e.g. strategy=default)   key! to pick (e.g. strategy! / orchestrator_flow!)   "
             f"key- to unset (e.g. file-)   strategy*preset for quick defaults (e.g. strategy*narrow)\n"
             f"Press ↵ on an empty line to proceed to your query prompt{RESET}"
         )

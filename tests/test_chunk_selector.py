@@ -6,6 +6,7 @@
 
 Covers:
   * ChunkSelector.__init__ — single_chunk_boost read from config
+    * ChunkSelector.__init__ — low-score fallback toggle read from config
   * filter_threshold        — boost applied only when file_counts[path] == 1
   * filter_threshold        — web chunks use web_rerank_threshold (no boost)
   * filter_threshold        — boost == 1.0 disables promotion
@@ -26,6 +27,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
+from Gui.Colors import BRIGHT_YELLOW, YELLOW
 
 # ---------------------------------------------------------------------------
 # Stubs — avoid real Session / PrettyWriter / Config instantiation
@@ -54,6 +56,7 @@ class _StubConfig:
         # not including it in overrides.
         self._data: dict[str, Any] = {
             "_WEB_SEARCH.rerank_threshold": 0.40,
+            "_RERANK_LOW_SCORE_FALLBACK.enabled": True,
             "_DEFAULT_CHAT_NAME": "test",
         }
         if overrides:
@@ -83,6 +86,9 @@ class _StubSession:
         threshold: float = 0.35,
         web_threshold: float | None = None,
         boost: float = 1.25,
+        fallback_enabled: bool = True,
+        low_score_fallback_enabled: bool | None = True,
+        low_recall_rescue_enabled: bool | None = True,
         debug_level: int = 0,
     ):
         self.cfg = _StubConfig(
@@ -91,6 +97,7 @@ class _StubSession:
                 "_WEB_SEARCH.rerank_threshold": (
                     web_threshold if web_threshold is not None else 0.40
                 ),
+                "_RERANK_LOW_SCORE_FALLBACK.enabled": fallback_enabled,
             }
         )
         self.pretty = _StubPretty()
@@ -98,11 +105,20 @@ class _StubSession:
         self.web_rerank_threshold: float | None = web_threshold
         self.per_file_limit: int = 10
         self.strategy: str = "DEFAULT"
+        self.retriever_k: int | None = None
         self.final_chunks_to_llm: int = 50
         self.collection_name: str = "test_col"
         self.chat_name: str = "test_chat"
         self.debug_level: int = debug_level
         self.debug_mode: str = "ge"
+        self.post_rewrite_query_en: str | None = None
+        self.final_retrieval_query: str | None = None
+        self.orig_translated_query_en: str | None = None
+        self.t1_query: str | None = None
+        self.enable_low_score_fallback: bool | None = low_score_fallback_enabled
+        self.enable_low_recall_rescue: bool | None = low_recall_rescue_enabled
+        self.rerank_low_confidence_fallback_triggered: bool = False
+        self.rerank_partial_recall_rescue_triggered: bool = False
 
 
 def _make_chunk(
@@ -130,10 +146,7 @@ def _make_chunk(
 # Import the concrete selector (ScoreRankedSelector) after stubs are ready
 # ---------------------------------------------------------------------------
 
-from Strategies.HomeBrewChunkSelector import (
-    ChunkSelector,
-    ScoreRankedSelector,
-)  # noqa: E402
+from Strategies.HomeBrewChunkSelector import ScoreRankedSelector  # noqa: E402
 
 
 def _make_selector(session: _StubSession) -> ScoreRankedSelector:
@@ -159,6 +172,14 @@ class TestSingleChunkBoostInit:
     def test_boost_one_point_zero_stored(self):
         sel = _make_selector(_StubSession(boost=1.0))
         assert sel.single_chunk_boost == pytest.approx(1.0)
+
+    def test_low_score_fallback_defaults_to_enabled(self):
+        sel = _make_selector(_StubSession())
+        assert sel.rerank_low_score_fallback_enabled is True
+
+    def test_low_score_fallback_can_be_disabled(self):
+        sel = _make_selector(_StubSession(fallback_enabled=False))
+        assert sel.rerank_low_score_fallback_enabled is False
 
 
 # ===========================================================================
@@ -429,6 +450,247 @@ class TestFilterThresholdRerankSkip:
         loser.metadata["rrf_score"] = 0.01
         selected = sel.select([winner, loser])
         assert selected[0] is winner
+
+    def test_no_skip_when_fallback_disabled(self):
+        """When disabled, low-score fallback does not keep the whole pool."""
+        session = _StubSession(
+            threshold=self._THRESHOLD,
+            boost=1.0,
+            fallback_enabled=False,
+        )
+        sel = _make_selector(session)
+        best = _make_chunk(score=self._POOL_MAX, path="/docs/a.pdf")
+        low = _make_chunk(score=-5.0, path="/docs/b.pdf")
+        result = sel.filter_threshold([best, low])
+        assert result == []
+        assert sel._rerank_skipped is False
+
+    def test_no_skip_when_flow_disables_fallback(self):
+        """Flow toggle can disable low-score fallback even when config enables it."""
+        session = _StubSession(
+            threshold=self._THRESHOLD,
+            boost=1.0,
+            fallback_enabled=True,
+            low_score_fallback_enabled=False,
+        )
+        sel = _make_selector(session)
+        best = _make_chunk(score=self._POOL_MAX, path="/docs/a.pdf")
+        low = _make_chunk(score=-5.0, path="/docs/b.pdf")
+        result = sel.filter_threshold([best, low])
+        assert result == []
+        assert sel._rerank_skipped is False
+
+    def test_skip_message_not_emitted_when_fallback_disabled(self):
+        """No 'Rerank skipped' message is printed when fallback is disabled."""
+        session = _StubSession(
+            threshold=self._THRESHOLD,
+            boost=1.0,
+            fallback_enabled=False,
+        )
+        sel = _make_selector(session)
+        chunk = _make_chunk(score=self._POOL_MAX, path="/docs/a.pdf")
+        sel.filter_threshold([chunk])
+        messages = " ".join(str(c[0]) for c in session.pretty.calls).lower()
+        assert "rerank skipped" not in messages
+
+    def test_yellow_fallback_action_message_when_fallback_runs(self):
+        """Below-threshold pool emits yellow 'Running because ... knob is on'."""
+        session = _StubSession(threshold=self._THRESHOLD, boost=1.0)
+        sel = _make_selector(session)
+        chunk = _make_chunk(score=self._POOL_MAX, path="/docs/a.pdf")
+
+        sel.filter_threshold([chunk])
+
+        assert any(
+            kwargs.get("color") == BRIGHT_YELLOW
+            and "Low-score fallback action: Running because"
+            in str(args[2] if len(args) > 2 else "")
+            for args, kwargs in session.pretty.calls
+        )
+
+    def test_yellow_fallback_action_message_when_fallback_disabled(self):
+        """Below-threshold pool emits yellow 'Skipped because ... knob is off'."""
+        session = _StubSession(
+            threshold=self._THRESHOLD,
+            boost=1.0,
+            fallback_enabled=False,
+        )
+        sel = _make_selector(session)
+        chunk = _make_chunk(score=self._POOL_MAX, path="/docs/a.pdf")
+
+        sel.filter_threshold([chunk])
+
+        assert any(
+            kwargs.get("color") == YELLOW
+            and "Low-score fallback action: Skipped because"
+            in str(args[2] if len(args) > 2 else "")
+            for args, kwargs in session.pretty.calls
+        )
+
+
+# ===========================================================================
+# filter_threshold — low-recall local rescue (table-friendly fallback)
+# ===========================================================================
+
+
+class TestFilterThresholdLowRecallRescue:
+    def test_rescues_query_overlap_chunk_from_large_pool(self):
+        """Large pools with sparse local hits rescue overlap misses by retrieval rank."""
+        session = _StubSession(threshold=0.60, boost=1.0)
+        session.post_rewrite_query_en = (
+            "show me the pcie card slots for the lenovo thinkstation p620"
+        )
+        sel = _make_selector(session)
+
+        hits = [
+            _make_chunk(
+                score=0.80,
+                path="/docs/ts_p620_user_guide.pdf",
+                content=f"page {i} pcie card procedure",
+            )
+            for i in range(7)
+        ]
+
+        rescued = _make_chunk(
+            score=-7.0,
+            path="/docs/ts_p620_user_guide.pdf",
+            content="Page 6 PCIe card slots table: Slot 1 x16, Slot 2 x8",
+        )
+        rescued.metadata["rrf_score"] = 0.97
+
+        misses = [
+            _make_chunk(
+                score=-8.0 - (i * 0.01),
+                path="/docs/ts_p620_user_guide.pdf",
+                content=f"generic noise chunk {i}",
+            )
+            for i in range(45)
+        ]
+        for i, chunk in enumerate(misses):
+            chunk.metadata["rrf_score"] = 0.50 - (i * 0.001)
+
+        pool = hits + [rescued] + misses
+        result = sel.filter_threshold(pool)
+
+        assert rescued in result
+        assert session.rerank_partial_recall_rescue_triggered is True
+
+    def test_rescue_can_be_disabled_by_flow_toggle(self):
+        """Flow knob can disable low-recall rescue while keeping thresholding active."""
+        session = _StubSession(
+            threshold=0.60,
+            boost=1.0,
+            low_recall_rescue_enabled=False,
+        )
+        session.post_rewrite_query_en = (
+            "show me the pcie card slots for the lenovo thinkstation p620"
+        )
+        sel = _make_selector(session)
+
+        hits = [
+            _make_chunk(
+                score=0.80,
+                path="/docs/ts_p620_user_guide.pdf",
+                content=f"page {i} pcie card procedure",
+            )
+            for i in range(7)
+        ]
+
+        rescued = _make_chunk(
+            score=-7.0,
+            path="/docs/ts_p620_user_guide.pdf",
+            content="Page 6 PCIe card slots table: Slot 1 x16, Slot 2 x8",
+        )
+        rescued.metadata["rrf_score"] = 0.97
+
+        misses = [
+            _make_chunk(
+                score=-8.0 - (i * 0.01),
+                path="/docs/ts_p620_user_guide.pdf",
+                content=f"generic noise chunk {i}",
+            )
+            for i in range(45)
+        ]
+        for i, chunk in enumerate(misses):
+            chunk.metadata["rrf_score"] = 0.50 - (i * 0.001)
+
+        pool = hits + [rescued] + misses
+        result = sel.filter_threshold(pool)
+
+        assert rescued not in result
+        assert session.rerank_partial_recall_rescue_triggered is False
+
+    def test_does_not_rescue_when_query_overlap_absent(self):
+        """No overlap terms means no rescue, even in a large sparse pool."""
+        session = _StubSession(threshold=0.60, boost=1.0)
+        session.post_rewrite_query_en = "show me pcie card slots"
+        sel = _make_selector(session)
+
+        hits = [
+            _make_chunk(
+                score=0.80,
+                path="/docs/ts_p620_user_guide.pdf",
+                content=f"chunk {i} pcie",
+            )
+            for i in range(7)
+        ]
+        misses = [
+            _make_chunk(
+                score=-7.5 - (i * 0.01),
+                path="/docs/ts_p620_user_guide.pdf",
+                content=f"irrelevant segment {i}",
+            )
+            for i in range(45)
+        ]
+
+        result = sel.filter_threshold(hits + misses)
+
+        assert len(result) == len(hits)
+        assert session.rerank_partial_recall_rescue_triggered is False
+
+    def test_rescue_log_reports_inputs_and_fixed_k_without_session_mutation(self):
+        """Rescue trigger log includes input knobs and local fixed_k; session stays untouched."""
+        session = _StubSession(threshold=0.60, boost=1.0)
+        session.post_rewrite_query_en = "show me pcie card slots"
+        session.retriever_k = 30
+        session.final_chunks_to_llm = 15
+        sel = _make_selector(session)
+
+        hits = [
+            _make_chunk(
+                score=0.80,
+                path="/docs/ts_p620_user_guide.pdf",
+                content=f"page {i} pcie card procedure",
+            )
+            for i in range(7)
+        ]
+        rescued = _make_chunk(
+            score=-7.0,
+            path="/docs/ts_p620_user_guide.pdf",
+            content="Page 6 PCIe card slots table: Slot 1 x16, Slot 2 x8",
+        )
+        rescued.metadata["rrf_score"] = 0.97
+
+        misses = [
+            _make_chunk(
+                score=-8.0 - (i * 0.01),
+                path="/docs/ts_p620_user_guide.pdf",
+                content=f"generic noise chunk {i}",
+            )
+            for i in range(20)
+        ]
+
+        result = sel.filter_threshold(hits + [rescued] + misses)
+
+        assert rescued in result
+        assert session.retriever_k == 30
+        assert not hasattr(session, "fixed_k")
+        assert any(
+            "input_fetch_k=30" in str(args[2] if len(args) > 2 else "")
+            and "input_context_chunks=15" in str(args[2] if len(args) > 2 else "")
+            and "fixed_k=30" in str(args[2] if len(args) > 2 else "")
+            for args, _kwargs in session.pretty.calls
+        )
 
 
 # ===========================================================================

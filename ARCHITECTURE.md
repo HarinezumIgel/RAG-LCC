@@ -279,6 +279,93 @@ security restrictions**, not defects.
 - **Concurrency** — a global `asyncio.Lock` serialises all requests through the singleton `Chatter` / `RAGChatImpl`. Per-request `Session` isolation **is** implemented; the lock is a throughput limit, not a correctness issue.
 - **Title / tags / follow-up suggestions** — currently returned as canned placeholders.
 
+### Orchestration Flows and CLI Override Precedence
+
+`Orchestrator` resolves one flow profile per retrieval turn from `Config_Orchestrator.py`:
+
+This flow resolution defines the per-turn pipeline path and is also the control point for the additional confidence step (stage confidence signals plus downstream final-confidence evaluation).
+
+- `_ACTIVE_ORCHESTRATION_FLOW` sets the default profile.
+- `_ALLOWED_ORCHESTRATION_FLOWS` optionally limits what can be selected.
+- Session/CLI `orchestrator_flow` can request a specific profile for the turn.
+
+Each profile in `_ORCHESTRATION_FLOWS` controls stage switches such as:
+
+- query processing (`use_query_rewrite`, `use_pronoun_substitution`, `use_vector_alternates`)
+- guardrail and language legs (`use_secondary_query`, `use_original_language_vector`, `shape_indexed_queries`)
+- stage gates (`run_local_stage`, `run_web_stage`)
+- retriever gates (`run_vector`, `run_bm25`, `run_graph`, `run_regex`)
+- post-retrieval/answer stages (`run_rerank`, `run_grounding`)
+- rerank fallback controls (`run_low_score_fallback`, `run_low_recall_rescue`)
+
+Flow configuration is the baseline, but effective execution can still be changed by session CLI knobs:
+
+- `retrieve_mode` and `web_search=web_only` can disable local-stage execution even when flow enables it.
+- `retrieve_mode` can disable individual retrievers (Vector/BM25/Graph/Regex) despite `run_*` being enabled in flow.
+- `mark_text=false` can deactivate grounding even when `run_grounding=true` in flow.
+- `rerank=0` can deactivate reranking even when `run_rerank=true` in flow.
+- when rerank is effectively off, `run_low_score_fallback` and `run_low_recall_rescue` are auto-deactivated for that turn.
+
+When these mismatches occur, orchestration status lines emit contradiction context with explicit `cli_knob=...` attribution so operators can see exactly which session knob overrode the flow intent.
+
+Fallback precedence inside chunk selection is deterministic:
+
+- low-score fallback (`run_low_score_fallback`) is evaluated first.
+- if it triggers, rerank filtering is skipped and retrieval-order ranking is used immediately.
+- low-recall rescue (`run_low_recall_rescue`) runs only when low-score fallback did not short-circuit the turn.
+
+![THOROUGH_QUERY_REWRITE Orchestration Flow](Documentation/FlowCharts/THOROUGH_QUERY_REWRITE.png)
+
+Source Mermaid diagram: [Documentation/FlowCharts/THOROUGH_QUERY_REWRITE.md](Documentation/FlowCharts/THOROUGH_QUERY_REWRITE.md)
+
+### Confidence Evaluation and Signals
+
+Confidence is tracked at two levels: stage signals and final-answer evidence confidence.
+
+1. Stage signals
+
+- Orchestration planning lines write per-stage confidence placeholders (`PENDING` / `N/A`) before execution.
+- Execution stages then emit events (`executed`, `skipped`, `fallback`, etc.) with confidence labels (`HIGH`, `MEDIUM`, `LOW`, `N/A`) and optional scores.
+- Language detection confidence events are normalized into the same event stream.
+
+2. Final answer confidence
+
+Final confidence is computed from selected evidence chunks in `Helpers/ConfidenceHelper.py`:
+
+```text
+score = 0.50 * top_score
+  + 0.30 * mean_top3
+  + 0.15 * coverage
+  + 0.05 * local_ratio
+  - 0.15 (only when rerank low-confidence fallback triggered)
+```
+
+Where:
+
+- `top_score`: best chunk confidence after rerank/chroma normalization
+- `mean_top3`: mean confidence of up to the first three selected chunks
+- `coverage`: selected chunk count relative to strategy target
+- `local_ratio`: share of selected chunks from local stores (non-web)
+
+Score bands:
+
+- `HIGH` if score >= 0.78
+- `MEDIUM` if score >= 0.56
+- `LOW` otherwise
+
+Persistence and output:
+
+- A confidence notice can be appended to answers as a multi-line block with aligned per-metric explanations (`Answer confidence:` + one line per metric).
+- Final components include both weighted terms (`C_top`, `C_mean_top3`, `C_coverage`, `C_local`, `C_fallback_penalty`) and supporting raw signals (`top_score`, `mean_top3`, `coverage`, `local_share`, `evidence_chunks`, `rerank_fallback`).
+- Turn confidence signals are written to a dedicated confidence CSV (`..._CONFIDENCE_...csv`) with dynamic `step_*` columns, serialized event payloads, session snapshot fields, and per-component columns (`answer_confidence_<component>`).
+
+Using the metrics to tune ingestion and retrieval:
+
+- Persistently low `C_coverage` usually points to recall or context-assembly pressure (chunking boundaries, retriever breadth, strategy caps, or threshold settings).
+- Low `C_top` and low `mean_top3` together usually indicate weak candidate quality (query rewrite quality, retrieval mode mix, reranker behavior, or source quality at ingestion).
+- Low `C_local` when local evidence is expected can indicate over-reliance on web retrieval or insufficient local corpus coverage.
+- Frequent non-zero `C_fallback_penalty` indicates rerank low-confidence fallback is often needed, which is a signal to review thresholds, retriever quality, and chunking/metadata quality.
+
 ### 🏷️ DocClassify Pipeline
 
 ![DocClassify Pipeline](Documentation/FlowCharts/DocClassify.png)

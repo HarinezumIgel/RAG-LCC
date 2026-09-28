@@ -4,7 +4,7 @@ SPDXID: SPDXRef-DOCUMENT
 DocumentName: RAG-LCC-DEPLOY-Licenses
 DocumentNamespace: http://example.org/spdxdocs/RAG-LCC-DEPLOY-Licenses
 Creator: pip-licenses
-Created: 2026-09-24T10:59:32+02:00
+Created: 2026-09-28T12:04:05+02:00
 
 #####
 PackageName: Jinja2
@@ -423,7 +423,7 @@ PackageLicenseDeclared: BSD License
 #####
 PackageName: filelock
 SPDXID: SPDXRef-Package-filelock
-PackageVersion: 4.0.3
+PackageVersion: 4.0.5
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: MIT
@@ -459,7 +459,7 @@ PackageLicenseDeclared: BSD-3-Clause
 #####
 PackageName: googleapis-common-protos
 SPDXID: SPDXRef-Package-googleapis-common-protos
-PackageVersion: 1.75.3
+PackageVersion: 1.75.4
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: Apache-2.0
@@ -558,7 +558,7 @@ PackageLicenseDeclared: BSD-3-Clause
 #####
 PackageName: huggingface_hub
 SPDXID: SPDXRef-Package-huggingface_hub
-PackageVersion: 1.32.0
+PackageVersion: 1.33.0
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: Apache Software License
@@ -729,7 +729,7 @@ PackageLicenseDeclared: MIT
 #####
 PackageName: langchain-core
 SPDXID: SPDXRef-Package-langchain-core
-PackageVersion: 1.6.4
+PackageVersion: 1.6.5
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: MIT License
@@ -774,7 +774,7 @@ PackageLicenseDeclared: Apache Software License
 #####
 PackageName: langsmith
 SPDXID: SPDXRef-Package-langsmith
-PackageVersion: 0.14.0
+PackageVersion: 0.14.1
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: MIT
@@ -945,7 +945,7 @@ PackageLicenseDeclared: BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0
 #####
 PackageName: oauthlib
 SPDXID: SPDXRef-Package-oauthlib
-PackageVersion: 3.3.1
+PackageVersion: 4.0.0
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: BSD-3-Clause
@@ -972,7 +972,16 @@ PackageLicenseDeclared: MIT License
 #####
 PackageName: opentelemetry-api
 SPDXID: SPDXRef-Package-opentelemetry-api
-PackageVersion: 1.44.0
+PackageVersion: 1.45.0
+PackageDownloadLocation: NOASSERTION
+FilesAnalyzed: false
+PackageLicenseConcluded: Apache-2.0
+PackageLicenseDeclared: Apache-2.0
+
+#####
+PackageName: opentelemetry-exporter-otlp-common
+SPDXID: SPDXRef-Package-opentelemetry-exporter-otlp-common
+PackageVersion: 0.66b0
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: Apache-2.0
@@ -981,7 +990,7 @@ PackageLicenseDeclared: Apache-2.0
 #####
 PackageName: opentelemetry-exporter-otlp-proto-common
 SPDXID: SPDXRef-Package-opentelemetry-exporter-otlp-proto-common
-PackageVersion: 1.44.0
+PackageVersion: 1.45.0
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: Apache-2.0
@@ -990,7 +999,7 @@ PackageLicenseDeclared: Apache-2.0
 #####
 PackageName: opentelemetry-exporter-otlp-proto-grpc
 SPDXID: SPDXRef-Package-opentelemetry-exporter-otlp-proto-grpc
-PackageVersion: 1.44.0
+PackageVersion: 1.45.0
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: Apache-2.0
@@ -999,7 +1008,7 @@ PackageLicenseDeclared: Apache-2.0
 #####
 PackageName: opentelemetry-proto
 SPDXID: SPDXRef-Package-opentelemetry-proto
-PackageVersion: 1.44.0
+PackageVersion: 1.45.0
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: Apache-2.0
@@ -1008,7 +1017,7 @@ PackageLicenseDeclared: Apache-2.0
 #####
 PackageName: opentelemetry-sdk
 SPDXID: SPDXRef-Package-opentelemetry-sdk
-PackageVersion: 1.44.0
+PackageVersion: 1.45.0
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: Apache-2.0
@@ -1017,7 +1026,7 @@ PackageLicenseDeclared: Apache-2.0
 #####
 PackageName: opentelemetry-semantic-conventions
 SPDXID: SPDXRef-Package-opentelemetry-semantic-conventions
-PackageVersion: 0.65b0
+PackageVersion: 0.66b0
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: Apache-2.0
@@ -1170,7 +1179,7 @@ PackageLicenseDeclared: Apache Software License
 #####
 PackageName: platformdirs
 SPDXID: SPDXRef-Package-platformdirs
-PackageVersion: 4.11.12
+PackageVersion: 4.12.1
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: MIT
@@ -1593,7 +1602,7 @@ PackageLicenseDeclared: MIT
 #####
 PackageName: srsly
 SPDXID: SPDXRef-Package-srsly
-PackageVersion: 2.5.3
+PackageVersion: 2.5.4
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: MIT License
@@ -1791,7 +1800,7 @@ PackageLicenseDeclared: BSD-3-Clause
 #####
 PackageName: uvicorn
 SPDXID: SPDXRef-Package-uvicorn
-PackageVersion: 0.53.0
+PackageVersion: 0.54.0
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: BSD-3-Clause
@@ -1872,7 +1881,7 @@ PackageLicenseDeclared: MIT
 #####
 PackageName: wrapt
 SPDXID: SPDXRef-Package-wrapt
-PackageVersion: 2.4.1
+PackageVersion: 2.5.0
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: BSD-2-Clause

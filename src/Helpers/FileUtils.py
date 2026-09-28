@@ -57,6 +57,7 @@ class FileUtils:
         if self.custom_ntlk_data_dir not in nltk.data.path:  # type: ignore[reportUnknownMemberType]
             nltk.data.path.append(self.custom_ntlk_data_dir)  # type: ignore[reportUnknownMemberType]
         self.label_alias: dict[str, str] = self.cfg.get_dict("_LABEL_ALIAS")
+        self._lang_detection_events: list[dict[str, Any]] = []
 
     # Example: use FileUtils.hash_file when needed
     def hash_module(self, mod: Any, algo: str = "sha256") -> str:
@@ -251,6 +252,39 @@ class FileUtils:
             FileUtils._name_to_code = {v.lower(): k for k, v in lang_map.items()}
         return FileUtils._name_to_code.get(lang_name.lower())
 
+    @staticmethod
+    def _lang_confidence_level(
+        confidence: float,
+        threshold: float,
+        *,
+        fell_back: bool,
+        too_short: bool,
+        override_applied: bool,
+    ) -> str:
+        """Map language-detection confidence to HIGH/MEDIUM/LOW."""
+        if too_short:
+            return "LOW"
+        if fell_back and not override_applied:
+            return "LOW"
+        if threshold <= 0.0:
+            return "HIGH" if confidence >= 0.8 else "MEDIUM"
+        ratio = confidence / threshold
+        if ratio >= 1.20:
+            return "HIGH"
+        if ratio >= 1.00 or override_applied:
+            return "MEDIUM"
+        return "LOW"
+
+    def reset_lang_detection_events(self) -> None:
+        """Clear buffered language-detection events for a new turn."""
+        self._lang_detection_events = []
+
+    def pop_lang_detection_events(self) -> list[dict[str, Any]]:
+        """Return and clear buffered language-detection confidence events."""
+        events = list(self._lang_detection_events)
+        self._lang_detection_events = []
+        return events
+
     def _log_lang_detection(
         self,
         text: str,
@@ -264,6 +298,7 @@ class FileUtils:
         override_applied: bool = False,
         override_source: str = "native",
         effective_conf: float | None = None,
+        stage_label: str = "",
     ) -> None:
         """Emit the standard LangDetect log lines for a single detection.
 
@@ -339,11 +374,44 @@ class FileUtils:
                 f"language.",
             )
 
+        level = self._lang_confidence_level(
+            conf,
+            display_threshold,
+            fell_back=fell_back,
+            too_short=too_short,
+            override_applied=override_applied,
+        )
+        stage_text = stage_label.strip() or "default"
+        self.pretty.write(
+            "I",
+            "LangDetect",
+            (
+                f"Confidence level ({stage_text}): {level} "
+                f"(confidence: {conf:.0%}, threshold: {display_threshold:.0%})"
+            ),
+        )
+
+        self._lang_detection_events.append(
+            {
+                "stage": stage_text,
+                "language": lang,
+                "confidence": conf,
+                "threshold": display_threshold,
+                "fell_back": bool(fell_back),
+                "too_short": bool(too_short),
+                "override_applied": bool(override_applied),
+                "override_source": override_source if override_applied else "",
+                "level": level,
+                "word_count": len(text.split()),
+            }
+        )
+
     def get_text_language(
         self,
         text: str,
         output: str = "nltk",
         installed_codes: "set[str] | None" = None,
+        stage_label: str = "",
     ) -> str:
         """Detect language of text and return either ISO or NLTK language name.
 
@@ -375,6 +443,7 @@ class FileUtils:
             conf,
             codes,
             effective_conf=eff_conf,
+            stage_label=stage_label,
         )
 
         if output == "iso-639":
@@ -388,6 +457,7 @@ class FileUtils:
         output: str = "nltk",
         native_lang: str | None = None,
         installed_codes: "set[str] | None" = None,
+        stage_label: str = "",
     ) -> str:
         """Detect language of a USER-entered query/prompt with low-confidence
         rescue logic.
@@ -480,6 +550,7 @@ class FileUtils:
             override_applied=override_applied,
             override_source=override_source,
             effective_conf=eff_conf,
+            stage_label=stage_label,
         )
 
         if output == "iso-639":

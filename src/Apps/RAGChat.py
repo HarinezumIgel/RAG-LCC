@@ -103,6 +103,10 @@ class RAGChat:
         self.session.collection_name = self.queryParts.applyStrategyDefaults(
             default_strategy, session=self.session
         )
+        self.queryParts.applyOrchestrationFlowDefaults(
+            self.cfg.get_str("_ACTIVE_ORCHESTRATION_FLOW", "THOROUGH_QUERY_REWRITE"),
+            session=self.session,
+        )
 
         self.chunk_size: int = self.helpers.get_chunker_max_size()
         self.use_ollama_gpu: bool = self.helpers.get_active_endpoint_args().get(
@@ -239,7 +243,6 @@ class RAGChat:
             "Stage": stage,
             "Time": datetime.now(),
             "Status": status,
-            "Session": self.session.export_session_state_as_cell(),
         }
         self.csvWriter.write_json2csv(
             self.bannedPhraseCollector.prepare_print_for_chat(doc["meta"]),

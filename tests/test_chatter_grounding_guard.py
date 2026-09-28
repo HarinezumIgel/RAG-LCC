@@ -47,6 +47,12 @@ _BUILD_NO_EVIDENCE_MESSAGE_SRC = _extract_method(
 _BUILD_SHORT_NOTICE_SRC = _extract_method(
     _CHATTER_SOURCE, "_build_grounding_skipped_short_answer_notice"
 )
+_RESOLVE_ANSWER_CONFIDENCE_PAYLOAD_SRC = _extract_method(
+    _CHATTER_SOURCE, "_resolve_answer_confidence_payload"
+)
+_BUILD_ANSWER_CONFIDENCE_NOTICE_SRC = _extract_method(
+    _CHATTER_SOURCE, "_build_answer_confidence_notice"
+)
 _COLLECT_WEB_GROUNDING_TEXTS_SRC = _extract_method(
     _CHATTER_SOURCE, "_collect_web_grounding_texts"
 )
@@ -65,29 +71,49 @@ class _StubFileUtils:
         _text: str,
         output: str = "nltk",
         native_lang: str | None = None,
+        stage_label: str = "",
     ) -> str:
         _ = output
         _ = native_lang
+        _ = stage_label
         return self.lang
 
 
-def _compile_methods() -> tuple[Any, Any, Any, Any, Any, Any]:
+def _compile_methods() -> tuple[Any, Any, Any, Any, Any, Any, Any, Any]:
     class _SymbolsStub:
         @staticmethod
         def sym_warning() -> str:
             return "⚠ "
 
+        @staticmethod
+        def sym_icon(kind: str) -> str:
+            icon_map = {
+                "HIGH": "🟢 ",
+                "MEDIUM": "🟡 ",
+                "LOW": "🟠 ",
+            }
+            return icon_map.get(str(kind or "").upper(), "ℹ ")
+
     ns: dict[str, Any] = {"Session": object, "Symbols": _SymbolsStub}
     exec(compile(_EXTRACT_ANSWER_SECTION_SRC, _SRC, "exec"), ns)
     exec(compile(_BUILD_NO_EVIDENCE_MESSAGE_SRC, _SRC, "exec"), ns)
     exec(compile(_BUILD_SHORT_NOTICE_SRC, _SRC, "exec"), ns)
+    exec(compile(_RESOLVE_ANSWER_CONFIDENCE_PAYLOAD_SRC, _SRC, "exec"), ns)
+    exec(compile(_BUILD_ANSWER_CONFIDENCE_NOTICE_SRC, _SRC, "exec"), ns)
     exec(compile(_COLLECT_WEB_GROUNDING_TEXTS_SRC, _SRC, "exec"), ns)
     exec(compile(_IS_SHORT_FOR_GROUNDING_SRC, _SRC, "exec"), ns)
     exec(compile(_HAS_GROUNDED_EVIDENCE_SRC, _SRC, "exec"), ns)
+
+    ns["Chatter"] = types.SimpleNamespace(
+        _resolve_answer_confidence_payload=ns["_resolve_answer_confidence_payload"]
+    )
+
     return (
         ns["_extract_answer_section"],
         ns["_build_no_evidence_message"],
         ns["_build_grounding_skipped_short_answer_notice"],
+        ns["_resolve_answer_confidence_payload"],
+        ns["_build_answer_confidence_notice"],
         ns["_collect_web_grounding_texts"],
         ns["_is_answer_too_short_for_grounding"],
         ns["_has_grounded_evidence"],
@@ -98,6 +124,8 @@ def _compile_methods() -> tuple[Any, Any, Any, Any, Any, Any]:
     _extract_answer_section,
     _build_no_evidence_message,
     _build_short_notice,
+    _resolve_answer_confidence_payload,
+    _build_answer_confidence_notice,
     _collect_web_grounding_texts,
     _is_short_for_grounding,
     _has_grounded_evidence,
@@ -109,11 +137,18 @@ class _Shell:
     _extract_answer_section = staticmethod(_extract_answer_section)
     _build_no_evidence_message = staticmethod(_build_no_evidence_message)
     _build_grounding_skipped_short_answer_notice = staticmethod(_build_short_notice)
+    _resolve_answer_confidence_payload = staticmethod(
+        _resolve_answer_confidence_payload
+    )
+    _build_answer_confidence_notice = staticmethod(_build_answer_confidence_notice)
     _is_answer_too_short_for_grounding = _is_short_for_grounding
     _has_grounded_evidence = _has_grounded_evidence
 
     def __init__(self, lang: str = "english") -> None:
         self.fileUtils = _StubFileUtils(lang=lang)
+
+    def _drain_lang_detection_confidence_events(self, _session: Any) -> None:
+        return None
 
 
 class _SessionStub:
@@ -124,6 +159,18 @@ class _SessionStub:
     ) -> None:
         self.retrieval_language = retrieval_language
         self.last_chosen_chunks = last_chosen_chunks or []
+
+
+class _ConfidenceSessionStub:
+    def __init__(
+        self,
+        level: str | None = None,
+        score: float | None = None,
+        summary: str | None = None,
+    ) -> None:
+        self.answer_confidence_level = level
+        self.answer_confidence_score = score
+        self.answer_confidence_summary = summary
 
 
 def _install_grounder_stub(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -218,6 +265,26 @@ class TestGroundingGuardHelpers:
         assert "grounding skipped" in msg.lower()
         assert "too short" in msg.lower()
 
+    def test_build_answer_confidence_notice_from_summary(self) -> None:
+        session = _ConfidenceSessionStub(
+            summary="HIGH (score=0.91; evidence_chunks=7; local_share=1.00)",
+        )
+        notice = _Shell._build_answer_confidence_notice(session)
+        assert notice.startswith("\n\n---\n\n**Answer confidence:**")
+        assert "HIGH (score=0.91" in notice
+
+    def test_build_answer_confidence_notice_from_level_and_score(self) -> None:
+        session = _ConfidenceSessionStub(level="medium", score=0.638)
+        notice = _Shell._build_answer_confidence_notice(session)
+        assert notice.startswith("\n\n---\n\n**Answer confidence:**")
+        assert "MEDIUM" in notice
+        assert "C_final=0.64" in notice
+
+    def test_build_answer_confidence_notice_empty_when_unset(self) -> None:
+        session = _ConfidenceSessionStub()
+        notice = _Shell._build_answer_confidence_notice(session)
+        assert notice == ""
+
     def test_is_answer_too_short_for_grounding_true_for_short_answer(
         self,
         monkeypatch: pytest.MonkeyPatch,
@@ -307,6 +374,31 @@ class TestGroundingGuardHelpers:
         )
 
         assert ok is False
+
+    def test_has_grounded_evidence_translates_english_answer_to_local_evidence_language(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        _install_grounder_stub(monkeypatch)
+        _install_shared_stub(monkeypatch, translated="translated_hit")
+        shell = _Shell(lang="english")
+        local_doc = types.SimpleNamespace(
+            metadata={"Source": "Local", "Language": "de"},
+            page_content="deutscher chunk",
+        )
+        session = _SessionStub(
+            retrieval_language="english",
+            last_chosen_chunks=[local_doc],
+        )
+
+        ok = shell._has_grounded_evidence(
+            session,
+            "### Answer\nNo lexical overlap here.\n\n### Sources\n- Pferde.pdf",
+            ["deutscher chunk"],
+            "english",
+        )
+
+        assert ok is True
 
     def test_has_grounded_evidence_true_when_no_chunk_texts(self) -> None:
         shell = _Shell(lang="english")

@@ -66,7 +66,7 @@ Operators are solely responsible for determining:
 - whether a DPIA or other assessment is required,
 - how retention, access control, and deletion are handled.
 
-The default configuration is local‑only. Any use of external model endpoints, telemetry,
+The default configuration is local‑only. Any use of external model endpoints, remote data export,
 or network access is explicitly configured by the operator and is outside the control of
 the authors.
 

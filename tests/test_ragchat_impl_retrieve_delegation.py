@@ -103,7 +103,7 @@ class _Shell:
     _fetch_web_docs = _fetch_web_docs
 
     def __init__(self, orchestrator: _OrchestratorStub) -> None:
-        self.retrieval_orchestrator = orchestrator
+        self.orchestrator = orchestrator
 
 
 class TestRetrieveDelegation:

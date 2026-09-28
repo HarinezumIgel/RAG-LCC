@@ -13,9 +13,9 @@ from langdetect import detect  # type: ignore[import-untyped]  # noqa: F401
 from AI.ModelsCache import ModelsCache
 from AI.TokenBudget import TokenBudget
 from Chat.ChatContext import ChatContext
+from Chat.Orchestrator import Orchestrator
 from Chat.PromptRewrite import PromptRewrite
 from Chat.RetrievalGate import RetrievalGate
-from Chat.RetrievalOrchestrator import RetrievalOrchestrator
 from Commons.Exceptions import CollectionNotFoundError, RerankError
 from Commons.SingletonMixin import SingletonMixin
 from Compliance.SharedHelpers import SharedHelpers
@@ -24,6 +24,8 @@ from Globals.Session import Session
 from Gui.Colors import CYAN, RED
 from Gui.PrettyWriter import PrettyWriter
 from Helpers.ChromaDBHelper import ChromaDBHelper
+from Helpers.ConfidenceHelper import ConfidenceHelper
+from Helpers.ConfidenceLogger import ConfidenceLogger
 from Helpers.DebugHelper import DebugHelper
 from Helpers.FileUtils import FileUtils
 from Helpers.Helpers import (Helpers, align_retriever_sources_for_print,
@@ -62,6 +64,11 @@ class RAGChatImpl(SingletonMixin):
         # Cache for stopwords per language.
         self.pretty: PrettyWriter = pretty or PrettyWriter()
         self.cfg: Config = cfg or Config()
+        self.confidence_logger: ConfidenceLogger = ConfidenceLogger()
+        self.confidenceHelper: ConfidenceHelper = ConfidenceHelper(
+            confidence_logger=self.confidence_logger,
+            pretty=self.pretty,
+        )
         self.helperInstance: Helpers = helpers or Helpers()
         self.chromaDBHelper: ChromaDBHelper = ChromaDBHelper()
         self.chatContext: ChatContext = ChatContext()
@@ -124,7 +131,7 @@ class RAGChatImpl(SingletonMixin):
         self.vector_store: Chroma | None = None
         self.collection: Collection | None = None
         self._lock = threading.Lock()
-        self.retrieval_orchestrator: RetrievalOrchestrator = RetrievalOrchestrator(self)
+        self.orchestrator: Orchestrator = Orchestrator(self)
 
     def set_vector_store(self, mySession: Session) -> bool:
         """Thread-safe wrapper — acquires ``self._lock`` then delegates."""
@@ -456,7 +463,7 @@ class RAGChatImpl(SingletonMixin):
             return self._retrieve(mySession)
 
     def _retrieve(self, mySession: Session) -> Tuple[str, int]:
-        return self.retrieval_orchestrator.run(mySession)
+        return self.orchestrator.run(mySession)
 
     def _prepare_session(self, mySession: Session) -> str:
         """Reset per-turn flags, handle mode-change and topic-switch resets.
@@ -466,6 +473,14 @@ class RAGChatImpl(SingletonMixin):
         mySession.force_skip_rewrite = False
         mySession.effective_query = None
         mySession.effective_query_reason = None
+        self.confidence_logger.reset_turn(mySession)
+        self._fileUtils.reset_lang_detection_events()
+        mySession.orchestration_step_confidence = {}
+        mySession.answer_confidence_level = None
+        mySession.answer_confidence_score = None
+        mySession.answer_confidence_summary = None
+        mySession.answer_confidence_components = {}
+        mySession.rerank_low_confidence_fallback_triggered = False
         mySession.user_language = None
         mySession.retrieval_language = "english"
         mySession.orig_translated_query_en = None
@@ -550,6 +565,12 @@ class RAGChatImpl(SingletonMixin):
         )
         return user_query_original
 
+    def _drain_lang_detection_confidence_events(self, mySession: Session) -> None:
+        """Forward buffered language-detection confidence events to Session telemetry."""
+        events = self._fileUtils.pop_lang_detection_events()
+        for event in events:
+            self.confidence_logger.log_language_detection(mySession, event)
+
     def _resolve_turn_translation_backend(self, mySession: Session) -> tuple[str, Any]:
         """Resolve the per-turn translation backend and translator instance."""
         backend: str = (
@@ -566,10 +587,12 @@ class RAGChatImpl(SingletonMixin):
                 raw_query,
                 output="nltk",
                 native_lang=mySession.preferred_response_language,
+                stage_label="raw_user_query",
             )
             if raw_query
             else "english"
         )
+        self._drain_lang_detection_confidence_events(mySession)
         # Keep chat-history language filtering on the user language, not the
         # retrieval language, so language-specific contexts remain isolated.
         mySession.user_language = raw_query_language
@@ -622,10 +645,12 @@ class RAGChatImpl(SingletonMixin):
                 rewritten_query,
                 output="nltk",
                 native_lang=None,
+                stage_label="rewrite_query",
             )
             if rewritten_query
             else "english"
         )
+        self._drain_lang_detection_confidence_events(mySession)
         mySession.rewritten_query = rewritten_query
         mySession.rewrite_language = rewrite_language
 
@@ -636,6 +661,14 @@ class RAGChatImpl(SingletonMixin):
             and mySession.use_chat_context
             and not mySession.force_skip_rewrite
         ):
+            self.confidence_logger.log_step(
+                mySession,
+                step_name="strict rewrite retry",
+                status="executing",
+                confidence_level="PENDING",
+                detail="rewrite output is non-English; retrying with strict-English prompt",
+                source="query_rewrite",
+            )
             strict_candidate: str = (
                 self.promptRewrite.rewrite(mySession, strict_english=True) or ""
             ).strip()
@@ -644,7 +677,9 @@ class RAGChatImpl(SingletonMixin):
                     strict_candidate,
                     output="nltk",
                     native_lang=None,
+                    stage_label="strict_rewrite_candidate",
                 )
+                self._drain_lang_detection_confidence_events(mySession)
                 if strict_lang == "english":
                     mySession.query = strict_candidate
                     rewritten_query = strict_candidate
@@ -657,6 +692,43 @@ class RAGChatImpl(SingletonMixin):
                         "QueryNorm",
                         "Strict English rewrite retry succeeded.",
                     )
+                    self.confidence_logger.log_step(
+                        mySession,
+                        step_name="strict rewrite retry",
+                        status="executed",
+                        confidence_level="HIGH",
+                        confidence_score=1.0,
+                        detail="strict retry produced English rewrite",
+                        source="query_rewrite",
+                    )
+                else:
+                    self.confidence_logger.log_step(
+                        mySession,
+                        step_name="strict rewrite retry",
+                        status="executed",
+                        confidence_level="LOW",
+                        confidence_score=0.0,
+                        detail="strict retry did not produce English rewrite",
+                        source="query_rewrite",
+                    )
+            else:
+                self.confidence_logger.log_step(
+                    mySession,
+                    step_name="strict rewrite retry",
+                    status="skipped",
+                    confidence_level="N/A",
+                    detail="strict retry returned empty candidate",
+                    source="query_rewrite",
+                )
+        else:
+            self.confidence_logger.log_step(
+                mySession,
+                step_name="strict rewrite retry",
+                status="skipped",
+                confidence_level="N/A",
+                detail="conditions not met (rewrite already English or retry disabled)",
+                source="query_rewrite",
+            )
 
         return rewrite_language, was_rewritten
 
@@ -1385,8 +1457,8 @@ class RAGChatImpl(SingletonMixin):
         alternate_queries: list[str],
         orig_translated_query_en: str = "",
     ) -> tuple[list[Any], list[Any], list[Any], list[Any]]:
-        """Delegate local retrieval orchestration to RetrievalOrchestrator."""
-        return self.retrieval_orchestrator.run_local_retrievers(
+        """Delegate local retrieval orchestration to Orchestrator."""
+        return self.orchestrator.run_local_retrievers(
             mySession,
             retrieve_mode,
             bm25_query,
@@ -1400,8 +1472,8 @@ class RAGChatImpl(SingletonMixin):
         retrieve_mode: str,
         user_query_original: str,
     ) -> list[Any]:
-        """Delegate web retrieval orchestration to RetrievalOrchestrator."""
-        return self.retrieval_orchestrator.run_web_retriever(
+        """Delegate web retrieval orchestration to Orchestrator."""
+        return self.orchestrator.run_web_retriever(
             mySession,
             retrieve_mode,
             user_query_original,
@@ -1483,20 +1555,43 @@ class RAGChatImpl(SingletonMixin):
 
         dedup_enabled: bool = self.cfg.get_bool("_CHUNK_DEDUP.enabled")
         dedup_threshold: float = self.cfg.get_float("_CHUNK_DEDUP.threshold") or 0.85
+        dedup_include_web: bool = self.cfg.get_bool(
+            "_CHUNK_DEDUP.include_web_chunks",
+            True,
+        )
         if dedup_enabled and capped_docs:
             before_dedup = len(capped_docs)
-            capped_docs = self._remove_similar_chunks(capped_docs, dedup_threshold)
+            if dedup_include_web:
+                capped_docs = self._remove_similar_chunks(capped_docs, dedup_threshold)
+            else:
+                local_docs: list[Any] = []
+                web_docs_only: list[Any] = []
+                for doc in capped_docs:
+                    meta = getattr(doc, "metadata", {}) or {}
+                    source = str(meta.get("Source", "") or "").strip().lower()
+                    retrievers = str(meta.get("retriever_sources", "") or "").lower()
+                    if source == "web" or "web" in retrievers:
+                        web_docs_only.append(doc)
+                    else:
+                        local_docs.append(doc)
+                deduped_local = self._remove_similar_chunks(local_docs, dedup_threshold)
+                capped_docs = deduped_local + web_docs_only
+
             dropped = before_dedup - len(capped_docs)
             if dropped > 0 and DebugHelper.check_session(mySession, 30):
                 self.pretty.write(
                     "I",
                     "ChunkDedup",
                     f"Removed {dropped} near-duplicate chunk(s) "
-                    f"(threshold={dedup_threshold:.2f}, kept {len(capped_docs)})",
+                    f"(threshold={dedup_threshold:.2f}, include_web={'on' if dedup_include_web else 'off'}, kept {len(capped_docs)})",
                     color=CYAN,
                 )
 
-        if mySession.rerank == 1:
+        rerank_flow_control = getattr(mySession, "enable_rerank", None)
+        rerank_flow_enabled = (
+            True if rerank_flow_control is None else bool(rerank_flow_control)
+        )
+        if mySession.rerank == 1 and rerank_flow_enabled:
             web_count = sum(
                 1
                 for doc in capped_docs
@@ -1565,6 +1660,7 @@ class RAGChatImpl(SingletonMixin):
         )
 
         mySession.last_chosen_chunks = chosen
+        self.confidenceHelper.store_answer_confidence(mySession, chosen)
 
         # Pre-compute distinct FileNames/URLs so weak LLMs can't skip sources.
         seen_local: set[str] = set()

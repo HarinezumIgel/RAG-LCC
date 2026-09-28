@@ -31,6 +31,7 @@ This reference covers both a **quick-scan overview** (tables by topic and by con
 |---------------|-------------------|-------------|
 | **Retrieval Strategies** | `NARROW`, `BALANCED_FILE_CAP`, `DEFAULT`, `WIDE`, `ULTRA_WIDE` | Pre-configured retrieval profiles balancing precision/recall. Control final_chunks_to_llm (20-1500), retriever_k (60-3000), threshold (0.45-0.60), and per-file limits. |
 | **Retrieval Modes** | `VECTOR`, `BM25`, `GRAPH`, `REGEX`, `VECTOR_BM25`, `VECTOR_GRAPH`, `BM25_GRAPH`, `VECTOR_REGEX`, `BM25_REGEX`, `GRAPH_REGEX`, `ALL`, `WEB` | Select retrieval algorithms. VECTOR uses embeddings; BM25 uses keyword matching; GRAPH uses entity co-occurrence; REGEX uses verb/noun lemma matching; combined modes use RRF fusion. WEB adds internet search results. |
+| **Orchestration Flows** | `THOROUGH_QUERY_REWRITE`, `TRANSLATION_FOCUSED`, `ORIGINAL_LANGUAGE_VECTOR_ONLY`, `ORIGINAL_LANGUAGE_ALL_RETRIEVERS` | Turn-level flow profiles from `Config_Orchestrator.py` that gate query-source selection, local/web stages, retriever stage switches, reranking, and grounding before final context assembly. |
 | **Final Chunks to LLM** | 20-1500 chunks (strategy-dependent) | How many chunks are sent to the LLM after retrieval and selection. Directly affects context window usage and answer quality. |
 | **Retriever K** | 60-3000 candidates (strategy-dependent) | How many candidates each retriever fetches before fusion/reranking. Higher = better recall but slower. |
 | **File Limit** | `filelim`: 0-20 chunks per file | Maximum chunks allowed from any single file in final selection. Enforces cross-file diversity. 0 = no limit. |
@@ -184,6 +185,9 @@ This reference covers both a **quick-scan overview** (tables by topic and by con
 | **Load from Classify CSV** | `Config_RAGLoad.py` | `LOAD_FROM_CLASSIFY_CSV` | Filter loading by CSV |
 | **Classify CSV Query** | `Config_RAGLoad.py` | `CLASSIFY_CSV_QUERY` | SQL WHERE clause for CSV filter |
 | **Retrieval Strategy** | `Config_RAGChat.py` | `_ACTIVE_CHUNK_SELECT_STRATEGY` | "NARROW", "BALANCED_FILE_CAP", "DEFAULT", "WIDE", "ULTRA_WIDE" |
+| **Active Orchestration Flow** | `Config_Orchestrator.py` | `_ACTIVE_ORCHESTRATION_FLOW` | Default retrieval orchestration profile for each turn |
+| **Allowed Orchestration Flows** | `Config_Orchestrator.py` | `_ALLOWED_ORCHESTRATION_FLOWS` | Optional allow-list exposed to `orchestrator_flow` selection |
+| **Orchestration Flow Profiles** | `Config_Orchestrator.py` | `_ORCHESTRATION_FLOWS[flow_name]` | Per-flow query-source and stage-gate profile dict |
 | **Strategy Definitions** | `Config_RAGChat.py` | `_STRATEGIES[strategy_name]` | Per-strategy parameters dict |
 | **Final Chunks to LLM** | `Config_RAGChat.py` | `_STRATEGIES[strategy]["final_chunks_to_llm"]` | Per-strategy chunk count |
 | **Retriever K** | `Config_RAGChat.py` | `_STRATEGIES[strategy]["retriever_k"]` | Per-strategy candidate fetch count |
@@ -333,6 +337,38 @@ This reference covers both a **quick-scan overview** (tables by topic and by con
 | **Answer Grounding Colors** | `Config_RAGChat.py` | `_MARKED_DOCS_COLORS["highlight"]`, `["answer_mark"]`, `["answer_ansi"]` | Chunk-highlight, grounded-span Markdown/HTML, and CLI ANSI colors |
 | **CSV Delimiter** | `Config_Global.py` | `CSV_DELIMITER` | Field separator for all output CSVs (default ";") |
 
+### 🧾 Supplemental Slot Coverage (Split Modules and Runtime Guards)
+
+The following slots are defined in split modules or specialized runtime-guard
+configs and are part of the effective configuration surface.
+
+| Config File | Slot Name / Path | Purpose |
+| --- | --- | --- |
+| `Config_Global.py` | `_ABSOLUTE_PATH` | Canonical project-root absolute path used by path-derived defaults and root-path guards. |
+| `Config_Global.py` | `_CONFIDENCE_LOGGING` | Confidence signal controls (`enabled`, `emit_pretty`, `csv_enabled`). |
+| `Config_Banned_Content.py` | `HARDBLOCK_PATTERNS` | Always-on hard-block regex patterns for critical unsafe intents (web retrieval guard). |
+| `Config_Banned_Content.py` | `INJECTION_PATTERNS` | Prompt-injection / attack signature regex patterns used by injection gating. |
+| `Config_Banned_HumanReview_CSV.py` | `_LABEL_ALIAS` | Human-review label alias map (for example Regex -> Regex+Levenshtein). |
+| `Config_Banned_HumanReview_CSV.py` | `_HUMAN_REVIEW_PREFIX_COLUMNS` | Prefix columns for derived HUMAN_REVIEW CSV schema. |
+| `Config_Banned_HumanReview_CSV.py` | `_HUMAN_REVIEW_ALGO_BASE_COLUMNS` | Base algorithm labels expanded into score/threshold groups. |
+| `Config_Banned_HumanReview_CSV.py` | `_HUMAN_REVIEW_SUFFIX_COLUMNS` | Suffix columns for derived HUMAN_REVIEW CSV schema. |
+| `Config_Banned_Prompts.py` | `_PROMPT_CHECK_CHAT_MISTRAL` | Mistral prompt-check template for chat request compliance review. |
+| `Config_Banned_Prompts.py` | `_PROMPT_CHECK_CLASSIFY_MISTRAL` | Mistral prompt-check template for classification-key compliance review. |
+| `Config_Languages_Catalog.py` | `_LANG_CODE_TO_NAME` | ISO language-code to NLTK language-name mapping. |
+| `Config_Languages_Retrievers.py` | `_SPACY` | Retriever-role spaCy routing config (`BM25`, `GRAPH`, `REGEX`). |
+| `Config_Languages_Retrievers.py` | `_SPACY_MODELS_BY_ACTIVE_LANGUAGE` | Per-active-language spaCy model package map. |
+| `Config_Languages_Normalization.py` | `_WORDNET` | WordNet synonym-expansion controls used by banned-word processing. |
+| `Config_Languages_Normalization.py` | `_LEET_MAP` | Character substitutions for leet-speak normalization. |
+| `Config_Languages_Normalization.py` | `_CONFUSABLES` | Unicode confusable-character normalization map. |
+| `Config_RAGChat_Prompts.py` | `_PROMPT_CHAT_MISTRAL` | Chat prompt alias for mistral role (maps to unified `_PROMPT_CHAT`). |
+| `Config_RAGChat_Prompts.py` | `_PROMPT_CHAT_LLAMA` | Chat prompt alias for llama role (maps to unified `_PROMPT_CHAT`). |
+| `Config_RAGChat_Rewrite.py` | `_RERANK_LOW_SCORE_FALLBACK` | Toggle for low-score rerank fallback behavior. |
+| `Config_RAGChat_Strategies.py` | `_ALLOWED_STRATEGIES` | Allow-list of selectable retrieval strategies. |
+| `Config_RAGChat.py` | `_HISTORY_DIRECTORY` | Base directory for chat query/settings history files. |
+| `Config_RAGChatService.py` | `_PROMPT_CHAT_MISTRAL` | Service prompt alias for mistral role (service-specific prompt text). |
+| `Config_RAGChatService.py` | `_PROMPT_CHAT_LLAMA` | Service prompt alias for llama role (service-specific prompt text). |
+| `Config_RAGChatService.py` | `_SERVICE_RESOURCES_DIR` | Static assets directory for service resources (for example favicon). |
+
 ---
 
 ## 💡 Common Tasks
@@ -438,31 +474,36 @@ set debug none     # Disable debugging
 
 ## 📑 Lookup order
 
-RAG-LCC uses **nine** configuration files, all located under `src/Configuration/`. Eight are merged by `Config()` in a fixed precedence order (highest wins):
+RAG-LCC uses layered configuration modules under `src/Configuration/`. `Config()` merges them in a fixed precedence order (later entries override earlier ones):
 
 > **CLI args** are validated first and may override only keys from
 > `Config_Global.py` and the active app config. Keys starting with `_` or `$`
 > are rejected.
 
-1. **App-specific** — `Config_RAGChat.py`, `Config_RAGLoad.py`, `Config_DocClassify.py`, or `Config_RAGChatService.py` (highest file priority)
-2. **Config_WebSearch.py** — web search master switch, backend, compliance gates
-3. **Config_Banned_Detection.py** — detection algorithms, thresholds, app-level compliance pipeline
-4. **Config_Banned_Content.py** — banned words, masking rules, hard-block and injection patterns
-5. **Config_Banned_Prompts.py** — LLM compliance prompt templates and prompt-level extensions
-6. **Config_Models.py** — embedding, cross-encoder, and LLM model definitions
-7. **Config_Languages.py** — active language set, Argos pair catalog, per-language spaCy maps, BM25/Graph/Regex language-aware slots
-8. **Config_Global.py** — shared defaults (paths, hardware, ChromaDB, token budget, debug)
+1. **Config_Global.py**
+2. **Config_Load_Retrievers.py**
+3. **Config_Load_Chunkers.py**
+4. **Config_Languages.py**
+5. **Config_Models.py**
+6. **Config_Banned_Detection.py**
+7. **Config_Banned_HumanReview_CSV.py**
+8. **Config_Banned_Content.py**
+9. **Config_Banned_Prompts.py**
+10. **Config_WebSearch.py**
+11. **Config_Orchestrator.py**
+12. **RAGChat split modules** (`Config_RAGChat_Core.py`, `Config_RAGChat_Strategies.py`, `Config_RAGChat_Prompts.py`, `Config_RAGChat_Rewrite.py`, `Config_RAGChat_Display.py`) when the active app is RAGChat/RAGChatService
+13. **App-specific config** — `Config_RAGChat.py`, `Config_RAGLoad.py`, `Config_DocClassify.py`, or `Config_RAGChatService.py` (highest file priority)
 
 `Config_Internet_Env.py` is separate from `Config()` merge order: it sets environment variables for internet access, tracing, and offline toggles.
 
 **Notes:**
 
-- Files 1-8 are loaded as Python modules and therefore require valid Python syntax.
+- All merged files above are loaded as Python modules and therefore require valid Python syntax.
 - `Config_Internet_Env.py` contains **only environment variables** (no regular config keys).
 - Keys starting with `_` are internal and **cannot** be overridden via CLI arguments.
 - Keys starting with `$` are indirect lookups (the value names another config key).
 - Top-level settings must be **UPPERCASE**.
-- CLI overrides apply **only** to `Config_Global.py` and the **app-specific** config (`Config_RAGChat.py`, `Config_RAGLoad.py`, `Config_DocClassify.py`, or `Config_RAGChatService.py`). Keys in `Config_Load_Retrievers.py`, `Config_Load_Chunkers.py`, `Config_Languages.py`, `Config_Models.py`, `Config_Banned_Detection.py`, `Config_Banned_Content.py`, `Config_Banned_Prompts.py`, `Config_WebSearch.py`, and `Config_Internet_Env.py` are **not** exposed as CLI arguments.
+- CLI overrides apply **only** to `Config_Global.py` and the **app-specific** config (`Config_RAGChat.py`, `Config_RAGLoad.py`, `Config_DocClassify.py`, or `Config_RAGChatService.py`). Keys in `Config_Load_Retrievers.py`, `Config_Load_Chunkers.py`, `Config_Languages.py`, `Config_Models.py`, `Config_Banned_Detection.py`, `Config_Banned_HumanReview_CSV.py`, `Config_Banned_Content.py`, `Config_Banned_Prompts.py`, `Config_WebSearch.py`, `Config_Orchestrator.py`, and `Config_Internet_Env.py` are **not** exposed as CLI arguments.
 
 ## 🌐 1. Config_Global.py — Shared Defaults
 
@@ -1288,6 +1329,57 @@ Strategy parameters explained:
 | `prune_batch` | Pruning granularity — number of oldest entries summarized into one entry per pruning pass. |
 | `max_history_turns` | Max recent turns sent to the query rewriter. `0` = unlimited. |
 | `TOPIC_SUMMARY_MODE` | Which assistant turns are used to build the rolling topic summary fed to the query rewriter. `"last"` = only the most recent assistant turn (default, lower cost). `"all"` = all assistant turns in the history window (richer context). |
+
+### 🧭 Orchestration Flows (`Config_Orchestrator.py`)
+
+Flow profiles are loaded from `Config_Orchestrator.py` and selected by session knob `orchestrator_flow`.
+
+Selector slots:
+
+| Slot | Default used in this repository | Purpose |
+| --- | --- | --- |
+| `_ACTIVE_ORCHESTRATION_FLOW` | `"THOROUGH_QUERY_REWRITE"` | Default flow profile when session does not request a specific flow. |
+| `_ALLOWED_ORCHESTRATION_FLOWS` | `[]` (empty) | Optional allow-list; when empty, all keys from `_ORCHESTRATION_FLOWS` are exposed. |
+| `_ALLOWED_ORCHESTRATION_QUERY_SOURCES` | `FINAL_QUERY`, `TRANSLATED_QUERY`, `ORIGINAL_QUERY` | Valid values for `main_query_source` / `secondary_query_source`. |
+| `_ORCHESTRATION_FLOWS` | 4 profiles | Profile dictionary that controls stage gates and query-source selection. |
+
+Side-by-side flow slot check (configuration slot vs runtime field):
+
+| Flow profile slot (`_ORCHESTRATION_FLOWS.<flow>.<slot>`) | Runtime field (`_OrchestrationFlowProfile`) | Effect |
+| --- | --- | --- |
+| `force_retrieve_mode` | `retrieve_mode_override` | Optional per-flow override of strategy/session `retrieve_mode`. |
+| `main_query_source` | `primary_query_source` | Selects primary query leg (`FINAL_QUERY` / `TRANSLATED_QUERY` / `ORIGINAL_QUERY`). |
+| `secondary_query_source` | `guardrail_query_source` | Selects secondary query leg when enabled. |
+| `use_secondary_query` | `enable_guardrail_leg` | Enables dual-query guardrail retrieval leg. |
+| `use_original_language_vector` | `enable_original_language_vector_leg` | Enables original-language vector retrieval leg. |
+| `shape_indexed_queries` | `enable_indexed_query_shaping` | Enables language-aware indexed query shaping for BM25/Graph/Regex. |
+| `use_vector_alternates` | `enable_vector_alternate_queries` | Enables MultiQuery alternate vector fan-out usage. |
+| `use_query_rewrite` | `enable_query_rewrite` | Enables query rewrite stage for the turn. |
+| `use_pronoun_substitution` | `enable_pronoun_substitution` | Enables pronoun/coreference substitution in rewrite stage. |
+| `run_local_stage` | `enable_local_stage` | Gates local retrieval stage as a whole. |
+| `run_web_stage` | `enable_web_stage` | Gates web retrieval stage as a whole. |
+| `run_vector` | `enable_vector_retriever` | Gates vector retriever stage. |
+| `run_bm25` | `enable_bm25_retriever` | Gates BM25 retriever stage. |
+| `run_graph` | `enable_graph_retriever` | Gates graph retriever stage. |
+| `run_regex` | `enable_regex_retriever` | Gates regex retriever stage. |
+| `run_rerank` | `enable_rerank` | Gates cross-encoder rerank stage. |
+| `run_low_score_fallback` | `enable_low_score_fallback` | Gates the low-score fallback action (skip strict rerank filtering and rank by retrieval order). |
+| `run_low_recall_rescue` | `enable_low_recall_rescue` | Gates query-overlap rescue for sparse local hits after strict thresholding. |
+| `run_grounding` | `enable_grounding` | Gates grounding/marking stage. |
+
+Side-by-side contradiction checks (flow intent vs CLI/session knobs):
+
+| Flow-controlled stage | Session/CLI knob that can override effective behavior | Runtime contradiction attribution |
+| --- | --- | --- |
+| `run_local_stage` | `retrieve_mode=WEB` or `web_search=web_only` | `cli_knob=retrieve_mode=WEB` or `cli_knob=web_search=web_only` |
+| `run_vector`, `run_bm25`, `run_graph`, `run_regex` | `retrieve_mode` excluding that retriever | `cli_knob=retrieve_mode=<MODE>` |
+| `run_rerank` | `rerank=0` / `rerank=1` | `cli_knob=rerank=0` or `cli_knob=rerank=1` |
+| `run_low_score_fallback`, `run_low_recall_rescue` | dependent on effective rerank state (`run_rerank` + `rerank`) | `cli_knob=rerank=0` when rerank is disabled in session CLI |
+| `run_grounding` | `mark_text=false` | `cli_knob=mark_text=false` |
+
+`run_rerank` and strategy/session `rerank` are both required for reranking to execute. If either is off, reranking is skipped.
+
+`run_low_score_fallback` and `run_low_recall_rescue` are evaluated only when rerank is effective for the turn. Inside chunk selection, low-score fallback runs first; if it fires, low-recall rescue is not executed for that turn.
 
 > See [Chat Context](ARCHITECTURE.md#-chat-context) in the architecture guide
 > for details on how multi-turn memory, retrieval, and incremental pruning work.

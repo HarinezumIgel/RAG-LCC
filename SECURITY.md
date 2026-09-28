@@ -28,7 +28,7 @@ the operator.
 | External calls | **None by default.** When `web_search` is enabled (`WEB_SEARCH_MODE = "1"` in `Config_Internet_Env.py`), user queries are transmitted to an external search provider (DuckDuckGo). See [🌐 Web / Internet Search](#-web--internet-search) below. |
 | Data storage | Local filesystem and local ChromaDB only. When `mark_text` is enabled, highlighted document bytes are held in process memory and (CLI) written to a short-lived OS temp directory that is deleted at process exit. No persistent copies are created by the framework. |
 | Highlighted-doc HTTP tokens (`RAGChatService`) | When `SERVE_IN_MEMORY_DOCS_HTTP="1"` is enabled, highlighted document bytes are served via `GET /marked/<token>.<ext>`. Tokens are 256-bit `secrets.token_urlsafe` values. The route is outside `/v1/*` so the Bearer middleware is intentionally bypassed — the token IS the access credential. Runtime controls live in `_SERVE_DOCS` (`ttl_seconds`, `single_use`, `max_total_mb`, `cors_origins`, `public_base_url`). |
-| Telemetry | None |
+| Remote data export | None |
 | Authentication | Not applicable (single‑user, local execution) |
 
 Actual behavior may vary depending on configuration, environment, and third‑party

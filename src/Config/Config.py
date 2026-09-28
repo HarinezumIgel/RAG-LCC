@@ -8,6 +8,7 @@ from typing import Any, Optional, Tuple, Union, cast
 
 import Configuration.Config_Banned_Content as Config_Banned_Content
 import Configuration.Config_Banned_Detection as Config_Banned_Detection
+import Configuration.Config_Banned_HumanReview_CSV as Config_Banned_HumanReview_CSV
 import Configuration.Config_Banned_Prompts as Config_Banned_Prompts
 import Configuration.Config_DocClassify as Config_DocClassify
 import Configuration.Config_Global as Config_Global
@@ -15,6 +16,7 @@ import Configuration.Config_Languages as Config_Languages
 import Configuration.Config_Load_Chunkers as Config_Load_Chunkers
 import Configuration.Config_Load_Retrievers as Config_Load_Retrievers
 import Configuration.Config_Models as Config_Models
+import Configuration.Config_Orchestrator as Config_Orchestrator
 import Configuration.Config_RAGChat as Config_RAGChat
 import Configuration.Config_RAGChat_Display as Config_RAGChat_Display
 import Configuration.Config_RAGChat_Prompts as Config_RAGChat_Prompts
@@ -33,6 +35,7 @@ from Gui.PrettyWriter import PrettyWriter
 
 config_modules = {
     "Config_Banned_Detection": Config_Banned_Detection,
+    "Config_Banned_HumanReview_CSV": Config_Banned_HumanReview_CSV,
     "Config_Banned_Content": Config_Banned_Content,
     "Config_Banned_Prompts": Config_Banned_Prompts,
     "Config_Load_Retrievers": Config_Load_Retrievers,
@@ -44,6 +47,7 @@ config_modules = {
     "Config_DocClassify": Config_DocClassify,
     "Config_Global": Config_Global,
     "Config_Languages": Config_Languages,
+    "Config_Orchestrator": Config_Orchestrator,
     "Config_WebSearch": Config_WebSearch,
 }
 # Case-insensitive lookup table (Windows preserves typed casing in sys.argv[0])
@@ -65,7 +69,8 @@ class Config(SingletonMixin):
             return aliases
 
         if isinstance(value, dict):
-            for child_key, child_value in value.items():
+            dict_value = cast(dict[Any, Any], value)
+            for child_key, child_value in dict_value.items():
                 child_path = f"{path}.{child_key}" if path else str(child_key)
                 aliases.extend(
                     Config._collect_indirect_aliases(child_value, child_path)
@@ -73,7 +78,8 @@ class Config(SingletonMixin):
             return aliases
 
         if isinstance(value, list):
-            for index, child_value in enumerate(value):
+            list_value = cast(list[Any], value)
+            for index, child_value in enumerate(list_value):
                 child_path = f"{path}[{index}]"
                 aliases.extend(
                     Config._collect_indirect_aliases(child_value, child_path)
@@ -126,9 +132,11 @@ class Config(SingletonMixin):
         self.cfgRagchatRewrite: Any = Config_RAGChat_Rewrite
         self.cfgRagchatStrategies: Any = Config_RAGChat_Strategies
         self.cfgBannedDetection: Any = Config_Banned_Detection
+        self.cfgBannedHumanReviewCsv: Any = Config_Banned_HumanReview_CSV
         self.cfgBannedContent: Any = Config_Banned_Content
         self.cfgBannedPrompts: Any = Config_Banned_Prompts
         self.cfgWebSearch: Any = Config_WebSearch
+        self.cfgOrchestrator: Any = Config_Orchestrator
 
         # CLI overrides are restricted to Config_Global + active app slots.
         # For RAGLoad/RAGChat/RAGChatService, include Config_Load_Retrievers.
@@ -211,6 +219,13 @@ class Config(SingletonMixin):
             if k.isupper()
         }
 
+        # 6.5) Config_Banned_HumanReview_CSV
+        glob_banned_human_review_csv = {
+            k: getattr(self.cfgBannedHumanReviewCsv, k)
+            for k in dir(self.cfgBannedHumanReviewCsv)
+            if k.isupper()
+        }
+
         # 7) Config_Banned_Content
         glob_banned_content = {
             k: getattr(self.cfgBannedContent, k)
@@ -229,6 +244,13 @@ class Config(SingletonMixin):
         glob_websearch = {
             k: getattr(self.cfgWebSearch, k)
             for k in dir(self.cfgWebSearch)
+            if k.isupper()
+        }
+
+        # 9.5) Config_Orchestrator — retrieval flow selector + profiles
+        glob_orchestrator = {
+            k: getattr(self.cfgOrchestrator, k)
+            for k in dir(self.cfgOrchestrator)
             if k.isupper()
         }
 
@@ -288,6 +310,10 @@ class Config(SingletonMixin):
             glob_banned_detection,
         )
         self._validate_indirect_lookup_scope(
+            "Config_Banned_HumanReview_CSV",
+            glob_banned_human_review_csv,
+        )
+        self._validate_indirect_lookup_scope(
             "Config_Banned_Content",
             glob_banned_content,
         )
@@ -296,6 +322,10 @@ class Config(SingletonMixin):
             glob_banned_prompts,
         )
         self._validate_indirect_lookup_scope("Config_WebSearch", glob_websearch)
+        self._validate_indirect_lookup_scope(
+            "Config_Orchestrator",
+            glob_orchestrator,
+        )
         if use_ragchat_split:
             self._validate_indirect_lookup_scope(
                 "Config_RAGChat",
@@ -330,9 +360,11 @@ class Config(SingletonMixin):
         raw.update(glob_languages)
         raw.update(glob_models)
         raw.update(glob_banned_detection)
+        raw.update(glob_banned_human_review_csv)
         raw.update(glob_banned_content)
         raw.update(glob_banned_prompts)
         raw.update(glob_websearch)
+        raw.update(glob_orchestrator)
         raw.update(glob_ragchat_core)
         raw.update(glob_ragchat_strategies)
         raw.update(glob_ragchat_prompts)

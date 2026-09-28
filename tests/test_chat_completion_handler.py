@@ -63,6 +63,7 @@ class StubSession:
         self.file_path = None
         self.query: str | None = None
         self.strategy: str | None = None
+        self.orchestrator_flow: str | None = None
         self.retriever_k: int | None = None
         self.rerank: bool | None = None
         self.final_chunks_to_llm: int | None = None
@@ -91,6 +92,12 @@ class StubQueryParts:
     def applyStrategyDefaults(self, strategy: str, session=None) -> str:
         return ""
 
+    def applyOrchestrationFlowDefaults(
+        self, orchestrator_flow: str, session=None
+    ) -> str:
+        _ = session
+        return orchestrator_flow
+
 
 class StubConfig:
     def get(self, key, default=None):
@@ -110,6 +117,31 @@ class StubConfig:
 
     def get_dict(self, key, default=None, *, silent=False) -> dict:
         return default if default is not None else {}
+
+    def get_list(self, key, default=None, *, silent=False) -> list:
+        _ = silent
+        if key == "_ALLOWED_ORCHESTRATION_FLOWS":
+            return [
+                "THOROUGH_QUERY_REWRITE",
+                "TRANSLATION_FOCUSED",
+                "ORIGINAL_LANGUAGE_VECTOR_ONLY",
+            ]
+        if key == "_ALLOWED_RETRIEVE_MODES":
+            return [
+                "VECTOR",
+                "BM25",
+                "GRAPH",
+                "REGEX",
+                "VECTOR_BM25",
+                "VECTOR_GRAPH",
+                "BM25_GRAPH",
+                "VECTOR_REGEX",
+                "BM25_REGEX",
+                "GRAPH_REGEX",
+                "ALL",
+                "WEB",
+            ]
+        return default if default is not None else []
 
     def set(self, key, value) -> None:
         pass
@@ -528,15 +560,44 @@ class TestApplyRequestToSession:
 
     def test_applyStrategyDefaults_called(self):
         called_with = []
+        called_flow_with = []
 
         class RecordingQP:
             def applyStrategyDefaults(self, strategy, session=None):
                 called_with.append(strategy)
                 return ""
 
+            def applyOrchestrationFlowDefaults(self, orchestrator_flow, session=None):
+                called_flow_with.append(orchestrator_flow)
+                return orchestrator_flow
+
         req = _base_req(strategy="WIDE")
         _applyRequestToSession(req, StubSession(), RecordingQP(), StubConfig())
         assert called_with == ["WIDE"]
+        assert called_flow_with == ["THOROUGH_QUERY_REWRITE"]
+
+    def test_valid_orchestrator_flow_applied(self):
+        for flow in (
+            "THOROUGH_QUERY_REWRITE",
+            "TRANSLATION_FOCUSED",
+            "ORIGINAL_LANGUAGE_VECTOR_ONLY",
+        ):
+            session = StubSession()
+            req = _base_req(orchestrator_flow=flow)
+            self._apply(req, session=session)
+            assert session.orchestrator_flow == flow
+
+    def test_orchestrator_flow_case_insensitive(self):
+        req = _base_req(orchestrator_flow="translation_focused")
+        session = self._apply(req)
+        assert session.orchestrator_flow == "TRANSLATION_FOCUSED"
+
+    def test_invalid_orchestrator_flow_raises_400(self):
+        req = _base_req(orchestrator_flow="CUSTOM_FLOW")
+        with pytest.raises(HTTPException) as exc_info:
+            self._apply(req)
+        assert exc_info.value.status_code == 400
+        assert "CUSTOM_FLOW" in str(exc_info.value.detail)
 
     # --- RAG overrides ------------------------------------------------------
 

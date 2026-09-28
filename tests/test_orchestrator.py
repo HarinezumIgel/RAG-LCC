@@ -3,7 +3,7 @@
 # pyright: reportArgumentType=false, reportPrivateUsage=false
 # pyright: reportUnknownArgumentType=false, reportMissingTypeArgument=false
 # pyright: reportAttributeAccessIssue=false, reportUnusedImport=false
-"""Tests for Chat.RetrievalOrchestrator.
+"""Tests for Chat.Orchestrator.
 
 These tests verify orchestration sequencing, early-exit branches, and debug
 trace emission at level 28.
@@ -17,7 +17,8 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from Chat.RetrievalOrchestrator import RetrievalOrchestrator
+from Chat.Orchestrator import Orchestrator
+from Gui.Colors import BRIGHT_GREEN, CYAN
 
 
 class StubPretty:
@@ -39,6 +40,7 @@ class StubPerfLogger:
 class StubSession:
     def __init__(self) -> None:
         self.retrieve_mode: str = "ALL"
+        self.web_search: bool = False
         self.query: str = "Q2"
         self.orig_translated_query_en: str | None = "Q1"
         self.seed_retrieval_query: str | None = None
@@ -210,6 +212,35 @@ class HostStub:
 
         self.calls: list[str] = []
         self.merge_args: tuple[Any, ...] | None = None
+
+    @staticmethod
+    def _mode_flags_for_local_retrievers(
+        retrieve_mode: str,
+    ) -> tuple[bool, bool, bool, bool]:
+        mode = str(retrieve_mode or "").strip().upper()
+        if mode == "VECTOR":
+            return (True, False, False, False)
+        if mode == "BM25":
+            return (False, True, False, False)
+        if mode == "GRAPH":
+            return (False, False, True, False)
+        if mode == "REGEX":
+            return (False, False, False, True)
+        if mode == "VECTOR_BM25":
+            return (True, True, False, False)
+        if mode == "VECTOR_GRAPH":
+            return (True, False, True, False)
+        if mode == "BM25_GRAPH":
+            return (False, True, True, False)
+        if mode == "VECTOR_REGEX":
+            return (True, False, False, True)
+        if mode == "BM25_REGEX":
+            return (False, True, False, True)
+        if mode == "GRAPH_REGEX":
+            return (False, False, True, True)
+        if mode == "WEB":
+            return (False, False, False, False)
+        return (True, True, True, True)
 
     def _set_vector_store(self, session: StubSession) -> bool:
         _ = session
@@ -572,14 +603,15 @@ class WebHostStub:
         )
 
 
-class TestRetrievalOrchestrator:
+class TestOrchestrator:
     def test_run_happy_path_sequences_stages(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         host = HostStub(set_vector_ok=True, gate_result=False)
         session = StubSession()
+        session.web_search = True
 
-        orchestrator = RetrievalOrchestrator(host)
+        orchestrator = Orchestrator(host)
         captured_local_args: tuple[str, str, list[str], str] | None = None
         captured_web_args: tuple[str, str] | None = None
         captured_guardrail_use: bool | None = None
@@ -645,7 +677,6 @@ class TestRetrievalOrchestrator:
             "_prepare_session",
             "_normalize_query",
             "_check_gates",
-            "_resolve_guardrail_queries",
             "_merge_and_select",
             "_build_context",
         ]
@@ -655,13 +686,369 @@ class TestRetrievalOrchestrator:
         assert host.merge_args == (["v1"], ["b1", "b2"], ["g1"], ["r1"], ["w1"])
         assert len(host.perf_logger.calls) == 1
 
+    def test_run_applies_flow_rewrite_and_pronoun_switches_before_normalize(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        class _CfgStub:
+            def get_dict(self, key: str, default: Any = None) -> dict[str, Any]:
+                if key == "_ORCHESTRATION_FLOWS":
+                    return {
+                        "FLOW_OFF": {
+                            "use_query_rewrite": False,
+                            "use_pronoun_substitution": False,
+                            "run_low_score_fallback": False,
+                            "run_low_recall_rescue": False,
+                        }
+                    }
+                return default if isinstance(default, dict) else {}
+
+            def get_list(self, key: str, default: Any = None) -> list[Any]:
+                if key == "_ALLOWED_ORCHESTRATION_FLOWS":
+                    return ["FLOW_OFF"]
+                return default if isinstance(default, list) else []
+
+            def get_str(self, key: str, default: str = "") -> str:
+                if key == "_ACTIVE_ORCHESTRATION_FLOW":
+                    return "FLOW_OFF"
+                return default
+
+        class _FlowControlHost(HostStub):
+            def __init__(self) -> None:
+                super().__init__(set_vector_ok=True, gate_result=False)
+                self.cfg = _CfgStub()
+                self.observed_rewrite_flag: bool | None = None
+                self.observed_pronoun_flag: bool | None = None
+                self.observed_low_score_fallback_flag: bool | None = None
+                self.observed_low_recall_rescue_flag: bool | None = None
+
+            def _normalize_query(
+                self,
+                session: StubSession,
+                user_query_original: str,
+            ) -> tuple[str, list[str]]:
+                _ = user_query_original
+                self.calls.append("_normalize_query")
+                self.observed_rewrite_flag = bool(
+                    getattr(session, "enable_query_rewrite", None)
+                )
+                self.observed_pronoun_flag = bool(
+                    getattr(session, "enable_pronoun_substitution", None)
+                )
+                self.observed_low_score_fallback_flag = bool(
+                    getattr(session, "enable_low_score_fallback", None)
+                )
+                self.observed_low_recall_rescue_flag = bool(
+                    getattr(session, "enable_low_recall_rescue", None)
+                )
+                return "Q2", ["ALT1", "ALT2"]
+
+        host = _FlowControlHost()
+        session = StubSession()
+        orchestrator = Orchestrator(host)
+
+        def _fake_run_post_gate_pipeline(
+            mySession: StubSession,
+            *,
+            pipeline_inputs: Any,
+        ) -> tuple[str, int]:
+            _ = (mySession, pipeline_inputs)
+            return "CTX::FLOW", 1
+
+        monkeypatch.setattr(
+            orchestrator,
+            "_run_post_gate_pipeline",
+            _fake_run_post_gate_pipeline,
+        )
+
+        context, count = orchestrator.run(session)
+
+        assert (context, count) == ("CTX::FLOW", 1)
+        assert host.observed_rewrite_flag is False
+        assert host.observed_pronoun_flag is False
+        assert host.observed_low_score_fallback_flag is False
+        assert host.observed_low_recall_rescue_flag is False
+        assert bool(getattr(session, "enable_query_rewrite", True)) is False
+        assert bool(getattr(session, "enable_pronoun_substitution", True)) is False
+        assert bool(getattr(session, "enable_low_score_fallback", True)) is False
+        assert bool(getattr(session, "enable_low_recall_rescue", True)) is False
+
+    def test_run_emits_yellow_flow_stage_knob_status_lines(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        class _CfgStub:
+            def get_dict(self, key: str, default: Any = None) -> dict[str, Any]:
+                if key == "_ORCHESTRATION_FLOWS":
+                    return {
+                        "FLOW_MIXED": {
+                            "use_query_rewrite": True,
+                            "use_pronoun_substitution": False,
+                            "use_secondary_query": False,
+                            "use_original_language_vector": True,
+                            "shape_indexed_queries": True,
+                            "use_vector_alternates": False,
+                            "run_local_stage": True,
+                            "run_web_stage": False,
+                            "run_vector": True,
+                            "run_bm25": False,
+                            "run_graph": True,
+                            "run_regex": False,
+                            "run_low_score_fallback": False,
+                            "run_low_recall_rescue": False,
+                        }
+                    }
+                return default if isinstance(default, dict) else {}
+
+            def get_list(self, key: str, default: Any = None) -> list[Any]:
+                if key == "_ALLOWED_ORCHESTRATION_FLOWS":
+                    return ["FLOW_MIXED"]
+                return default if isinstance(default, list) else []
+
+            def get_str(self, key: str, default: str = "") -> str:
+                if key == "_ACTIVE_ORCHESTRATION_FLOW":
+                    return "FLOW_MIXED"
+                return default
+
+        class _FlowMessageHost(HostStub):
+            def __init__(self) -> None:
+                super().__init__(set_vector_ok=True, gate_result=False)
+                self.cfg = _CfgStub()
+
+        host = _FlowMessageHost()
+        session = StubSession()
+        orchestrator = Orchestrator(host)
+
+        def _fake_run_post_gate_pipeline(
+            mySession: StubSession,
+            *,
+            pipeline_inputs: Any,
+        ) -> tuple[str, int]:
+            _ = (mySession, pipeline_inputs)
+            return "CTX::FLOW", 1
+
+        monkeypatch.setattr(
+            orchestrator,
+            "_run_post_gate_pipeline",
+            _fake_run_post_gate_pipeline,
+        )
+
+        context, count = orchestrator.run(session)
+        assert (context, count) == ("CTX::FLOW", 1)
+
+        knob_messages = [
+            (str(call[0][2]), call[1].get("color"))
+            for call in host.pretty.calls
+            if len(call[0]) >= 3 and call[0][1] == "Retrieval Orchestration"
+        ]
+
+        assert any(
+            "Query rewrite stage" in message
+            and "Activated" in message
+            and "knob=use_query_rewrite" in message
+            and color == CYAN
+            for message, color in knob_messages
+        )
+        assert any(
+            "Pronoun substitution stage" in message
+            and "Not activated" in message
+            and "knob=use_pronoun_substitution" in message
+            and color == CYAN
+            for message, color in knob_messages
+        )
+        assert any(
+            "BM25 retriever stage" in message
+            and "Not activated" in message
+            and "knob=run_bm25" in message
+            and color == CYAN
+            for message, color in knob_messages
+        )
+        assert any(
+            "Low-score fallback action" in message
+            and "Not activated" in message
+            and "knob=run_low_score_fallback" in message
+            and color == CYAN
+            for message, color in knob_messages
+        )
+        assert any(
+            "Low-recall rescue action" in message
+            and "Not activated" in message
+            and "knob=run_low_recall_rescue" in message
+            and color == CYAN
+            for message, color in knob_messages
+        )
+
+    def test_run_disables_low_recall_rescue_when_rerank_cli_off(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        class _CfgStub:
+            def get_dict(self, key: str, default: Any = None) -> dict[str, Any]:
+                if key == "_ORCHESTRATION_FLOWS":
+                    return {
+                        "FLOW_ON": {
+                            "run_rerank": True,
+                            "run_low_score_fallback": True,
+                            "run_low_recall_rescue": True,
+                        }
+                    }
+                return default if isinstance(default, dict) else {}
+
+            def get_list(self, key: str, default: Any = None) -> list[Any]:
+                if key == "_ALLOWED_ORCHESTRATION_FLOWS":
+                    return ["FLOW_ON"]
+                return default if isinstance(default, list) else []
+
+            def get_str(self, key: str, default: str = "") -> str:
+                if key == "_ACTIVE_ORCHESTRATION_FLOW":
+                    return "FLOW_ON"
+                return default
+
+        class _FlowToggleHost(HostStub):
+            def __init__(self) -> None:
+                super().__init__(set_vector_ok=True, gate_result=False)
+                self.cfg = _CfgStub()
+                self.observed_rerank_flag: bool | None = None
+                self.observed_low_score_fallback_flag: bool | None = None
+                self.observed_rescue_flag: bool | None = None
+
+            def _normalize_query(
+                self,
+                session: StubSession,
+                user_query_original: str,
+            ) -> tuple[str, list[str]]:
+                _ = user_query_original
+                self.calls.append("_normalize_query")
+                self.observed_rerank_flag = bool(
+                    getattr(session, "enable_rerank", None)
+                )
+                self.observed_low_score_fallback_flag = bool(
+                    getattr(session, "enable_low_score_fallback", None)
+                )
+                self.observed_rescue_flag = bool(
+                    getattr(session, "enable_low_recall_rescue", None)
+                )
+                return "Q2", ["ALT1", "ALT2"]
+
+        host = _FlowToggleHost()
+        session = StubSession()
+        session.rerank = 0
+        orchestrator = Orchestrator(host)
+
+        def _fake_run_post_gate_pipeline(
+            mySession: StubSession,
+            *,
+            pipeline_inputs: Any,
+        ) -> tuple[str, int]:
+            _ = (mySession, pipeline_inputs)
+            return "CTX::FLOW", 1
+
+        monkeypatch.setattr(
+            orchestrator,
+            "_run_post_gate_pipeline",
+            _fake_run_post_gate_pipeline,
+        )
+
+        context, count = orchestrator.run(session)
+
+        assert (context, count) == ("CTX::FLOW", 1)
+        assert host.observed_rerank_flag is True
+        assert host.observed_low_score_fallback_flag is False
+        assert host.observed_rescue_flag is False
+        assert bool(getattr(session, "enable_rerank", False)) is True
+        assert bool(getattr(session, "enable_low_score_fallback", True)) is False
+        assert bool(getattr(session, "enable_low_recall_rescue", True)) is False
+
+    def test_run_local_only_skips_web_retrieval_stage(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        host = HostStub(set_vector_ok=True, gate_result=False)
+        session = StubSession()
+        session.web_search = False
+
+        orchestrator = Orchestrator(host)
+
+        web_stage_called = False
+
+        def _fake_run_local_docs_stage(
+            my_session: StubSession,
+            *,
+            retrieve_mode: str,
+            bm25_query: str,
+            alternate_queries: list[str],
+            orig_translated_query_en: str,
+            resolved_guardrail: Any | None,
+        ) -> Any:
+            _ = (
+                my_session,
+                retrieve_mode,
+                bm25_query,
+                alternate_queries,
+                orig_translated_query_en,
+                resolved_guardrail,
+            )
+            return type(
+                "_Docs",
+                (),
+                {
+                    "vector_docs": ["v1"],
+                    "bm25_docs": ["b1"],
+                    "graph_docs": [],
+                    "regex_docs": [],
+                },
+            )()
+
+        def _fake_run_web_retriever(
+            my_session: StubSession,
+            retrieve_mode: str,
+            user_query_original: str,
+        ) -> list[Any]:
+            nonlocal web_stage_called
+            _ = (my_session, retrieve_mode, user_query_original)
+            web_stage_called = True
+            return ["w1"]
+
+        monkeypatch.setattr(
+            orchestrator,
+            "_run_local_docs_stage",
+            _fake_run_local_docs_stage,
+        )
+        monkeypatch.setattr(
+            orchestrator,
+            "run_web_retriever",
+            _fake_run_web_retriever,
+        )
+
+        context, count = orchestrator.run(session)
+
+        assert web_stage_called is False
+        assert (context, count) == ("CTX::chosen1,chosen2", 2)
+
+        trace_messages = [
+            str(call[0][2])
+            for call in host.pretty.calls
+            if len(call[0]) >= 3 and call[0][1] == "Retrieval Orchestration"
+        ]
+        assert any(
+            "effective stage gates:" in message and "web_mode=local_only" in message
+            for message in trace_messages
+        )
+        assert not any(
+            "retrieve web candidates" in message for message in trace_messages
+        )
+        assert any(
+            "web stage skipped " in message and "web_mode=local_only" in message
+            for message in trace_messages
+        )
+
     def test_run_routes_through_post_gate_pipeline_seam(
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         host = HostStub(set_vector_ok=True, gate_result=False)
         session = StubSession()
-        orchestrator = RetrievalOrchestrator(host)
+        orchestrator = Orchestrator(host)
 
         captured: tuple[Any, Any] | None = None
 
@@ -688,7 +1075,6 @@ class TestRetrievalOrchestrator:
             "_prepare_session",
             "_normalize_query",
             "_check_gates",
-            "_resolve_guardrail_queries",
         ]
         assert captured is not None
         assert captured[0] is session
@@ -706,7 +1092,7 @@ class TestRetrievalOrchestrator:
     ) -> None:
         host = HostStub(set_vector_ok=True, gate_result=False)
         session = StubSession()
-        orchestrator = RetrievalOrchestrator(host)
+        orchestrator = Orchestrator(host)
 
         captured_pre_gate_session: StubSession | None = None
         captured_post_gate_inputs: Any = None
@@ -731,8 +1117,13 @@ class TestRetrievalOrchestrator:
                 self.should_abort = False
                 self.post_gate_inputs = _PipelineInputs()
 
-        def _fake_run_pre_gate_pipeline(mySession: StubSession) -> Any:
+        def _fake_run_pre_gate_pipeline(
+            mySession: StubSession,
+            *,
+            flow_profile: Any | None = None,
+        ) -> Any:
             nonlocal captured_pre_gate_session
+            _ = flow_profile
             captured_pre_gate_session = mySession
             return _PreGateResult()
 
@@ -772,7 +1163,7 @@ class TestRetrievalOrchestrator:
     ) -> None:
         host = HostStub(set_vector_ok=True, gate_result=False)
         session = StubSession()
-        orchestrator = RetrievalOrchestrator(host)
+        orchestrator = Orchestrator(host)
 
         post_gate_called = False
 
@@ -781,8 +1172,13 @@ class TestRetrievalOrchestrator:
                 self.should_abort = True
                 self.post_gate_inputs = None
 
-        def _fake_run_pre_gate_pipeline(mySession: StubSession) -> Any:
+        def _fake_run_pre_gate_pipeline(
+            mySession: StubSession,
+            *,
+            flow_profile: Any | None = None,
+        ) -> Any:
             _ = mySession
+            _ = flow_profile
             return _PreGateAbort()
 
         def _fake_run_post_gate_pipeline(
@@ -816,7 +1212,7 @@ class TestRetrievalOrchestrator:
         host = HostStub(set_vector_ok=False, gate_result=False)
         session = StubSession()
 
-        orchestrator = RetrievalOrchestrator(host)
+        orchestrator = Orchestrator(host)
         context, count = orchestrator.run(session)
 
         assert (context, count) == ("", 0)
@@ -827,7 +1223,7 @@ class TestRetrievalOrchestrator:
         host = HostStub(set_vector_ok=True, gate_result=True)
         session = StubSession()
 
-        orchestrator = RetrievalOrchestrator(host)
+        orchestrator = Orchestrator(host)
         context, count = orchestrator.run(session)
 
         assert (context, count) == ("", 0)
@@ -846,7 +1242,7 @@ class TestRetrievalOrchestrator:
         session = StubSession()
         session.retrieve_mode = "WEB"
 
-        orchestrator = RetrievalOrchestrator(host)
+        orchestrator = Orchestrator(host)
 
         local_stage_called = False
 
@@ -901,6 +1297,16 @@ class TestRetrievalOrchestrator:
             for call in host.pretty.calls
             if len(call[0]) >= 3 and call[0][1] == "Retrieval Orchestration"
         ]
+        gate_trace_calls = [
+            call
+            for call in host.pretty.calls
+            if len(call[0]) >= 3
+            and call[0][1] == "Retrieval Orchestration"
+            and "effective stage gates:" in str(call[0][2])
+        ]
+        assert gate_trace_calls
+        assert gate_trace_calls[0][1].get("color") == BRIGHT_GREEN
+        assert "web_mode=web_only" in str(gate_trace_calls[0][0][2])
         assert not any(
             "retrieve local candidates" in message for message in trace_messages
         )
@@ -915,7 +1321,7 @@ class TestRetrievalOrchestrator:
         session = StubSession()
         session.debug_level = 0
 
-        orchestrator = RetrievalOrchestrator(host)
+        orchestrator = Orchestrator(host)
 
         def _fake_run_local_docs_stage(
             my_session: StubSession,
@@ -1007,7 +1413,7 @@ class TestRetrievalOrchestrator:
         session.post_rewrite_query_en = "what do hedgehogs eat"  # type: ignore[attr-defined]
         session.orig_translated_query_en = "what eat hedgehogs"  # type: ignore[attr-defined]
 
-        orchestrator = RetrievalOrchestrator(host)
+        orchestrator = Orchestrator(host)
 
         _ = orchestrator.run(session)
 
@@ -1032,7 +1438,7 @@ class TestLocalRetrievalOrchestration:
     def test_run_local_retrievers_stores_guardrail_counts_when_active(self) -> None:
         host = LocalHostStub(use_guardrail=True)
         session = LocalSessionStub()
-        orchestrator = RetrievalOrchestrator(host)
+        orchestrator = Orchestrator(host)
 
         vector_docs, bm25_docs, graph_docs, regex_docs = (
             orchestrator.run_local_retrievers(
@@ -1057,7 +1463,7 @@ class TestLocalRetrievalOrchestration:
     def test_run_local_retrievers_skips_guardrail_store_when_inactive(self) -> None:
         host = LocalHostStub(use_guardrail=False)
         session = LocalSessionStub()
-        orchestrator = RetrievalOrchestrator(host)
+        orchestrator = Orchestrator(host)
 
         vector_docs, bm25_docs, graph_docs, regex_docs = (
             orchestrator.run_local_retrievers(
@@ -1085,7 +1491,7 @@ class TestLocalRetrievalOrchestration:
             mode_flags=(False, True, True, True),
         )
         session = LocalSessionStub()
-        orchestrator = RetrievalOrchestrator(host)
+        orchestrator = Orchestrator(host)
 
         vector_docs, bm25_docs, graph_docs, regex_docs = (
             orchestrator.run_local_retrievers(
@@ -1117,7 +1523,7 @@ class TestLocalRetrievalOrchestration:
             mode_flags=(False, True, True, True),
         )
         session = LocalSessionStub()
-        orchestrator = RetrievalOrchestrator(host)
+        orchestrator = Orchestrator(host)
 
         bm25_stage_labels_seen: list[list[str]] = []
         graph_regex_stage_labels_seen: list[list[str]] = []
@@ -1175,7 +1581,7 @@ class TestLocalRetrievalOrchestration:
     ) -> None:
         host = LocalHostStub(use_guardrail=True)
         session = LocalSessionStub()
-        orchestrator = RetrievalOrchestrator(host)
+        orchestrator = Orchestrator(host)
 
         class _Invocation:
             def __init__(
@@ -1236,7 +1642,7 @@ class TestLocalRetrievalOrchestration:
             mode_flags=(False, True, True, True),
         )
         session = LocalSessionStub()
-        orchestrator = RetrievalOrchestrator(host)
+        orchestrator = Orchestrator(host)
 
         captured_args: tuple[Any, ...] | None = None
 
@@ -1306,7 +1712,7 @@ class TestLocalRetrievalOrchestration:
             mode_flags=(True, True, False, False),
         )
         session = LocalSessionStub()
-        orchestrator = RetrievalOrchestrator(host)
+        orchestrator = Orchestrator(host)
 
         captured_vector_args: tuple[Any, ...] | None = None
 
@@ -1406,7 +1812,7 @@ class TestLocalRetrievalOrchestration:
             mode_flags=(True, True, True, True),
         )
         session = LocalSessionStub()
-        orchestrator = RetrievalOrchestrator(host)
+        orchestrator = Orchestrator(host)
 
         captured_local_stage_inputs: Any = None
 
@@ -1509,7 +1915,7 @@ class TestLocalRetrievalOrchestration:
     ) -> None:
         host = LocalHostStub(use_guardrail=False)
         session = LocalSessionStub()
-        orchestrator = RetrievalOrchestrator(host)
+        orchestrator = Orchestrator(host)
 
         captured_args: tuple[Any, ...] | None = None
 
@@ -1574,7 +1980,7 @@ class TestLocalRetrievalOrchestration:
     ) -> None:
         host = LocalHostStub(use_guardrail=True)
         session = LocalSessionStub()
-        orchestrator = RetrievalOrchestrator(host)
+        orchestrator = Orchestrator(host)
 
         captured_guardrail_store: tuple[Any, bool, int, int] | None = None
 
@@ -1691,7 +2097,7 @@ class TestLocalRetrievalOrchestration:
             mode_flags=(False, True, True, True),
         )
         session = LocalSessionStub()
-        orchestrator = RetrievalOrchestrator(host)
+        orchestrator = Orchestrator(host)
 
         def _fake_graph_regex_stage_filters(
             mySession: LocalSessionStub,
@@ -1749,7 +2155,7 @@ class TestLocalRetrievalOrchestration:
             mode_flags=(False, True, True, True),
         )
         session = LocalSessionStub()
-        orchestrator = RetrievalOrchestrator(host)
+        orchestrator = Orchestrator(host)
 
         def _fake_plan_graph_regex_language_buckets(
             mySession: LocalSessionStub,
@@ -1818,7 +2224,7 @@ class TestLocalRetrievalOrchestration:
             mode_flags=(False, True, True, True),
         )
         session = LocalSessionStub()
-        orchestrator = RetrievalOrchestrator(host)
+        orchestrator = Orchestrator(host)
 
         stage_filters = [
             {"FileName": "A.txt", "Language": "de"},
@@ -1878,7 +2284,7 @@ class TestLocalRetrievalOrchestration:
             mode_flags=(False, True, True, True),
         )
         session = LocalSessionStub()
-        orchestrator = RetrievalOrchestrator(host)
+        orchestrator = Orchestrator(host)
 
         def _fake_plan_graph_regex_language_buckets(
             mySession: LocalSessionStub,
@@ -1973,7 +2379,7 @@ class TestLocalRetrievalOrchestration:
         session.user_language = "german"
         session.retrieval_language = "english"
 
-        orchestrator = RetrievalOrchestrator(host)
+        orchestrator = Orchestrator(host)
         _ = orchestrator.run_local_retrievers(
             session,
             retrieve_mode="ALL",
@@ -2014,7 +2420,7 @@ class TestLocalRetrievalOrchestration:
         session.user_language = "german"
         session.retrieval_language = "english"
 
-        orchestrator = RetrievalOrchestrator(host)
+        orchestrator = Orchestrator(host)
         _ = orchestrator.run_local_retrievers(
             session,
             retrieve_mode="ALL",
@@ -2061,7 +2467,7 @@ class TestLocalRetrievalOrchestration:
         shared = _LocalTranslatingSharedStub()
         host._shared = shared  # type: ignore[attr-defined]
         session = LocalSessionStub()
-        orchestrator = RetrievalOrchestrator(host)
+        orchestrator = Orchestrator(host)
 
         stage_primary_query, stage_guardrail_query = (
             orchestrator._shape_graph_regex_stage_queries(
@@ -2088,7 +2494,7 @@ class TestLocalRetrievalOrchestration:
         host._shared = shared  # type: ignore[attr-defined]
         session = LocalSessionStub()
         session.debug_level = 0
-        orchestrator = RetrievalOrchestrator(host)
+        orchestrator = Orchestrator(host)
 
         stage_primary_query, stage_guardrail_query = (
             orchestrator._shape_graph_regex_stage_queries(
@@ -2135,7 +2541,7 @@ class TestLocalRetrievalOrchestration:
         session.current_query_lang = "german"
         session.user_language = "german"
         session.retrieval_language = "english"
-        orchestrator = RetrievalOrchestrator(host)
+        orchestrator = Orchestrator(host)
 
         vector_docs, bm25_docs, graph_docs, regex_docs = (
             orchestrator.run_local_retrievers(
@@ -2269,7 +2675,7 @@ class TestLocalRetrievalOrchestration:
         host._run_vector_retriever_with_guardrail = _fake_run_vector_retriever_with_guardrail  # type: ignore[attr-defined]
         host._run_indexed_local_retrievers = _fake_run_indexed_local_retrievers  # type: ignore[attr-defined]
 
-        orchestrator = RetrievalOrchestrator(host)
+        orchestrator = Orchestrator(host)
         vector_docs, bm25_docs, graph_docs, regex_docs = (
             orchestrator.run_local_retrievers(
                 session,
@@ -2316,7 +2722,7 @@ class TestLocalRetrievalOrchestration:
 
     def test_normalize_language_bucket_prefers_host_seam(self) -> None:
         host = LocalHostStub(use_guardrail=False)
-        orchestrator = RetrievalOrchestrator(host)
+        orchestrator = Orchestrator(host)
 
         calls: list[Any] = []
 
@@ -2359,7 +2765,7 @@ class TestLocalRetrievalOrchestration:
         host = LocalHostStub(use_guardrail=False)
         host.collection = _CollectionStub()  # type: ignore[attr-defined]
         host._shared = _SharedStub()  # type: ignore[attr-defined]
-        orchestrator = RetrievalOrchestrator(host)
+        orchestrator = Orchestrator(host)
 
         languages = orchestrator._discover_graph_regex_languages(
             {"FileName": "A.txt", "Language": "en"}
@@ -2391,7 +2797,7 @@ class TestLocalRetrievalOrchestration:
         )
         session = LocalSessionStub()
         session.current_query_lang = "german"
-        orchestrator = RetrievalOrchestrator(host)
+        orchestrator = Orchestrator(host)
 
         buckets_plain = orchestrator._plan_graph_regex_language_buckets(
             session,
@@ -2412,7 +2818,7 @@ class TestLocalRetrievalOrchestration:
         host = LocalHostStub(use_guardrail=False)
         session = LocalSessionStub()
         session.current_query_lang = "german"
-        orchestrator = RetrievalOrchestrator(host)
+        orchestrator = Orchestrator(host)
 
         def _fake_discover_graph_regex_languages(
             file_filter: dict[str, Any] | None,
@@ -2442,7 +2848,7 @@ class TestLocalRetrievalOrchestration:
         session.current_query_lang = "english"
         session.user_language = "english"
         session.retrieval_language = "english"
-        orchestrator = RetrievalOrchestrator(host)
+        orchestrator = Orchestrator(host)
 
         def _fake_discover_graph_regex_languages(
             file_filter: dict[str, Any] | None,
@@ -2467,7 +2873,7 @@ class TestLocalRetrievalOrchestration:
         host = LocalHostStub(use_guardrail=False)
         session = LocalSessionStub()
         session.current_query_lang = "french"
-        orchestrator = RetrievalOrchestrator(host)
+        orchestrator = Orchestrator(host)
 
         buckets = orchestrator._plan_graph_regex_language_buckets(
             session,
@@ -2513,7 +2919,7 @@ class TestLocalRetrievalOrchestration:
         host.collection_name = "TestCollection"  # type: ignore[attr-defined]
 
         session = LocalSessionStub()
-        orchestrator = RetrievalOrchestrator(host)
+        orchestrator = Orchestrator(host)
 
         orchestrator._emit_vector_store_language_status(session)
 
@@ -2559,7 +2965,7 @@ class TestLocalRetrievalOrchestration:
         host.collection_name = "TestCollection"  # type: ignore[attr-defined]
 
         session = LocalSessionStub()
-        orchestrator = RetrievalOrchestrator(host)
+        orchestrator = Orchestrator(host)
 
         orchestrator._emit_vector_store_language_status(session)
 
@@ -2580,7 +2986,7 @@ class TestWebRetrievalOrchestration:
         monkeypatch.setenv("WEB_SEARCH_MODE", "1")
         host = WebHostStub([WebDocStub("https://a")], cfg=WebCfgStub())
         session = WebSessionStub(web_search=False)
-        orchestrator = RetrievalOrchestrator(host)
+        orchestrator = Orchestrator(host)
 
         docs = orchestrator.run_web_retriever(
             session,
@@ -2597,7 +3003,7 @@ class TestWebRetrievalOrchestration:
         monkeypatch.setenv("WEB_SEARCH_MODE", "0")
         host = WebHostStub([WebDocStub("https://a")], cfg=WebCfgStub())
         session = WebSessionStub(web_search=True)
-        orchestrator = RetrievalOrchestrator(host)
+        orchestrator = Orchestrator(host)
 
         docs = orchestrator.run_web_retriever(
             session,
@@ -2627,7 +3033,7 @@ class TestWebRetrievalOrchestration:
             cosine_out=[d2],
         )
         session = WebSessionStub(web_search=True, query="hedgehog query")
-        orchestrator = RetrievalOrchestrator(host)
+        orchestrator = Orchestrator(host)
 
         docs = orchestrator.run_web_retriever(
             session,

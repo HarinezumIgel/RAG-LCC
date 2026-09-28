@@ -24,7 +24,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from Chat.RetrievalOrchestrator import RetrievalOrchestrator
+from Chat.Orchestrator import Orchestrator
 
 _RAG_IMPL_SRC = os.path.join(
     os.path.dirname(__file__), "..", "src", "Chat", "RAGChatImpl.py"
@@ -81,16 +81,44 @@ class StubSession:
 class StubFileUtils:
     def __init__(self, mapping: dict[str, str]) -> None:
         self._mapping = mapping
+        self._events: list[dict[str, Any]] = []
 
     def get_user_text_language(
         self,
         text: str,
         output: str = "nltk",
         native_lang: str | None = None,
+        stage_label: str = "",
     ) -> str:
         _ = output
         _ = native_lang
+        self._events.append(
+            {
+                "stage": stage_label or "test",
+                "language": self._mapping.get(text, "english"),
+                "confidence": 1.0,
+                "threshold": 0.6,
+                "fell_back": False,
+                "too_short": False,
+                "override_applied": False,
+                "override_source": "",
+                "level": "HIGH",
+            }
+        )
         return self._mapping.get(text, "english")
+
+    def pop_lang_detection_events(self) -> list[dict[str, Any]]:
+        events = list(self._events)
+        self._events = []
+        return events
+
+
+class StubConfidenceLogger:
+    def log_step(self, *a: Any, **k: Any) -> None:
+        _ = (a, k)
+
+    def log_language_detection(self, *a: Any, **k: Any) -> None:
+        _ = (a, k)
 
 
 class StubTranslator:
@@ -282,6 +310,7 @@ class NormalizeShell:
     ) -> None:
         self._translation_backend = "argos"
         self._fileUtils = StubFileUtils(language_map)
+        self.confidence_logger = StubConfidenceLogger()
         self.pretty = StubPrettyWriter()
         self.promptRewrite = StubPromptRewrite(rewrite_normal, rewrite_strict)
         self._translator = StubTranslator(translations)
@@ -289,6 +318,10 @@ class NormalizeShell:
     def _get_translator(self, backend: str) -> StubTranslator | None:
         _ = backend
         return self._translator
+
+    def _drain_lang_detection_confidence_events(self, session: StubSession) -> None:
+        for event in self._fileUtils.pop_lang_detection_events():
+            self.confidence_logger.log_language_detection(session, event)
 
     def _generate_alternate_queries(
         self, _query: str, _session: StubSession
@@ -322,7 +355,7 @@ class FetchShell:
         self.regex_retriever = StubGraphRuntime()
         self._translation_backend = "off"
         self._shared = StubSharedTranslate({})
-        self.retrieval_orchestrator = RetrievalOrchestrator(self)
+        self.orchestrator = Orchestrator(self)
 
     def _vector_kwargs(self, _session: StubSession) -> dict[str, Any]:
         return {}

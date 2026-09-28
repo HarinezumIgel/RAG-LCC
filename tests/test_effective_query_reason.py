@@ -124,6 +124,23 @@ class _StubPretty:
         pass
 
 
+class _StubConfidenceLogger:
+    def flush_turn_csv(
+        self,
+        _session: Any,
+        *,
+        outcome: str,
+        answer_text: str = "",
+    ) -> None:
+        _ = (outcome, answer_text)
+
+    def log_step(self, *a: Any, **kw: Any) -> None:
+        _ = (a, kw)
+
+    def log_language_detection(self, *a: Any, **kw: Any) -> None:
+        _ = (a, kw)
+
+
 class _StubSession:
     """Minimal Session-like object satisfying Chatter.run() field checks."""
 
@@ -175,6 +192,7 @@ def _make_chatter(rag_stub: _RagStub) -> Any:
     chatter.rag = rag_stub
     chatter.cfg = _StubConfig()
     chatter.pretty = _StubPretty()
+    chatter.confidence_logger = _StubConfidenceLogger()
     # terminal_line_size is a @property — it reads from self.cfg (returns 160 when None)
     return chatter
 

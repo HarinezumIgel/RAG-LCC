@@ -115,6 +115,7 @@ class ChatCompletionRequest(BaseModel):
     # CLI names are canonical in QueryParts.COMMAND_SPECS (src/Chat/QueryParts.py);
     # keep aliases here in sync with that registry when adding new parameters.
     strategy: Optional[str] = None
+    orchestrator_flow: Optional[str] = None
     retriever_k: Optional[int] = None
     fetch_k: Optional[int] = None  # CLI alias for retriever_k
     rerank: Optional[bool] = None
@@ -270,6 +271,23 @@ _ALLOWED_STRATEGIES: frozenset[str] = frozenset(
 )
 
 
+def _resolve_allowed_orchestration_flows(cfg: Config) -> list[str]:
+    """Return configured orchestration flow names in uppercase."""
+    allowed_raw = cfg.get_list("_ALLOWED_ORCHESTRATION_FLOWS", [])
+    flow_names: list[str] = [
+        str(item).strip().upper() for item in allowed_raw if str(item).strip()
+    ]
+    if not flow_names:
+        flow_names = [
+            str(name).strip().upper()
+            for name in cfg.get_dict("_ORCHESTRATION_FLOWS", {}).keys()
+            if str(name).strip()
+        ]
+    if not flow_names:
+        return ["THOROUGH_QUERY_REWRITE"]
+    return flow_names
+
+
 def _getLastUserText(req: ChatCompletionRequest) -> str | None:
     """Return the text of the last user message, or None."""
     if not req.messages:
@@ -341,6 +359,28 @@ def _applyRequestToSession(
         session.strategy or cfg.get_str("_ACTIVE_CHUNK_SELECT_STRATEGY") or "DEFAULT"
     )
     queryParts.applyStrategyDefaults(strategy, session=session)
+
+    allowed_orchestrator_flows = _resolve_allowed_orchestration_flows(cfg)
+    if req.orchestrator_flow is not None and req.orchestrator_flow.strip():
+        flow_upper = req.orchestrator_flow.strip().upper()
+        if flow_upper not in allowed_orchestrator_flows:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Invalid orchestrator_flow {req.orchestrator_flow!r}. "
+                    f"Allowed: {sorted(allowed_orchestrator_flows)}"
+                ),
+            )
+        session.orchestrator_flow = flow_upper
+    selected_flow = (
+        session.orchestrator_flow
+        or cfg.get_str("_ACTIVE_ORCHESTRATION_FLOW")
+        or allowed_orchestrator_flows[0]
+    )
+    queryParts.applyOrchestrationFlowDefaults(
+        selected_flow,
+        session=session,
+    )
 
     web_search_notice: str = ""
 
@@ -526,6 +566,9 @@ async def _streamGenerator(
     try:
         queue: asyncio.Queue[str | None] = asyncio.Queue()
         created = int(time.time())
+        emit_cli_blocks: bool = (
+            str(chatter.cfg.get_str("_FRIENDLY_NAME", "")).strip() == "RAGChatService"
+        )
 
         def on_chunk(text: str) -> None:
             if text:
@@ -646,6 +689,8 @@ async def _streamGenerator(
                     f'"finish_reason":null}}]}}'
                 )
                 yield f"data: {marked_chunk}\n\n"
+                if emit_cli_blocks:
+                    chatter.print_llm_answer(marked_block, chatter.terminal_line_size)
             metadata_helper = getattr(chatter, "helpers", None)
             metadata_block = (
                 metadata_helper.build_document_metadata_md(
@@ -661,6 +706,8 @@ async def _streamGenerator(
                     f'"finish_reason":null}}]}}'
                 )
                 yield f"data: {metadata_chunk}\n\n"
+                if emit_cli_blocks:
+                    chatter.print_llm_answer(metadata_block, chatter.terminal_line_size)
             final_chunk = (
                 f'{{"id":"{req_id}","object":"chat.completion.chunk","created":{created},'
                 f'"model":"{model}","choices":[{{"index":0,"delta":{{}},'
@@ -915,8 +962,6 @@ def _log_compliance_csv(
     phrase_table: List[ResultsForPrint],
     human_review: bool,
     stage: str,
-    *,
-    session: Optional["Session"] = None,
 ) -> None:
     """Write a HUMAN_REVIEW CSV row, mirroring RAGChat._process_query logging."""
     status = "NOT_OK" if human_review else "OK"
@@ -925,8 +970,6 @@ def _log_compliance_csv(
         "Time": datetime.now(),
         "Status": status,
     }
-    if session is not None:
-        meta["Session"] = session.export_session_state_as_cell()
 
     try:
         if phrase_table:
@@ -1300,7 +1343,6 @@ async def handleRequest(
             [],
             guard_rejected,
             stage,
-            session=session,
         )
 
         if guard_rejected:
@@ -1458,6 +1500,9 @@ async def handleRequest(
         created = int(time.time())
         # answer_text already has grounding applied (in Chatter.run())
         answer_out = web_search_notice + (answer_text or "")
+        emit_cli_blocks: bool = (
+            str(cfg.get_str("_FRIENDLY_NAME", "")).strip() == "RAGChatService"
+        )
 
         if show_algo_results:
             answer_check_md = Accumulator().format_results_as_md("Answer Check")
@@ -1475,6 +1520,8 @@ async def handleRequest(
         )
         if marked_block:
             answer_out += marked_block
+            if emit_cli_blocks:
+                chatter.print_llm_answer(marked_block, chatter.terminal_line_size)
 
         metadata_helper = getattr(rag, "helperInstance", None)
         metadata_block = (
@@ -1486,6 +1533,8 @@ async def handleRequest(
         )
         if metadata_block:
             answer_out += metadata_block
+            if emit_cli_blocks:
+                chatter.print_llm_answer(metadata_block, chatter.terminal_line_size)
 
         # Log HTTP links to the server terminal so the admin can open them directly.
         url_map: dict[str, str] = getattr(session, "marked_docs_url_map", {})

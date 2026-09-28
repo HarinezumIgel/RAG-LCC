@@ -80,9 +80,11 @@ from Compliance.BannedPhraseCollector import BannedPhraseCollector
 from Config.Config import Config
 from Globals.Globals import Globals
 from Globals.Session import Session
-from Gui.Colors import CYAN, ORANGE, RED, RESET
+from Gui.Colors import CYAN, GREEN, ORANGE, RED, RESET, YELLOW
 from Gui.PrettyWriter import PrettyWriter
 from Gui.Symbols import Symbols
+from Helpers.ConfidenceHelper import ConfidenceHelper
+from Helpers.ConfidenceLogger import ConfidenceLogger
 from Helpers.CSVWriter import CSVWriter
 from Helpers.FileUtils import FileUtils
 from Helpers.Helpers import Helpers
@@ -104,6 +106,7 @@ class Chatter:
         self.queryParts: QueryParts = QueryParts()
         self.cfg: Config = Config()
         self.csvWriter: CSVWriter = CSVWriter()
+        self.confidence_logger: ConfidenceLogger = ConfidenceLogger()
         self.bannedPhraseCollector: BannedPhraseCollector = BannedPhraseCollector()
         self.llm_model: str = self.helpers.get_model_args("_ACTIVE_LLM")["MODEL"]
         endpoint_args = self.helpers.get_active_endpoint_args()
@@ -172,9 +175,15 @@ class Chatter:
         query_notice: str = self._build_query_notice(session, query)
 
         if length == 0:
-            return self._handle_no_results(
+            success, response_text = self._handle_no_results(
                 session, query, query_notice, apiChunkHandler
             )
+            self.confidence_logger.flush_turn_csv(
+                session,
+                outcome="no_results",
+                answer_text=response_text or "",
+            )
+            return success, response_text
 
         # Resolve the prompt with actual values. Retrieval runs in English,
         # but response language follows user preference / detected user language.
@@ -214,7 +223,9 @@ class Chatter:
             ollama_options.update(session.extraOllamaOptions)
 
         mark_text_enabled = bool(getattr(session, "mark_text", False))
-        will_apply_grounding = apiChunkHandler is not None and mark_text_enabled
+        flow_grounding_enabled = bool(getattr(session, "enable_grounding", True))
+        grounding_enabled = mark_text_enabled and flow_grounding_enabled
+        will_apply_grounding = apiChunkHandler is not None and grounding_enabled
 
         # Build chunk handler — wraps real-time streaming to API client when grounding is off
         handler = self.llmCaller.make_on_chunk(ollama_options)
@@ -245,6 +256,9 @@ class Chatter:
         if query_notice and apiChunkHandler is not None:
             apiChunkHandler(query_notice)
 
+        if mark_text_enabled and not flow_grounding_enabled:
+            session.marked_documents = []
+
         if will_apply_grounding and not streaming:
             self.pretty.write(
                 "I",
@@ -253,10 +267,15 @@ class Chatter:
                 color=ORANGE,
             )
 
+        llm_plan_detail = (
+            "Answer generation: producing the final grounded response from retrieved context chunks."
+            if grounding_enabled
+            else "Answer generation: producing the final response from retrieved context chunks."
+        )
         self.pretty.write(
             "I",
             "LLM Plan",
-            "Answer generation: producing the final grounded response from retrieved context chunks.",
+            llm_plan_detail,
         )
 
         llm_result = self.llmCaller.call_llm(
@@ -285,11 +304,16 @@ class Chatter:
         content: str = answer.content or ""
 
         if self._check_answer_compliance(session, answer, content):
+            self.confidence_logger.flush_turn_csv(
+                session,
+                outcome="blocked_compliance",
+                answer_text="",
+            )
             return False, None
 
         grounding_notice: str = ""
         skip_grounding_for_short_answer: bool = False
-        if mark_text_enabled:
+        if grounding_enabled:
             chunk_texts_for_grounding: list[str] = list(
                 getattr(session, "chunk_texts_for_grounding", []) or []
             )
@@ -320,6 +344,49 @@ class Chatter:
                 )
                 content = self._build_no_evidence_message()
                 answer.content = content
+                session.answer_confidence_components = {
+                    "c_final": 0.0,
+                    "c_top": 0.0,
+                    "c_mean_top3": 0.0,
+                    "c_coverage": 0.0,
+                    "c_local": 0.0,
+                    "c_fallback_penalty": 0.0,
+                    "c_raw_sum": 0.0,
+                    "top_score": 0.0,
+                    "mean_top3": 0.0,
+                    "coverage": 0.0,
+                    "local_share": 0.0,
+                    "evidence_chunks": 0.0,
+                }
+                session.answer_confidence_level = "LOW"
+                session.answer_confidence_score = 0.0
+                session.answer_confidence_summary = (
+                    ConfidenceHelper.build_confidence_summary(
+                        level="LOW",
+                        score=0.0,
+                        c_top=0.0,
+                        c_mean_top3=0.0,
+                        c_coverage=0.0,
+                        c_local=0.0,
+                        c_fallback_penalty=0.0,
+                        top_score=0.0,
+                        mean_top3=0.0,
+                        coverage=0.0,
+                        local_share=0.0,
+                        evidence_chunks=0,
+                        fallback_triggered=False,
+                        note="no grounded evidence in retrieved context",
+                    )
+                )
+                self.confidence_logger.log_step(
+                    session,
+                    step_name="grounding evidence check",
+                    status="fallback",
+                    confidence_level="LOW",
+                    confidence_score=0.0,
+                    detail="no supporting overlap between answer and retrieved evidence",
+                    source="grounding",
+                )
                 # Avoid presenting unrelated source files for an ungrounded answer.
                 session.last_chosen_chunks = []
                 session.chunk_texts_for_grounding = []
@@ -342,12 +409,42 @@ class Chatter:
 
         # Apply answer grounding (highlight sentences traceable to source chunks)
         cli_answer = answer.content
-        if mark_text_enabled and not skip_grounding_for_short_answer:
+        if grounding_enabled and not skip_grounding_for_short_answer:
             chunk_texts: list[str] = list(
                 getattr(session, "chunk_texts_for_grounding", []) or []
             )
             if chunk_texts:
                 cli_answer = self._apply_answer_grounding(answer, chunk_texts)
+
+        confidence_notice = self._build_answer_confidence_notice(session)
+        if confidence_notice:
+            cli_confidence_notice = self._build_answer_confidence_notice_cli(session)
+            answer.content = answer.content + confidence_notice
+            cli_answer = cli_answer + (cli_confidence_notice or confidence_notice)
+            summary = str(getattr(session, "answer_confidence_summary", "") or "")
+            score_obj = getattr(session, "answer_confidence_score", None)
+            score = float(score_obj) if isinstance(score_obj, (int, float)) else None
+            self.confidence_logger.log_step(
+                session,
+                step_name="final answer confidence",
+                status="executed",
+                confidence_level=str(
+                    getattr(session, "answer_confidence_level", "UNKNOWN") or "UNKNOWN"
+                ).upper(),
+                confidence_score=score,
+                detail=summary,
+                source="answer",
+            )
+            if apiChunkHandler is not None and streaming and not will_apply_grounding:
+                apiChunkHandler(confidence_notice)
+
+        if apiChunkHandler is not None:
+            chosen_for_cli = getattr(session, "last_chosen_chunks", [])
+            selected_sources_cli = self.helpers.build_selected_sources_md(
+                chosen_for_cli
+            )
+            if selected_sources_cli:
+                cli_answer = cli_answer + selected_sources_cli
 
         # Deliver answer: send buffered content to API client; always print CLI
         if apiChunkHandler is not None and (will_apply_grounding or not is_streaming):
@@ -356,7 +453,7 @@ class Chatter:
 
         # Mark source documents with grounding highlights and show to user
         session.last_answer_content = answer.content
-        if mark_text_enabled and not skip_grounding_for_short_answer:
+        if grounding_enabled and not skip_grounding_for_short_answer:
             chosen = getattr(session, "last_chosen_chunks", [])
             if chosen:
                 try:
@@ -373,7 +470,7 @@ class Chatter:
             meta_md = self.helpers.build_document_metadata_md(chosen)
             if meta_md:
                 print(meta_md)
-            if mark_text_enabled:
+            if grounding_enabled:
                 marked: list[tuple[str, bytes]] = list(
                     getattr(session, "marked_documents", []) or []
                 )
@@ -385,11 +482,23 @@ class Chatter:
                 if chosen:
                     self._show_original_sources(chosen)
 
+        self.confidence_logger.flush_turn_csv(
+            session,
+            outcome="ok",
+            answer_text=answer.content or "",
+        )
+
         return True, answer.content
 
     # ------------------------------------------------------------------
     # Private helpers extracted from run()
     # ------------------------------------------------------------------
+
+    def _drain_lang_detection_confidence_events(self, session: Session) -> None:
+        """Move buffered language-detection events into session confidence signals."""
+        events = self.fileUtils.pop_lang_detection_events()
+        for event in events:
+            self.confidence_logger.log_language_detection(session, event)
 
     def _build_query_notice(self, session: Session, query: str) -> str:
         """Return a Markdown notice when the effective query differs from the user's query."""
@@ -404,6 +513,52 @@ class Chatter:
         }
         label = notice_labels.get(reason, "Query (changed)")
         return f'{Symbols.sym_icon("SEARCH")}*{label}: "{effective_q}"*\n\n---\n\n'
+
+    @staticmethod
+    def _resolve_answer_confidence_payload(session: Session) -> tuple[str, str]:
+        """Return (level, payload) for answer confidence notices."""
+        summary = str(getattr(session, "answer_confidence_summary", "") or "").strip()
+        level = (
+            str(getattr(session, "answer_confidence_level", "") or "").strip().upper()
+        )
+        score_obj = getattr(session, "answer_confidence_score", None)
+
+        if summary:
+            return level, summary
+        elif level and isinstance(score_obj, (int, float)):
+            return (
+                level,
+                f"{Symbols.sym_icon(level)}{level}\n"
+                f"- C_final={float(score_obj):.2f}: final confidence in [0,1].",
+            )
+        elif level:
+            return level, f"{Symbols.sym_icon(level)}{level}"
+        else:
+            return "", ""
+
+    @staticmethod
+    def _build_answer_confidence_notice(session: Session) -> str:
+        """Return a Markdown block with the final answer confidence level."""
+        _, payload = Chatter._resolve_answer_confidence_payload(session)
+        if not payload:
+            return ""
+
+        return f"\n\n---\n\n**Answer confidence:**\n{payload}"
+
+    @staticmethod
+    def _build_answer_confidence_notice_cli(session: Session) -> str:
+        """Return a colorized confidence notice for terminal output only."""
+        level, payload = Chatter._resolve_answer_confidence_payload(session)
+        if not payload:
+            return ""
+
+        color = ORANGE
+        if level == "HIGH":
+            color = GREEN
+        elif level == "MEDIUM":
+            color = YELLOW
+
+        return f"\n\n---\n\n**Answer confidence:**\n{color}{payload}{RESET}"
 
     @staticmethod
     def _build_no_evidence_message() -> str:
@@ -526,6 +681,22 @@ class Chatter:
         if not evidence_texts:
             return True
 
+        local_evidence_languages: list[str] = []
+        try:
+            chosen_docs = list(getattr(session, "last_chosen_chunks", []) or [])
+            seen_languages: set[str] = set()
+            for doc in chosen_docs:
+                meta = getattr(doc, "metadata", {}) or {}
+                if str(meta.get("Source", "") or "").strip().lower() == "web":
+                    continue
+                lang = str(meta.get("Language", "") or "").strip().lower()
+                if not lang or lang in {"english", "en"} or lang in seen_languages:
+                    continue
+                seen_languages.add(lang)
+                local_evidence_languages.append(lang)
+        except Exception:
+            local_evidence_languages = []
+
         from VisualMarkers.AnswerGrounder import AnswerGrounder
 
         answer_body = self._extract_answer_section(answer_text)
@@ -597,34 +768,63 @@ class Chatter:
             return True
 
         retrieval_lang = str(getattr(session, "retrieval_language", "") or "").lower()
-        if retrieval_lang not in {"english", "en"}:
-            return False
-
-        answer_lang = self.fileUtils.get_user_text_language(
-            answer_body,
-            output="nltk",
-            native_lang=response_language,
+        answer_lang = (
+            str(
+                self.fileUtils.get_user_text_language(
+                    answer_body,
+                    output="nltk",
+                    native_lang=response_language,
+                    stage_label="answer_grounding_language",
+                )
+                or ""
+            )
+            .strip()
+            .lower()
         )
-        if answer_lang == "english":
+        self._drain_lang_detection_confidence_events(session)
+
+        translation_targets: list[tuple[str, str]] = []
+        if answer_lang in {"english", "en"}:
+            translation_targets = [
+                (language_code, answer_lang)
+                for language_code in local_evidence_languages
+            ]
+        elif retrieval_lang in {"english", "en"}:
+            translation_targets = [("en", answer_lang)]
+
+        if not translation_targets:
             return False
 
         try:
             from Compliance.SharedHelpers import SharedHelpers
 
-            translated = SharedHelpers().translate_text(
-                answer_body,
-                target_lang="en",
-                source_lang=answer_lang,
-            )
+            translator = SharedHelpers()
         except Exception:
-            translated = answer_body
-
-        if not translated or translated == answer_body:
             return False
 
-        if grounder.find_grounded_sentences(translated, evidence_texts):
-            return True
-        return _relaxed_overlap_supported(translated, evidence_texts)
+        for target_lang, source_lang in translation_targets:
+            target = str(target_lang or "").strip()
+            source = str(source_lang or "").strip() or "auto"
+            if not target:
+                continue
+            try:
+                translated = translator.translate_text(
+                    answer_body,
+                    target_lang=target,
+                    source_lang=source,
+                )
+            except Exception:
+                continue
+
+            if not translated or translated == answer_body:
+                continue
+
+            if grounder.find_grounded_sentences(translated, evidence_texts):
+                return True
+            if _relaxed_overlap_supported(translated, evidence_texts):
+                return True
+
+        return False
 
     def _handle_no_results(
         self,
@@ -706,7 +906,12 @@ class Chatter:
         content: str,
     ) -> bool:
         """Run compliance checks on the LLM answer. Returns True if the answer should be rejected."""
-        language: str = self.fileUtils.get_text_language(content, "ntlk")
+        language: str = self.fileUtils.get_text_language(
+            content,
+            "ntlk",
+            stage_label="answer_compliance_language",
+        )
+        self._drain_lang_detection_confidence_events(session)
         embedder: Any = self.models_cache.get_hf_embeddings()
         embeddings: list[Any] = embedder.embed_documents([answer.content])
         stage: str = "PIPELINE_CHECK"
@@ -723,7 +928,6 @@ class Chatter:
         doc: Dict[str, Dict[str, Any]] = {
             "meta": {
                 "Stage": stage,
-                "Session": session.export_session_state_as_cell(),
                 "Time": datetime.now(),
                 "Status": status,
             }

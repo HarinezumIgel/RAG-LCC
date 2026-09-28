@@ -19,7 +19,7 @@
 
 ---
 
-**RAG‑LCC is an experimental Retrieval‑Augmented Generation (RAG) lab focused on understanding and controlling retrieval and context assembly under real‑world constraints**: limited context windows, modest GPUs, large documents, and multi‑turn chat.
+**RAG‑LCC is an experimental Retrieval‑Augmented Generation (RAG) lab focused on understanding and controlling retrieval and context assembly under real‑world constraints**: limited context windows, modest GPUs, large documents, multi‑turn chat, and explicit confidence evaluation of retrieval evidence.
 
 - DocClassify       Document classification - results may be used as input filter for RAGLoad
 - RAGLoad           Text extraction (document formats, pictures, MS Office) and Vector DB ingestion
@@ -29,7 +29,7 @@
 <img src="Documentation/Pics/GroundedDoc.jpg" alt="RAG-LCC Document grounding" />
 <p>
 
-Instead of pushing ever‑larger context sizes, RAG‑LCC treats **classification, chunking, retrieval strategies, and staged loading** as first‑class architectural tools.
+Instead of pushing ever‑larger context sizes, RAG‑LCC treats **classification, chunking, retrieval strategies, staged loading, and confidence evaluation** as first‑class architectural tools.
 
 ---
 
@@ -37,15 +37,25 @@ Instead of pushing ever‑larger context sizes, RAG‑LCC treats **classificatio
 
 ![Demo](Documentation/Pics/RAG-LCC-Screenshots.gif)
 
+### 📌 OpenWeb UI Example
+
+By clicking on the *Marked Sources* link the grounded answer is displayed.
+
+OpenWebUI grounding example (via `RAGChatService`):
+
+![OpenWebUI grounded output](Documentation/Pics/OpenWebUIGrounded.png)
+
 ---
 
 ## 🧠 What it does — and why it exists
 
-Short: If you want to understand *why* your RAG fails, RAG-LCC gives you a playground to experiment with the parameters that matter. You can tune settings, compare alternatives on a small test corpus, and carry those insights back into your own RAG. In other words, RAG-LCC is an insight tool with reusable ideas, not an everyday production RAG.
+Short: If you want to understand *why* your RAG fails, RAG-LCC gives you a playground to experiment with the parameters that matter. You can tune settings, compare alternatives on a small test corpus, and carry those insights back into your own RAG. You also get explicit confidence metrics per turn (`C_final`, `C_top`, `C_mean_top3`, `C_coverage`, `C_local`, `C_fallback_penalty`), so ingestion and retrieval changes can be evaluated with measurable signals instead of intuition. In other words, RAG-LCC is an insight tool with reusable ideas, not an everyday production RAG.
 
 Standard RAG is deceptively simple: embed documents, embed query, retrieve by cosine similarity, prompt the LLM. In practice this produces systems that are brittle in exactly the ways that matter most — they hallucinate when the corpus has conflicting information, they drift in multi‑turn chat as pronouns accumulate, they fail silently on minority‑language documents, and they have no principled way to prevent prohibited content from being stored or returned.
 
 **RAG‑LCC** (Retrieval‑Augmented Generation — Local Corpus & Classification) is an experimental lab for studying and addressing these failure modes. Instead of pushing ever‑larger context windows, it treats **classification, chunking, retrieval strategy, and content filtering** as first‑class architectural decisions. Documents are analysed, compressed, filtered, and assembled *before* reaching the LLM — so the model reasons over coherent, non‑contradictory context rather than an arbitrary pile of chunks.
+
+To make tuning practical, every turn can emit a confidence breakdown that separates retrieval-quality signals (best hit quality, top-3 stability, evidence coverage, local-source share, and fallback penalties). This gives you a concrete feedback loop for improving ingestion and retrieval settings.
 
 The system is built around four applications that form a deliberate pipeline:
 
@@ -157,9 +167,11 @@ Raw documents
 │              (same pipeline, same config)                           │
 │                                                                     │
 │  ┌─────────────────────────────────────────────────────────────┐    │
-│  │  per-query pipeline                                         │    │
+│  │  per-query pipeline (Orchestrator-defined flow)             │    │
 │  │                                                             │    │
 │  │  user query                                                 │    │
+│  │    │  orchestrator flow resolve (Config_Orchestrator)       │    │
+│  │    │      stage gates + confidence-step handoff             │    │
 │  │    │  ① compliance pre-check  (banned-phrase filter chain)  │    │
 │  │    │  ② Argos translation   →  English (if non-English)     │    │
 │  │    │  ③ query rewrite  (coreference resolution via LLM)     │    │
@@ -181,8 +193,12 @@ Raw documents
 │  │                      │                                      │    │
 │  │                      ▼                                      │    │
 │  │     threshold gate (sigmoid(raw logit) ≥ local/web T)       │    │
-│  │     fallback: if no local hit passes T, use retrieval       │    │
-│  │               ordering (RRF score) for selection            │    │
+│  │     guard A (run_low_score_fallback):                       │    │
+│  │       if best local < T, skip strict rerank filtering,      │    │
+│  │       keep retrieval pool, select by RRF order              │    │
+│  │     guard B (run_low_recall_rescue):                        │    │
+│  │       else if local hits are sparse in large pools,         │    │
+│  │       rescue query-overlap misses by retrieval rank         │    │
 │  │                      │                                      │    │
 │  │                      ▼                                      │    │
 │  │          chunk selection strategy                           │    │
@@ -196,6 +212,10 @@ Raw documents
 │  │                      │                                      │    │
 │  │                      ▼                                      │    │
 │  │          answer grounding  (sentence-level overlap marks)   │    │
+│  │                      │                                      │    │
+│  │                      ▼                                      │    │
+│  │          confidence evaluation + signals                    │    │
+│  │          (C_final, components, per-turn CSV)                │    │
 │  └─────────────────────────────────────────────────────────────┘    │
 │                                                                     │
 │  Web leg active only when WEB_SEARCH_MODE="1" and web_search=on     │
@@ -204,25 +224,32 @@ Raw documents
 
 A few refinements to keep in mind when reading the pipeline above:
 
-- **Confidence-gated reranking** — the per-strategy threshold is a cross-encoder *confidence floor*. When no chunk clears it (the reranker is unconfident about the whole pool, common on technical/tabular content), reranking is **skipped** and chunks fall back to retrieval (RRF) order instead of being dropped — with an orange `Rerank skipped` notice.
+- **Two rerank fallback guards (ordered)** — Guard A `run_low_score_fallback` runs first; when no local chunk clears threshold, strict rerank filtering is skipped and retrieval (RRF) order is used (`Rerank skipped`). Guard B `run_low_recall_rescue` runs only when Guard A does not fire; it can re-add query-overlap local misses when strict thresholding leaves too few local hits in a large pool.
 - **Multilingual retrieval routing** — local indexed retrievers (`BM25`, `Graph`, `Regex`) are dispatched by language bucket discovered from corpus metadata and active language config. Query-relevant language runs first, then remaining active-and-present buckets, so mixed-language corpora are still fully searched.
 - **Metadata filtering** — harvested document metadata (author, title, dates, page labels, …) can be used as retrieval filters via the `metadata!` picker or `metadata=Field:Value`, narrowing all four local retrievers.
 - **Correct source pages** — citations and highlighted source documents use the document's *printed* page label (e.g. front-matter `iii`), while highlighting is placed on the true physical page.
+- **Confidence evaluation loop** — final answer confidence and intermediate components (`C_top`, `C_mean_top3`, `C_coverage`, `C_local`, `C_fallback_penalty`) are emitted per turn; these signals help tune ingestion and retrieval (for example: low `C_coverage` suggests revisiting chunking/retriever breadth, low `C_top` suggests improving query/retrieval quality, low `C_local` can indicate over-reliance on web results).
 
 The goal is **not** to feed the model *more* text — but to feed it **better, safer context**.
 
-### 🧩 RetrievalOrchestrator (retrieval control layer)
+### 🧩 Orchestrator (retrieval control layer)
 
-`RetrievalOrchestrator` (`src/Chat/RetrievalOrchestrator.py`) is the internal control layer that runs one retrieval turn end-to-end while keeping concrete retrievers decoupled. It is instantiated in `RAGChatImpl` and coordinates the pipeline through a stage model (`prepare → gate → local/web retrieve → merge/context build`).
+`Orchestrator` (`src/Chat/Orchestrator.py`) is the internal control layer that runs one retrieval turn end-to-end while keeping concrete retrievers decoupled. It is instantiated in `RAGChatImpl` and coordinates the pipeline through a stage model (`prepare → gate → local/web retrieve → merge/context build`). In practice, this means the orchestrator defines the per-turn pipeline flow and can include the additional confidence-evaluation step that emits operator-facing confidence signals.
 
 What it does today:
 
 - Resolves session/query inputs, including normalized query text and multi-query alternates.
+- Defines the active turn flow profile and the confidence-evaluation handoff used by the answer-confidence output/logging path.
 - Applies retrieval gates before expensive retrieval legs run.
 - Plans and runs local retrieval stages (Vector, BM25, Graph, Regex), including guardrail dual-query execution and multilingual language-bucket routing.
 - Runs the optional web leg with administrator gating and optional pre-filtering.
 - Aggregates stage outputs, merges candidates, and builds final LLM context.
 - Emits structured orchestration traces and counters for debugging and performance analysis.
+
+Architecture details:
+
+- Flow-profile execution and contradiction precedence: [Orchestration Flows and CLI Override Precedence](ARCHITECTURE.md#orchestration-flows-and-cli-override-precedence)
+- Scoring model and signal persistence: [Confidence Evaluation and Signals](ARCHITECTURE.md#confidence-evaluation-and-signals)
 
 The orchestrator is an architectural component designed for extension. For example, it could serve as the execution layer for future agentic workflows.
 
@@ -266,6 +293,8 @@ Key capabilities organized by application. Full configuration details, defaults,
 - **Query rewriting / coreference resolution** — a second dedicated LLM resolves pronouns and referents from conversation history (`"are they mammals?"` → `"are hedgehogs mammals?"`); prefix with `new:` to hard-switch topics without clearing history
 - **Near-duplicate chunk removal** — Jaccard token-level deduplication of the retrieval pool runs after RRF fusion and before reranking
 - **Cross-encoder reranking** — mmarco MiniLM rescores every candidate; per-strategy sigmoid threshold drops weak matches; when the best local chunk stays below the threshold, cross-encoder filtering is skipped, the merged RRF pool is kept, and chunk ordering falls back to retrieval scores before selected chunks are passed to the final LLM context
+- **Flow-profile orchestration with contradiction-aware overrides** — retrieval turns are governed by named flow profiles; when session CLI knobs override flow intent, orchestration lines attribute the exact overriding knob (for example `retrieve_mode=WEB`, `mark_text=false`, `rerank=0`). Flow profiles also gate both rerank fallback actions (`run_low_score_fallback`, `run_low_recall_rescue`), with deterministic order: low-score fallback first, then low-recall rescue only if the first did not short-circuit. See [Orchestration Flows and CLI Override Precedence](ARCHITECTURE.md#orchestration-flows-and-cli-override-precedence) and [THOROUGH_QUERY_REWRITE Orchestration Flow](Documentation/FlowCharts/THOROUGH_QUERY_REWRITE.md).
+- **Confidence evaluation signals** — per-stage execution confidence events and final answer confidence scores are recorded each turn; confidence signals are persisted to dedicated confidence CSV files with dynamic `step_*` columns. See [Confidence Evaluation and Signals](ARCHITECTURE.md#confidence-evaluation-and-signals).
 - **Answer grounding** — every answer sentence is checked for overlap with retrieved source chunks and marked visually; CLI uses ANSI highlights, API returns marked source documents as `/marked/<token>` links
 - **Compliance filter chain** runs on queries before retrieval **and** on generated responses before delivery
 - **Multi-turn conversational memory** — rolling topic summary, configurable turn window, batch pruning; `new:` prefix isolates topics without discarding history

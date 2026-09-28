@@ -3,6 +3,7 @@ from dataclasses import asdict
 from typing import Any
 
 from Config.Config import Config
+from Helpers.CSVWriter import resolve_human_review_csv_keys
 from Helpers.Helpers import Helpers
 
 
@@ -25,8 +26,8 @@ class BannedPhraseCollector:
         self.cfg: Config = Config()
         self.helpers: Helpers = Helpers()
         self.default_algos: list[str] = self.cfg.get_list("_DEFAULT_ALGOS")
-        self.conf_default_metadata_keys: list[str] = self.cfg.get_list(
-            "_KEYS_FOR_HUMAN_REVIEW_CSV"
+        self.conf_default_metadata_keys: list[str] = resolve_human_review_csv_keys(
+            self.cfg
         )
 
     def _normalize_key(self, name: str) -> str:

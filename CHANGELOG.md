@@ -6,6 +6,84 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [2026-09-28]
+
+Added confidence metrics shown after every query in `RAGChat` and
+`RAGChatService`. For evaluation and tuning, a new `CONFIDENCE` log is
+written per turn with confidence signals and relevant session-state values.
+
+### 📖 Documentation — confidence evaluation and tuning guidance
+
+- `README.md` — expanded intro and "What it does — and why it exists"
+  to explicitly describe confidence evaluation metrics as a practical tuning
+  loop for ingestion and retrieval.
+- `README.md` — updated the Quick mental model pipeline to include
+  confidence evaluation and signals after answer grounding.
+- `README.md` — added a confidence-evaluation refinement note with concrete
+  interpretation guidance for `C_top`, `C_mean_top3`, `C_coverage`,
+  `C_local`, and `C_fallback_penalty`.
+- `ARCHITECTURE.md` — refreshed "Confidence Evaluation and Signals" to
+  match current implementation details (`ConfidenceHelper`), output format,
+  persisted component fields, and operator-facing tuning guidance.
+
+## [2026-09-25]
+
+### ⚙️ Changed — Flow-level rerank gating and contradiction attribution
+
+- Added `run_rerank` as a first-class flow slot in
+  `Config_Orchestrator.py` and wired it into turn-level flow resolution in
+  `Orchestrator`.
+- Rerank stage execution now requires both:
+  - flow gate: `run_rerank=true`
+  - session/strategy rerank knob: `rerank=1`
+- Added rerank contradiction reporting in orchestration status output with
+  explicit `cli_knob=rerank=0|1` attribution, aligned with existing
+  contradiction reporting for `retrieve_mode` and `mark_text`.
+
+### ⚙️ Changed — Flow-level controls for both rerank fallback actions
+
+- Added two flow slots in `Config_Orchestrator.py`:
+  - `run_low_score_fallback`
+  - `run_low_recall_rescue`
+- Both slots now map to turn-level session controls and orchestration status
+  lines, including rerank-dependency handling when `rerank=0` disables the
+  rerank stage for a turn.
+- Chunk selection behavior is now documented and enforced as:
+  - evaluate low-score fallback first
+  - if it triggers, skip strict rerank filtering and stop before low-recall rescue
+  - run low-recall rescue only when low-score fallback did not short-circuit
+
+### 📖 Documentation
+
+- `ARCHITECTURE.md` — added:
+  - `Orchestration Flows and CLI Override Precedence`
+  - `Confidence Evaluation and Signals`
+- `README.md` — added links to the two new architecture sections and added
+  both capabilities to the RAGChat feature list.
+- `CONFIGURATION_REFERENCE.md` — added orchestration-flow coverage,
+  including side-by-side slot mapping (`Config_Orchestrator` slot -> runtime
+  field) and side-by-side contradiction matrix (flow gates vs session CLI
+  knobs).
+- `CONFIGURATION_REFERENCE.md` — updated lookup-order documentation to include
+  `Config_Orchestrator.py` and the current merge-layer sequence.
+- `ARCHITECTURE.md`, `README.md`, and `CONFIGURATION_REFERENCE.md` — expanded
+  rerank-fallback documentation to include both flow knobs
+  (`run_low_score_fallback`, `run_low_recall_rescue`), their rerank-stage
+  dependency, and execution ordering.
+- `README.md` — updated the Quick mental model pipeline block to show both
+  fallback guards directly in the per-query flow (`run_low_score_fallback`
+  then `run_low_recall_rescue`) and fixed box/pipe alignment after the
+  insertion.
+
+### ✅ Validation
+
+- Focused regression after flow/fallback integration:
+  `tests/test_chunk_selector.py` + `tests/test_orchestrator.py` ->
+  `82 passed`.
+- Full suite regression:
+  `python ./.venv/Scripts/python.exe -m pytest tests -v --tb=short` ->
+  `1540 passed in 44.37s`.
+
 ## [2026-09-24]
 
 ### 🧭 Planned — Rework configuration structure from a user viewpoint

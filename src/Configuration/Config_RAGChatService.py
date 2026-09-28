@@ -92,6 +92,9 @@ OPENWEBUI_THREAD_POOL_WORKERS = 2  # ThreadPoolExecutor max_workers for chatter.
 # -----------------------------------------------------------------------------
 SHOW_CLI_LIKE_ALGO_RESULTS = True
 
+# Keep service behavior aligned with pre-refactor retrieval orchestration.
+_ACTIVE_ORCHESTRATION_FLOW = "THOROUGH_QUERY_REWRITE"
+
 # -----------------------------------------------------------------------------
 # Document-serving service (in-memory token store)
 #
