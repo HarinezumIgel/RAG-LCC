@@ -83,9 +83,9 @@ from Globals.Session import Session
 from Gui.Colors import CYAN, GREEN, ORANGE, RED, RESET, YELLOW
 from Gui.PrettyWriter import PrettyWriter
 from Gui.Symbols import Symbols
+from Helpers.CSVWriter import CSVWriter
 from Helpers.ConfidenceHelper import ConfidenceHelper
 from Helpers.ConfidenceLogger import ConfidenceLogger
-from Helpers.CSVWriter import CSVWriter
 from Helpers.FileUtils import FileUtils
 from Helpers.Helpers import Helpers
 from Helpers.SourcePathLinkifier import SourcePathLinkifier
@@ -416,7 +416,10 @@ class Chatter:
             if chunk_texts:
                 cli_answer = self._apply_answer_grounding(answer, chunk_texts)
 
-        confidence_notice = self._build_answer_confidence_notice(session)
+        confidence_notice = self._build_answer_confidence_notice(
+            session,
+            monospace=apiChunkHandler is not None,
+        )
         if confidence_notice:
             cli_confidence_notice = self._build_answer_confidence_notice_cli(session)
             answer.content = answer.content + confidence_notice
@@ -429,7 +432,8 @@ class Chatter:
                 step_name="final answer confidence",
                 status="executed",
                 confidence_level=str(
-                    getattr(session, "answer_confidence_level", "UNKNOWN") or "UNKNOWN"
+                    getattr(session, "answer_confidence_level", "UNKNOWN")
+                    or "UNKNOWN"
                 ).upper(),
                 confidence_score=score,
                 detail=summary,
@@ -457,9 +461,7 @@ class Chatter:
             chosen = getattr(session, "last_chosen_chunks", [])
             if chosen:
                 try:
-                    self.rag._mark_sources(
-                        session, chosen
-                    )  # pyright: ignore[reportPrivateUsage]
+                    self.rag._mark_sources(session, chosen)  # pyright: ignore[reportPrivateUsage]
                 except Exception as exc:
                     self.pretty.write(
                         "W", "VisualMarker", f"Visual marking failed: {exc}"
@@ -518,9 +520,7 @@ class Chatter:
     def _resolve_answer_confidence_payload(session: Session) -> tuple[str, str]:
         """Return (level, payload) for answer confidence notices."""
         summary = str(getattr(session, "answer_confidence_summary", "") or "").strip()
-        level = (
-            str(getattr(session, "answer_confidence_level", "") or "").strip().upper()
-        )
+        level = str(getattr(session, "answer_confidence_level", "") or "").strip().upper()
         score_obj = getattr(session, "answer_confidence_score", None)
 
         if summary:
@@ -537,11 +537,18 @@ class Chatter:
             return "", ""
 
     @staticmethod
-    def _build_answer_confidence_notice(session: Session) -> str:
+    def _build_answer_confidence_notice(
+        session: Session,
+        *,
+        monospace: bool = False,
+    ) -> str:
         """Return a Markdown block with the final answer confidence level."""
         _, payload = Chatter._resolve_answer_confidence_payload(session)
         if not payload:
             return ""
+
+        if monospace:
+            return f"\n\n---\n\n**Answer confidence:**\n```text\n{payload}\n```"
 
         return f"\n\n---\n\n**Answer confidence:**\n{payload}"
 
@@ -571,7 +578,9 @@ class Chatter:
     @staticmethod
     def _build_grounding_skipped_short_answer_notice() -> str:
         """Return notice prepended when grounding is skipped for short answers."""
-        return f"{Symbols.sym_warning()} Grounding skipped: answer is too short for reliable sentence-level grounding.\n\n"
+        return (
+            f"{Symbols.sym_warning()} Grounding skipped: answer is too short for reliable sentence-level grounding.\n\n"
+        )
 
     @staticmethod
     def _extract_answer_section(text: str) -> str:
@@ -613,7 +622,9 @@ class Chatter:
             if not paragraph:
                 continue
             for sentence in _re.split(r"(?<=[.!?])\s+", paragraph):
-                token_count = len(_re.findall(r"\w+", sentence, flags=_re.UNICODE))
+                token_count = len(
+                    _re.findall(r"\w+", sentence, flags=_re.UNICODE)
+                )
                 if token_count > 0:
                     token_counts.append(token_count)
 
@@ -768,19 +779,15 @@ class Chatter:
             return True
 
         retrieval_lang = str(getattr(session, "retrieval_language", "") or "").lower()
-        answer_lang = (
-            str(
-                self.fileUtils.get_user_text_language(
-                    answer_body,
-                    output="nltk",
-                    native_lang=response_language,
-                    stage_label="answer_grounding_language",
-                )
-                or ""
+        answer_lang = str(
+            self.fileUtils.get_user_text_language(
+                answer_body,
+                output="nltk",
+                native_lang=response_language,
+                stage_label="answer_grounding_language",
             )
-            .strip()
-            .lower()
-        )
+            or ""
+        ).strip().lower()
         self._drain_lang_detection_confidence_events(session)
 
         translation_targets: list[tuple[str, str]] = []
