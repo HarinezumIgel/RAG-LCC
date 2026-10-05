@@ -103,8 +103,14 @@ class RAGChat:
         self.session.collection_name = self.queryParts.applyStrategyDefaults(
             default_strategy, session=self.session
         )
+        default_orchestration_flow: str = (
+            self.cfg.get_str("_DEFAULT_ORCHESTRATION_FLOW", "THOROUGH_QUERY_REWRITE")
+            .strip()
+            .upper()
+            or "THOROUGH_QUERY_REWRITE"
+        )
         self.queryParts.applyOrchestrationFlowDefaults(
-            self.cfg.get_str("_ACTIVE_ORCHESTRATION_FLOW", "THOROUGH_QUERY_REWRITE"),
+            default_orchestration_flow,
             session=self.session,
         )
 
@@ -224,8 +230,14 @@ class RAGChat:
             "Time": datetime.now(),
             "Status": status,
         }
+        rows = self.bannedPhraseCollector.prepare_for_csv_print(
+            phrase_table,
+            doc["meta"],
+        )
+        if not rows:
+            rows = self.bannedPhraseCollector.prepare_print_for_chat(doc["meta"])
         self.csvWriter.write_json2csv(
-            self.bannedPhraseCollector.prepare_for_csv_print(phrase_table, doc["meta"]),
+            rows,
             "HUMAN_REVIEW",
         )
 
@@ -258,6 +270,7 @@ class RAGChat:
         while True:
             if self._process_query() == False:
                 print(f"{GREEN}Exiting HarinezumIgel RAG chat.{RESET}")
+                print()
                 break
 
     def _show_results(self):

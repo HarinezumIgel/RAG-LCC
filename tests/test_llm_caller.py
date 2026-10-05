@@ -541,6 +541,42 @@ class TestCallLlmErrors:
             )
         assert "error" in result
 
+    def test_vllm_error_chunk_returns_error_and_stops(self):
+        caller = _make_caller(cfg_overrides={"_ACTIVE_ENDPOINT": "vllm"})
+
+        class VllmHelpers:
+            def get_model_args(self, key, **kwargs):
+                return {
+                    "BASE_URL": "http://fake-vllm/v1/chat/completions",
+                    "STREAMING_REQ": False,
+                    "REQUEST_TIMEOUT": 120.0,
+                }
+
+            def get_active_endpoint_args(self):
+                return self.get_model_args("vllm")
+
+        caller.helpers = VllmHelpers()
+
+        lines = [
+            'data: {"error":{"message":"context length exceeded"}}',
+            'data: {"choices":[{"delta":{"content":"should_not_appear"}}]}',
+        ]
+
+        with patch("AI.LLMCaller.requests.post", return_value=_fake_response(lines)):
+            result = caller.call_llm(
+                model="mistral_7b",
+                prompt="test",
+                ollama_options={
+                    "temperature": 0.1,
+                    "num_predict": 512,
+                    "num_ctx": 4096,
+                },
+            )
+
+        assert "error" in result
+        assert "context length exceeded" in result["error"]
+        assert "should_not_appear" not in result["content"]
+
 
 # ===========================================================================
 # get_model_context_limit()

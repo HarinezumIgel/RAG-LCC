@@ -788,8 +788,6 @@ class TestOrchestrator:
                             "use_original_language_vector": True,
                             "shape_indexed_queries": True,
                             "use_vector_alternates": False,
-                            "run_local_stage": True,
-                            "run_web_stage": False,
                             "run_vector": True,
                             "run_bm25": False,
                             "run_graph": True,
@@ -877,6 +875,45 @@ class TestOrchestrator:
             and color == CYAN
             for message, color in knob_messages
         )
+
+    def test_resolve_flow_profile_reads_indexed_translation_and_synonym_flags(
+        self,
+    ) -> None:
+        class _CfgStub:
+            def get_dict(self, key: str, default: Any = None) -> dict[str, Any]:
+                if key == "_ORCHESTRATION_FLOWS":
+                    return {
+                        "FLOW_FLAGS": {
+                            "translate_indexed_queries": False,
+                            "expand_indexed_queries": False,
+                        }
+                    }
+                return default if isinstance(default, dict) else {}
+
+            def get_list(self, key: str, default: Any = None) -> list[Any]:
+                if key == "_ALLOWED_ORCHESTRATION_FLOWS":
+                    return ["FLOW_FLAGS"]
+                return default if isinstance(default, list) else []
+
+            def get_str(self, key: str, default: str = "") -> str:
+                if key == "_ACTIVE_ORCHESTRATION_FLOW":
+                    return "FLOW_FLAGS"
+                return default
+
+        class _FlowHost(HostStub):
+            def __init__(self) -> None:
+                super().__init__(set_vector_ok=True, gate_result=False)
+                self.cfg = _CfgStub()
+
+        host = _FlowHost()
+        session = StubSession()
+        orchestrator = Orchestrator(host)
+
+        profile = orchestrator._resolve_orchestration_flow_profile(session)
+
+        assert profile.name == "FLOW_FLAGS"
+        assert profile.enable_indexed_query_translation is False
+        assert profile.enable_indexed_query_synonym_expansion is False
 
     def test_run_disables_low_recall_rescue_when_rerank_cli_off(
         self,
@@ -2514,7 +2551,7 @@ class TestLocalRetrievalOrchestration:
         ]
         assert any(
             "idx_stage l='de'" in message
-            and "r='B/G/R'" in message
+            and "r='BM25/Graph/Regex'" in message
             and "tr=1" in message
             and "\nprimary_query='Q2'" in message
             and "\nstage_primary_query='Q2|de'" in message
@@ -2522,6 +2559,49 @@ class TestLocalRetrievalOrchestration:
             and "\nstage_guardrail_query='Q1|de'" in message
             for message in orchestration_messages
         )
+
+    def test_shape_graph_regex_stage_queries_passes_translation_and_synonym_toggles(
+        self,
+    ) -> None:
+        class _ToggleHost(LocalHostStub):
+            def __init__(self) -> None:
+                super().__init__(use_guardrail=False)
+                self.received_flags: list[tuple[bool, bool]] = []
+
+            def _shape_graph_regex_stage_queries(
+                self,
+                mySession: LocalSessionStub,
+                *,
+                language_bucket: str | None,
+                primary_query: str,
+                guardrail_query: str,
+                enable_translation: bool = True,
+                enable_synonym_expansion: bool = True,
+            ) -> tuple[str, str]:
+                _ = (mySession, language_bucket)
+                self.received_flags.append(
+                    (enable_translation, enable_synonym_expansion)
+                )
+                return primary_query, guardrail_query
+
+        host = _ToggleHost()
+        session = LocalSessionStub()
+        orchestrator = Orchestrator(host)
+        orchestrator._flow_enable_indexed_query_translation = False
+        orchestrator._flow_enable_indexed_query_synonym_expansion = False
+
+        stage_primary_query, stage_guardrail_query = (
+            orchestrator._shape_graph_regex_stage_queries(
+                session,
+                language_bucket="de",
+                primary_query="Q2",
+                guardrail_query="Q1",
+            )
+        )
+
+        assert stage_primary_query == "Q2"
+        assert stage_guardrail_query == "Q1"
+        assert host.received_flags == [(False, False)]
 
     def test_run_local_retrievers_graph_regex_stage_translates_queries_with_argos(
         self,

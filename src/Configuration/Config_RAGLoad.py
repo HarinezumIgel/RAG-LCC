@@ -42,8 +42,9 @@ CLASSIFY_CSV_QUERY = ""
 # -----------------------------------------------------------------------------
 
 # -----------------------------------------------------------------------------
-# Process all files even if unchanged. Determined by file hash comparison
-_PROCESS_IF_UNCHANGED = True
+# Process all files even if unchanged. Determined by file hash comparison.
+# CLI flag (RAGLoad only): --process-if-unchanged [true|false]
+PROCESS_IF_UNCHANGED = True
 # -----------------------------------------------------------------------------
 
 # -----------------------------------------------------------------------------

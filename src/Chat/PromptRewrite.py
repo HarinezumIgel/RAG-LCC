@@ -95,6 +95,135 @@ class PromptRewrite(SingletonMixin):
                     f"(or python -m spacy download {spacy_model})"
                 ) from exc
 
+    def _log_no_history_skip(self) -> None:
+        self.pretty.write(
+            "I",
+            "QueryRewrite",
+            "No conversation history — skipping rewrite",
+        )
+
+    def _collect_history_docs(self, session: Session) -> list[Any]:
+        history_docs = self.chatContext.fetch_context_docs(session)
+        if not history_docs:
+            return []
+
+        max_ht: int = session.max_history_turns or 0
+        if max_ht > 0:
+            history_docs = history_docs[-max_ht:]
+        return history_docs
+
+    @staticmethod
+    def _extract_previous_user_utterance(last_doc_content: str) -> str:
+        previous_user_utterance = ""
+        for line in last_doc_content.splitlines():
+            if line.startswith("USER:"):
+                previous_user_utterance = line[len("USER:") :].strip()
+        return previous_user_utterance
+
+    def _build_rolling_topic_summary(
+        self,
+        session: Session,
+        history_docs: list[Any],
+        last_doc_content: str,
+    ) -> str:
+        stored_referents: list[str] | None = getattr(
+            session,
+            "last_topic_referents",
+            None,
+        )
+        if stored_referents:
+            return "Key entities from previous turn: " + ", ".join(stored_referents)
+
+        tsm: str = (
+            getattr(session, "topic_summary_mode", None) or self.topic_summary_mode
+        )
+        if tsm == "all":
+            assistant_blocks: list[str] = []
+            for doc in history_docs:
+                doc_lines = doc.page_content.splitlines()
+                asst_idx = next(
+                    (
+                        i
+                        for i, ln in enumerate(doc_lines)
+                        if ln.startswith("ASSISTANT:")
+                    ),
+                    -1,
+                )
+                if asst_idx >= 0:
+                    block = "\n".join(doc_lines[asst_idx:]).strip()
+                    if block:
+                        assistant_blocks.append(block)
+            return "\n".join(assistant_blocks) if assistant_blocks else "(none)"
+
+        last_lines = last_doc_content.splitlines()
+        asst_idx = next(
+            (i for i, ln in enumerate(last_lines) if ln.startswith("ASSISTANT:")),
+            -1,
+        )
+        if asst_idx >= 0:
+            return "\n".join(last_lines[asst_idx:]).strip() or "(none)"
+        return "(none)"
+
+    @staticmethod
+    def _strip_context_tag(text: str) -> str:
+        stripped = text.strip()
+        if stripped.startswith("[File:") or stripped.startswith("[No file"):
+            idx = stripped.find("]")
+            if idx != -1:
+                stripped = stripped[idx + 1 :].strip()
+        return stripped
+
+    def _build_topic_detect_prompt(
+        self,
+        session: Session,
+        original_query: str,
+        previous_user_utterance: str,
+        rolling_topic_summary: str,
+        *,
+        strict_english: bool,
+    ) -> str:
+        # NOTE: We intentionally omit the actual file path from current_user_utterance.
+        # The chat history is already scoped to the same file_tag by ChromaDB's where-filter
+        # (see ChatContext._fetch_context_docs), so the LLM does not need the path to detect
+        # topic continuity. Injecting a real path caused the LLM to embed it into rewrites.
+        file_tag = session.file_name or session.file_path or ""
+        current_ctx = "[File filter active]" if file_tag else "[No file filter]"
+        current_user_utterance = f"{current_ctx} {original_query}"
+        retrieval_language: str = (
+            getattr(session, "retrieval_language", None) or "english"
+        )
+        formatted = self.prompt_template.format(
+            previous_user_utterance=previous_user_utterance,
+            rolling_topic_summary=rolling_topic_summary,
+            current_user_utterance=current_user_utterance,
+            output_language=retrieval_language,
+            strict_rewrite_mode=("strict" if strict_english else "standard"),
+        )
+        if strict_english:
+            formatted += (
+                "\n\nSTRICT ENFORCEMENT (retry mode):\n"
+                "- Output BOTH rewrites in English only.\n"
+                "- Keep named entities, product names, policy IDs, document titles, acronyms,\n"
+                "  and quoted strings unchanged.\n"
+                "- Translate only the surrounding retrieval intent into English.\n"
+            )
+        return formatted
+
+    def _build_rewrite_ollama_options(self, session: Session) -> dict[str, Any]:
+        effective_ctx = self.tokenBudget.get_effective_context_limit(
+            self.llm_model, session
+        )
+        options: dict[str, Any] = {
+            "temperature": self.temperature,
+            "top_k": self.top_k,
+            "top_p": self.top_p,
+            "num_predict": self.num_predict,
+            "num_ctx": effective_ctx,
+        }
+        if not self.use_gpu:
+            options["num_gpu"] = 0
+        return options
+
     def rewrite(self, session: Session, *, strict_english: bool = False) -> str:
         """Detect topic continuity and rewrite the user query for retrieval.
 
@@ -152,133 +281,28 @@ class PromptRewrite(SingletonMixin):
             )
             return original_query
 
-        # Fetch conversation history (only the most recent turns)
-        history_docs = self.chatContext.fetch_context_docs(session)
+        history_docs = self._collect_history_docs(session)
         if not history_docs:
-            self.pretty.write(
-                "I",
-                "QueryRewrite",
-                "No conversation history \u2014 skipping rewrite",
-            )
+            self._log_no_history_skip()
             return original_query
 
-        max_ht: int = session.max_history_turns or 0
-        if max_ht > 0:
-            history_docs = history_docs[-max_ht:]
-
-        if not history_docs:
-            self.pretty.write(
-                "I",
-                "QueryRewrite",
-                "No conversation history \u2014 skipping rewrite",
-            )
-            return original_query
-
-        # ----- Extract previous_user_utterance from the most recent turn -----
         last_doc_content: str = history_docs[-1].page_content
-        previous_user_utterance: str = ""
-        for line in last_doc_content.splitlines():
-            if line.startswith("USER:"):
-                previous_user_utterance = line[len("USER:") :].strip()
-        # EXAMPLE: previous_user_utterance = "what is the blazingfast?"
-
-        # ----- Build rolling_topic_summary -----
-        # Prefer LLM-extracted referents saved from the previous turn - they are
-        # already distilled entities, not raw prose, which avoids topic bleed from
-        # verbose or incorrect assistant responses.  Fall back to parsing ASSISTANT
-        # blocks from history on the first rewrite in a session or after a topic switch.
-        stored_referents: list[str] | None = getattr(
-            session, "last_topic_referents", None
+        previous_user_utterance = self._extract_previous_user_utterance(
+            last_doc_content
         )
-        if stored_referents:
-            rolling_topic_summary = "Key entities from previous turn: " + ", ".join(
-                stored_referents
-            )
-        else:
-            tsm: str = (
-                getattr(session, "topic_summary_mode", None) or self.topic_summary_mode
-            )
-            if tsm == "all":
-                assistant_blocks: list[str] = []
-                for doc in history_docs:
-                    doc_lines = doc.page_content.splitlines()
-                    asst_idx = next(
-                        (
-                            i
-                            for i, ln in enumerate(doc_lines)
-                            if ln.startswith("ASSISTANT:")
-                        ),
-                        -1,
-                    )
-                    if asst_idx >= 0:
-                        block = "\n".join(doc_lines[asst_idx:]).strip()
-                        if block:
-                            assistant_blocks.append(block)
-                rolling_topic_summary = (
-                    "\n".join(assistant_blocks) if assistant_blocks else "(none)"
-                )
-            else:
-                # "last" mode: ASSISTANT block from the most recent turn only
-                last_lines = last_doc_content.splitlines()
-                asst_idx = next(
-                    (
-                        i
-                        for i, ln in enumerate(last_lines)
-                        if ln.startswith("ASSISTANT:")
-                    ),
-                    -1,
-                )
-                if asst_idx >= 0:
-                    rolling_topic_summary = (
-                        "\n".join(last_lines[asst_idx:]).strip() or "(none)"
-                    )
-                    # EXAMPLE: rolling_topic_summary = "ASSISTANT: blazingfast is a ..."
-                else:
-                    rolling_topic_summary = "(none)"
-
-        # Build the topic-detect prompt
-        # NOTE: We intentionally omit the actual file path from current_user_utterance.
-        # The chat history is already scoped to the same file_tag by ChromaDB's where-filter
-        # (see ChatContext._fetch_context_docs), so the LLM does not need the path to detect
-        # topic continuity.  Injecting a real path caused the LLM to embed it — sometimes
-        # translated — into the rewritten query (e.g. "[File: Pferde.pdf] tell me about
-        # spiders" → "Tell me about spiders in D:/RAG-LCC/TestDocs/Horses.pdf").
-        file_tag = session.file_name or session.file_path or ""
-        current_ctx = "[File filter active]" if file_tag else "[No file filter]"
-        current_user_utterance = f"{current_ctx} {original_query}"
-        # EXAMPLE: current_user_utterance = "[No file filter] does it have spines"
-        retrieval_language: str = (
-            getattr(session, "retrieval_language", None) or "english"
+        rolling_topic_summary = self._build_rolling_topic_summary(
+            session,
+            history_docs,
+            last_doc_content,
         )
-        formatted: str = self.prompt_template.format(
-            previous_user_utterance=previous_user_utterance,
-            rolling_topic_summary=rolling_topic_summary,
-            current_user_utterance=current_user_utterance,
-            output_language=retrieval_language,
-            strict_rewrite_mode=("strict" if strict_english else "standard"),
+        formatted = self._build_topic_detect_prompt(
+            session,
+            original_query,
+            previous_user_utterance,
+            rolling_topic_summary,
+            strict_english=strict_english,
         )
-        if strict_english:
-            formatted += (
-                "\n\nSTRICT ENFORCEMENT (retry mode):\n"
-                "- Output BOTH rewrites in English only.\n"
-                "- Keep named entities, product names, policy IDs, document titles, acronyms,\n"
-                "  and quoted strings unchanged.\n"
-                "- Translate only the surrounding retrieval intent into English.\n"
-            )
-
-        effective_ctx: int = self.tokenBudget.get_effective_context_limit(
-            self.llm_model, session
-        )
-
-        ollama_options: dict[str, Any] = {
-            "temperature": self.temperature,
-            "top_k": self.top_k,
-            "top_p": self.top_p,
-            "num_predict": self.num_predict,
-            "num_ctx": effective_ctx,
-        }
-        if not self.use_gpu:
-            ollama_options["num_gpu"] = 0
+        ollama_options = self._build_rewrite_ollama_options(session)
 
         self.pretty.write(
             "I",
@@ -311,11 +335,7 @@ class PromptRewrite(SingletonMixin):
             )
             return original_query
 
-        raw: str = result.get("content", "").strip()
-        if raw.startswith("[File:") or raw.startswith("[No file"):
-            idx = raw.find("]")
-            if idx != -1:
-                raw = raw[idx + 1 :].strip()
+        raw = self._strip_context_tag(result.get("content", ""))
         if not raw:
             self.pretty.write(
                 "I",
@@ -352,7 +372,9 @@ class PromptRewrite(SingletonMixin):
         confidence: float = float(data.get("confidence", 0.0))
         reasoning: str = str(data.get("reasoning", ""))
         contextual: str | None = data.get("contextual_rewrite") or None
-        standalone: str = str(data.get("standalone_rewrite", original_query)).strip()
+        standalone: str = self._strip_context_tag(
+            str(data.get("standalone_rewrite", original_query))
+        )
         referents: list[str] = list(data.get("salient_referents", []))
         # EXAMPLE (happy path): depends=True, confidence=0.95, referents=["blazingfast"]
         #   contextual="does blazingfast have spines"
@@ -366,12 +388,6 @@ class PromptRewrite(SingletonMixin):
         # sees the correct entity anchor rather than a clarification message as context.
         previous_referents: list[str] | None = session.last_topic_referents
         session.last_topic_referents = referents if referents else None
-
-        # Strip file-context tag from standalone (safety)
-        if standalone.startswith("[File:") or standalone.startswith("[No file"):
-            s_idx = standalone.find("]")
-            if s_idx != -1:
-                standalone = standalone[s_idx + 1 :].strip()
 
         pronoun_rewrite_locked_to_original = False
         if not pronoun_substitution_enabled:
@@ -507,11 +523,7 @@ class PromptRewrite(SingletonMixin):
         # EXAMPLE (failure path after grounding): standalone = "does have spines" (safe fallback)
         #   depends=False => falls to else branch => chosen = "does have spines"
         if depends and confidence >= threshold and contextual:
-            chosen = contextual.strip()
-            if chosen.startswith("[File:") or chosen.startswith("[No file"):
-                c_idx = chosen.find("]")
-                if c_idx != -1:
-                    chosen = chosen[c_idx + 1 :].strip()
+            chosen = self._strip_context_tag(contextual)
             label = ""
         elif depends and confidence >= threshold:
             # depends=True, confidence sufficient, but contextual_rewrite was null

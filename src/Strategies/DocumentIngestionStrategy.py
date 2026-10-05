@@ -187,41 +187,43 @@ class DocumentIngestionStrategy(SingletonMixin):
         }
         return self.doc
 
-    def ingest(self):
-        """
-        High-level orchestration: open DB, prepare chunks, screen, upsert, finalize.
-        """
-        human_review: bool = False
-
-        # 1) Open chroma and collection
+    def _open_collection_for_ingestion(self) -> None:
         persist_dir: str
         self.collection_name, persist_dir = (
             self.chromaDBHelper.chroma_coll_name_and_mkdir_or_del("create")
         )
         self.client, self.collection = (
             self.chromaDBHelper.get_chroma_client_and_collection(
-                persist_dir, self.collection_name, stamp=True
+                persist_dir,
+                self.collection_name,
+                stamp=True,
             )
         )
 
-        # 2) Refresh in-memory doc
-        self._make_doc()
-
-        # --- unsupported-language gate ---
+    def _gate_unsupported_language(self) -> bool:
         lang: str = self.language or "en"
         lang_action: str | None = SharedHelpers().check_language_support(
-            lang, self.escapedFilePath or "?"
+            lang,
+            self.escapedFilePath or "?",
         )
-        if lang_action == "NOT_OK":
-            assert self.doc is not None
-            meta_ref: dict[str, Any] = self.doc.get("meta", {})
-            meta_ref.update(
-                {"Status": "NOT_OK", "Stage": "Language", "Time": datetime.now()}
-            )
-            self.csvWriter.write_json2csv(meta_ref, "NOT_OK")
-            return
+        if lang_action != "NOT_OK":
+            return False
 
-        # 3) Pick the chunker for this file type
+        assert self.doc is not None
+        meta_ref: dict[str, Any] = self.doc.get("meta", {})
+        meta_ref.update(
+            {
+                "Status": "NOT_OK",
+                "Stage": "Language",
+                "Time": datetime.now(),
+            }
+        )
+        self.csvWriter.write_json2csv(meta_ref, "NOT_OK")
+        return True
+
+    def _chunk_current_document(
+        self,
+    ) -> tuple[list[langchainDoc], list[list[float] | None] | None]:
         self._resolve_chunker_for_file()
 
         chunker_label = type(self.chunker).__name__
@@ -231,13 +233,7 @@ class DocumentIngestionStrategy(SingletonMixin):
             f"{CYAN}{chunker_label} defined as chunker for extension: {self.fileType}{RESET}",
         )
 
-        # 4) Prepare chunks
-        #    chunk() returns (docs, pre_embeddings).  SemanticChunker provides
-        #    weighted-average sentence embeddings for most chunks (saving a
-        #    full second embedding pass).  Other chunkers return None.
         assert self.content is not None and self.doc is not None
-        doc_chunks: list[langchainDoc]
-        pre_embeddings: list[list[float] | None] | None
         self.perf_logger.log(
             "DocumentIngestionStrategy.ingest",
             "ingestion",
@@ -245,7 +241,8 @@ class DocumentIngestionStrategy(SingletonMixin):
         )
         _t_chunk = time.perf_counter()
         doc_chunks, pre_embeddings = self.chunker.chunk(
-            self.content, self.doc.get("meta", {})
+            self.content,
+            self.doc.get("meta", {}),
         )
         self.perf_logger.log(
             "DocumentIngestionStrategy.ingest",
@@ -257,6 +254,83 @@ class DocumentIngestionStrategy(SingletonMixin):
             "Chunks ingestion",
             f"Prepared {len(doc_chunks)} new chunk(s) for ingestion.",
         )
+        return doc_chunks, pre_embeddings
+
+    def _prepare_vectors_for_chunks(
+        self,
+        doc_chunks: list[langchainDoc],
+        pre_embeddings: list[list[float] | None] | None,
+    ) -> tuple[
+        list[str],
+        list[dict[str, Any]],
+        list[str],
+        list[list[float]],
+    ]:
+        texts: list[str]
+        raw_metas: list[dict[str, str | int | float | bool]]
+        texts, raw_metas = self._extract_texts_and_metas(doc_chunks)
+        texts_trunc: list[str] = self.models_cache.truncate_texts(
+            texts,
+            model_name=self.helpers.get_model_args("_ACTIVE_EMBED")["MODEL"],
+            max_length=self.chunker.chunk_size,
+            padding=True,
+        )
+        embeddings: list[list[float]] = self._resolve_embeddings(
+            texts_trunc,
+            pre_embeddings,
+        )
+        metas: list[dict[str, Any]] = cast(list[dict[str, Any]], raw_metas)
+        return texts, metas, texts_trunc, embeddings
+
+    def _update_secondary_indexes(
+        self,
+        kept_ids: list[str],
+        kept_texts: list[str],
+        kept_metas: list[dict[str, Any]],
+    ) -> None:
+        self.bm25_retriever.ingest_file(
+            self.escapedFilePath or "",
+            self.collection_name,
+            self.collection,
+            kept_ids,
+            kept_texts,
+            kept_metas,
+        )
+        self.graph_retriever.ingest_file(
+            self.escapedFilePath or "",
+            self.collection_name,
+            self.collection,
+            kept_ids,
+            kept_texts,
+            kept_metas,
+        )
+        self.regex_retriever.ingest_file(
+            self.escapedFilePath or "",
+            self.collection_name,
+            self.collection,
+            kept_ids,
+            kept_texts,
+            kept_metas,
+        )
+
+    def ingest(self):
+        """
+        High-level orchestration: open DB, prepare chunks, screen, upsert, finalize.
+        """
+        human_review: bool = False
+
+        # 1) Open chroma and collection
+        self._open_collection_for_ingestion()
+
+        # 2) Refresh in-memory doc
+        self._make_doc()
+
+        # 3) Reject unsupported languages early
+        if self._gate_unsupported_language():
+            return
+
+        # 4) Chunk current document
+        doc_chunks, pre_embeddings = self._chunk_current_document()
 
         # 5) Clear old chunks for this file
         self._clear_old_chunks()
@@ -265,17 +339,9 @@ class DocumentIngestionStrategy(SingletonMixin):
         #    If the chunker already provided embeddings we reuse them and
         #    only call the embedding model for entries marked None (e.g.
         #    oversized splits that couldn't reuse sentence vectors).
-        texts: list[str]
-        metas: list[dict[str, Any]]
-        texts, metas = self._extract_texts_and_metas(doc_chunks)  # type: ignore[reportUnknownMemberType]
-        texts_trunc: list[str] = self.models_cache.truncate_texts(
-            texts,
-            model_name=self.helpers.get_model_args("_ACTIVE_EMBED")["MODEL"],
-            max_length=self.chunker.chunk_size,
-            padding=True,
-        )
-        embeddings: list[list[float]] = self._resolve_embeddings(
-            texts_trunc, pre_embeddings
+        texts, metas, texts_trunc, embeddings = self._prepare_vectors_for_chunks(
+            doc_chunks,
+            pre_embeddings,
         )
 
         # 7) Filter by keyword and similarity checks
@@ -303,35 +369,8 @@ class DocumentIngestionStrategy(SingletonMixin):
             kept_ids, kept_embeddings, kept_metas, kept_texts, len(doc_chunks), skipped
         )
 
-        # 8b) Update BM25 index incrementally (remove old + add new)
-        self.bm25_retriever.ingest_file(
-            self.escapedFilePath or "",
-            self.collection_name,
-            self.collection,
-            kept_ids,
-            kept_texts,
-            kept_metas,
-        )
-
-        # 8c) Update graph index incrementally (remove old + add new)
-        self.graph_retriever.ingest_file(
-            self.escapedFilePath or "",
-            self.collection_name,
-            self.collection,
-            kept_ids,
-            kept_texts,
-            kept_metas,
-        )
-
-        # 8d) Update regex index incrementally (remove old + add new)
-        self.regex_retriever.ingest_file(
-            self.escapedFilePath or "",
-            self.collection_name,
-            self.collection,
-            kept_ids,
-            kept_texts,
-            kept_metas,
-        )
+        # 8b) Refresh sparse indexes incrementally (remove old + add new)
+        self._update_secondary_indexes(kept_ids, kept_texts, kept_metas)
 
         # 9) Finalize and write CSVs
         self._finalize(

@@ -99,7 +99,7 @@ Files unchanged since the last run are skipped. Files flagged by prior complianc
 
 Each query runs through a staged pipeline:
 
-1. **[Compliance](LEGAL.md#-definition--compliance-rag-lcc) pre‑check** — the multi‑algorithm filter chain (Regex+Levenshtein, Jaccard, BM25, KeyBERT) runs on the raw query; matched phrases are masked or the request is blocked before anything else happens
+1. **[Compliance](LEGAL.md) pre‑check** — the multi‑algorithm filter chain (Regex+Levenshtein, Jaccard, BM25, KeyBERT) runs on the raw query; matched phrases are masked or the request is blocked before anything else happens
 2. **Translation** — non‑English queries normalised to English via Argos Translate (enabled X→EN pairs filtered by the active-language set)
 3. **Query rewriting** — pronouns and referents from prior turns resolved by a dedicated rewrite LLM; prefix with `new:` to hard‑switch topics without clearing history
 4. **Multi‑query expansion** — the LLM generates N alternate phrasings to broaden vocabulary coverage across the retrieval pool
@@ -108,7 +108,7 @@ Each query runs through a staged pipeline:
 7. **Cross‑encoder reranking** — neural relevance scoring on top‑k candidates
 8. **Strategy‑gated context assembly** — five profiles from `NARROW` (20 chunks, high precision) to `ULTRA_WIDE` (1500 chunks, exhaustive), with per‑file diversity caps
 9. **LLM reasoning** — context assembled above is passed to the generation model
-10. **[Compliance](LEGAL.md#-definition--compliance-rag-lcc) post‑check** — the same filter chain re‑runs on the generated answer; matched spans are masked before the response reaches the user
+10. **[Compliance](LEGAL.md) post‑check** — the same filter chain re‑runs on the generated answer; matched spans are masked before the response reaches the user
 
 Answers are **grounded** — every sentence is checked for overlap with retrieved source text and marked visually, in CLI and API output alike. You see exactly which parts of the answer are evidence‑backed and which are not.
 
@@ -383,7 +383,7 @@ Some design decisions in RAG‑LCC are motivated by concrete failure analyses:
   [https://www.reddit.com/r/Rag/comments/1swbmdr/when_your_rag_system_confidently_asks_about/](https://www.reddit.com/r/Rag/comments/1swbmdr/when_your_rag_system_confidently_asks_about/)
 
 - **Filtering the Noise: A Practical Multi-Layer Banlist Pipeline for RAG Systems**
-  Reddit wirte-up on content filtering
+  Reddit write-up on content filtering
   [https://www.reddit.com/r/Rag/comments/1ta1svk/filtering_the_noise_a_practical_multilayer/](https://www.reddit.com/r/Rag/comments/1ta1svk/filtering_the_noise_a_practical_multilayer/)
 
 - **Speaking the Corpus’s Language: How Multilingual RAG Stays Coherent Across Turns**

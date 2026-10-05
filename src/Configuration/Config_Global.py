@@ -20,7 +20,7 @@ import os
 
 from Compliance.path_validation import validate_absolute_path
 
-_VERSION = "v0.5.2.0/1520 2026-09-28"
+_VERSION = "v0.5.2.0/1533 2026-10-05"
 
 # -----------------------------------------------------------------------------
 # Adjust these hashes when you changed any of these files:
@@ -32,14 +32,14 @@ _VERSION = "v0.5.2.0/1520 2026-09-28"
 # Run:  python src/Scripts/RecalcConfigHashes.py  to update automatically.
 # -----------------------------------------------------------------------------
 _CRITICAL_CONFIG_HASHES = {
-    "Config_Models": "d79d430b22620b243bd6eaf46e35988060ab7c7740bf51120e0245d3944e6426",
-    "Config_Banned_Detection": "7950c8fc408bae518deb255f895fcd8e4b249b360af87bed32350ec5aade5fe1",
-    "Config_Banned_Content": "a27ecae368968c806ed220d6794b72e402e9175d502e95eb584bf632eebf0c35",
-    "Config_Banned_Prompts": "3b556d4888f65702fcba0f0cb27d36456a7be5ff3a8130ddb262d9449f41a05f",
-    "Config_Load_Retrievers": "7cc6146112ca0f50f27671e9f927e04c52a750532ef081abd62eca764201ff3f",
-    "Config_Load_Chunkers": "97252ab64e994be70052b82b6f039e02058360e32f2b0caf89a54a12ae1cf353",
-    "Config_WebSearch": "b1f8424bc12425e7fac0e870f060380f59be344e87990ea79c56ac0f1068dd9b",
-    "Config_Internet_Env": "72bec360e2a260f59749fd39371afd7adf04d93d241c24118955c65b8e00e559",
+    "Config_Models": "",
+    "Config_Banned_Detection": "",
+    "Config_Banned_Content": "",
+    "Config_Banned_Prompts": "",
+    "Config_Load_Retrievers": "",
+    "Config_Load_Chunkers": "",
+    "Config_WebSearch": "",
+    "Config_Internet_Env": "",
 }
 
 # -----------------------------------------------------------------------------

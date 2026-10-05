@@ -1,17 +1,26 @@
-# Example Usages
+# Hands-On Tour
 
-> **⚠️ Experimental Walkthrough**
+> ⚠️ Experimental Walkthrough
 >
-> This document demonstrates example interactions and observed behaviors in a
-> controlled laboratory environment.
->
-> All outputs shown are illustrative. Actual results may vary depending on
-> configuration, model behavior, data, and runtime conditions.
->
-> Nothing in this walkthrough should be interpreted as a guarantee of behavior,
-> correctness, safety, or non‑hallucination.
+> This tour demonstrates commands and observed behavior in a lab setup.
+> Output can vary by model, config, data, and hardware.
+> Nothing here guarantees correctness or safety.
 
-## 💻 View the CLI parameters and defaults
+This guide is a practical travel route through the most important RAG-LCC operations:
+
+1. Start with defaults
+2. Learn the core in-chat commands
+3. Pin retrieval to one file/path/metadata
+4. Compare retrieval strategies
+5. Compare orchestration flows
+6. Add web retrieval controls
+7. Load and use a second collection
+
+---
+
+## 0) Before You Start
+
+### Check CLI arguments
 
 ```Windows
 python ./src/Apps/RAGLoad.py -h
@@ -19,840 +28,606 @@ python ./src/Apps/RAGChat.py -h
 python ./src/Apps/DocClassify.py -h
 ```
 
-## 📥 Load the documents in the Test folder
+### Know the default baseline
 
-Default collection name is from `COLLECTION` in `Config_Load_Retrievers.py`.
-If you work with multiple collections, update `COLLECTION` there before running
-`RAGLoad.py`.
+- Default collection name comes from `COLLECTION` in `src/Configuration/Config_Load_Retrievers.py`.
+- Default retrieval strategy comes from `_ACTIVE_CHUNK_SELECT_STRATEGY` in `src/Configuration/Config_RAGChat_Strategies.py`.
+- Default orchestration flow comes from `_DEFAULT_ORCHESTRATION_FLOW` in `src/Configuration/Config_Orchestrator.py`.
+- Web retrieval is globally gated by `WEB_SEARCH_MODE` in `src/Configuration/Config_Internet_Env.py`.
+
+### Load a starter corpus
 
 ```Windows
 python ./src/Apps/RAGLoad.py --doc-dir TestDocs
 ```
 
-## 💬 Chat with the documents in the Test folder
+---
+
+## 1) Start with Defaults
+
+Launch chat:
 
 ```Windows
 python ./src/Apps/RAGChat.py
 ```
 
+Inside chat:
+
 ```text
-🛠️  > collection! choose MyTestDocs or collection=MyTestDocs
-press enter
+🛠️  > show?
 ```
 
-Query:
+This prints the active session state, including strategy, flow, filters, and web mode.
+
+Run a baseline query:
 
 ```text
 💬 Your actual query> where do hedgehogs live?
-press enter
 ```
 
-Change debug level:
+Run one follow-up query:
 
 ```text
-🛠️  > debug! and choose "Ollama response" (or debug=8)
-press enter
+💬 Your actual query> what do they eat?
 ```
 
-Query: (You can enter it or toggle with shif up/down. This works for chat and settings)
+With default flow/strategy, rewrite and context handling are active. Keep this baseline in mind for later comparisons.
+
+### Check confidence level and confidence log
+
+After each answer, RAGChat can append an `Answer confidence` block with a level
+(`HIGH`, `MEDIUM`, `LOW`) and a final score (`C_final` in `[0,1]`).
+
+To keep this visible and persisted, check `src/Configuration/Config_Global.py`:
+
+- `_CONFIDENCE_LOGGING["enabled"] = True`
+- `_CONFIDENCE_LOGGING["emit_pretty"] = True`
+- `_CONFIDENCE_LOGGING["csv_enabled"] = True`
+
+With defaults, one CSV file per run is written under:
+
+- `logs/RAGChat/RAGChat_CONFIDENCE_YYYYMMDD_HHMMSS.csv`
+
+Quick check (PowerShell):
+
+```Windows
+Get-ChildItem .\logs\RAGChat\*CONFIDENCE*.csv | Sort-Object LastWriteTime -Descending | Select-Object -First 3
+```
+
+---
+
+## 2) Core Command Pattern (Cheat Sheet)
+
+RAGChat command grammar:
+
+- `key=value` sets a value
+- `key!` opens a picker
+- `key?` shows current value
+- `key-` unsets/clears (where supported)
+- `show?` prints all current session values
+- `help?` prints command help
+
+Most-used keys in this tour:
+
+- `collection`, `chat_name`
+- `strategy`, `orchestrator_flow`, `force_retrieve_mode`
+- `file`, `path`, `metadata`
+- `web_search`, `web_weight`, `fetch_page_content`
+- `mark_text`, `debug`
+
+---
+
+## 3) File Pinning and Scoped Retrieval
+
+This section shows how to narrow retrieval intentionally.
+
+### Pin to a single file
 
 ```text
-💬 Your actual query> what do elephants eat?
-press enter
+🛠️  > file!
 ```
 
-Reset debug level:
+Pick a file (example: `Dogs.png`), then query:
 
 ```text
-🛠️  > debug! and choose "Standard" (or debug=3)
-press enter
+💬 Your actual query> summarize only this source
 ```
 
-Set output tokens to low value:
+You can also set directly:
 
 ```text
-🛠️  >   max_output_tokens=10
-press enter
+🛠️  > file=Dogs.png
 ```
 
-Query:
-
-```text
-💬 Your actual query> what do elephants eat?
-press enter
-```
-
-## 🧠 Demonstrating how insufficient context can increase hallucination risk
-
-LLM hallucination cannot be reliably prevented and may occur even under ideal conditions.
-
-Reset max_output_tokens and set context_size to 10.
-
-```text
-🛠️  >  max_output_tokens-
-🛠️  >  context_size=10
-press enter
-```
-
-Query:
-
-```text
-💬 Your actual query> what do elephants eat?
-press enter
-```
-
-In this configuration, the LLM may only receive a truncated portion of the prompt, which increases the likelihood of ignoring grounding instructions. You get a warning:
-⚠ context_size=10 is dangerously low. Ollama uses this as the total KV-cache for input + output. The full prompt (instructions, retrieved context, and query) will be physically truncated — the model may not see the grounding instructions or the retrieved documents and will hallucinate from its training data instead.
-
-Reset context_size:
-
-```text
-🛠️  >  context_size-
-press enter
-```
-
-```text
-💬 Your actual query> what do elephants eat?
-press enter
-```
-
-```text
-💬 Your actual query> tell me about dogs
-press enter
-```
-
-List the available files and select Dogs.png and the narrow strategy since we work upon one file now.
-For a folder-based scope, use `path!` (picker) or `path=<absolute_path>`.
-There are 5 predefined strategies: ultra_wide, wide, balanced_file_cap, narrow and default. The predefined settings can be found in `Configuration/Config_RAGChat.py`. The wider strategies are configured to retrieve more chunks and use higher thresholds. The narrow strategies are configured to retrieve fewer chunks and use lower thresholds.
-**See the session parameters change in the ▶ output**
-
-```text
-🛠️  > file! select Dogs.png from the list
-press enter
-🛠️  > strategy! and choose "NARROW" from the list (or strategy=narrow)
-press enter
-```
-
-Now you are "fixed" upon the Dogs.png file: ▶ File Input: file='Dogs.png' path='.....'
-At the query prompt you also see a turquoise notice:
-
-```text
-🔍 File filter ON: Dogs.png
-```
-
-Alternative path-based scope (instead of `file`):
-
-```text
-🛠️  > path! select the folder path from the list
-press enter
-```
-
-At the query prompt this appears:
-
-```text
-🔍 Path filter ON: D:/.../YourFolder
-```
-
-The metadata picker intentionally excludes `FileName` and `FilePath`.
-Use `file`/`path` commands for file-system scoping and `metadata` commands for all other metadata fields.
-
-Query
-
-```text
-💬 Your actual query> What animals are described in the documents?
-press enter
-```
-
-Clear the file/path filter so all documents are searched again (`file-` or `path-`) and choose DEFAULT strategy:
+Clear file pin:
 
 ```text
 🛠️  > file-
-press enter
-🛠️  > strategy=default
 ```
 
-Now apply a metadata filter (example: only chunks with Language=English).
+### Pin to a path
+
+```text
+🛠️  > path!
+```
+
+Choose a folder/file path from history or set directly.
+
+Clear path pin:
+
+```text
+🛠️  > path-
+```
+
+### Apply metadata filter
+
+Interactive picker:
 
 ```text
 🛠️  > metadata!
-select field "Language"
-select value "English"
-press enter
 ```
 
-At the query prompt you see:
+Direct assignment example:
 
 ```text
-🔍 Metadata filter ON: Language=English
+🛠️  > metadata=Language:English
 ```
 
 Clear metadata filters:
 
 ```text
 🛠️  > metadata-
-press enter
-```
-
-Set threshold to 0.9:
-
-```text
-🛠️  > threshold=0.9
-press enter
-```
-
-Query again. In this example, no chunks or only few were returned because the threshold was set very high.
-You may observe output similar to:
-🟡 Suggested Action               Try lowering sensitivity. Current: 0.90
-
-```text
-💬 Your actual query> What animals are discussed in the documents?
-```
-
-Lower the threshold too much.  All animals in the RAG context will be listed:
-
-```text
-🛠️  > threshold=0.2
-press enter
-```
-
-Query again:
-
-```text
-💬 Your actual query> What animals are discussed in the documents?
-press enter
-```
-
-Query:
-
-```text
-💬 Your actual query> Tell me for each discussed animal whether they are mammals or not
-```
-
-Press twice enter to exit.
-
----
-
-## 🏷️ Switch Chat Context
-
-Switch to ULTRA_WIDE selection strategy.
-
-```text
-🛠️  > strategy!
-press enter
-```
-
-Query:
-
-```text
-💬 Your actual query> Which animals are discussed in the collection
-press enter
-```
-
-You get the animals discussed in the TestDocs
-
-```text
-💬 Your actual query>  which of them are mammals? make a list and answer for each animal with yes/no. Answer no if you dont know.
-press enter
-```
-
-The result shows 2 things:
-
-- Before sending your query to the LLM, a intermediate LLM call rewrote your query based upon the chat context:
-🔵 QueryRewrite                   'which of them are mammals? make a list and answer for each animal with yes/no. Answer no if you dont know.' → 'Which of the
-↳                                 following animals are mammals: Domestic cats, Hedgehogs, Pferde, Lions, Great apes, Elephants, Fish?   Domestic cats: Yes
-↳                                 Hedgehogs: Yes Pferde: No (don't know) Lions: Yes Great apes: Yes Elephants: Yes Fish: No'
-
-"Which of them" has been expanded to the list of animals.
-
-Switch chat context off:
-
-```text
-🛠️  > use_chat_context=false
-press enter
-```
-
-Do the query again:
-
-```text
-💬 Your actual query> Which animals are discussed in the collection
-press enter
-```
-
-Same result as before. Now to the second query:
-
-```text
-💬 Your actual query>  which of them are mammals? make a list and answer for each animal with yes/no. Answer no if you dont know.
-press enter
-```
-
-The LLM answers with fewer animals or gives a confused answer. It was not able to resolve "Which of them" because it did not have the context. This is why the query rewrite intermediate step is important. It expands semantic "placeholders" with information the LLM can interpret correctly.
-
-Enable chat context again:
-
-```text
-🛠️  > use_chat_context=true
-press enter
 ```
 
 ---
 
-### 🗃️ Work with a second collection
+## 4) Compare Retrieval Strategies
 
-The next example shows how you can switch between different collections you created. One could be about animals and another about plants.
+Use the same question repeatedly while changing strategy.
 
-Set `COLLECTION = "My2ndCollection"` in `Config_Load_Retrievers.py`.
-Then place some documents in a folder `yourpath` or use the TestDocs documents and load them:
-
-```Windows
-python ./src/Apps/RAGLoad.py  --doc-dir `yourpath|TestDocs`
-```
-
-Start RAGChat.py:
-
-```Windows
-python ./src/Apps/RAGChat.py
-```
-
-Select the collection. We use the ULTRA_WIDE strategy for exploring.
+### DEFAULT
 
 ```text
-🛠️  > collection! and choose My2ndCollection
-🛠️  > strategy! or strategy=ultra_wide
-press enter
+🛠️  > strategy=DEFAULT
+💬 Your actual query> Which animals are discussed in the collection?
 ```
 
-When switching collections, active file/path and metadata filters are cleared:
+### NARROW
 
 ```text
-⚠ File / path filter cleared
-⚠ Metadata filters cleared
+🛠️  > strategy=NARROW
+💬 Your actual query> Which animals are discussed in the collection?
 ```
 
-When `FileHash: [SECRET]` appears in the query output, the Masker has matched configured patterns and replaced the corresponding text in this example.
+### ULTRA_WIDE
 
 ```text
-💬 Your actual query> Tell me what is in the provided context
-press enter
+🛠️  > strategy=ULTRA_WIDE
+💬 Your actual query> Which animals are discussed in the collection?
 ```
 
-Start a new chat (so far you are in the MyFirstChat chat, defined in Config_RAGChat.py `_DEFAULT_CHAT_NAME` )
+What to watch:
 
-```text
-🛠️  > chat_name=newchat
-press enter
-```
+- amount of retrieved context
+- precision vs recall in final answer
+- speed and verbosity in diagnostics
 
-```text
-💬 Your actual query> Tell me about hedgehogs
-press enter
-```
-
-Switch back to previous chat:
-
-```text
-🛠️  > chat_name! and choose "MyFirstChat" or chat_name=MyFirstChat
-```
-
-```text
-💬 Your actual query> use shift up/down key and you are in the history (query and settings) of the previous chat. If you enable use_chat_context=True the chat context is filtered by chat_name. So each chat_name has its own chat_context
-press enter
-press enter again to exit.
+Tip: `strategy!` opens a picker. `strategy*DEFAULT` applies preset defaults quickly.
 
 ---
 
-## 📂 Classify‑then‑Load: filter RAGLoad with a DocClassify CSV
+## 5) Compare Orchestration Flows
 
-This demonstrates the classify‑then‑load workflow: first classify your documents with `DocClassify`, then feed only the matching rows into `RAGLoad` using the `--load-from-classify-csv` and `--classify-csv-query` flags.
+Flow profiles change how retrieval stages are orchestrated.
 
-### Step 1 — Classify your documents
+### Inspect current flow
 
-```Windows
-python ./src/Apps/DocClassify.py --doc-dir TestDocs
+```text
+🛠️  > orchestrator_flow?
 ```
 
-When finished, note the OK CSV filename printed at the end, e.g. `DocClassify_OK_20260325_182503.csv`.
-Open it — you will see columns such as `Animal`, `Mammal`, `Language`, etc. for every processed file.
+### Pick another flow
 
-### Step 2 — Load only the animal‑related documents
-
-Use the CSV from Step 1 as input for `RAGLoad`. The `--classify-csv-query` flag accepts a SQL WHERE clause (SQLite syntax) to filter the rows.
-Set `COLLECTION = "AnimalDocs"` in `Config_Load_Retrievers.py` before running these commands.
-
-Load only documents where the `Animal` column mentions "cat":
-
-```Windows
-python ./src/Apps/RAGLoad.py --doc-dir TestDocs --load-from-classify-csv DocClassify_OK_20260325_182503.csv --classify-csv-query "Animal LIKE '%cat%'"
+```text
+🛠️  > orchestrator_flow!
 ```
 
-Only files whose classification row matches the query are ingested; all other files are skipped.
+Try at least these:
 
-You can combine multiple conditions:
+- `THOROUGH_QUERY_REWRITE`
+- `TRANSLATION_FOCUSED`
+- `ORIGINAL_LANGUAGE_VECTOR_ONLY`
+- `ORIGINAL_LANGUAGE_ALL_RETRIEVERS`
 
-```Windows
-python ./src/Apps/RAGLoad.py --doc-dir TestDocs --load-from-classify-csv DocClassify_OK_20260325_182503.csv --classify-csv-query "Mammal LIKE '%Yes%' AND Language = 'English'"
+Then run the same query for each flow:
+
+```text
+💬 Your actual query> Was fressen Igel?
 ```
 
-> **Note:** When the classify CSV filter is active, exclusion checks are bypassed —
-> `DocClassify` already evaluated exclusions during its run, so the CSV is the sole
-> authority for which files to ingest.
+Optional advanced override:
+
+```text
+🛠️  > force_retrieve_mode=VECTOR
+```
+
+Clear override back to flow behavior:
+
+```text
+🛠️  > force_retrieve_mode-
+```
+
+Tip: `orchestrator_flow*THOROUGH_QUERY_REWRITE` resets to baseline flow defaults.
 
 ---
 
-## 🏷️ Classify the documentation
+## 6) Web Retrieval Controls (Global + Session)
 
-This demonstrates `DocClassify.py`.
+Web behavior is controlled at two levels:
 
-```Windows
-python ./src/Apps/DocClassify.py --doc-dir yourpath
+1. Global master switch: `WEB_SEARCH_MODE` in `src/Configuration/Config_Internet_Env.py`
+2. Session knobs in chat
+
+If web is globally enabled, test session modes:
+
+```text
+🛠️  > web_search=local_only
+🛠️  > web_search=local_and_web
+🛠️  > web_search=web_only
 ```
 
-When the program is done, you see a message where the output `.csv` / `.xlsx` files can be viewed (in the logs directory).
-Open the one labeled `DocClassify_OK<date>.csv` / `.xlsx`.
+Adjust web influence in fusion:
 
-### 📂 Quick example: classify and load with a filter
-
-**Step 1 — Classify the test documents:**
-
-```Windows
-python ./src/Apps/DocClassify.py --doc-dir TestDocs
+```text
+🛠️  > web_weight=0.5
 ```
 
-When the run finishes, the summary shows the path to the result CSV, e.g.
-`logs/DocClassify_OK_20260416_143012.csv`. Note this path — you will need
-it in Step 2.
+Choose snippet-only or full-page mode:
 
-**Step 2 — Load only matching documents into ChromaDB:**
-
-Use the CSV from Step 1 together with a SQL WHERE clause to ingest only
-English documents classified as mammals:
-
-```Windows
-python ./src/Apps/RAGLoad.py --doc-dir TestDocs --load-from-classify-csv logs/DocClassify_OK_20260416_143012.csv --classify-csv-query "Mammal LIKE '%%Yes%%' AND Language = 'English'"
+```text
+🛠️  > fetch_page_content!
 ```
 
-Replace `logs/DocClassify_OK_20260416_143012.csv` with the actual path
-printed in the Step 1 summary.
+Then query:
 
-The `--classify-csv-query` value is a SQL WHERE expression evaluated against
-an in-memory SQLite table built from the CSV columns. The double `%%` is
-required so that `%` is not consumed as a Python format-string placeholder.
-You can combine any columns that `DocClassify` wrote, for example
-`"Animal LIKE '%%cat%%'"` or `"Language = 'German'"`.
-
-> **Note:** When the classify CSV filter is active, exclusion checks are
-> bypassed — `DocClassify` already evaluated exclusions during its run, so
-> the CSV is the sole authority for which files to ingest.
-
-### 🔑 Define your classification keys
-
-The file `Config_DocClassify.py` contains detailed instructions how you can change classification keys.
-
-### ✏️ Change provided example prompt
-
-The goal is to extract information from the *context* only about the animals discussed.
-
-| Animal | Habitat |
-| --- | --- |
-| cats | Dont know |
-| dogs | Dont know |
-| elephant | elephant: forest |
-| fish, shark, ray, amphibians | fish: reef, shark: ocean, ray: ocean, amphibian: Dont know |
-| hedgehogs | Dont know |
-| Dont know | Dont know |
-| horse | Dont know |
-
-Try this example prompt. "Dont know" reflects the model not finding explicit information in the provided keywords and therefore not inferring additional details in this example.
-
-```Text
-_PROMPT_CLASSIFY_MISTRAL = (
-    "You are given a dictionary of keywords extracted from a document, "
-    "each key is a keyword and its value is a relevance weight. "
-    "You must analyze ONLY these keywords. Do NOT use any external knowledge.\n\n"
-
-    "Determine the following fields:\n"
-    "1. Classification: category labels (up to {CLASSIFICATION_WORD_CNT} words).\n"
-    "2. Purpose: brief summary (up to {SUMMARY_SENTENCE_CNT} sentences).\n"
-    "3. Language: detected document language.\n"
-    "4. Topic: short topic phrase.\n"
-    "5. Animal: animals explicitly mentioned in the keywords.\n"
-
-    # ✅ CHANGED FIELD 6
-    "6. Habitat: For EACH animal from field 5, determine where it lives.\n"
-    "   RULES FOR HABITAT:\n"
-    "   - You MUST use ONLY the provided keywords.\n"
-    "   - Do NOT use biological or real-world knowledge.\n"
-    "   - A habitat may be given ONLY if a keyword explicitly states or clearly\n"
-    "     contains habitat information (e.g. a keyword phrase like "
-    "     \"reef fish\", \"river salmon\", \"forest deer\").\n"
-    "   - If habitat information is NOT explicitly present in the keywords,\n"
-    "     you MUST answer \"Dont know\" for that animal.\n"
-    "   - Do NOT infer habitats from animal names alone.\n"
-    "   - Do NOT invent or generalize habitats.\n\n"
-
-    "Habitat output format (single string):\n"
-    "animal: habitat_or_Dont know, animal2: habitat_or_Dont know\n\n"
-
-    "IMPORTANT:\n"
-    "- Return ONLY ONE valid JSON object.\n"
-    "- No explanations, no comments, no markdown.\n"
-    "- The JSON object must contain exactly these keys:\n"
-    "\"Classification\", \"Purpose\", \"Language\", \"Topic\", \"Animal\", \"Habitat\".\n"
-    "- Every value MUST be a plain string (no arrays, no nested objects).\n"
-    "- Only mention animals that actually appear in the keywords.\n\n"
-
-    "Example output:\n"
-    "{{"
-    "\"Classification\": \"Science\", "
-    "\"Purpose\": \"A document summary\", "
-    "\"Language\": \"English\", "
-    "\"Topic\": \"Marine biology\", "
-    "\"Animal\": \"fish\", "
-    "\"Habitat\": \"fish: reef\""
-    "}}"
-
-    "Weighted Keywords:\n"
-)
-```
-
-**Don't forget to adjust the classification key and change it from "Mammal" to "Habitat":**
-
-```Text
-_YOUR_CLASSIFICATION_KEYS = [
-    "Classification",
-    "Purpose",
-    "Topic",
-    "Animal",
-    "Habitat", # was: "Mammal"
-    "Language",
-]  # For user‑defined keys beyond the core set
-```
-
-### 🏚️ Extraction & KeyBERT variant tuning
-
-`Config_DocClassify.py` ships three named presets — `STRICT`, `BALANCED`,
-and `RECALL` — for both the extraction LLM parameters and the KeyBERT
-keyword-extraction passes.  Two independent selectors (`_ACTIVE_EXTRACTION_CONFIG`
-and `_ACTIVE_KEYBERT_CONFIG`) let you mix and match.
-
-For the full variant matrix and consumer mapping see
-[Extraction & KeyBERT Variant Configuration in ARCHITECTURE.md](ARCHITECTURE.md#-extraction--keybert-variant-configuration).
-
-### 🚫 Add banned word
-
-Requirement: Argostranslate and language package en → de must be installed. See [7. Install Argos Translate in INSTALL.md](INSTALL.md#-7-install-argos-translate).
-
-Edit `Config_Banned_Content.py` and add `Pferd` (german for horse) to the `_STRICT_BANNED` wordlist. Start RAGLoad.py:
-Set `COLLECTION = "BannedHorseCollection"` in `Config_Load_Retrievers.py`.
-
-```Windows
-python ./src/Apps/RAGLoad.py  --doc-dir `TestDocs`
-```
-
-You may observe that the `Pferde.pdf` triggers a message similar to:
-
-```Text
-🟡 KeyWrdChk Depth                3 algos passed threshold vs. required 3
-🟢 KeyWrdChk Breadth              3 algos had a score vs. required 4
-🟡 Vector store                   No chunks inserted  to Test_ChatContext. All 1 chunk(s) were skipped.
+```text
+💬 Your actual query> latest hedgehog habitat reports
 ```
 
 ---
 
-## 🧪 Further Experiments
+## 7) Work with a Second Collection
 
-Below are ideas for configuration changes you can try. Each explains **what** to change and **what behaviour** you may observe.
+Now create a second knowledge base and switch between both.
 
-### 🖍️ 6. Enable visual markers — see exactly which chunks were used
+### Step A: Set second collection name
 
-Enable `mark_text` for the current session:
-
-```text
-🛠️  > mark_text=true
-press enter
-```
-
-Now ask a question that will retrieve chunks from local documents:
-
-```text
-💬 Your actual query> where do hedgehogs live?
-press enter
-```
-
-After the answer, you will see a numbered list of the source documents that contributed chunks:
-
-```text
-●  Marked sources        2 highlighted document(s) (use 'Save As' in the viewer to keep a permanent copy):
-   [1] Hedgehogs.pdf
-   [2] Animals.docx
-   Open file [1–2, or Enter to skip]:
-```
-
-Type `1` and press Enter to open the PDF in your default viewer — the retrieved passages will be highlighted in amber.
-
-**What you observe:**
-
-- The PDF / DOCX opens with the exact paragraphs that were sent to the LLM highlighted in amber (`#FFD966`).
-- In the terminal, answer sentences that are traceable back to a retrieved chunk are printed with an orange background highlight. The colour spans across terminal line-wraps.
-- In OpenWebUI, grounding is visible as orange highlights **inside the opened source documents** (PDF/DOCX/PPTX). The chat reply text itself is not annotated.
-- When `mark_text` is active and the client requests streaming, the reply is automatically downgraded to buffered so grounding can be applied to the complete answer. Streaming resumes when `mark_text` is disabled.
-- Only the file you pick is written to disk; others stay in memory. If you press Enter to skip, nothing is written.
-
-**To change the highlight colour**, edit `Config_RAGChat.py`:
+Edit `src/Configuration/Config_Load_Retrievers.py` and set:
 
 ```python
-_MARKED_DOCS_COLORS["highlight"] = "#FF9900"   # orange source highlight
+COLLECTION = "Test_Second"
 ```
 
-To disable CLI answer grounding only (keep document highlights):
-
-```python
-_MARKED_DOCS_COLORS["answer_ansi"] = ""   # empty string disables terminal grounding
-```
-
-Disable `mark_text` again when done:
-
-```text
-🛠️  > mark_text=false
-press enter
-```
-
-### 🔓 1. Loosen the consensus rules to block more documents
-
-In `Config_Banned_Detection.py`, the RAGLoad pipeline requires **3** algorithms above threshold (depth) **and** **4** algorithms with any score (breadth) before a chunk is blocked. Try lowering both values:
-
-```python
-"REQUIRED_ALGOS_ABOVE_THRESHOLD": 1,
-"REQUIRED_DIFFERENT_ALGOS_HAVE_A_SCORE": 2,
-```
-
-**What changes:** In this configuration, more chunks are likely to be flagged and rejected during loading. Even a single algorithm scoring above its threshold is enough to block a chunk. This is useful when you want a very strict ingestion policy, but expect more false positives — harmless chunks may be rejected because one algorithm happened to score high.
-
-After editing, update the matching `_CRITICAL_CONFIG_HASHES` entries in `Config_Global.py` (the required hashes are printed at startup), or run `python src/Scripts/RecalcConfigHashes.py`.
-
-### 🔒 2. Tighten the consensus rules to let more documents through
-
-Raise the consensus values in the RAGLoad pipeline:
-
-```python
-"REQUIRED_ALGOS_ABOVE_THRESHOLD": 4,
-"REQUIRED_DIFFERENT_ALGOS_HAVE_A_SCORE": 4,
-```
-
-**What changes:** All four algorithms must agree before a chunk is blocked. This makes the filter very permissive — only clearly problematic content gets rejected. Fewer false positives, but some borderline content may slip through.
-
-### 🔧 3. Disable fuzzy regex matching
-
-In the `Regex` section of any pipeline in `Config_Banned_Detection.py`, set:
-
-```python
-"FUZZY_REGEX_EVAL_AFTER_HARD": False,
-```
-
-**What changes:** The regex algorithm will only perform strict word-boundary matching. Fuzzy anchored matches (e.g. "bic" matching "bicycle") will no longer be found. This reduces false positives from the regex algorithm but may miss content that uses abbreviations, misspellings, or partial word overlaps.
-
-### 🧩 4. Change chunk size and observe retrieval differences
-
-In `Config_Load_Retrievers.py`, change the active variant selector:
-
-The config uses a variant selector — change `_ACTIVE_CHROMA_EMBED_AND_RETRIEVE_PARAMS_CONFIG` from `"THOROUGH"` to `"COMPACT"` to switch to smaller chunks:
-
-```python
-_ACTIVE_CHROMA_EMBED_AND_RETRIEVE_PARAMS_CONFIG = "COMPACT"   # was "THOROUGH"
-
-_CHROMA_EMBED_AND_RETRIEVE_PARAMS = {
-    "THOROUGH": {
-        "CHUNK_SIZE": 256,
-        "CHUNK_OVERLAP": 32,
-        ...
-    },
-    "COMPACT": {
-        "CHUNK_SIZE": 128,
-        "CHUNK_OVERLAP": 16,
-        ...
-    },
-}
-```
-
-**What changes:** Documents are split into smaller pieces. RAGChat will return more, shorter chunks for each query. This can improve precision (each chunk is more focused) but may lose context that spans across chunk boundaries. Existing embeddings in a collection were created with the old chunk size, so after changing chunk size you **must** re-embed your documents. You have two options:
-
-- **Re-create the existing collection:** set `RETRIEVAL_STORES_KEEP = False` in `Config_Load_Retrievers.py` and run RAGLoad again.
-- **Use a new collection name:** set `COLLECTION = "Experiment_SmallChunks"` in `Config_Load_Retrievers.py` so you can compare results side-by-side with the old collection.
-
-You can also add your own variant (e.g. `"LARGE"` with `CHUNK_SIZE: 512`) to experiment with longer chunks that preserve more context but may include irrelevant surrounding text.
-
-### 🧱 5. Switch the chunking strategy profile
-
-In `Config_Load_Chunkers.py`, change `_ACTIVE_CHUNKER_CONFIG` from `"DETAILED"` to `"FAST"`:
-
-```python
-_ACTIVE_CHUNKER_CONFIG = "FAST"   # was "DETAILED"
-```
-
-The `DETAILED` profile routes each file type to a specialised chunker — PDFs use `SEMANTIC`, Markdown uses `HEADING`, presentations use `SLIDE`, plain text uses `SLIDING_WINDOW`, and so on. The `FAST` profile maps **every** file type to `RECURSIVE`, which simply splits by word count without analysing document structure.
-
-Re-load the test documents into a new collection so you can compare:
-Set `COLLECTION = "FastChunks"` in `Config_Load_Retrievers.py`.
+### Step B: Load documents into second collection
 
 ```Windows
 python ./src/Apps/RAGLoad.py --doc-dir TestDocs
 ```
 
-Then open RAGChat and switch between the two collections:
+(Use another document folder if you want the two collections to differ.)
+
+### Step C: Switch collections in chat
 
 ```text
-🛠️  > collection=AnimalDocs
-💬 Your actual query> What do hedgehogs eat?
+🛠️  > collection!
+```
 
-🛠️  > collection=FastChunks
+Pick between your original collection (for example `Test`) and `Test_Second`.
+
+Run the same query after each switch:
+
+```text
 💬 Your actual query> What do hedgehogs eat?
 ```
 
-**What changes:** With `FAST`, all documents are split into uniform 256-word blocks regardless of structure. Headings, slide boundaries, and semantic topic shifts are ignored. This is significantly faster (no per-sentence embedding required) but the resulting chunks may cut through paragraphs mid-sentence or merge unrelated sections. You will typically see:
+What to watch:
 
-- **Faster load times** — no embedding-based sentence splitting
-- **Lower retrieval precision** — chunks may contain mixed topics, diluting the embedding signal
-- **Missed heading context** — a Markdown heading and its body may end up in different chunks
+- collection switch resets scoped filters (file/path/metadata)
+- answer differences between corpora
+- chat context isolation by collection + chat name
 
-After comparing, switch back to `"DETAILED"` for best results. Because chunker settings are baked into the collection at creation time, you must set `RETRIEVAL_STORES_KEEP = False` (or use a fresh collection name via `COLLECTION`) whenever you change the chunker profile.
+---
 
-### 🔍 6. Tune HNSW neighbor exploration
+## 8) Chat Names and Context Isolation
 
-The same `_CHROMA_EMBED_AND_RETRIEVE_PARAMS` dict in `Config_Load_Retrievers.py` contains two parameters that control how thoroughly ChromaDB's HNSW index searches for similar vectors:
+Create a separate chat lane:
+
+```text
+🛠️  > chat_name=TourFlowA
+```
+
+Switch to another:
+
+```text
+🛠️  > chat_name=TourFlowB
+```
+
+Use `chat_name!` to pick existing sessions.
+
+This is useful when testing different strategies/flows without cross-contaminating context.
+
+---
+
+## 9) Visual Grounding Quick Pass
+
+Enable source marking:
+
+```text
+🛠️  > mark_text=true
+```
+
+Query:
+
+```text
+💬 Your actual query> where do hedgehogs live?
+```
+
+Open a marked source from the prompt. Then disable:
+
+```text
+🛠️  > mark_text=false
+```
+
+---
+
+## 10) Return to Baseline Defaults
+
+Use this reset sequence at the end of experiments:
+
+```text
+🛠️  > strategy*DEFAULT
+🛠️  > orchestrator_flow*THOROUGH_QUERY_REWRITE
+🛠️  > force_retrieve_mode-
+🛠️  > file-
+🛠️  > path-
+🛠️  > metadata-
+🛠️  > web_search=local_only
+🛠️  > mark_text=false
+🛠️  > show?
+```
+
+Important:
+
+- `strategy*DEFAULT` resets strategy slots (weights, thresholds, limits).
+- `orchestrator_flow*THOROUGH_QUERY_REWRITE` resets flow profile slots (query source, guardrail/rewrite/rerank/retriever switches).
+- These defaults do **not** reset session web knobs: `web_search` and `fetch_page_content`.
+- Keep `web_search=local_only` in the reset path for a local-only baseline.
+- If you previously used `web_search=web_only`, setting `web_search=local_only` also clears the implicit `retrieve_mode=WEB`.
+
+You are now back at a clean default-like session state.
+
+---
+
+## 11) Document Classification -> Filtered Load
+
+This is the classify-then-load route from the original workflow: classify first,
+then ingest only the subset you want.
+
+### Step A: Run document classification
+
+```Windows
+python ./src/Apps/DocClassify.py --doc-dir TestDocs
+```
+
+At the end of the run, note the generated OK CSV path (example format):
+
+- `logs/DocClassify_OK_YYYYMMDD_HHMMSS.csv`
+
+### Step B: Choose a target collection for filtered ingestion
+
+Edit `src/Configuration/Config_Load_Retrievers.py` and set a dedicated target
+collection, for example:
 
 ```python
-_CHROMA_EMBED_AND_RETRIEVE_PARAMS = {
-    "THOROUGH": {
-        ...
-        "NEIGHBORS_ON_LOAD": 512,    # neighbours explored when building the index (RAGLoad)
-        "NEIGHBORS_RETRIEVE": 512,   # neighbours explored when querying the index (RAGChat)
-    },
-    ...
+COLLECTION = "Test_Classified_Filtered"
+```
+
+### Step B2: Ingest everything vs only changed files
+
+RAGLoad can either reprocess everything or skip unchanged files based on file hash.
+
+Control slot:
+
+- `src/Configuration/Config_RAGLoad.py`
+- `PROCESS_IF_UNCHANGED`
+
+Set behavior:
+
+```python
+PROCESS_IF_UNCHANGED = True   # process all files, even when hash is unchanged
+PROCESS_IF_UNCHANGED = False  # process only changed/new files (incremental mode)
+```
+
+Notes:
+
+- RAGLoad CLI flag: `--process-if-unchanged true|false`
+- This flag is exposed for RAGLoad only (from `Config_RAGLoad.py`).
+
+### Step C: Load only selected rows from the classification CSV
+
+Use `--load-from-classify-csv` with `--classify-csv-query` (SQLite WHERE syntax).
+
+Animal-focused example:
+
+```Windows
+python ./src/Apps/RAGLoad.py --doc-dir TestDocs --load-from-classify-csv logs/DocClassify_OK_YYYYMMDD_HHMMSS.csv --classify-csv-query "Animal LIKE '%hedgehog%' OR Animal LIKE '%cat%'"
+```
+
+Language-focused example:
+
+```Windows
+python ./src/Apps/RAGLoad.py --doc-dir TestDocs --load-from-classify-csv logs/DocClassify_OK_YYYYMMDD_HHMMSS.csv --classify-csv-query "Language = 'English'"
+```
+
+Combined filter example:
+
+```Windows
+python ./src/Apps/RAGLoad.py --doc-dir TestDocs --load-from-classify-csv logs/DocClassify_OK_YYYYMMDD_HHMMSS.csv --classify-csv-query "Mammal LIKE '%Yes%' AND Language = 'English'"
+```
+
+### Step D: Validate in chat
+
+```Windows
+python ./src/Apps/RAGChat.py
+```
+
+```text
+🛠️  > collection=Test_Classified_Filtered
+💬 Your actual query> Which animals are available in this collection?
+💬 Your actual query> Answer only from English sources.
+```
+
+If the query returns fewer or different documents than the unfiltered collection,
+the classify filter is working as intended.
+
+### Step E: Change classification prompts (where to look)
+
+If you want to customize what DocClassify extracts, start here:
+
+Main prompt templates (classification output prompt):
+
+- `src/Configuration/Config_DocClassify.py`
+- `_PROMPT_CLASSIFY_MISTRAL`
+- `_PROMPT_CLASSIFY_LLAMA`
+
+Output schema keys (must stay aligned with prompt fields):
+
+- `src/Configuration/Config_DocClassify.py`
+- `_YOUR_CLASSIFICATION_KEYS`
+- `_CLASSIFICATION_KEYS`
+- `CLASSIFICATION_WORD_CNT`
+- `SUMMARY_SENTENCE_CNT`
+
+Which model/prompt mapping is used for classification:
+
+- `src/Configuration/Config_Models.py`
+- `_ACTIVE_LLM`
+- `_MODELS[...]["_LLM"]["PROMPT_CLASSIFY"]`
+
+Prompt-check templates for compliance validation (classification stage):
+
+- `src/Configuration/Config_Banned_Prompts.py`
+- `_PROMPT_CHECK_CLASSIFY_MISTRAL`
+- `_PROMPT_CHECK_CLASSIFY_LLAMA_GUARD`
+- mapped via `_MODELS[...]["_LLM_CHK"]["PROMPT_CLASSIFY"]` in `src/Configuration/Config_Models.py`
+
+Minimal rule of thumb:
+
+- When you add/remove classification fields, update both prompt text and `_YOUR_CLASSIFICATION_KEYS` so JSON keys and parser expectations stay in sync.
+
+### Step F: Add banned words and tune detector strictness
+
+Simple banned-word example:
+
+1. Open `src/Configuration/Config_Banned_Content.py`.
+2. Add your terms to `_STRICT_BANNED["BANNED"]`.
+
+```python
+_STRICT_BANNED = {
+    "BANNED": [
+        # existing entries...
+        "customer internal token",
+        "project pegasus secret",
+    ],
 }
 ```
 
-- **`NEIGHBORS_ON_LOAD`** affects index build quality. A higher value makes RAGLoad slower but produces a more accurate index. Try lowering it to `64` — loading will be faster, but the index may miss some connections between similar chunks, which can slightly reduce retrieval quality later.
-- **`NEIGHBORS_RETRIEVE`** affects query-time search quality. A higher value makes each RAGChat query explore more of the index graph, returning better results at the cost of speed. Try lowering it to `64` and compare the chunks returned for the same query — you may notice that some relevant chunks are no longer found.
+Tune "how many algorithms must agree" in `src/Configuration/Config_Banned_Detection.py`.
+For RAGChat prompt checks, use the `RAGChat -> PROMPT_CHECK -> PIPELINE` block:
 
-**What changes:** Lower values speed up loading and querying but may reduce recall (fewer relevant chunks found). Higher values improve accuracy but increase computation time. The effect is most noticeable with large collections; for the small `TestDocs` set the difference may be subtle. Unlike chunk size changes, you do **not** need to re-create the collection when changing `NEIGHBORS_RETRIEVE` — it takes effect immediately on the next query. However, changing `NEIGHBORS_ON_LOAD` only affects newly indexed chunks, so for a fair comparison you should reload the collection.
+- `REQUIRED_ALGOS_ABOVE_THRESHOLD`: how many algorithms must exceed their threshold.
+- `REQUIRED_DIFFERENT_ALGOS_HAVE_A_SCORE`: how many different algorithms must fire (non-zero score).
 
-### 🎯 7. Experiment with RAGChat retrieval strategies
-
-Start RAGChat and switch strategies interactively to see how retrieval quality changes:
-
-```text
-🛠️  > strategy=narrow
-💬 Your actual query> What do elephants eat?
-
-🛠️  > strategy=ultra_wide
-💬 Your actual query> What do elephants eat?
-```
-
-**What changes:** `NARROW` fetches fewer chunks with a high relevance bar (threshold 0.75) — answers are precise but may miss relevant context spread across documents. `ULTRA_WIDE` fetches up to 3000 vector candidates with a low threshold (0.20) — you get comprehensive answers but the LLM receives much more context, which can dilute precision or slow down responses.
-
-### 📊 8. Lower individual algorithm thresholds
-
-Pick one algorithm — for example Jaccard in the RAGLoad pipeline — and lower its threshold:
+Typical (current) chat-time values are:
 
 ```python
-"Jaccard": {
-    "CHAR_NGRAM_RANGE": (4, 6),
-    "THRESHOLD": 0.40,        # was 0.75
-    "THRESHOLD_MIN": 0.2,     # was 0.5
-},
+"REQUIRED_ALGOS_ABOVE_THRESHOLD": 2,
+"REQUIRED_DIFFERENT_ALGOS_HAVE_A_SCORE": 3,
 ```
 
-**What changes:** Jaccard will flag more content as matching banned words because even moderate character overlap is now enough to exceed the threshold. Combined with the consensus rules, this means Jaccard will contribute a "yes" vote more often, making the overall filter stricter for Jaccard-sensitive content (short words, partial overlaps).
-
-### 🎭 9. Add your own masking rule
-
-In `Config_Banned_Content.py`, find the `_STRICT_MASKING_REGEXES` dictionary and add a new rule:
+Extreme scenario (fires often, for demonstration):
 
 ```python
-{
-    "pattern": r"\b\d{3}-\d{2}-\d{4}\b",
-    "mask": "[MASKED-ID]",
-    "enabled": True,
-    "priority": 100,
-    "desc": "Custom ID pattern",
-},
-```
-
-**What changes:** Any text matching the pattern (e.g. `123-45-6789`) will be replaced with `[MASKED-ID]` before the content is stored or returned. You can verify this by placing a document containing such a pattern in your document folder and loading it — the masker output will show `[MASKED-ID]` instead of the original value.
-
-### 🔄 10. Switch the compliance-check LLM
-
-In `Config_Models.py`, change the compliance checker from Llama Guard to the same model used for generation:
-
-```python
-_ACTIVE_LLM_CHK = "mistral"   # was "llama_guard"
-```
-
-**What changes:** Prompt compliance checks are now performed by Mistral instead of the dedicated Llama Guard safety model. Llama Guard is specifically trained for safety classification and returns structured safe/unsafe labels. Mistral will still perform the check using the configured prompt template, but its judgements may differ — it could be more lenient or flag different content. This is useful for comparing how different models evaluate the same prompts.
-
-After editing, update `_CRITICAL_CONFIG_HASHES["Config_Models"]` in `Config_Global.py`.
-
-### ⚙️ 11. Try different DocClassify extraction presets
-
-In `Config_DocClassify.py`, switch the extraction and KeyBERT presets:
-
-```python
-_ACTIVE_EXTRACTION_CONFIG = "RECALL"     # was "STRICT"
-_ACTIVE_KEYBERT_CONFIG = "BALANCED"      # was "STRICT"
-```
-
-**What changes:** `RECALL` uses a slightly higher temperature and wider top-k sampling, so the LLM extracts more classification labels (higher recall, possibly more noise). `BALANCED` KeyBERT extracts more keyword candidates (80 phrases vs. 60). Together this produces richer but potentially noisier classification output. Compare the resulting CSV files side-by-side to see which preset works better for your documents.
-
-### 🧲 12. Enable the Cosine algorithm
-
-In `Config_Banned_Detection.py`, uncomment the Cosine entries in the pipeline and in `ALGOS_TO_PROCESS`:
-
-```python
-"Cosine": {"THRESHOLD": 0.45, "THRESHOLD_MIN": 0.2},
-```
-
-```python
+"REQUIRED_ALGOS_ABOVE_THRESHOLD": 1,
+"REQUIRED_DIFFERENT_ALGOS_HAVE_A_SCORE": 1,
 "ALGOS_TO_PROCESS": {
     "Regex": True,
     "Jaccard": True,
     "BM25": True,
-    "Cosine": True,
     "Keybert": True,
 },
 ```
 
-**What changes:** A fifth algorithm votes in the consensus. Since Cosine and KeyBERT both use embedding-based similarity, they tend to produce correlated scores. This effectively gives embedding similarity more weight in the consensus decision. If you also raise `REQUIRED_DIFFERENT_ALGOS_HAVE_A_SCORE` to `5`, all five algorithms must participate — making the breadth check very strict.
+Impact of this extreme setup:
 
-### 💡 General tips
+- detector triggers much more often (high recall, low precision)
+- many benign passages may be masked/blocked (false positives increase)
+- chat and load runs can feel noisier because more content is flagged
 
-- When experimenting, changing **one thing at a time** can make it easier to observe effects.
-- Use `DEBUG_LEVEL = 4` in `Config_Global.py` to see per-algorithm scores and understand why a chunk was accepted or rejected.
-- After editing `Config_Banned_Detection.py`, `Config_Banned_Content.py`, `Config_Banned_Prompts.py`, or `Config_Models.py`, remember to update the corresponding hash in `Config_Global.py` — the new hash is printed when you start the application.
-- When experimenting with RAGLoad settings, use a **new collection name** (for example, set `COLLECTION = "Experiment1"` in `Config_Load_Retrievers.py`) so you can compare results without overwriting your previous collection.
+Use this only as a temporary experiment, then restore stricter values.
 
-### 🧲 13. Enable Open WebUI
+---
 
-- Follow the steps described in [INSTALL.md](INSTALL.md#-install-open-webui-optional) to activate Open WebUI integration.
+## 12) Example Matrix (High-Insight Tests)
 
-- Open a new chat window and select the collection where you previously loaded the TestDocs
+Use these short experiments when you want to understand *why* behavior changed,
+not only *that* it changed.
 
-  ``` python
-    python ./src/Apps/RAGLoad.py --doc_dir TestDocs
-  ```
+1. Strategy A/B with fixed questions
+Change: switch `strategy` across `DEFAULT`, `NARROW`, `ULTRA_WIDE`.
+Run: ask the same 5 questions each time.
+Observe: trade-off between precision and recall, plus answer confidence changes.
 
-  Then start the RAGChatService:
+2. Flow comparison on multilingual prompts
+Change: switch `orchestrator_flow` between `THOROUGH_QUERY_REWRITE`, `TRANSLATION_FOCUSED`, and `ORIGINAL_LANGUAGE_VECTOR_ONLY`.
+Run: use mixed-language prompts like `Was fressen Igel?` and an English follow-up.
+Observe: rewrite behavior, retrieval source changes, and grounding differences.
 
-  ``` python
-    python ./src/Apps/RAGChatService.py
-  ```
+3. Local vs web retrieval modes
+Change: set `web_search` to `local_only`, `local_and_web`, and `web_only`; vary `web_weight`.
+Run: one query with strong local coverage and one with weak local coverage.
+Observe: fusion impact, ranking shifts, and when web context dominates.
 
-  Open a new chat in Open WebUI and select the `AnimalDocs` model. Start chatting and ask:
+4. Incremental ingestion impact
+Change: toggle `PROCESS_IF_UNCHANGED` between `True` and `False`.
+Run: ingest once, modify one file, ingest again.
+Observe: processing time and number of reprocessed documents.
 
-  ``` text
-    Do hedgehogs have spines?
-    How to steal a llama?
-    How to rob a llama?
-  ```
+5. Classify-then-load curation impact
+Change: load from the same DocClassify CSV with different `--classify-csv-query` filters.
+Run: compare `Language = 'English'` vs a domain-specific filter.
+Observe: how collection scope changes answer content and confidence.
 
-You will get the same answers as if you're using  `RAGChat.py` but thorough the Open WebUI GUI.
+6. Confidence calibration mini-check
+Change: keep config fixed, but choose 3 easy, 3 ambiguous, and 3 out-of-domain questions.
+Run: inspect the answer confidence block and the confidence CSV rows.
+Observe: whether `HIGH/MEDIUM/LOW` aligns with actual answer quality.
 
-![OpenWebUI chatting with AnimalDocs via RAGChatService](Documentation/Pics/OpenWebUIAnimalDocsFromRAG-LCC.jpg)
+7. Banned detector sensitivity sweep
+Change: compare current thresholds with an extreme setup (`REQUIRED_ALGOS_ABOVE_THRESHOLD=1`, `REQUIRED_DIFFERENT_ALGOS_HAVE_A_SCORE=1`).
+Run: test the same benign and borderline prompts in both modes.
+Observe: false-positive growth, masking frequency, and usability impact.
+
+8. Pinning vs unpinned retrieval
+Change: run once with no pins, then with `file=...` and `metadata=...`.
+Run: ask the same question all three times.
+Observe: source narrowing effects and confidence stability.
+
+---
+
+## Optional Next Step
+
+For more end-to-end examples and slot-level details, see:
+
+- [EXAMPLES.md](EXAMPLES.md)
+- [CONFIGURATION_REFERENCE.md](CONFIGURATION_REFERENCE.md)

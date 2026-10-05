@@ -141,16 +141,12 @@ This reference covers both a **quick-scan overview** (tables by topic and by con
 
 | **Component** | **Options/Values** | **Purpose** |
 |---------------|-------------------|-------------|
-| **Terminal Line Size** | `TERMINAL_LINE_SIZE`: 120 characters | Output line width for PrettyWriter word-wrap. Can be set differently for debug vs non-debug modes. |
-| **Answer Display Colors** | `ANSWER_DISPLAY`: background/foreground colors | Visual styling for LLM answers. Controls RGB values in Colors.py for highlighted answer text. |
-| **CSV Delimiter** | `CSV_DELIMITER`: ";" | Character separating fields in output CSVs. Semicolon avoids conflicts with commas in text content. |
-| **JSON Repair** | `TRY_FIX_JSON_LLM_REPLY`: True/False | Attempts to fix malformed JSON from LLM responses by appending missing closing braces. Quick fix for non-strict JSON models. |
-| **Terminal Line Size** | `TERMINAL_LINE_SIZE`: 120 characters | Output line width for PrettyWriter word-wrap. Can be set differently for debug vs non-debug modes. |
+| **Terminal Line Size** | `TERMINAL_LINE_SIZE`: global `140`; RAGChat `{"debug": 200, "no_debug": 100}` | Output line width for PrettyWriter word-wrap. RAGChat auto-switches width by debug state. |
 | **Answer Display Colors** | `ANSWER_DISPLAY`: background/foreground colors | Visual styling for LLM answers. Controls RGB values in Colors.py for highlighted answer text. |
 | **CSV Delimiter** | `CSV_DELIMITER`: ";" | Character separating fields in output CSVs. Semicolon avoids conflicts with commas in text content. |
 | **Leet Speak Normalization** | `_LEET_MAP`: character mapping | Decodes leet speak obfuscation (0→o, 1→i, 3→e, etc.) before banned-word detection. Catches attempts to evade filters. |
 | **Unicode Confusables** | `_CONFUSABLES`: character mapping | Normalizes lookalike characters (Cyrillic а→Latin a, İ→i, ß→ss) to catch obfuscation via Unicode substitution. |
-| **Grounding Markers** | Sentence-level source citations | Annotates LLM answers with per-sentence source markers ([Source: filename]). Enabled at Grounding debug level (33). |
+| **Grounding Markers** | Sentence-level overlap highlighting | Marks grounded answer fragments based on overlap with retrieved evidence. Not gated by debug level; debug controls diagnostics only. |
 | **Single-File Boost** | `SINGLE_CHUNK_SCORE_BOOST`: 1.25 | Score multiplier applied when all chunks come from one file. Rewards concentrated evidence. |
 | **License Consent** | Files in ModelGovernance/licenses/ | Tracks user consent for model licenses. Enforced before model download or use. |
 | **Internet Access Toggles** | `HF_HUB_OFFLINE`, `TRANSFORMERS_OFFLINE`, `HF_DATASETS_OFFLINE` in Config_Internet_Env | Control Hugging Face Hub access. Set to "1" to work fully offline after initial model downloads. |
@@ -184,20 +180,20 @@ This reference covers both a **quick-scan overview** (tables by topic and by con
 | **Use Exclusions** | `Config_Global.py` | `USE_EXCLUSIONS` | Enable exclusion file processing |
 | **Load from Classify CSV** | `Config_RAGLoad.py` | `LOAD_FROM_CLASSIFY_CSV` | Filter loading by CSV |
 | **Classify CSV Query** | `Config_RAGLoad.py` | `CLASSIFY_CSV_QUERY` | SQL WHERE clause for CSV filter |
-| **Retrieval Strategy** | `Config_RAGChat.py` | `_ACTIVE_CHUNK_SELECT_STRATEGY` | "NARROW", "BALANCED_FILE_CAP", "DEFAULT", "WIDE", "ULTRA_WIDE" |
-| **Active Orchestration Flow** | `Config_Orchestrator.py` | `_ACTIVE_ORCHESTRATION_FLOW` | Default retrieval orchestration profile for each turn |
+| **Retrieval Strategy** | `Config_RAGChat_Strategies.py` | `_ACTIVE_CHUNK_SELECT_STRATEGY` | "NARROW", "BALANCED_FILE_CAP", "DEFAULT", "WIDE", "ULTRA_WIDE" |
+| **Default Orchestration Flow** | `Config_Orchestrator.py` | `_DEFAULT_ORCHESTRATION_FLOW` | Default retrieval orchestration profile when session `orchestrator_flow` is unset |
 | **Allowed Orchestration Flows** | `Config_Orchestrator.py` | `_ALLOWED_ORCHESTRATION_FLOWS` | Optional allow-list exposed to `orchestrator_flow` selection |
 | **Orchestration Flow Profiles** | `Config_Orchestrator.py` | `_ORCHESTRATION_FLOWS[flow_name]` | Per-flow query-source and stage-gate profile dict |
-| **Strategy Definitions** | `Config_RAGChat.py` | `_STRATEGIES[strategy_name]` | Per-strategy parameters dict |
-| **Final Chunks to LLM** | `Config_RAGChat.py` | `_STRATEGIES[strategy]["final_chunks_to_llm"]` | Per-strategy chunk count |
-| **Retriever K** | `Config_RAGChat.py` | `_STRATEGIES[strategy]["retriever_k"]` | Per-strategy candidate fetch count |
-| **Rerank Threshold** | `Config_RAGChat.py` | `_STRATEGIES[strategy]["threshold"]` | Per-strategy sigmoid probability floor |
-| **Reranking Enabled** | `Config_RAGChat.py` | `_STRATEGIES[strategy]["rerank"]` | 0=off, 1=on |
-| **Retrieval Mode** | `Config_RAGChat.py` | `_STRATEGIES[strategy]["retrieve_mode"]` | "VECTOR", "BM25", "GRAPH", "REGEX", pair-combinations, "ALL", "WEB". |
-| **Allowed Retrieval Modes** | `Config_RAGChat.py` | `_ALLOWED_RETRIEVE_MODES` | List of valid retrieval mode strings |
-| **RRF Weights** | `Config_RAGChat.py` | `_STRATEGIES[strategy]["vector_weight"]`, `["bm25_weight"]`, `["graph_weight"]`, `["regex_weight"]`, `["web_weight"]` | Per-retriever RRF fusion weights |
-| **File Limit** | `Config_RAGChat.py` | `_STRATEGIES[strategy]["filelim"]` | Max chunks per file (0=unlimited) |
-| **Single Chunk Boost** | `Config_RAGChat.py` | `SINGLE_CHUNK_SCORE_BOOST` | Score multiplier for single-file results |
+| **Strategy Definitions** | `Config_RAGChat_Strategies.py` | `_STRATEGIES[strategy_name]` | Per-strategy parameters dict |
+| **Final Chunks to LLM** | `Config_RAGChat_Strategies.py` | `_STRATEGIES[strategy]["final_chunks_to_llm"]` | Per-strategy chunk count |
+| **Retriever K** | `Config_RAGChat_Strategies.py` | `_STRATEGIES[strategy]["retriever_k"]` | Per-strategy candidate fetch count |
+| **Rerank Threshold** | `Config_RAGChat_Strategies.py` | `_STRATEGIES[strategy]["threshold"]` | Per-strategy sigmoid probability floor |
+| **Reranking Enabled** | `Config_RAGChat_Strategies.py` | `_STRATEGIES[strategy]["rerank"]` | 0=off, 1=on |
+| **Retrieval Mode** | `Config_RAGChat_Strategies.py` | `_STRATEGIES[strategy]["retrieve_mode"]` | "VECTOR", "BM25", "GRAPH", "REGEX", pair-combinations, "ALL", "WEB". |
+| **Allowed Retrieval Modes** | `Config_RAGChat_Strategies.py` | `_ALLOWED_RETRIEVE_MODES` | List of valid retrieval mode strings |
+| **RRF Weights** | `Config_RAGChat_Strategies.py` | `_STRATEGIES[strategy]["vector_weight"]`, `["bm25_weight"]`, `["graph_weight"]`, `["regex_weight"]`, `["web_weight"]` | Per-retriever RRF fusion weights |
+| **File Limit** | `Config_RAGChat_Strategies.py` | `_STRATEGIES[strategy]["filelim"]` | Max chunks per file (0=unlimited) |
+| **Single Chunk Boost** | `Config_RAGChat_Display.py` | `SINGLE_CHUNK_SCORE_BOOST` | Score multiplier for single-file results |
 
 ### 🌐 Web Search
 
@@ -236,19 +232,19 @@ This reference covers both a **quick-scan overview** (tables by topic and by con
 
 | **Component** | **Config File** | **Slot Name / Path** | **Notes** |
 |---------------|----------------|----------------------|-----------|
-| **Chat Prompt Template** | `Config_RAGChat.py` | `_PROMPT_CHAT` | Main answer generation prompt (fully replaceable per model) |
-| **Query Rewrite Prompts** | `Config_RAGChat.py` | `_PROMPT_TOPIC_DETECT`, `_PROMPT_QUERY_EXPAND` | Conversation context analysis and alternate-phrasings generation |
-| **Chat Context** | `Config_RAGChat.py` | `_STRATEGIES[strategy]["use_chat_context"]`, `["turns"]`, `["max_history_turns"]` | Conversation memory settings per strategy |
-| **Topic Summary Mode** | `Config_RAGChat.py` | `_STRATEGIES[strategy]["TOPIC_SUMMARY_MODE"]` | "last" (most recent turn) or "all" (full history) |
-| **LLM Parameters** | `Config_RAGChat.py` | `_STRATEGIES[strategy]["temperature"]`, `["top_k"]`, `["top_p"]`, `["max_output_tokens"]` | Per-strategy generation sampling params |
-| **Query Rewrite Settings** | `Config_RAGChat.py` | `_QUERY_REWRITE["enabled"]`, `["topic_confidence_threshold"]`, `["TRANSLATION_BACKEND"]` | Enable/disable, confidence gate, and translation engine for query normalisation |
-| **Query Rewrite LLM Params** | `Config_RAGChat.py` | `_QUERY_REWRITE["LLM_PARAM"]` | temperature, top_k, top_p, num_predict, use_ollama_gpu |
-| **Meta-Descriptor Guard** | `Config_RAGChat.py` | `_QUERY_REWRITE["meta_descriptors"]` | Noun-head list that triggers clarification instead of retrieval |
-| **Multi-Query Expansion** | `Config_RAGChat.py` | `_MULTI_QUERY["enabled"]`, `["num_variants"]` | Toggle and variant count (default 3) for alternate-phrasings retrieval |
-| **Multi-Query LLM Params** | `Config_RAGChat.py` | `_MULTI_QUERY["LLM_PARAM"]` | temperature (higher=more diverse), top_k, top_p, num_predict |
-| **Chunk Near-Dedup** | `Config_RAGChat.py` | `_CHUNK_DEDUP["enabled"]`, `["threshold"]` | Jaccard similarity threshold for removing near-duplicate chunks (default 0.85) |
-| **Answer Grounding** | `Config_RAGChat.py` | `_MARKED_DOCS_GROUNDING["min_sentence_tokens"]`, `["min_fragment_len"]`, `["min_overlap_window"]` | Sensitivity of sentence-level grounding detection |
-| **Answer Colors** | `Config_RAGChat.py` | `_MARKED_DOCS_COLORS["highlight"]`, `["answer_mark"]`, `["answer_ansi"]` | Per-output-mode color for chunk highlight, Markdown/HTML, and CLI ANSI |
+| **Chat Prompt Template** | `Config_RAGChat_Prompts.py` | `_PROMPT_CHAT` | Main answer generation prompt (fully replaceable per model; service mode can override in `Config_RAGChatService.py`) |
+| **Query Rewrite Prompts** | `Config_RAGChat_Prompts.py` / `Config_RAGChat_Rewrite.py` | `_PROMPT_TOPIC_DETECT`, `_PROMPT_QUERY_EXPAND` | Conversation context analysis and alternate-phrasings generation |
+| **Chat Context** | `Config_RAGChat_Strategies.py` | `_STRATEGIES[strategy]["use_chat_context"]`, `["turns"]`, `["max_history_turns"]` | Conversation memory settings per strategy |
+| **Topic Summary Mode** | `Config_RAGChat_Strategies.py` | `_STRATEGIES[strategy]["TOPIC_SUMMARY_MODE"]` | "last" (most recent turn) or "all" (full history) |
+| **LLM Parameters** | `Config_RAGChat_Strategies.py` | `_STRATEGIES[strategy]["temperature"]`, `["top_k"]`, `["top_p"]`, `["max_output_tokens"]` | Per-strategy generation sampling params |
+| **Query Rewrite Settings** | `Config_RAGChat_Rewrite.py` | `_QUERY_REWRITE["enabled"]`, `["topic_confidence_threshold"]`, `["TRANSLATION_BACKEND"]` | Enable/disable, confidence gate, and translation engine for query normalisation |
+| **Query Rewrite LLM Params** | `Config_RAGChat_Rewrite.py` | `_QUERY_REWRITE["LLM_PARAM"]` | temperature, top_k, top_p, num_predict, use_ollama_gpu |
+| **Meta-Descriptor Guard** | `Config_RAGChat_Rewrite.py` | `_QUERY_REWRITE["meta_descriptors"]` | Noun-head list that triggers clarification instead of retrieval |
+| **Multi-Query Expansion** | `Config_RAGChat_Rewrite.py` | `_MULTI_QUERY["enabled"]`, `["num_variants"]` | Toggle and variant count (default 3) for alternate-phrasings retrieval |
+| **Multi-Query LLM Params** | `Config_RAGChat_Rewrite.py` | `_MULTI_QUERY["LLM_PARAM"]` | temperature (higher=more diverse), top_k, top_p, num_predict |
+| **Chunk Near-Dedup** | `Config_RAGChat_Rewrite.py` | `_CHUNK_DEDUP["enabled"]`, `["threshold"]`, `["include_web_chunks"]` | Jaccard similarity threshold and web-chunk inclusion for near-duplicate removal |
+| **Answer Grounding** | `Config_RAGChat_Display.py` | `_MARKED_DOCS_GROUNDING["min_sentence_tokens"]`, `["min_fragment_len"]`, `["min_overlap_window"]` | Sensitivity of sentence-level grounding detection |
+| **Answer Colors** | `Config_RAGChat_Display.py` | `_MARKED_DOCS_COLORS["highlight"]`, `["answer_mark"]`, `["answer_ansi"]` | Per-output-mode color for chunk highlight, Markdown/HTML, and CLI ANSI |
 | **KeyBERT Chat** | `Config_RAGChat.py` | `_KEY_BERT["TOP_N_FIRST"]`, `["TOP_N_SECOND"]` | Keyword extraction limits for query-time use |
 | **RAGLoad KeyBERT** | `Config_RAGLoad.py` | `_KEY_BERT` | TOP_N_FIRST, TOP_N_SECOND for indexing-time keyword extraction |
 
@@ -331,10 +327,10 @@ This reference covers both a **quick-scan overview** (tables by topic and by con
 
 | **Component** | **Config File** | **Slot Name / Path** | **Notes** |
 |---------------|----------------|----------------------|-----------|
-| **Terminal Line Size (RAGChat)** | `Config_RAGChat.py` | `TERMINAL_LINE_SIZE` | Dict with "debug" (180) and "no_debug" (100) keys — auto-switches based on active debug level |
-| **Terminal Line Size (global)** | `Config_Global.py` | `TERMINAL_LINE_SIZE` | Flat integer baseline (120) used by RAGLoad, DocClassify, and fallback |
+| **Terminal Line Size (RAGChat)** | `Config_RAGChat_Display.py` | `TERMINAL_LINE_SIZE` | Dict with "debug" (200) and "no_debug" (100) keys — auto-switches based on active debug level |
+| **Terminal Line Size (global)** | `Config_Global.py` | `TERMINAL_LINE_SIZE` | Flat integer baseline (140) used by RAGLoad, DocClassify, and fallback |
 | **Answer Background/Foreground** | `Config_Global.py` | `ANSWER_DISPLAY["bg"]`, `["fg"]` | Names of `Colors.py` constants for LLM answer background and foreground |
-| **Answer Grounding Colors** | `Config_RAGChat.py` | `_MARKED_DOCS_COLORS["highlight"]`, `["answer_mark"]`, `["answer_ansi"]` | Chunk-highlight, grounded-span Markdown/HTML, and CLI ANSI colors |
+| **Answer Grounding Colors** | `Config_RAGChat_Display.py` | `_MARKED_DOCS_COLORS["highlight"]`, `["answer_mark"]`, `["answer_ansi"]` | Chunk-highlight, grounded-span Markdown/HTML, and CLI ANSI colors |
 | **CSV Delimiter** | `Config_Global.py` | `CSV_DELIMITER` | Field separator for all output CSVs (default ";") |
 
 ### 🧾 Supplemental Slot Coverage (Split Modules and Runtime Guards)
@@ -390,7 +386,7 @@ _ACTIVE_CROSS = "mmarco"
 ### 🔍 Retrieval
 **Switch retrieval strategy:**
 ```python
-# Config_RAGChat.py
+# Config_RAGChat_Strategies.py
 _ACTIVE_CHUNK_SELECT_STRATEGY = "NARROW"  # NARROW, WIDE, BALANCED_FILE_CAP, DEFAULT, ULTRA_WIDE
 ```
 
@@ -795,7 +791,7 @@ For individual configuration switches such as `TRY_FIX_JSON_LLM_REPLY` (automati
 
 | Key | Default used in this repository | Purpose |
 | --- | --- | --- |
-| `TERMINAL_LINE_SIZE` | `{"debug": 180, "no_debug": 100}` in `Config_RAGChat.py` | Line width used when wrapping terminal output. Defined only in `Config_RAGChat.py` as a dict resolved at runtime by debug level (the debug branch widens tables; the no-debug branch is narrower). There is no default in `Config_Global.py`. Also settable live via `terminal_line_size=N`, `terminal_line_size!`, and `terminal_line_size?` in the chat prompt. |
+| `TERMINAL_LINE_SIZE` | `{"debug": 200, "no_debug": 100}` in `Config_RAGChat_Display.py`; global fallback `140` in `Config_Global.py` | Line width used when wrapping terminal output. RAGChat resolves the dict at runtime by debug level (the debug branch widens tables; the no-debug branch is narrower). Also settable live via `terminal_line_size=N`, `terminal_line_size!`, and `terminal_line_size?` in the chat prompt. |
 
 ### 🔤 Unicode Normalisation & Leet-Speak Detection
 
@@ -1097,7 +1093,7 @@ To switch models, change the `_ACTIVE_LLM` selector variable in `Config_Models.p
 
 ### ✏️ Query Rewrite LLM (`_MODELS["llama"]["_LLM_REWRITE_PROMPT"]`)
 
-A dedicated LLM used to rewrite follow-up queries for coreference resolution in multi-turn chat. When chat context is enabled, ambiguous references (e.g. "are they mammals?") are rewritten into self-contained questions (e.g. "which of cats, hedgehogs, and dogs are mammals") before retrieval. Each conversation turn is tagged with the active file filter (or `[No file filter]`), so the rewriter can detect context switches — when the user changes to a different file, prior entities are not carried over. The impl key is selected by `_ACTIVE_LLM_REWRITE_PROMPT = "mistral"` (default used in this repository) or `"llama"`. Rewrite parameters (`temperature`, `top_k`, `top_p`, `num_predict`, `streaming`, `topic_confidence_threshold`, `TOPIC_SUMMARY_MODE`, `TRANSLATION_BACKEND`) are configured separately in `_QUERY_REWRITE` in `Config_RAGChat.py`.
+A dedicated LLM used to rewrite follow-up queries for coreference resolution in multi-turn chat. When chat context is enabled, ambiguous references (e.g. "are they mammals?") are rewritten into self-contained questions (e.g. "which of cats, hedgehogs, and dogs are mammals") before retrieval. Each conversation turn is tagged with the active file filter (or `[No file filter]`), so the rewriter can detect context switches — when the user changes to a different file, prior entities are not carried over. The impl key is selected by `_ACTIVE_LLM_REWRITE_PROMPT = "mistral"` (default used in this repository) or `"llama"`. Rewrite parameters (`temperature`, `top_k`, `top_p`, `num_predict`, `streaming`, `topic_confidence_threshold`, `TOPIC_SUMMARY_MODE`, `TRANSLATION_BACKEND`) are configured separately in `_QUERY_REWRITE` in `Config_RAGChat_Rewrite.py`.
 
 ```python
 "mistral": {
@@ -1338,7 +1334,7 @@ Selector slots:
 
 | Slot | Default used in this repository | Purpose |
 | --- | --- | --- |
-| `_ACTIVE_ORCHESTRATION_FLOW` | `"THOROUGH_QUERY_REWRITE"` | Default flow profile when session does not request a specific flow. |
+| `_DEFAULT_ORCHESTRATION_FLOW` | `"THOROUGH_QUERY_REWRITE"` | Default flow profile when session does not request a specific flow. |
 | `_ALLOWED_ORCHESTRATION_FLOWS` | `[]` (empty) | Optional allow-list; when empty, all keys from `_ORCHESTRATION_FLOWS` are exposed. |
 | `_ALLOWED_ORCHESTRATION_QUERY_SOURCES` | `FINAL_QUERY`, `TRANSLATED_QUERY`, `ORIGINAL_QUERY` | Valid values for `main_query_source` / `secondary_query_source`. |
 | `_ORCHESTRATION_FLOWS` | 4 profiles | Profile dictionary that controls stage gates and query-source selection. |
@@ -1353,11 +1349,11 @@ Side-by-side flow slot check (configuration slot vs runtime field):
 | `use_secondary_query` | `enable_guardrail_leg` | Enables dual-query guardrail retrieval leg. |
 | `use_original_language_vector` | `enable_original_language_vector_leg` | Enables original-language vector retrieval leg. |
 | `shape_indexed_queries` | `enable_indexed_query_shaping` | Enables language-aware indexed query shaping for BM25/Graph/Regex. |
+| `translate_indexed_queries` | `enable_indexed_query_translation` | Enables indexed-stage query translation (for example EN→DE) during shaping. |
+| `expand_indexed_queries` | `enable_indexed_query_synonym_expansion` | Enables WordNet-based synonym expansion for indexed-stage queries before optional translation. |
 | `use_vector_alternates` | `enable_vector_alternate_queries` | Enables MultiQuery alternate vector fan-out usage. |
 | `use_query_rewrite` | `enable_query_rewrite` | Enables query rewrite stage for the turn. |
 | `use_pronoun_substitution` | `enable_pronoun_substitution` | Enables pronoun/coreference substitution in rewrite stage. |
-| `run_local_stage` | `enable_local_stage` | Gates local retrieval stage as a whole. |
-| `run_web_stage` | `enable_web_stage` | Gates web retrieval stage as a whole. |
 | `run_vector` | `enable_vector_retriever` | Gates vector retriever stage. |
 | `run_bm25` | `enable_bm25_retriever` | Gates BM25 retriever stage. |
 | `run_graph` | `enable_graph_retriever` | Gates graph retriever stage. |
@@ -1371,11 +1367,14 @@ Side-by-side contradiction checks (flow intent vs CLI/session knobs):
 
 | Flow-controlled stage | Session/CLI knob that can override effective behavior | Runtime contradiction attribution |
 | --- | --- | --- |
-| `run_local_stage` | `retrieve_mode=WEB` or `web_search=web_only` | `cli_knob=retrieve_mode=WEB` or `cli_knob=web_search=web_only` |
 | `run_vector`, `run_bm25`, `run_graph`, `run_regex` | `retrieve_mode` excluding that retriever | `cli_knob=retrieve_mode=<MODE>` |
 | `run_rerank` | `rerank=0` / `rerank=1` | `cli_knob=rerank=0` or `cli_knob=rerank=1` |
 | `run_low_score_fallback`, `run_low_recall_rescue` | dependent on effective rerank state (`run_rerank` + `rerank`) | `cli_knob=rerank=0` when rerank is disabled in session CLI |
 | `run_grounding` | `mark_text=false` | `cli_knob=mark_text=false` |
+
+Local/web stage execution is not flow-profile controlled. It is derived from
+`web_search` (`local_only` / `local_and_web` / `web_only`) plus any
+`retrieve_mode=WEB` override.
 
 `run_rerank` and strategy/session `rerank` are both required for reranking to execute. If either is off, reranking is skipped.
 
@@ -1384,7 +1383,7 @@ Side-by-side contradiction checks (flow intent vs CLI/session knobs):
 > See [Chat Context](ARCHITECTURE.md#-chat-context) in the architecture guide
 > for details on how multi-turn memory, retrieval, and incremental pruning work.
 
-### 🔀 Multi-Query Expansion (`_MULTI_QUERY` in `Config_RAGChat.py`)
+### 🔀 Multi-Query Expansion (`_MULTI_QUERY` in `Config_RAGChat_Rewrite.py`)
 
 Controls the optional alternate-query recall-broadening pass that runs during retrieval.
 
@@ -1420,18 +1419,22 @@ The prompt template for the expansion call is `PROMPT_QUERY_EXPAND`, configured 
 "PROMPT_QUERY_EXPAND": "_PROMPT_QUERY_EXPAND",
 ```
 
-The actual template string is `_PROMPT_QUERY_EXPAND` in `Config_RAGChat.py`.  It instructs the LLM to return a JSON array of `num_variants` strings — anything else is silently ignored and retrieval falls back to the original query only.
+The actual template string is `_PROMPT_QUERY_EXPAND` in `Config_RAGChat_Rewrite.py`.  It instructs the LLM to return a JSON array of `num_variants` strings — anything else is silently ignored and retrieval falls back to the original query only.
 
 Alternate-query hits are folded into the main RRF candidate pool before the merge step.  Duplicate chunks (same `doc_id`) are discarded; only the first occurrence (highest-ranked from any query variant) is kept.  The generated variants are logged at debug level 29.
 
 See [Multi-query expansion in ARCHITECTURE.md](ARCHITECTURE.md#selection-flow-all-strategies) for the full pipeline description.
 
-### 🧹 Chunk Near-Duplicate Removal (`_CHUNK_DEDUP` in `Config_RAGChat.py`)
+### 🧹 Chunk Near-Duplicate Removal (`_CHUNK_DEDUP` in `Config_RAGChat_Rewrite.py`)
 
 Controls the optional post-RRF deduplication pass that collapses near-identical chunks before cross-encoder reranking.
 
 ```python
-_CHUNK_DEDUP: dict[str, Any] = {"enabled": True, "threshold": 0.85}
+_CHUNK_DEDUP: dict[str, Any] = {
+    "enabled": True,
+    "threshold": 0.85,
+    "include_web_chunks": True,
+}
 ```
 
 | Key | Default | Purpose |
@@ -1484,7 +1487,7 @@ See [ARCHITECTURE.md § Query Rewrite](ARCHITECTURE.md#query-rewrite-coreference
 
 | Key | Default | Purpose |
 | --- | --- | --- |
-| `_OPENWEB_UI_WEBSEARCH` | `False` | When `True` (and `WEB_SEARCH_MODE = "1"`), every OpenWebUI request that does not carry an explicit `web_search` parameter automatically gets web search enabled — users never need to add an OpenWebUI Advanced Parameter manually. Has **no effect** when `WEB_SEARCH_MODE` is `"0"`. A startup warning is printed at **RAGChatService** startup when this is `True` but the master switch is not `"1"`. |
+| `_OPENWEB_UI_WEBSEARCH` | `True` | Default web-search state for new OpenWebUI sessions. `WEB_SEARCH_MODE` is the **master switch** and overrides this knob: when `WEB_SEARCH_MODE = "0"`, web queries are blocked regardless of this value; when `WEB_SEARCH_MODE = "1"`, `True` auto-enables web search for requests that do not pass an explicit `web_search` parameter. A startup warning is printed at **RAGChatService** startup when this is `True` but the master switch is not `"1"`. |
 
 ### �️ Visual Markers (`mark_text`)
 
@@ -1500,18 +1503,18 @@ When `mark_text` is enabled in a chat session, RAG-LCC produces in-memory highli
 
 #### Highlight colours
 
-Colours are configured in one grouped slot in `Config_RAGChat.py`:
+Colours are configured in one grouped slot in `Config_RAGChat_Display.py`:
 
 | Key | Default | Purpose |
 | --- | --- | --- |
 | `_MARKED_DOCS_COLORS.highlight` | `"yellow"` | Highlight inside source PDF / DOCX / PPTX (relevant source chunks). CSS-style colour name or hex string. |
-| `_MARKED_DOCS_COLORS.answer_mark` | `""` | Reserved for future use. Currently unused — API grounding is shown only in marked documents, not in chat text. |
+| `_MARKED_DOCS_COLORS.answer_mark` | `""` | Grounded/effective snippet color for marked-source HTML/MD output. Empty value uses runtime fallback color selection. |
 | `_MARKED_DOCS_COLORS.answer_ansi` | `"48;5;214"` | Grounded/effective answer sentences in CLI terminal (ANSI SGR parameter string without `\033[` and `m`). Pass `""` to disable CLI answer grounding. |
 
 ```python
 _MARKED_DOCS_COLORS = {
     "highlight": "yellow",      # source-chunk highlight in marked docs
-    "answer_mark": "",          # grounded sentences (HTML/MD) — currently unused
+    "answer_mark": "",          # grounded/effective snippets (HTML/MD), empty = fallback color
     "answer_ansi": "48;5;214",  # grounded sentences (CLI terminal)
 }
 ```
@@ -1567,7 +1570,7 @@ In service mode, highlighted bytes are stored in the `MarkedDocsStore` in-memory
 
 ### 🎨 Answer Display Style (`ANSWER_DISPLAY`)
 
-The CLI answer block can be styled with a background and foreground colour. Configure in `Config_RAGChat.py`:
+The CLI answer block can be styled with a background and foreground colour. Configure in `Config_Global.py`:
 
 ```python
 ANSWER_DISPLAY = {
@@ -1631,7 +1634,7 @@ Classification results are heuristic and probabilistic — false positives and f
 
 | Key | Default used in this repository | Purpose |
 | --- | --- | --- |
-| `_PROCESS_IF_UNCHANGED` | `True` | Re-process files even when their hash has not changed. Set to `False` to skip unchanged files. File hash is stored in Chroma DB. |
+| `PROCESS_IF_UNCHANGED` | `True` | Re-process files even when their hash has not changed. Set to `False` to skip unchanged files. File hash is stored in Chroma DB. CLI override (RAGLoad): `--process-if-unchanged true/false`. |
 
 ## 🏷️ 6. Config_DocClassify.py — Document Classification
 
@@ -1763,7 +1766,7 @@ For a hands-on example, see [Change provided example prompt in HANDS_ON_TOUR.md]
 
 ## 💬 4. Config_RAGChatService.py — HTTP Service Configuration
 
-`Config_RAGChatService.py` re-exports all settings from `Config_RAGChat.py` and adds service-specific configuration for the OpenAI-compatible REST API.
+`Config_RAGChatService.py` adds service-specific configuration for the OpenAI-compatible REST API, while the shared RAGChat split modules are loaded directly by the config loader.
 
 ### 🔧 Service-Specific Settings
 
@@ -1781,9 +1784,9 @@ For a hands-on example, see [Change provided example prompt in HANDS_ON_TOUR.md]
 | `_SERVE_DOCS.single_use` | `False` | Destroy cache entry after first fetch |
 | `_SERVE_DOCS.public_base_url` | `""` | Externally-reachable base URL for `/marked` links |
 
-### 📋 Re-Exported Settings from Config_RAGChat.py
+### 📋 RAGChat-Derived Settings in Service Mode
 
-All settings from `Config_RAGChat.py` are available in `Config_RAGChatService.py`:
+Shared RAGChat settings are also available in service mode via split-module loading:
 
 - `_STRATEGIES` (NARROW, WIDE, BALANCED_FILE_CAP, ULTRA_WIDE, DEFAULT)
 - `_ALLOWED_RETRIEVE_MODES`
@@ -1794,7 +1797,7 @@ All settings from `Config_RAGChat.py` are available in `Config_RAGChatService.py
 
 ### 🔄 Relationship to Config_RAGChat.py
 
-`Config_RAGChatService.py` uses `from Configuration.Config_RAGChat import *` to inherit all settings, then adds its own service-specific overrides and additions. This ensures consistent behavior between the CLI and service versions while allowing endpoint-specific configuration.
+`Config_RAGChatService.py` does not import `Config_RAGChat.py` via wildcard. Instead, `Config()` loads the RAGChat split configuration modules directly for service mode, and `Config_RAGChatService.py` contributes service-only overrides/additions. This keeps CLI and service behavior aligned while preserving endpoint-specific knobs.
 
 ## 🚧 7. Config_Banned_* — Detection, Thresholds, and Masking
 
@@ -2049,7 +2052,7 @@ python src/Scripts/ArgosTranslatePackages.py remove
 
 ## ⚡ Performance Tuning Checklist
 
-- [ ] Set `_PROCESS_IF_UNCHANGED = False` to skip re-processing unchanged files
+- [ ] Set `PROCESS_IF_UNCHANGED = False` to skip re-processing unchanged files
 - [ ] Set `RETRIEVAL_STORES_KEEP = True` to preserve embeddings between runs
 - [ ] Use `EMBEDDER_BITS = 16` on GPU for speed (slight quality loss)
 - [ ] Reduce `CHUNK_SIZE` to reduce document processing time

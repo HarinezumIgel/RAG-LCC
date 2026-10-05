@@ -28,13 +28,10 @@ class PipelineSettingsSummarizer:
         Returns (any_disabled_stage, disabled_algos_list).
         Prints a compact summary via self.pretty.write.
         """
-        algos_cfg: Any = {}
         pipeline_ok: bool = False
         prompt_ok: bool = False
-        slot: str = self.helpers.get_compliance_config_slot("PIPELINE_CHECK")
-        algos_cfg = self.cfg.get(f"{slot}.PIPELINE.ALGOS_TO_PROCESS")
         pipeline_row: Dict[str, Dict[str, Optional[bool]]]
-        pipeline_row, pipeline_ok = self._evaluate_algo_present(algos_cfg)
+        pipeline_row, pipeline_ok = self._build_pipeline_row()
         prompt_row: Dict[str, Dict[str, Optional[bool]]]
         prompt_row, prompt_ok = self._build_prompt_row()
 
@@ -102,6 +99,22 @@ class PipelineSettingsSummarizer:
             ok = self._all_enabled(row)
         return (row, ok)
 
+    def _build_pipeline_row(self) -> Tuple[Dict[str, Dict[str, Optional[bool]]], bool]:
+        row: Dict[str, Dict[str, Optional[bool]]]
+        pipeline_slot: str = self.helpers.get_compliance_config_slot("PIPELINE_CHECK")
+        pipeline_check: bool = self.cfg.get_bool(f"{pipeline_slot}.Check", True)
+        if not pipeline_check:
+            row = self._set_algos_to_none()
+        else:
+            pipeline_algos: Any = self.cfg.get(
+                f"{pipeline_slot}.PIPELINE.ALGOS_TO_PROCESS"
+            )
+            row, _ = self._evaluate_algo_present(pipeline_algos)
+
+        row["Pipeline Check"] = {"enabled": pipeline_check}
+        ok: bool = self._all_enabled(row)
+        return row, ok
+
     def _all_enabled(self, per_algo: Dict[str, Dict[str, Optional[bool]]]) -> bool:
         non_na: list[Optional[bool]] = [
             v["enabled"] for v in per_algo.values() if v["enabled"] is not None
@@ -162,7 +175,7 @@ class PipelineSettingsSummarizer:
         banned_count: int = self._print_banned()
         masking_count: int = self._print_masking()
         warn_user: bool = severity == "W" and (banned_count > 0 or masking_count > 0)
-        sleep: int = 10 if warn_user else 1
+        sleep: int = 3 if warn_user else 1
         msg: str = (
             f"Sleeping for {sleep} seconds to give you time to review the settings..."
             if warn_user

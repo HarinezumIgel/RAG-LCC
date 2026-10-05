@@ -109,7 +109,7 @@ import sys
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, TypedDict, cast
+from typing import Any, Literal, TypedDict, cast
 
 
 def _enable_windows_ansi() -> None:
@@ -223,6 +223,7 @@ _APT_PACKAGES: dict[str, _AptPackageInfo] = {
 
 _identity_cache: dict[str, Any] | None = None
 _python_requirements_consent: dict[str, Any] | None = None
+_RuntimeNetworkContext = Literal["docker", "windows", "host"]
 
 
 # ---------------------------------------------------------------------------
@@ -597,8 +598,39 @@ def _confirm(prompt: str) -> bool:
             sys.exit(130)  # Standard exit code for Ctrl+C
 
 
-def _print_endpoint_connectivity_examples(endpoint: str) -> None:
-    """Print curl probe command examples for the specified endpoint."""
+def _detect_runtime_network_context() -> _RuntimeNetworkContext:
+    """Detect whether setup runs in Docker/container, Windows host, or other host."""
+    if os.environ.get("REMOTE_CONTAINERS") or os.environ.get(
+        "VSCODE_REMOTE_CONTAINERS_SESSION"
+    ):
+        return "docker"
+
+    if Path("/.dockerenv").exists() or Path("/run/.containerenv").exists():
+        return "docker"
+
+    for cgroup_path in (Path("/proc/1/cgroup"), Path("/proc/self/cgroup")):
+        try:
+            cgroup_text = cgroup_path.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        cgroup_lower = cgroup_text.lower()
+        if any(
+            marker in cgroup_lower
+            for marker in ("docker", "containerd", "kubepods", "podman")
+        ):
+            return "docker"
+
+    if os.name == "nt":
+        return "windows"
+
+    return "host"
+
+
+def _print_endpoint_connectivity_examples(
+    endpoint: str,
+    runtime_context: _RuntimeNetworkContext,
+) -> None:
+    """Print curl probe command examples for the specified endpoint/context."""
     if endpoint == "ollama":
         port = "11434"
         test_path = "/api/tags"
@@ -609,63 +641,178 @@ def _print_endpoint_connectivity_examples(endpoint: str) -> None:
         port = "8080"
         test_path = "/"
 
-    print(f"{_CYAN}  Test connectivity before continuing:{_RESET}")
-    print(f"{_DIM}    # Docker Desktop (Windows/Mac):{_RESET}")
-    print(
-        f'{_DIM}    curl -v http://host.docker.internal:{port}{test_path} -H "Authorization: Bearer <API_KEY>"{_RESET}'
+    auth_header = (
+        ' -H "Authorization: Bearer <API_KEY>"'
+        if endpoint in ("ollama", "vllm")
+        else ""
     )
+
+    if runtime_context == "docker":
+        examples = [
+            (
+                "Docker Desktop host (Windows/macOS)",
+                f"http://host.docker.internal:{port}{test_path}",
+            ),
+            (
+                "Linux Docker host gateway",
+                f"http://172.17.0.1:{port}{test_path}",
+            ),
+            (
+                "Another host on the network",
+                f"http://<other host>:{port}{test_path}",
+            ),
+        ]
+        source_label = "from this container"
+    elif runtime_context == "windows":
+        examples = [
+            (
+                "This Windows machine (localhost)",
+                f"http://localhost:{port}{test_path}",
+            ),
+            (
+                "This Windows machine (127.0.0.1)",
+                f"http://127.0.0.1:{port}{test_path}",
+            ),
+            (
+                "Another host on the network",
+                f"http://<other host>:{port}{test_path}",
+            ),
+        ]
+        source_label = "from this Windows host"
+    else:
+        examples = [
+            (
+                "This machine (localhost)",
+                f"http://localhost:{port}{test_path}",
+            ),
+            (
+                "This machine (127.0.0.1)",
+                f"http://127.0.0.1:{port}{test_path}",
+            ),
+            (
+                "Another host on the network",
+                f"http://<other host>:{port}{test_path}",
+            ),
+        ]
+        source_label = "from this host"
+
+    print(f"{_CYAN}  Test connectivity {source_label} before continuing:{_RESET}")
+    for label, url in examples:
+        print(f"{_DIM}    # {label}:{_RESET}")
+        print(f"{_DIM}    curl -v {url}{auth_header}{_RESET}")
+        print()
+
+
+def _print_ragchatservice_listener_guidance(
+    runtime_context: _RuntimeNetworkContext,
+) -> None:
+    """Print host/port guidance for RAGChatService listener setup."""
     print()
-    print(f"{_DIM}    # Linux container → host:{_RESET}")
     print(
-        f'{_DIM}    curl -v http://172.17.0.1:{port}{test_path} -H "Authorization: Bearer <API_KEY>"{_RESET}'
+        f"{_CYAN}  RAGChatService listens for OpenWebUI connections on port 11435.{_RESET}"
     )
+
+    if runtime_context == "docker":
+        print(
+            f"{_TURQUOISE}    Container mode detected (Dev Container / Docker).{_RESET}"
+        )
+        print(
+            f"{_TURQUOISE}    Bind to 0.0.0.0 so host-side clients can reach the forwarded port.{_RESET}"
+        )
+        print(f"{_TURQUOISE}    Typical value: 0.0.0.0{_RESET}")
+        print(
+            f"{_TURQUOISE}    Safety note: exposure is controlled by forwarded ports and host firewall rules.{_RESET}"
+        )
+    elif runtime_context == "windows":
+        print(f"{_TURQUOISE}    Windows host mode detected.{_RESET}")
+        print(f"{_TURQUOISE}    Safest (local-only): localhost or 127.0.0.1{_RESET}")
+        print(
+            f"{_TURQUOISE}    Less safe (LAN exposure): specific NIC IP (for example 192.168.x.x){_RESET}"
+        )
+        print(
+            f"{_TURQUOISE}    Least restrictive / less safe: 0.0.0.0 (all interfaces).{_RESET}"
+        )
+        print(
+            f"{_TURQUOISE}    If using NIC IP or 0.0.0.0, ensure Windows firewall allows only trusted networks.{_RESET}"
+        )
+    else:
+        print(f"{_TURQUOISE}    Host mode detected (non-container).{_RESET}")
+        print(f"{_TURQUOISE}    Safest (local-only): localhost or 127.0.0.1{_RESET}")
+        print(
+            f"{_TURQUOISE}    Less safe (LAN exposure): specific NIC IP (single interface only).{_RESET}"
+        )
+        print(
+            f"{_TURQUOISE}    Least restrictive / less safe: 0.0.0.0 (all interfaces).{_RESET}"
+        )
+
     print()
-    print(f"{_DIM}    # Same machine:{_RESET}")
+
+
+def _print_ragchatservice_port_forwarding_guidance(
+    runtime_context: _RuntimeNetworkContext,
+) -> None:
+    """Print Docker-specific port forwarding guidance for RAGChatService."""
+    if runtime_context != "docker":
+        return
+
+    print()
+    print(f"{_CYAN}  Port forwarding — default port 11435:{_RESET}")
     print(
-        f'{_DIM}    curl -v http://localhost:{port}{test_path} -H "Authorization: Bearer <API_KEY>"{_RESET}'
+        f"{_TURQUOISE}    .devcontainer/devcontainer.json declares forwardPorts: [11435].{_RESET}"
     )
-    print()
-    print(f"{_DIM}    # Another host on the network:{_RESET}")
     print(
-        f'{_DIM}    curl -v http://<other host>:{port}{test_path} -H "Authorization: Bearer <API_KEY>"{_RESET}'
+        f"{_TURQUOISE}    VS Code may still require manual forwarding in the Ports panel.{_RESET}"
+    )
+    print(
+        f'{_TURQUOISE}    If you change the port from 11435, you MUST update .devcontainer/devcontainer.json -> "forwardPorts", recreate/rebuild the container, and start Setup.py again.{_RESET}'
     )
     print()
 
 
-def _print_endpoint_access_info(endpoint: str) -> None:
+def _print_endpoint_access_info(
+    endpoint: str,
+    runtime_context: _RuntimeNetworkContext,
+) -> None:
     """Print where the given endpoint can run, using a turquoise bullet list."""
     if endpoint == "ollama":
         title = "OLLAMA can run on"
-        bullets = [
-            ("This machine (localhost)", "http://localhost:11434/api/generate"),
-            (
-                "Docker Desktop host (Windows/Mac)",
-                "http://host.docker.internal:11434/api/generate",
-            ),
-            (
-                "Another server on your network",
-                "http://<ollama host>:11434/api/generate",
-            ),
-        ]
+        local = "http://localhost:11434/api/generate"
+        local_ip = "http://127.0.0.1:11434/api/generate"
+        docker_host = "http://host.docker.internal:11434/api/generate"
+        docker_bridge = "http://172.17.0.1:11434/api/generate"
+        remote = "http://<ollama host>:11434/api/generate"
     elif endpoint == "vllm":
         title = "vLLM can run on"
-        bullets = [
-            ("This machine (localhost)", "http://localhost:4000/v1/chat/completions"),
-            (
-                "Docker Desktop host (Windows/Mac)",
-                "http://host.docker.internal:4000/v1/chat/completions",
-            ),
-            (
-                "Another server on your network",
-                "http://<vllm host>:4000/v1/chat/completions",
-            ),
-        ]
+        local = "http://localhost:4000/v1/chat/completions"
+        local_ip = "http://127.0.0.1:4000/v1/chat/completions"
+        docker_host = "http://host.docker.internal:4000/v1/chat/completions"
+        docker_bridge = "http://172.17.0.1:4000/v1/chat/completions"
+        remote = "http://<vllm host>:4000/v1/chat/completions"
     else:  # openwebui
         title = "OpenWebUI GUI can run on"
+        local = "http://localhost:8080"
+        local_ip = "http://127.0.0.1:8080"
+        docker_host = "http://host.docker.internal:8080"
+        docker_bridge = "http://172.17.0.1:8080"
+        remote = "http://<openwebui host>:8080"
+
+    if runtime_context == "docker":
         bullets = [
-            ("This machine (localhost)", "http://localhost:8080"),
-            ("Docker Desktop host (Windows/Mac)", "http://host.docker.internal:8080"),
-            ("Another machine on the network", "http://<openwebui host>:8080"),
+            ("Docker Desktop host (Windows/macOS)", docker_host),
+            ("Linux Docker host gateway", docker_bridge),
+            ("Another host on your network", remote),
+        ]
+    elif runtime_context == "windows":
+        bullets = [
+            ("This Windows machine (localhost)", local),
+            ("This Windows machine (127.0.0.1)", local_ip),
+            ("Another host on your network", remote),
+        ]
+    else:
+        bullets = [
+            ("This machine (localhost)", local),
+            ("This machine (127.0.0.1)", local_ip),
+            ("Another machine on your network", remote),
         ]
 
     print()
@@ -835,8 +982,13 @@ def _prompt_text(
             return result
 
     while True:
-        label = "current" if _in_correction else "default"
-        answer = input(f"{_ORANGE}  {prompt} ({label}: {default}): {_RESET}").strip()
+        if _in_correction or default:
+            label = "current" if _in_correction else "default"
+            answer = input(
+                f"{_ORANGE}  {prompt} ({label}: {default}): {_RESET}"
+            ).strip()
+        else:
+            answer = input(f"{_ORANGE}  {prompt}: {_RESET}").strip()
         if answer:
             if no_yn and answer.lower() in ("y", "yes", "n", "no"):
                 print(
@@ -1100,6 +1252,20 @@ def _run_setup_questions() -> None:
     serve_openwebui_chat = False
     serve_in_memory_docs = False
     network_tracer = False
+    runtime_context = _detect_runtime_network_context()
+
+    if runtime_context == "docker":
+        print(
+            f"{_CYAN}  Environment detected: Docker/Dev Container. Showing container-specific networking hints.{_RESET}"
+        )
+    elif runtime_context == "windows":
+        print(
+            f"{_CYAN}  Environment detected: Windows host. Showing Windows networking hints.{_RESET}"
+        )
+    else:
+        print(
+            f"{_CYAN}  Environment detected: host OS (non-container). Showing host networking hints.{_RESET}"
+        )
 
     while True:
         # --------------------------------------------------------------
@@ -1117,38 +1283,51 @@ def _run_setup_questions() -> None:
             correction_value=endpoint if correction_mode else None,
         )
 
-        _print_endpoint_connectivity_examples(endpoint)
+        _print_endpoint_connectivity_examples(endpoint, runtime_context)
         print()
         print(f"{_RED}{'='*70}{_RESET}")
         print(
             f"{_RED}  ⚠️  IMPORTANT: Specify where {endpoint.upper()} is running{_RESET}"
         )
         print(f"{_RED}{'='*70}{_RESET}")
-        _print_endpoint_access_info(endpoint)
+        _print_endpoint_access_info(endpoint, runtime_context)
         print(
-            f"{_ORANGE}  You MUST enter the actual IP address or hostname where{_RESET}"
+            f"{_ORANGE}  Enter the reachable hostname/IP where {endpoint.upper()} is listening.{_RESET}"
         )
-        print(
-            f"{_ORANGE}  {endpoint.upper()} is listening. Do NOT just accept the placeholder.{_RESET}"
-        )
+        if runtime_context in ("windows", "host"):
+            print(
+                f"{_ORANGE}  localhost and 127.0.0.1 are valid when {endpoint.upper()} runs on this machine.{_RESET}"
+            )
+            print(
+                f"{_ORANGE}  Use another host/IP only when it runs elsewhere.{_RESET}"
+            )
+        else:
+            print(
+                f"{_ORANGE}  In container mode, localhost usually points to the container itself.{_RESET}"
+            )
+            print(
+                f"{_ORANGE}  Use host.docker.internal, 172.17.0.1, or a reachable network host/IP.{_RESET}"
+            )
         print(f"{_RED}{'='*70}{_RESET}")
         print()
-        default_endpoint_url = (
-            f"http://<ollama host>:11434/api/generate"
-            if endpoint == "ollama"
-            else f"http://<vllm host>:4000/v1/chat/completions"
-        )
         _print_setting_context(
             "Config_Models.py",
             "src/Configuration/Config_Models.py",
             "Base URL used to call the selected endpoint provider.",
         )
-        endpoint_url = _prompt_text(
-            f"Set {endpoint.upper()} BASE_URL",
-            default_endpoint_url,
-            no_yn=True,
-            correction_value=endpoint_url if correction_mode else None,
-        )
+        while True:
+            endpoint_url = _prompt_text(
+                f"Set {endpoint.upper()} BASE_URL",
+                "",
+                no_yn=True,
+                confirm_default=False,
+                correction_value=endpoint_url if correction_mode else None,
+            ).strip()
+            if endpoint_url:
+                break
+            print(
+                f"{_RED}  ✖  This value is required. Enter a full URL for {endpoint.upper()} (for example localhost or a reachable host/IP).{_RESET}"
+            )
         _print_setting_context(
             "Config_Models.py",
             "src/Configuration/Config_Models.py",
@@ -1169,53 +1348,30 @@ def _run_setup_questions() -> None:
             "Specify where RAGChatService HTTP listener should bind (_MODELS.ragchatservice._RAGCHATSERVICE.HOST).",
         )
 
-        print()
-        print(
-            f"{_CYAN}  RAGChatService listens for OpenWebUI connections on port 11435.{_RESET}"
-        )
-        print(
-            f"{_TURQUOISE}    Bind address depends on where RAGChatService runs:{_RESET}"
-        )
-        print(
-            f"{_TURQUOISE}    • Host machine:                       localhost or 127.0.0.1{_RESET}"
-        )
-        print(f"{_TURQUOISE}    • Docker container (host can reach):  0.0.0.0{_RESET}")
-        print(
-            f"{_TURQUOISE}    • OpenWebUI on another machine:       0.0.0.0 or specific IP{_RESET}"
-        )
-        print()
-        print(f"{_CYAN}  Port forwarding — port 11435:{_RESET}")
-        print(
-            f"{_TURQUOISE}    Port 11435 is declared in .devcontainer/devcontainer.json{_RESET}"
-        )
-        print(
-            f"{_TURQUOISE}    but VS Code does not always forward it automatically.{_RESET}"
-        )
-        print()
-        print(f"{_TURQUOISE}    To forward it manually in VS Code:{_RESET}")
-        print(
-            f"{_TURQUOISE}      1. Open the Ports panel  (View → Ports  or  Ctrl+Shift+P → 'Focus on Ports'){_RESET}"
-        )
-        print(f"{_TURQUOISE}      2. Click '+ Forward a Port'{_RESET}")
-        print(f"{_TURQUOISE}      3. Enter port 11435  and press Enter{_RESET}")
-        print(
-            f"{_TURQUOISE}    The port then appears in the Ports panel and OpenWebUI can connect.{_RESET}"
-        )
-        print()
+        _print_ragchatservice_listener_guidance(runtime_context)
 
-        default_openwebui_api_host = "<RAGChatService host>"
-        rag_chat_service_listener = _prompt_text(
-            "Set _MODELS.ragchatservice._RAGCHATSERVICE.HOST",
-            default_openwebui_api_host,
-            no_yn=True,
-            correction_value=rag_chat_service_listener if correction_mode else None,
-        )
+        while True:
+            rag_chat_service_listener = _prompt_text(
+                "Set _MODELS.ragchatservice._RAGCHATSERVICE.HOST",
+                "",
+                no_yn=True,
+                confirm_default=False,
+                correction_value=(
+                    rag_chat_service_listener if correction_mode else None
+                ),
+            ).strip()
+            if rag_chat_service_listener:
+                break
+            print(
+                f"{_RED}  ✖  This value is required. Enter localhost, 127.0.0.1, 0.0.0.0, or a specific host/IP.{_RESET}"
+            )
 
         _print_setting_context(
             "Config_Models.py",
             "src/Configuration/Config_Models.py",
             "Port where RAGChatService HTTP listener should bind (_MODELS.ragchatservice._RAGCHATSERVICE.PORT).",
         )
+        _print_ragchatservice_port_forwarding_guidance(runtime_context)
         rag_chat_service_listener_port = _prompt_text(
             "Set _MODELS.ragchatservice._RAGCHATSERVICE.PORT",
             "11435",
@@ -1231,15 +1387,21 @@ def _run_setup_questions() -> None:
             "Base URL where OpenWebUI is running (used by Informer to verify OpenWebUI is reachable).",
         )
 
-        _print_endpoint_access_info("openwebui")
+        _print_endpoint_access_info("openwebui", runtime_context)
 
-        default_openwebui_url = "http://<openwebui host>:8080"
-        openwebui_base_url = _prompt_text(
-            "Set OpenWebUI BASE_URL",
-            default_openwebui_url,
-            no_yn=True,
-            correction_value=openwebui_base_url if correction_mode else None,
-        )
+        while True:
+            openwebui_base_url = _prompt_text(
+                "Set OpenWebUI BASE_URL",
+                "",
+                no_yn=True,
+                confirm_default=False,
+                correction_value=openwebui_base_url if correction_mode else None,
+            ).strip()
+            if openwebui_base_url:
+                break
+            print(
+                f"{_RED}  ✖  This value is required. Enter a full URL for OpenWebUI (for example http://localhost:8080).{_RESET}"
+            )
 
         _print_setting_context(
             "Config_Models.py",
@@ -1524,16 +1686,24 @@ def _run_setup_questions() -> None:
         print(
             f"{_BOLD}{_ORANGE}  ⚠️  Non-default listener port configured: {rag_chat_service_listener_port}{_RESET}"
         )
-        print(
-            f"{_ORANGE}  You must forward this port manually — Setup no longer writes devcontainer.json.{_RESET}"
-        )
-        print(f"{_DIM}  Options:{_RESET}")
-        print(
-            f"{_DIM}    • VS Code GUI: Ports panel → Forward a Port → enter {rag_chat_service_listener_port}{_RESET}"
-        )
-        print(
-            f'{_DIM}    • devcontainer.json: add {rag_chat_service_listener_port} to "forwardPorts" and rebuild the container{_RESET}'
-        )
+        if runtime_context == "docker":
+            print(
+                f"{_ORANGE}  Container mode: port {rag_chat_service_listener_port} is not covered by default forwardPorts [11435], so you must update devcontainer forwarding.{_RESET}"
+            )
+            print(f"{_DIM}  Required actions in Docker/Dev Container mode:{_RESET}")
+            print(
+                f"{_DIM}    • Immediate use: forward port {rag_chat_service_listener_port} manually in the VS Code Ports panel.{_RESET}"
+            )
+            print(
+                f'{_DIM}    • Persistent setup: add {rag_chat_service_listener_port} to .devcontainer/devcontainer.json -> "forwardPorts".{_RESET}'
+            )
+            print(
+                f"{_DIM}    • Apply the devcontainer change by recreating/rebuilding the container (plain restart is usually not enough).{_RESET}"
+            )
+        else:
+            print(
+                f"{_ORANGE}  Host mode: update OpenWebUI and client URLs to use port {rag_chat_service_listener_port}.{_RESET}"
+            )
         print()
 
     print()

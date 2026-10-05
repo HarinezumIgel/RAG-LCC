@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Tuple, cast
 
 from Globals.Session import Session
@@ -107,9 +107,9 @@ class _PostGatePipelineInputs:
     orig_translated_query_en: str
     user_query_original: str
     resolved_guardrail: _GuardrailInputs
-    enable_local_stage: bool
-    enable_web_stage: bool
     enable_indexed_query_shaping: bool
+    enable_indexed_query_translation: bool
+    enable_indexed_query_synonym_expansion: bool
     enable_original_language_vector_leg: bool
     enable_vector_retriever: bool
     enable_bm25_retriever: bool
@@ -139,11 +139,11 @@ class _OrchestrationFlowProfile:
     enable_guardrail_leg: bool
     enable_original_language_vector_leg: bool
     enable_indexed_query_shaping: bool
+    enable_indexed_query_translation: bool
+    enable_indexed_query_synonym_expansion: bool
     enable_vector_alternate_queries: bool
     enable_query_rewrite: bool
     enable_pronoun_substitution: bool
-    enable_local_stage: bool
-    enable_web_stage: bool
     enable_vector_retriever: bool
     enable_bm25_retriever: bool
     enable_graph_retriever: bool
@@ -163,9 +163,10 @@ class Orchestrator:
 
     _TRACE_RETRIEVER_WIDTH = 10
     _TRACE_LANGUAGE_WIDTH = 7
-    _FLOW_STAGE_WIDTH = 30
-    _FLOW_STATUS_WIDTH = 28
+    _FLOW_STAGE_WIDTH = 34
+    _FLOW_STATUS_WIDTH = 38
     _FLOW_KNOB_WIDTH = 28
+    _FLOW_VALUE_WIDTH = 18
     _DEFAULT_ORCHESTRATION_FLOW = "THOROUGH_QUERY_REWRITE"
     _DEFAULT_QUERY_SOURCE = "FINAL_QUERY"
     _QUERY_SOURCE_OPTIONS = {
@@ -173,6 +174,29 @@ class Orchestrator:
         "TRANSLATED_QUERY",
         "ORIGINAL_QUERY",
     }
+    _FLOW_PROFILE_CONFIG_KEYS: dict[str, str] = {
+        "enable_guardrail_leg": "use_secondary_query",
+        "enable_original_language_vector_leg": "use_original_language_vector",
+        "enable_indexed_query_shaping": "shape_indexed_queries",
+        "enable_indexed_query_translation": "translate_indexed_queries",
+        "enable_indexed_query_synonym_expansion": "expand_indexed_queries",
+        "enable_vector_alternate_queries": "use_vector_alternates",
+        "enable_query_rewrite": "use_query_rewrite",
+        "enable_pronoun_substitution": "use_pronoun_substitution",
+        "enable_vector_retriever": "run_vector",
+        "enable_bm25_retriever": "run_bm25",
+        "enable_graph_retriever": "run_graph",
+        "enable_regex_retriever": "run_regex",
+        "enable_rerank": "run_rerank",
+        "enable_low_score_fallback": "run_low_score_fallback",
+        "enable_low_recall_rescue": "run_low_recall_rescue",
+        "enable_grounding": "run_grounding",
+    }
+    _FLOW_SWITCH_FIELDS: tuple[str, ...] = tuple(
+        field_name
+        for field_name in _OrchestrationFlowProfile.__dataclass_fields__
+        if field_name.startswith("enable_")
+    )
 
     def __init__(self, host: Any) -> None:
         self._host = host
@@ -192,11 +216,14 @@ class Orchestrator:
         self._indexed_stage_shape_queries = True
         # Turn-scoped flow toggles; defaults preserve current behavior.
         self._flow_enable_indexed_query_shaping = True
+        self._flow_enable_indexed_query_translation = True
+        self._flow_enable_indexed_query_synonym_expansion = True
         self._flow_enable_original_language_vector_leg = True
         self._flow_enable_vector_retriever = True
         self._flow_enable_bm25_retriever = True
         self._flow_enable_graph_retriever = True
         self._flow_enable_regex_retriever = True
+        self._respect_legacy_retrieve_mode = True
 
     def _cfg_get_list(self, key: str, default: list[Any]) -> list[Any]:
         cfg = getattr(self._host, "cfg", None)
@@ -230,6 +257,37 @@ class Orchestrator:
         values = self._cfg_get_list("_ALLOWED_RETRIEVE_MODES", [])
         return {str(value).strip().upper() for value in values if str(value).strip()}
 
+    def _cfg_get_allowed_query_sources(self) -> list[str]:
+        values = self._cfg_get_list(
+            "_ALLOWED_ORCHESTRATION_QUERY_SOURCES",
+            ["FINAL_QUERY", "TRANSLATED_QUERY", "ORIGINAL_QUERY"],
+        )
+        allowed: list[str] = []
+        for value in values:
+            key = str(value).strip().upper()
+            if key and key not in allowed:
+                allowed.append(key)
+        if allowed:
+            return allowed
+        return ["FINAL_QUERY", "TRANSLATED_QUERY", "ORIGINAL_QUERY"]
+
+    def _cfg_get_default_orchestration_flow(self, fallback: str) -> str:
+        fallback_flow = (
+            str(fallback or self._DEFAULT_ORCHESTRATION_FLOW).strip().upper()
+        )
+        if not fallback_flow:
+            fallback_flow = self._DEFAULT_ORCHESTRATION_FLOW
+
+        default_flow = (
+            self._cfg_get_str(
+                "_DEFAULT_ORCHESTRATION_FLOW",
+                fallback_flow,
+            )
+            .strip()
+            .upper()
+        )
+        return default_flow or fallback_flow
+
     def _resolve_orchestration_flow_profile(
         self,
         mySession: Session,
@@ -253,14 +311,7 @@ class Orchestrator:
         if not allowed:
             allowed = [self._DEFAULT_ORCHESTRATION_FLOW]
 
-        active_default = (
-            self._cfg_get_str(
-                "_ACTIVE_ORCHESTRATION_FLOW",
-                allowed[0],
-            )
-            .strip()
-            .upper()
-        )
+        active_default = self._cfg_get_default_orchestration_flow(allowed[0])
         requested = (
             str(getattr(mySession, "orchestrator_flow", "") or "").strip().upper()
         )
@@ -282,6 +333,8 @@ class Orchestrator:
         ):
             retrieve_mode_override = ""
 
+        allowed_sources = self._cfg_get_allowed_query_sources()
+
         primary_source = (
             str(
                 profile_raw.get("main_query_source", self._DEFAULT_QUERY_SOURCE)
@@ -290,8 +343,12 @@ class Orchestrator:
             .strip()
             .upper()
         )
-        if primary_source not in self._QUERY_SOURCE_OPTIONS:
-            primary_source = self._DEFAULT_QUERY_SOURCE
+        if primary_source not in allowed_sources:
+            primary_source = (
+                self._DEFAULT_QUERY_SOURCE
+                if self._DEFAULT_QUERY_SOURCE in allowed_sources
+                else allowed_sources[0]
+            )
 
         guardrail_source = (
             str(
@@ -301,46 +358,67 @@ class Orchestrator:
             .strip()
             .upper()
         )
-        if guardrail_source not in self._QUERY_SOURCE_OPTIONS:
-            guardrail_source = "TRANSLATED_QUERY"
+        if guardrail_source not in allowed_sources:
+            guardrail_source = (
+                "TRANSLATED_QUERY"
+                if "TRANSLATED_QUERY" in allowed_sources
+                else allowed_sources[0]
+            )
+
+        switch_defaults = {
+            field_name: bool(profile_raw.get(config_key, True))
+            for field_name, config_key in self._FLOW_PROFILE_CONFIG_KEYS.items()
+        }
 
         resolved_profile = _OrchestrationFlowProfile(
             name=selected,
             retrieve_mode_override=retrieve_mode_override,
             primary_query_source=primary_source,
             guardrail_query_source=guardrail_source,
-            enable_guardrail_leg=bool(profile_raw.get("use_secondary_query", True)),
-            enable_original_language_vector_leg=bool(
-                profile_raw.get("use_original_language_vector", True)
-            ),
-            enable_indexed_query_shaping=bool(
-                profile_raw.get("shape_indexed_queries", True)
-            ),
-            enable_vector_alternate_queries=bool(
-                profile_raw.get("use_vector_alternates", True)
-            ),
-            enable_query_rewrite=bool(profile_raw.get("use_query_rewrite", True)),
-            enable_pronoun_substitution=bool(
-                profile_raw.get("use_pronoun_substitution", True)
-            ),
-            enable_local_stage=bool(profile_raw.get("run_local_stage", True)),
-            enable_web_stage=bool(profile_raw.get("run_web_stage", True)),
-            enable_vector_retriever=bool(profile_raw.get("run_vector", True)),
-            enable_bm25_retriever=bool(profile_raw.get("run_bm25", True)),
-            enable_graph_retriever=bool(profile_raw.get("run_graph", True)),
-            enable_regex_retriever=bool(profile_raw.get("run_regex", True)),
-            enable_rerank=bool(profile_raw.get("run_rerank", True)),
-            enable_low_score_fallback=bool(
-                profile_raw.get("run_low_score_fallback", True)
-            ),
-            enable_low_recall_rescue=bool(
-                profile_raw.get("run_low_recall_rescue", True)
-            ),
-            enable_grounding=bool(profile_raw.get("run_grounding", True)),
+            **switch_defaults,
         )
 
         mySession.orchestrator_flow = resolved_profile.name  # type: ignore[attr-defined]
+        mySession.flow_name = resolved_profile.name  # type: ignore[attr-defined]
         return resolved_profile
+
+    def _resolve_effective_flow_profile_for_session(
+        self,
+        mySession: Session,
+        flow_profile: _OrchestrationFlowProfile,
+    ) -> _OrchestrationFlowProfile:
+        """Apply session flow-related overrides over flow baseline values."""
+        overrides: dict[str, Any] = {}
+        for field_name in self._FLOW_SWITCH_FIELDS:
+            session_value = getattr(mySession, field_name, None)
+            if session_value is None:
+                continue
+            overrides[field_name] = bool(session_value)
+
+        session_mode = (
+            str(getattr(mySession, "force_retrieve_mode", "") or "").strip().upper()
+        )
+        if session_mode:
+            allowed_modes = self._cfg_get_allowed_retrieve_modes()
+            if not allowed_modes or session_mode in allowed_modes:
+                overrides["retrieve_mode_override"] = session_mode
+
+        allowed_sources = self._cfg_get_allowed_query_sources()
+        session_primary_source = (
+            str(getattr(mySession, "main_query_source", "") or "").strip().upper()
+        )
+        if session_primary_source and session_primary_source in allowed_sources:
+            overrides["primary_query_source"] = session_primary_source
+
+        session_secondary_source = (
+            str(getattr(mySession, "secondary_query_source", "") or "").strip().upper()
+        )
+        if session_secondary_source and session_secondary_source in allowed_sources:
+            overrides["guardrail_query_source"] = session_secondary_source
+
+        if not overrides:
+            return flow_profile
+        return replace(flow_profile, **overrides)
 
     def _query_from_source(
         self,
@@ -621,18 +699,26 @@ class Orchestrator:
         configured_enabled: bool | None = None,
         action_override: str | None = None,
         cli_knob: str | None = None,
+        effective_knob_value: bool | str | None = None,
     ) -> None:
         """Emit one orchestration line explaining stage activation by flow knobs."""
         action = action_override or ("Activated" if enabled else "Not activated")
         config_state = enabled if configured_enabled is None else configured_enabled
         knob_state = "on" if config_state else "off"
+        if isinstance(effective_knob_value, bool):
+            effective_text = "on" if effective_knob_value else "off"
+        elif effective_knob_value is None:
+            effective_text = "on" if enabled else "off"
+        else:
+            effective_text = str(effective_knob_value).strip().replace("_", " ")
         # This is a pre-execution planning line, not evidence confidence.
         step_confidence = "PENDING" if enabled else "N/A"
 
         message = (
             f"{stage_name:<{self._FLOW_STAGE_WIDTH}} "
             f"{action:<{self._FLOW_STATUS_WIDTH}} "
-            f"knob={knob_name:<{self._FLOW_KNOB_WIDTH}}"
+            f"knob={knob_name:<{self._FLOW_KNOB_WIDTH}} "
+            f"value={effective_text:<{self._FLOW_VALUE_WIDTH}}"
         )
         if cli_knob:
             message = f"{message} cli_knob={cli_knob}"
@@ -661,7 +747,9 @@ class Orchestrator:
                     status="planned" if enabled else "skipped",
                     confidence_level=step_confidence,
                     detail=(
-                        f"knob={knob_name}:{knob_state}; action={action}"
+                        f"knob={knob_name}:{knob_state}; "
+                        f"effective={effective_text}; "
+                        f"action={action}"
                         + (f"; cli_knob={cli_knob}" if cli_knob else "")
                     ),
                     source="orchestrator_flow",
@@ -671,20 +759,16 @@ class Orchestrator:
         self,
         retrieve_mode: str | None,
     ) -> tuple[str, bool, bool, bool, bool, bool]:
-        """Return mode text plus local/retriever enable flags implied by mode."""
+        """Return mode text plus local/retriever enable flags for planning logs."""
         mode_text = str(retrieve_mode or "").strip().upper()
+        # Retriever selection is flow-driven; retrieve_mode only keeps WEB-only
+        # compatibility for local/web stage gating.
         vector_mode_enabled = True
         bm25_mode_enabled = True
         graph_mode_enabled = True
         regex_mode_enabled = True
         local_mode_enabled = True
         if mode_text:
-            (
-                vector_mode_enabled,
-                bm25_mode_enabled,
-                graph_mode_enabled,
-                regex_mode_enabled,
-            ) = self._host._mode_flags_for_local_retrievers(mode_text)
             local_mode_enabled = not self._is_web_only_mode(mode_text)
         return (
             mode_text,
@@ -714,25 +798,6 @@ class Orchestrator:
             )
         return False, None, None
 
-    def _resolve_strategy_default_rerank(self, mySession: Session) -> bool | None:
-        """Return the active strategy's rerank default when available."""
-        strategy = str(getattr(mySession, "strategy", "") or "").strip().upper()
-        if not strategy:
-            return None
-
-        cfg = getattr(self._host, "cfg", None)
-        if cfg is None or not hasattr(cfg, "get_int"):
-            return None
-
-        try:
-            strategy_rerank = cfg.get_int(f"_STRATEGIES.{strategy}.rerank")
-        except Exception:
-            return None
-
-        if strategy_rerank is None:
-            return None
-        return bool(strategy_rerank)
-
     def _resolve_rerank_cli_contradiction(
         self,
         mySession: Session,
@@ -741,17 +806,14 @@ class Orchestrator:
     ) -> tuple[bool, bool, str | None, str | None]:
         """Return rerank contradiction details plus effective rerank enablement."""
         rerank_raw = getattr(mySession, "rerank", None)
-        rerank_enabled = True if rerank_raw is None else bool(rerank_raw)
+        # When rerank is unset on the session, inherit flow baseline.
+        rerank_enabled = bool(flow_enabled) if rerank_raw is None else bool(rerank_raw)
         effective_enabled = bool(flow_enabled and rerank_enabled)
 
         if flow_enabled == rerank_enabled:
             return False, effective_enabled, None, None
 
-        strategy_default = self._resolve_strategy_default_rerank(mySession)
-        rerank_overridden = (
-            strategy_default is not None and rerank_enabled != strategy_default
-        )
-        session_scope = "session CLI" if rerank_overridden else "session setting"
+        session_scope = "session override"
         action = (
             "Deactivated in " + session_scope
             if flow_enabled and (not rerank_enabled)
@@ -791,6 +853,16 @@ class Orchestrator:
                 "Indexed query shaping stage",
                 "shape_indexed_queries",
                 flow_profile.enable_indexed_query_shaping,
+            ),
+            (
+                "Indexed query translation stage",
+                "translate_indexed_queries",
+                flow_profile.enable_indexed_query_translation,
+            ),
+            (
+                "Indexed synonym expansion stage",
+                "expand_indexed_queries",
+                flow_profile.enable_indexed_query_synonym_expansion,
             ),
             (
                 "Vector alternates stage",
@@ -921,12 +993,23 @@ class Orchestrator:
         self,
         *,
         mySession: Session,
-        flow_profile: _OrchestrationFlowProfile,
         mode_text: str,
         local_mode_enabled: bool,
     ) -> None:
-        """Emit local/web stage statuses including CLI contradictions."""
-        if flow_profile.enable_local_stage and (not local_mode_enabled) and mode_text:
+        """Emit local/web stage statuses driven by web mode resolution."""
+        web_mode = self._resolve_web_stage_mode(mySession, mode_text)
+        web_stage_enabled = web_mode in ("local_and_web", "web_only")
+        web_knob_name = (
+            "retrieve_mode"
+            if mode_text == "WEB" and not bool(getattr(mySession, "web_search", False))
+            else "web_search"
+        )
+        web_mode_display = web_mode.replace("_", " ")
+        knob_effective_value = (
+            mode_text if web_knob_name == "retrieve_mode" else web_mode_display
+        )
+
+        if (not local_mode_enabled) and mode_text:
             mode_knob = (
                 "web_search=web_only"
                 if bool(getattr(mySession, "web_search", False)) and mode_text == "WEB"
@@ -935,27 +1018,30 @@ class Orchestrator:
             self._emit_flow_knob_stage_status(
                 mySession=mySession,
                 stage_name="Local stage",
-                knob_name="run_local_stage",
+                knob_name=web_knob_name,
                 enabled=False,
                 configured_enabled=True,
                 action_override="Deactivated in session CLI",
                 cli_knob=mode_knob,
+                effective_knob_value=knob_effective_value,
             )
         else:
             self._emit_flow_knob_stage_status(
                 mySession=mySession,
                 stage_name="Local stage",
-                knob_name="run_local_stage",
-                enabled=bool(flow_profile.enable_local_stage and local_mode_enabled),
-                configured_enabled=flow_profile.enable_local_stage,
+                knob_name=web_knob_name,
+                enabled=bool(local_mode_enabled),
+                configured_enabled=True,
+                effective_knob_value=knob_effective_value,
             )
 
         self._emit_flow_knob_stage_status(
             mySession=mySession,
             stage_name="Web stage",
-            knob_name="run_web_stage",
-            enabled=flow_profile.enable_web_stage,
-            configured_enabled=flow_profile.enable_web_stage,
+            knob_name=web_knob_name,
+            enabled=web_stage_enabled,
+            configured_enabled=web_stage_enabled,
+            effective_knob_value=knob_effective_value,
         )
 
     def _emit_retriever_stage_status(
@@ -965,26 +1051,13 @@ class Orchestrator:
         stage_name: str,
         knob_name: str,
         flow_enabled: bool,
-        mode_enabled: bool,
-        mode_text: str,
     ) -> None:
-        """Emit one retriever stage line with optional mode contradiction."""
-        if flow_enabled and (not mode_enabled) and mode_text:
-            self._emit_flow_knob_stage_status(
-                mySession=mySession,
-                stage_name=stage_name,
-                knob_name=knob_name,
-                enabled=False,
-                configured_enabled=True,
-                action_override="Deactivated in session CLI",
-                cli_knob=f"retrieve_mode={mode_text}",
-            )
-            return
+        """Emit one retriever stage status line driven by flow controls."""
         self._emit_flow_knob_stage_status(
             mySession=mySession,
             stage_name=stage_name,
             knob_name=knob_name,
-            enabled=bool(flow_enabled and mode_enabled),
+            enabled=bool(flow_enabled),
             configured_enabled=flow_enabled,
         )
 
@@ -993,11 +1066,6 @@ class Orchestrator:
         *,
         mySession: Session,
         flow_profile: _OrchestrationFlowProfile,
-        mode_text: str,
-        vector_mode_enabled: bool,
-        bm25_mode_enabled: bool,
-        graph_mode_enabled: bool,
-        regex_mode_enabled: bool,
     ) -> None:
         """Emit vector/BM25/graph/regex stage statuses."""
         self._emit_retriever_stage_status(
@@ -1005,32 +1073,24 @@ class Orchestrator:
             stage_name="Vector retriever stage",
             knob_name="run_vector",
             flow_enabled=flow_profile.enable_vector_retriever,
-            mode_enabled=vector_mode_enabled,
-            mode_text=mode_text,
         )
         self._emit_retriever_stage_status(
             mySession=mySession,
             stage_name="BM25 retriever stage",
             knob_name="run_bm25",
             flow_enabled=flow_profile.enable_bm25_retriever,
-            mode_enabled=bm25_mode_enabled,
-            mode_text=mode_text,
         )
         self._emit_retriever_stage_status(
             mySession=mySession,
             stage_name="Graph retriever stage",
             knob_name="run_graph",
             flow_enabled=flow_profile.enable_graph_retriever,
-            mode_enabled=graph_mode_enabled,
-            mode_text=mode_text,
         )
         self._emit_retriever_stage_status(
             mySession=mySession,
             stage_name="Regex retriever stage",
             knob_name="run_regex",
             flow_enabled=flow_profile.enable_regex_retriever,
-            mode_enabled=regex_mode_enabled,
-            mode_text=mode_text,
         )
 
     def _emit_flow_knob_stage_statuses(
@@ -1041,14 +1101,9 @@ class Orchestrator:
         retrieve_mode: str | None = None,
     ) -> None:
         """Emit flow stage lines and annotate CLI/session contradictions."""
-        (
-            mode_text,
-            vector_mode_enabled,
-            bm25_mode_enabled,
-            graph_mode_enabled,
-            regex_mode_enabled,
-            local_mode_enabled,
-        ) = self._resolve_mode_stage_flags(retrieve_mode)
+        mode_flags = self._resolve_mode_stage_flags(retrieve_mode)
+        mode_text = mode_flags[0]
+        local_mode_enabled = mode_flags[5]
 
         self._emit_primary_flow_stage_statuses(
             mySession=mySession,
@@ -1056,18 +1111,12 @@ class Orchestrator:
         )
         self._emit_local_web_stage_statuses(
             mySession=mySession,
-            flow_profile=flow_profile,
             mode_text=mode_text,
             local_mode_enabled=local_mode_enabled,
         )
         self._emit_retriever_stage_statuses(
             mySession=mySession,
             flow_profile=flow_profile,
-            mode_text=mode_text,
-            vector_mode_enabled=vector_mode_enabled,
-            bm25_mode_enabled=bm25_mode_enabled,
-            graph_mode_enabled=graph_mode_enabled,
-            regex_mode_enabled=regex_mode_enabled,
         )
 
     def _trace_query_dispatch(
@@ -1164,7 +1213,7 @@ class Orchestrator:
         self._write_retrieval_orchestration(
             severity="I",
             message=(
-                f"idx_stage l={target_language!r} r='B/G/R' "
+                f"idx_stage l={target_language!r} r='BM25/Graph/Regex' "
                 f"tr={int(was_translated)} "
                 f"\nprimary_query={primary_query!r}"
                 f"\nstage_primary_query={stage_primary_query!r}"
@@ -1465,18 +1514,17 @@ class Orchestrator:
             orig_translated_query_en=orig_translated_query_en,
         )
 
-    @staticmethod
+    @classmethod
     def _apply_query_rewrite_flow_controls(
+        cls,
         mySession: Session,
         *,
         flow_profile: _OrchestrationFlowProfile,
     ) -> None:
-        """Persist per-flow rewrite/pronoun/rerank/fallback/rescue toggles."""
-        mySession.enable_query_rewrite = bool(flow_profile.enable_query_rewrite)  # type: ignore[attr-defined]
-        mySession.enable_pronoun_substitution = bool(  # type: ignore[attr-defined]
-            flow_profile.enable_pronoun_substitution
-        )
-        mySession.enable_rerank = bool(flow_profile.enable_rerank)  # type: ignore[attr-defined]
+        """Persist per-flow toggles on the session object."""
+        for field_name in cls._FLOW_SWITCH_FIELDS:
+            setattr(mySession, field_name, bool(getattr(flow_profile, field_name)))
+
         rerank_raw = getattr(mySession, "rerank", None)
         rerank_enabled = True if rerank_raw is None else bool(rerank_raw)
         mySession.enable_low_score_fallback = bool(  # type: ignore[attr-defined]
@@ -1710,8 +1758,6 @@ class Orchestrator:
         mySession: Session,
         *,
         retrieve_mode: str,
-        enable_local_stage: bool,
-        enable_web_stage: bool,
     ) -> _StageExecutionGates:
         """Resolve which retrieval stages run for this turn."""
         web_mode = self._resolve_web_stage_mode(mySession, retrieve_mode)
@@ -1727,9 +1773,6 @@ class Orchestrator:
         else:
             local_stage_enabled = True
             web_stage_enabled = False
-
-        local_stage_enabled = local_stage_enabled and bool(enable_local_stage)
-        web_stage_enabled = web_stage_enabled and bool(enable_web_stage)
 
         return _StageExecutionGates(
             web_mode=web_mode,
@@ -2286,12 +2329,26 @@ class Orchestrator:
         host_shaper = getattr(self._host, "_shape_graph_regex_stage_queries", None)
         if callable(host_shaper):
             try:
-                shaped_obj = host_shaper(
-                    mySession,
-                    language_bucket=target_language,
-                    primary_query=primary_query,
-                    guardrail_query=guardrail_query,
-                )
+                try:
+                    shaped_obj = host_shaper(
+                        mySession,
+                        language_bucket=target_language,
+                        primary_query=primary_query,
+                        guardrail_query=guardrail_query,
+                        enable_translation=bool(
+                            self._flow_enable_indexed_query_translation
+                        ),
+                        enable_synonym_expansion=bool(
+                            self._flow_enable_indexed_query_synonym_expansion
+                        ),
+                    )
+                except TypeError:
+                    shaped_obj = host_shaper(
+                        mySession,
+                        language_bucket=target_language,
+                        primary_query=primary_query,
+                        guardrail_query=guardrail_query,
+                    )
                 if isinstance(shaped_obj, tuple):
                     shaped_tuple = cast(tuple[Any, ...], shaped_obj)
                     if len(shaped_tuple) == 2:
@@ -2646,7 +2703,7 @@ class Orchestrator:
                 severity="I",
                 message=(
                     "original-language vector leg skipped "
-                    "(vector retriever disabled by mode or weight)"
+                    "(vector retriever disabled by flow, mode, or weight)"
                 ),
                 color=BRIGHT_MAGENTA,
             )
@@ -2691,24 +2748,31 @@ class Orchestrator:
         self,
         mySession: Session,
         *,
-        retrieve_mode: str,
+        retrieve_mode: str | None,
         bm25_query: str,
         alternate_queries: list[str],
         orig_translated_query_en: str,
         resolved_guardrail: _GuardrailInputs | None,
     ) -> _LocalStageInputs:
         """Resolve local stage flags, queries, and shared filters once."""
-        (
-            vector_enabled,
-            bm25_enabled,
-            graph_enabled,
-            regex_enabled,
-        ) = self._host._mode_flags_for_local_retrievers(retrieve_mode)
+        vector_enabled = bool(self._flow_enable_vector_retriever)
+        bm25_enabled = bool(self._flow_enable_bm25_retriever)
+        graph_enabled = bool(self._flow_enable_graph_retriever)
+        regex_enabled = bool(self._flow_enable_regex_retriever)
 
-        vector_enabled = vector_enabled and bool(self._flow_enable_vector_retriever)
-        bm25_enabled = bm25_enabled and bool(self._flow_enable_bm25_retriever)
-        graph_enabled = graph_enabled and bool(self._flow_enable_graph_retriever)
-        regex_enabled = regex_enabled and bool(self._flow_enable_regex_retriever)
+        # Backward compatibility: legacy seams may still pass retrieve_mode.
+        mode_text = str(retrieve_mode or "").strip().upper()
+        if mode_text and bool(getattr(self, "_respect_legacy_retrieve_mode", True)):
+            (
+                vector_mode_enabled,
+                bm25_mode_enabled,
+                graph_mode_enabled,
+                regex_mode_enabled,
+            ) = self._host._mode_flags_for_local_retrievers(mode_text)
+            vector_enabled = bool(vector_enabled and vector_mode_enabled)
+            bm25_enabled = bool(bm25_enabled and bm25_mode_enabled)
+            graph_enabled = bool(graph_enabled and graph_mode_enabled)
+            regex_enabled = bool(regex_enabled and regex_mode_enabled)
 
         guardrail_inputs = resolved_guardrail
         if guardrail_inputs is None:
@@ -2900,7 +2964,7 @@ class Orchestrator:
                 severity="I",
                 message=(
                     "original-language indexed leg skipped "
-                    "(no indexed retriever enabled by mode or weight)"
+                    "(no indexed retriever enabled by flow, mode, or weight)"
                 ),
                 color=BRIGHT_MAGENTA,
             )
@@ -2954,7 +3018,7 @@ class Orchestrator:
         self,
         mySession: Session,
         *,
-        retrieve_mode: str,
+        retrieve_mode: str | None,
         bm25_query: str,
         alternate_queries: list[str],
         orig_translated_query_en: str,
@@ -2993,8 +3057,6 @@ class Orchestrator:
         stage_gates = self._resolve_stage_execution_gates(
             mySession,
             retrieve_mode=pipeline_inputs.retrieve_mode,
-            enable_local_stage=pipeline_inputs.enable_local_stage,
-            enable_web_stage=pipeline_inputs.enable_web_stage,
         )
         self._trace_effective_stage_gates(
             mySession,
@@ -3005,6 +3067,12 @@ class Orchestrator:
 
         self._flow_enable_indexed_query_shaping = bool(
             pipeline_inputs.enable_indexed_query_shaping
+        )
+        self._flow_enable_indexed_query_translation = bool(
+            pipeline_inputs.enable_indexed_query_translation
+        )
+        self._flow_enable_indexed_query_synonym_expansion = bool(
+            pipeline_inputs.enable_indexed_query_synonym_expansion
         )
         self._flow_enable_original_language_vector_leg = bool(
             pipeline_inputs.enable_original_language_vector_leg
@@ -3023,14 +3091,19 @@ class Orchestrator:
                 stage_name="retrieve local candidates",
                 details=(f"mode={pipeline_inputs.retrieve_mode}"),
             )
-            local_docs = self._run_local_docs_stage(
-                mySession,
-                retrieve_mode=pipeline_inputs.retrieve_mode,
-                bm25_query=pipeline_inputs.bm25_query,
-                alternate_queries=pipeline_inputs.alternate_queries,
-                orig_translated_query_en=pipeline_inputs.orig_translated_query_en,
-                resolved_guardrail=pipeline_inputs.resolved_guardrail,
-            )
+            previous_mode_override_flag = self._respect_legacy_retrieve_mode
+            self._respect_legacy_retrieve_mode = False
+            try:
+                local_docs = self._run_local_docs_stage(
+                    mySession,
+                    retrieve_mode=pipeline_inputs.retrieve_mode,
+                    bm25_query=pipeline_inputs.bm25_query,
+                    alternate_queries=pipeline_inputs.alternate_queries,
+                    orig_translated_query_en=pipeline_inputs.orig_translated_query_en,
+                    resolved_guardrail=pipeline_inputs.resolved_guardrail,
+                )
+            finally:
+                self._respect_legacy_retrieve_mode = previous_mode_override_flag
             self._trace(
                 mySession,
                 "local docs fetched "
@@ -3064,8 +3137,7 @@ class Orchestrator:
         else:
             self._trace(
                 mySession,
-                "local stage skipped "
-                f"(web_mode={stage_gates.web_mode}, flow_gate={pipeline_inputs.enable_local_stage})",
+                "local stage skipped " f"(web_mode={stage_gates.web_mode})",
             )
 
             confidence_logger = getattr(self._host, "confidence_logger", None)
@@ -3075,10 +3147,7 @@ class Orchestrator:
                     step_name="retrieve local candidates",
                     status="skipped",
                     confidence_level="N/A",
-                    detail=(
-                        f"web_mode={stage_gates.web_mode} "
-                        f"flow_gate={pipeline_inputs.enable_local_stage}"
-                    ),
+                    detail=(f"web_mode={stage_gates.web_mode}"),
                     source="orchestrator",
                 )
 
@@ -3109,8 +3178,7 @@ class Orchestrator:
         else:
             self._trace(
                 mySession,
-                "web stage skipped "
-                f"(web_mode={stage_gates.web_mode}, flow_gate={pipeline_inputs.enable_web_stage})",
+                "web stage skipped " f"(web_mode={stage_gates.web_mode})",
             )
 
             confidence_logger = getattr(self._host, "confidence_logger", None)
@@ -3120,10 +3188,7 @@ class Orchestrator:
                     step_name="retrieve web candidates",
                     status="skipped",
                     confidence_level="N/A",
-                    detail=(
-                        f"web_mode={stage_gates.web_mode} "
-                        f"flow_gate={pipeline_inputs.enable_web_stage}"
-                    ),
+                    detail=(f"web_mode={stage_gates.web_mode}"),
                     source="orchestrator",
                 )
 
@@ -3139,6 +3204,10 @@ class Orchestrator:
         self._trace_stage(mySession, stage_name="prepare session context")
         if flow_profile is None:
             flow_profile = self._resolve_orchestration_flow_profile(mySession)
+        flow_profile = self._resolve_effective_flow_profile_for_session(
+            mySession,
+            flow_profile,
+        )
         self._apply_query_rewrite_flow_controls(
             mySession,
             flow_profile=flow_profile,
@@ -3219,6 +3288,8 @@ class Orchestrator:
             f"low_recall_rescue={'on' if flow_profile.enable_low_recall_rescue else 'off'} "
             f"grounding={'on' if flow_profile.enable_grounding else 'off'} "
             f"indexed_shape={'on' if flow_profile.enable_indexed_query_shaping else 'off'} "
+            f"indexed_translate={'on' if flow_profile.enable_indexed_query_translation else 'off'} "
+            f"indexed_synonyms={'on' if flow_profile.enable_indexed_query_synonym_expansion else 'off'} "
             f"alt_queries={len(alternate_queries)} "
             f"retrievers="
             f"v={'on' if flow_profile.enable_vector_retriever else 'off'},"
@@ -3235,9 +3306,11 @@ class Orchestrator:
             orig_translated_query_en=plan.orig_translated_query_en,
             user_query_original=plan.user_query_original,
             resolved_guardrail=guardrail_inputs,
-            enable_local_stage=flow_profile.enable_local_stage,
-            enable_web_stage=flow_profile.enable_web_stage,
             enable_indexed_query_shaping=flow_profile.enable_indexed_query_shaping,
+            enable_indexed_query_translation=flow_profile.enable_indexed_query_translation,
+            enable_indexed_query_synonym_expansion=(
+                flow_profile.enable_indexed_query_synonym_expansion
+            ),
             enable_original_language_vector_leg=flow_profile.enable_original_language_vector_leg,
             enable_vector_retriever=flow_profile.enable_vector_retriever,
             enable_bm25_retriever=flow_profile.enable_bm25_retriever,
@@ -3264,6 +3337,8 @@ class Orchestrator:
         concrete retriever implementations on the host object.
         """
         self._flow_enable_indexed_query_shaping = True
+        self._flow_enable_indexed_query_translation = True
+        self._flow_enable_indexed_query_synonym_expansion = True
         self._flow_enable_original_language_vector_leg = True
         self._flow_enable_vector_retriever = True
         self._flow_enable_bm25_retriever = True

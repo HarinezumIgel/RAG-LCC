@@ -354,18 +354,19 @@ class ChunkSelector(ABC):
             f"{{:>2}}  {{:>8.4f}}+[{{:.3f}}]  ({{:>6.4f}})  "
             f"{{:>+9.4f}}  {{:<{sources_width}}}  {{:<40}}  {{}}"
         )
+        stage_label = "Score select"
 
         has_boosted = any(eff != sc for _, sc, _, eff in misses + hits)
         if has_boosted:
             self.pretty.write(
                 "I",
-                "Rerank select",
+                stage_label,
                 "logit+ = effective logit after single-chunk boost (raw in raw_rerank_score)",
                 color=CYAN,
             )
         self.pretty.write(
             "A",
-            "Rerank select",
+            stage_label,
             header.format(
                 "", "Logit [Sigmoid]", "Thr", "ΔProb", "Retrievers", "File", "Text"
             ),
@@ -382,7 +383,7 @@ class ChunkSelector(ABC):
                 "Text",
             )
         )
-        self.pretty.write("A", "Rerank select", "-" * divider_len, color=CYAN)
+        self.pretty.write("A", stage_label, "-" * divider_len, color=CYAN)
 
         for c, sc, thr, eff in misses:
             dev = self._sigmoid(eff) - thr
@@ -399,7 +400,7 @@ class ChunkSelector(ABC):
             if eff != sc:
                 self.pretty.write(
                     "A",
-                    "Rerank select",
+                    stage_label,
                     row_b.format(
                         Symbols.sym_fail(),
                         eff,
@@ -414,7 +415,7 @@ class ChunkSelector(ABC):
             else:
                 self.pretty.write(
                     "A",
-                    "Rerank select",
+                    stage_label,
                     row.format(
                         Symbols.sym_fail(),
                         sc,
@@ -446,7 +447,7 @@ class ChunkSelector(ABC):
             if eff != sc:
                 self.pretty.write(
                     "A",
-                    "Rerank select",
+                    stage_label,
                     row_b.format(
                         sym, eff, self._sigmoid(eff), thr, dev, sources, fn, text
                     ),
@@ -454,7 +455,7 @@ class ChunkSelector(ABC):
             else:
                 self.pretty.write(
                     "A",
-                    "Rerank select",
+                    stage_label,
                     row.format(
                         sym, sc, self._sigmoid(eff), thr, dev, sources, fn, text
                     ),

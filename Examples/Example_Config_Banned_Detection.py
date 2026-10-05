@@ -63,6 +63,7 @@ _BANNED_DETECT = {
                 "Check": False,  # No LLM prompt-level check during load
             },
             "PIPELINE_CHECK": {
+                "Check": True,
                 # PIPELINE contains per-algo thresholds and tuning parameters
                 "PIPELINE": {
                     "Jaccard": {
@@ -184,6 +185,7 @@ _BANNED_DETECT = {
             },
             # PIPELINE_CHECK: checks applied to retrieved documents (post-retrieval)
             "PIPELINE_CHECK": {
+                "Check": True,
                 "PIPELINE": {
                     "Jaccard": {
                         "CHAR_NGRAM_RANGE": (4, 6),
@@ -290,6 +292,7 @@ _BANNED_DETECT = {
                 },
             },
             "PIPELINE_CHECK": {
+                "Check": True,
                 "PIPELINE": {
                     "Jaccard": {
                         "CHAR_NGRAM_RANGE": (4, 6),

@@ -59,8 +59,9 @@ class StubSession:
     """Minimal Session-like object with all attributes used by applyRequestToSession."""
 
     def __init__(self):
-        self.file_name = None
-        self.file_path = None
+        self.file_name: str | None = None
+        self.file_path: str | None = None
+        self.metadata_filters: dict[str, str] = {}
         self.query: str | None = None
         self.strategy: str | None = None
         self.orchestrator_flow: str | None = None
@@ -529,6 +530,43 @@ class TestApplyRequestToSession:
         req = _base_req(model="DocsToLoadOrClassify")
         session = self._apply(req)
         assert session.collection_name == "DocsToLoadOrClassify"
+
+    def test_collection_switch_keeps_overrides_and_clears_collection_scoped_filters(
+        self,
+    ):
+        called_strategy = []
+        called_flow = []
+
+        class RecordingQP:
+            def applyStrategyDefaults(self, strategy, session=None):
+                _ = session
+                called_strategy.append(strategy)
+                return ""
+
+            def applyOrchestrationFlowDefaults(self, orchestrator_flow, session=None):
+                _ = session
+                called_flow.append(orchestrator_flow)
+                return orchestrator_flow
+
+        session = StubSession()
+        session.collection_name = "OldCollection"
+        session.strategy = "NARROW"
+        session.orchestrator_flow = "THOROUGH_QUERY_REWRITE"
+        session.retriever_k = 77
+        session.file_name = "doc.txt"
+        session.file_path = "D:/OldCollection/doc.txt"
+        session.metadata_filters = {"Author": "Ada"}
+
+        req = _base_req(model="NewCollection")
+        _applyRequestToSession(req, session, RecordingQP(), StubConfig())
+
+        assert session.collection_name == "NewCollection"
+        assert session.file_name is None
+        assert session.file_path is None
+        assert session.metadata_filters == {}
+        assert session.retriever_k == 77
+        assert called_strategy == []
+        assert called_flow == []
 
     # --- strategy -----------------------------------------------------------
 

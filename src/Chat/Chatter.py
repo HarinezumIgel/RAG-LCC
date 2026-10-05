@@ -83,9 +83,10 @@ from Globals.Session import Session
 from Gui.Colors import CYAN, GREEN, ORANGE, RED, RESET, YELLOW
 from Gui.PrettyWriter import PrettyWriter
 from Gui.Symbols import Symbols
-from Helpers.CSVWriter import CSVWriter
 from Helpers.ConfidenceHelper import ConfidenceHelper
 from Helpers.ConfidenceLogger import ConfidenceLogger
+from Helpers.CSVWriter import CSVWriter
+from Helpers.DebugHelper import DebugHelper
 from Helpers.FileUtils import FileUtils
 from Helpers.Helpers import Helpers
 from Helpers.SourcePathLinkifier import SourcePathLinkifier
@@ -96,15 +97,16 @@ class Chatter:
         # your core components
         self.globalsInstance: Globals = Globals()
         self.helpers: Helpers = Helpers()
+        self.cfg: Config = Config()
         self.fileUtils: FileUtils = FileUtils()
         self.tensorHelpers: TensorHelpers = TensorHelpers()
         self.aiHelpers: AIHelpers = AIHelpers()
         self.models_cache: ModelsCache = ModelsCache()
-        self.logger: logging.Logger = self.helpers.setup_logger("RAGChat")
+        logger_name = self.cfg.get_str("_FRIENDLY_NAME", "RAGChat", silent=True)
+        self.logger: logging.Logger = self.helpers.setup_logger(logger_name)
         self.globalsInstance.set_logger(self.logger)
         self.pretty: PrettyWriter = PrettyWriter()
         self.queryParts: QueryParts = QueryParts()
-        self.cfg: Config = Config()
         self.csvWriter: CSVWriter = CSVWriter()
         self.confidence_logger: ConfidenceLogger = ConfidenceLogger()
         self.bannedPhraseCollector: BannedPhraseCollector = BannedPhraseCollector()
@@ -410,11 +412,32 @@ class Chatter:
         # Apply answer grounding (highlight sentences traceable to source chunks)
         cli_answer = answer.content
         if grounding_enabled and not skip_grounding_for_short_answer:
-            chunk_texts: list[str] = list(
+            local_chunk_texts: list[str] = list(
                 getattr(session, "chunk_texts_for_grounding", []) or []
             )
-            if chunk_texts:
-                cli_answer = self._apply_answer_grounding(answer, chunk_texts)
+            web_chunk_texts = self._collect_web_grounding_texts(session)
+            evidence_texts: list[str] = local_chunk_texts + web_chunk_texts
+            if evidence_texts:
+                grounded_cli = self._apply_answer_grounding(answer, evidence_texts)
+                if grounded_cli == answer.content and DebugHelper.check_session(
+                    session, 30
+                ):
+                    self.pretty.write(
+                        "D",
+                        "Grounding",
+                        "Grounding active but no sentence-level overlap met thresholds "
+                        "for CLI marking",
+                        color=CYAN,
+                    )
+                cli_answer = grounded_cli
+            elif DebugHelper.check_session(session, 30):
+                self.pretty.write(
+                    "D",
+                    "Grounding",
+                    "No eligible evidence text for CLI grounding marks "
+                    "(local chunks=0, web snippets/pages=0)",
+                    color=CYAN,
+                )
 
         confidence_notice = self._build_answer_confidence_notice(
             session,
@@ -432,8 +455,7 @@ class Chatter:
                 step_name="final answer confidence",
                 status="executed",
                 confidence_level=str(
-                    getattr(session, "answer_confidence_level", "UNKNOWN")
-                    or "UNKNOWN"
+                    getattr(session, "answer_confidence_level", "UNKNOWN") or "UNKNOWN"
                 ).upper(),
                 confidence_score=score,
                 detail=summary,
@@ -461,7 +483,9 @@ class Chatter:
             chosen = getattr(session, "last_chosen_chunks", [])
             if chosen:
                 try:
-                    self.rag._mark_sources(session, chosen)  # pyright: ignore[reportPrivateUsage]
+                    self.rag._mark_sources(
+                        session, chosen
+                    )  # pyright: ignore[reportPrivateUsage]
                 except Exception as exc:
                     self.pretty.write(
                         "W", "VisualMarker", f"Visual marking failed: {exc}"
@@ -520,7 +544,9 @@ class Chatter:
     def _resolve_answer_confidence_payload(session: Session) -> tuple[str, str]:
         """Return (level, payload) for answer confidence notices."""
         summary = str(getattr(session, "answer_confidence_summary", "") or "").strip()
-        level = str(getattr(session, "answer_confidence_level", "") or "").strip().upper()
+        level = (
+            str(getattr(session, "answer_confidence_level", "") or "").strip().upper()
+        )
         score_obj = getattr(session, "answer_confidence_score", None)
 
         if summary:
@@ -578,9 +604,7 @@ class Chatter:
     @staticmethod
     def _build_grounding_skipped_short_answer_notice() -> str:
         """Return notice prepended when grounding is skipped for short answers."""
-        return (
-            f"{Symbols.sym_warning()} Grounding skipped: answer is too short for reliable sentence-level grounding.\n\n"
-        )
+        return f"{Symbols.sym_warning()} Grounding skipped: answer is too short for reliable sentence-level grounding.\n\n"
 
     @staticmethod
     def _extract_answer_section(text: str) -> str:
@@ -622,9 +646,7 @@ class Chatter:
             if not paragraph:
                 continue
             for sentence in _re.split(r"(?<=[.!?])\s+", paragraph):
-                token_count = len(
-                    _re.findall(r"\w+", sentence, flags=_re.UNICODE)
-                )
+                token_count = len(_re.findall(r"\w+", sentence, flags=_re.UNICODE))
                 if token_count > 0:
                     token_counts.append(token_count)
 
@@ -779,15 +801,19 @@ class Chatter:
             return True
 
         retrieval_lang = str(getattr(session, "retrieval_language", "") or "").lower()
-        answer_lang = str(
-            self.fileUtils.get_user_text_language(
-                answer_body,
-                output="nltk",
-                native_lang=response_language,
-                stage_label="answer_grounding_language",
+        answer_lang = (
+            str(
+                self.fileUtils.get_user_text_language(
+                    answer_body,
+                    output="nltk",
+                    native_lang=response_language,
+                    stage_label="answer_grounding_language",
+                )
+                or ""
             )
-            or ""
-        ).strip().lower()
+            .strip()
+            .lower()
+        )
         self._drain_lang_detection_confidence_events(session)
 
         translation_targets: list[tuple[str, str]] = []
@@ -939,8 +965,14 @@ class Chatter:
                 "Status": status,
             }
         }
+        rows = self.bannedPhraseCollector.prepare_for_csv_print(
+            phrase_table,
+            doc["meta"],
+        )
+        if not rows:
+            rows = self.bannedPhraseCollector.prepare_print_for_chat(doc["meta"])
         self.csvWriter.write_json2csv(
-            self.bannedPhraseCollector.prepare_for_csv_print(phrase_table, doc),
+            rows,
             "HUMAN_REVIEW",
         )
         if human_review:
@@ -952,7 +984,7 @@ class Chatter:
     def _apply_answer_grounding(
         self,
         answer: ModelOutput,
-        chunk_texts: list[str],
+        evidence_texts: list[str],
     ) -> str:
         """Apply grounding highlights to *answer.content* and return the CLI display version.
 
@@ -966,7 +998,7 @@ class Chatter:
         grounder = AnswerGrounder()
         return grounder.ground_answer_cli(
             answer.content or "",
-            chunk_texts,
+            evidence_texts,
             ansi_codes=ansi,
         )
 

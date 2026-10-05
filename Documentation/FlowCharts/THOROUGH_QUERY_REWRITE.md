@@ -4,7 +4,7 @@
 %%{init: {'theme':'base','themeVariables':{'background':'#f5efe3','mainBkg':'#f5efe3','primaryColor':'#ffffff','secondaryColor':'#ffffff','tertiaryColor':'#ffffff','primaryTextColor':'#111111','lineColor':'#333333'}}}%%
 flowchart TD
     A["Orchestrator.run"] --> B["Resolve flow profile"]
-    B --> Cfg["THOROUGH_QUERY_REWRITE profile<br/>force_retrieve_mode=none<br/>use_secondary_query=on<br/>use_original_language_vector=on<br/>shape_indexed_queries=on<br/>use_vector_alternates=on<br/>use_query_rewrite=on<br/>use_pronoun_substitution=on<br/>run_local_stage=on<br/>run_web_stage=on<br/>run_vector=on<br/>run_bm25=on<br/>run_graph=on<br/>run_regex=on<br/>run_rerank=on<br/>run_low_score_fallback=on<br/>run_low_recall_rescue=on<br/>run_grounding=on"]
+    B --> Cfg["THOROUGH_QUERY_REWRITE profile<br/>force_retrieve_mode=none<br/>use_secondary_query=on<br/>use_original_language_vector=on<br/>shape_indexed_queries=on<br/>use_vector_alternates=on<br/>use_query_rewrite=on<br/>use_pronoun_substitution=on<br/>run_vector=on<br/>run_bm25=on<br/>run_graph=on<br/>run_regex=on<br/>run_rerank=on<br/>run_low_score_fallback=on<br/>run_low_recall_rescue=on<br/>run_grounding=on"]
 
     Cfg --> C["Apply flow controls to session flags"]
     C --> D["Prepare session context"]

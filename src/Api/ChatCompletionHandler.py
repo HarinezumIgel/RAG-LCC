@@ -116,6 +116,9 @@ class ChatCompletionRequest(BaseModel):
     # keep aliases here in sync with that registry when adding new parameters.
     strategy: Optional[str] = None
     orchestrator_flow: Optional[str] = None
+    force_retrieve_mode: Optional[str] = None
+    main_query_source: Optional[str] = None
+    secondary_query_source: Optional[str] = None
     retriever_k: Optional[int] = None
     fetch_k: Optional[int] = None  # CLI alias for retriever_k
     rerank: Optional[bool] = None
@@ -132,9 +135,6 @@ class ChatCompletionRequest(BaseModel):
     chat_name: Optional[str] = None
     per_file_limit: Optional[int] = None
     file_cap: Optional[int] = None  # CLI alias for per_file_limit
-    retrieve_mode: Optional[str] = (
-        None  # VECTOR, BM25, GRAPH, REGEX, VECTOR_BM25, VECTOR_GRAPH, BM25_GRAPH, VECTOR_REGEX, BM25_REGEX, GRAPH_REGEX, ALL, WEB
-    )
     web_search: Optional[Union[bool, str]] = None
     web_weight: Optional[float] = None
     fetch_page_content: Optional[bool] = None
@@ -288,6 +288,23 @@ def _resolve_allowed_orchestration_flows(cfg: Config) -> list[str]:
     return flow_names
 
 
+def _resolve_default_orchestration_flow(
+    cfg: Config,
+    fallback: str = "THOROUGH_QUERY_REWRITE",
+) -> str:
+    """Return default orchestration flow used when session value is unset."""
+    fallback_flow = str(fallback or "THOROUGH_QUERY_REWRITE").strip().upper()
+    if not fallback_flow:
+        fallback_flow = "THOROUGH_QUERY_REWRITE"
+
+    default_flow = (
+        str(cfg.get_str("_DEFAULT_ORCHESTRATION_FLOW", fallback_flow) or fallback_flow)
+        .strip()
+        .upper()
+    )
+    return default_flow or fallback_flow
+
+
 def _getLastUserText(req: ChatCompletionRequest) -> str | None:
     """Return the text of the last user message, or None."""
     if not req.messages:
@@ -334,35 +351,51 @@ def _applyRequestToSession(
     overrides coming from the OpenWebUI / API caller.
     """
 
-    # Switch collection if needed
+    # Switch collection if needed.
+    # Option 1 semantics: preserve user overrides on collection change,
+    # but clear file/path/metadata filters that are collection-scoped.
     incoming_collection = req.model
-    if (
-        session.collection_name is not None
-        and session.collection_name != incoming_collection
-    ):
-        # Reset things before switching collection
-        if hasattr(queryParts, "_reset_things"):
-            queryParts.reset_things()
+    previous_collection = session.collection_name
+    is_session_bootstrap = previous_collection is None
+    collection_changed = (
+        previous_collection is not None and previous_collection != incoming_collection
+    )
+    if collection_changed:
+        session.file_name = None
+        session.file_path = None
+        if hasattr(session, "file_path_select"):
+            setattr(session, "file_path_select", None)
+        if hasattr(session, "metadata_filters"):
+            setattr(session, "metadata_filters", {})
     session.collection_name = incoming_collection
 
     # Determine strategy: request > session > config default
     # Treat empty/whitespace-only values the same as absent (OpenWebUI may send strategy="" when unset)
-    if req.strategy is not None and req.strategy.strip():
-        strategy_upper = req.strategy.strip().upper()
+    strategy_raw = req.strategy
+    strategy_requested = bool(strategy_raw is not None and strategy_raw.strip())
+    if strategy_requested:
+        strategy_upper = str(strategy_raw).strip().upper()
         if strategy_upper not in _ALLOWED_STRATEGIES:
             raise HTTPException(
                 status_code=400,
                 detail=f"Invalid strategy {req.strategy!r}. Allowed: {sorted(_ALLOWED_STRATEGIES)}",
             )
         session.strategy = strategy_upper
-    strategy = (
-        session.strategy or cfg.get_str("_ACTIVE_CHUNK_SELECT_STRATEGY") or "DEFAULT"
-    )
-    queryParts.applyStrategyDefaults(strategy, session=session)
+
+    should_apply_strategy_defaults = is_session_bootstrap or strategy_requested
+    if should_apply_strategy_defaults:
+        strategy = (
+            session.strategy
+            or cfg.get_str("_ACTIVE_CHUNK_SELECT_STRATEGY")
+            or "DEFAULT"
+        )
+        queryParts.applyStrategyDefaults(strategy, session=session)
 
     allowed_orchestrator_flows = _resolve_allowed_orchestration_flows(cfg)
-    if req.orchestrator_flow is not None and req.orchestrator_flow.strip():
-        flow_upper = req.orchestrator_flow.strip().upper()
+    flow_raw = req.orchestrator_flow
+    flow_requested = bool(flow_raw is not None and flow_raw.strip())
+    if flow_requested:
+        flow_upper = str(flow_raw).strip().upper()
         if flow_upper not in allowed_orchestrator_flows:
             raise HTTPException(
                 status_code=400,
@@ -372,147 +405,225 @@ def _applyRequestToSession(
                 ),
             )
         session.orchestrator_flow = flow_upper
-    selected_flow = (
-        session.orchestrator_flow
-        or cfg.get_str("_ACTIVE_ORCHESTRATION_FLOW")
-        or allowed_orchestrator_flows[0]
-    )
-    queryParts.applyOrchestrationFlowDefaults(
-        selected_flow,
-        session=session,
-    )
 
-    web_search_notice: str = ""
-
-    def _applyOverrides() -> None:
-        nonlocal web_search_notice
-        # RAG-LCC param overrides (applied after strategy defaults so they take precedence)
-        retriever_k = req.fetch_k if req.fetch_k is not None else req.retriever_k
-        if retriever_k is not None:
-            session.retriever_k = retriever_k
-        if req.rerank is not None:
-            session.rerank = req.rerank
-        threshold = req.threshold if req.threshold is not None else req.chroma_threshold
-        if threshold is not None:
-            session.chroma_threshold = max(0.0, min(1.0, threshold))
-        chunks = (
-            req.context_chunks
-            if req.context_chunks is not None
-            else req.final_chunks_to_llm
-        )
-        if chunks is not None:
-            session.final_chunks_to_llm = chunks
-        if req.vector_weight is not None:
-            session.vector_weight = max(0.0, min(1.0, req.vector_weight))
-        if req.bm25_weight is not None:
-            session.bm25_weight = max(0.0, min(1.0, req.bm25_weight))
-        if req.graph_weight is not None:
-            session.graph_weight = max(0.0, min(1.0, req.graph_weight))
-        if req.regex_weight is not None:
-            session.regex_weight = max(0.0, min(1.0, req.regex_weight))
-        if req.use_chat_context is not None:
-            session.use_chat_context = req.use_chat_context
-        # chat_name priority: explicit param > OpenWebUI chat_id > keep existing
-        if req.chat_name is not None:
-            session.chat_name = req.chat_name
-        elif req.chat_id is not None:
-            session.chat_name = req.chat_id
-        file_cap = req.file_cap if req.file_cap is not None else req.per_file_limit
-        if file_cap is not None:
-            session.per_file_limit = file_cap
-        if req.retrieve_mode is not None:
-            sm = req.retrieve_mode.upper()
-            allowed_modes: list[str] = cfg.get_list("_ALLOWED_RETRIEVE_MODES")
-            if sm in allowed_modes:
-                session.retrieve_mode = sm
-        if req.web_search is not None:
-            # Normalize to the tri-state string used by QueryParts.
-            # Bool values come from JSON true/false; strings come from OpenWebUI
-            # Advanced Parameters (web_search=local_and_web / web_search=web_only).
-            ws_raw = req.web_search
-            if isinstance(ws_raw, bool):
-                ws_raw = "local_and_web" if ws_raw else "local_only"
-            else:
-                # OpenWebUI custom params may include surrounding quotes,
-                # e.g. web_search='local_and_web'. Normalize both styles.
-                ws_raw = str(ws_raw).strip().strip("\"'").lower()
-                if ws_raw in ("true", "1"):
-                    ws_raw = "local_and_web"
-                elif ws_raw in ("false", "0"):
-                    ws_raw = "local_only"
-            if ws_raw in ("local_and_web", "web_only"):
-                web_mode: str = (
-                    str(os.environ.get("WEB_SEARCH_MODE", "0")).strip().lower()
-                )
-                if web_mode != "1":
-                    web_search_notice = (
-                        "\U0001f6ab **Web search unavailable** \u2014 "
-                        "disabled by the administrator "
-                        '(`WEB_SEARCH_MODE != "1"` in `Config_Internet_Env.py`). '
-                        "Answering from the local knowledge base only.\n\n---\n\n"
-                    )
-                    session.web_search = False
-                else:
-                    session.web_search = True
-                    if ws_raw == "web_only":
-                        session.retrieve_mode = "WEB"
-            else:  # "local_only" or unrecognised value
-                session.web_search = False
-                if getattr(session, "retrieve_mode", None) == "WEB":
-                    # Keep session state coherent: if web search is off, WEB-only
-                    # mode must be replaced with a local retrieval mode.
-                    allowed_rm: list[str] = cfg.get_list("_ALLOWED_RETRIEVE_MODES")
-                    session.retrieve_mode = (
-                        "ALL" if "ALL" in allowed_rm else allowed_rm[0]
-                    )
-        elif (
-            cfg.get_bool("_OPENWEB_UI_WEBSEARCH", False)
-            and str(os.environ.get("WEB_SEARCH_MODE", "0")).strip().lower() == "1"
-        ):
-            # No explicit per-request value — apply the service-level default.
-            session.web_search = True
-        if req.web_weight is not None:
-            session.web_weight = max(0.0, req.web_weight)
-        if req.fetch_page_content is not None:
-            session.fetch_page_content = req.fetch_page_content
-        # Enable visual markers (yellow highlighting) and HTTP serving only when enabled.
-        # Answer grounding (orange) works independently via chunk_texts_for_grounding.
-        session.mark_text = os.environ.get("SERVE_IN_MEMORY_DOCS_HTTP", "0") == "1"
-        if req.debug_level is not None or req.debug_mode is not None:
-            level = (
-                req.debug_level
-                if req.debug_level is not None
-                else session.debug_level or 0
+    has_flow_in_session = bool(str(session.orchestrator_flow or "").strip())
+    should_apply_flow_defaults = (
+        is_session_bootstrap or flow_requested or not has_flow_in_session
+    )
+    if should_apply_flow_defaults:
+        selected_flow = (
+            session.orchestrator_flow
+            or _resolve_default_orchestration_flow(
+                cfg,
+                allowed_orchestrator_flows[0],
             )
-            mode = (
-                req.debug_mode.strip().lower() if req.debug_mode is not None else None
-            ) or "ge"
-            if mode not in ("ge", "is", "le"):
-                mode = "ge"
-            session.debug_level = level
-            session.debug_mode = mode
-            combined = "none" if level == 0 else f"{mode} {level}"
-            cfg.set("DEBUG_LEVEL", combined)
-
-        # Per-request LLM param overrides
-        if req.temperature is not None:
-            session.temperature = req.temperature
-        if req.top_p is not None:
-            session.top_p = req.top_p
-        if req.top_k is not None:
-            session.top_k = float(req.top_k)
-        max_out = (
-            req.max_output_tokens
-            if req.max_output_tokens is not None
-            else req.max_tokens
+            or allowed_orchestrator_flows[0]
         )
-        if max_out is not None:
-            session.max_output_tokens_override = max_out
-        ctx = req.context_size if req.context_size is not None else req.num_ctx
-        if ctx is not None:
-            session.context_size_override = ctx
+        queryParts.applyOrchestrationFlowDefaults(
+            selected_flow,
+            session=session,
+        )
 
-    _applyOverrides()
+    request_notices: list[str] = []
+
+    def _as_bool_or_none(value: Any) -> Optional[bool]:
+        if value is None:
+            return None
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return bool(value)
+        text = str(value).strip().lower()
+        if text in ("1", "true", "yes", "y", "on"):
+            return True
+        if text in ("0", "false", "no", "n", "off"):
+            return False
+        return None
+
+    def _clamp_01(value: float) -> float:
+        return max(0.0, min(1.0, value))
+
+    def _normalize_web_search_mode(raw_value: bool | str) -> str:
+        if isinstance(raw_value, bool):
+            return "local_and_web" if raw_value else "local_only"
+        text = str(raw_value).strip().strip("\"'").lower()
+        if text in ("true", "1"):
+            return "local_and_web"
+        if text in ("false", "0"):
+            return "local_only"
+        return text
+
+    def _apply_query_source(value: str | None, session_attr: str) -> None:
+        if value is None or not value.strip():
+            return
+        requested = value.strip().upper()
+        if requested not in allowed_query_sources:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Invalid {session_attr} {value!r}. "
+                    f"Allowed: {allowed_query_sources}"
+                ),
+            )
+        setattr(session, session_attr, requested)
+
+    allowed_query_sources: list[str] = [
+        str(item).strip().upper()
+        for item in cfg.get_list(
+            "_ALLOWED_ORCHESTRATION_QUERY_SOURCES",
+            ["FINAL_QUERY", "TRANSLATED_QUERY", "ORIGINAL_QUERY"],
+        )
+        if str(item).strip()
+    ]
+    if not allowed_query_sources:
+        allowed_query_sources = ["FINAL_QUERY", "TRANSLATED_QUERY", "ORIGINAL_QUERY"]
+
+    # RAG-LCC param overrides (applied after strategy defaults so they take precedence)
+    retriever_k = req.fetch_k if req.fetch_k is not None else req.retriever_k
+    if retriever_k is not None:
+        session.retriever_k = retriever_k
+    if req.rerank is not None:
+        session.rerank = req.rerank
+
+    model_extra = req.model_extra or {}
+    for key, raw_value in model_extra.items():
+        field_name = str(key)
+        if not field_name.startswith("enable_"):
+            continue
+        if not hasattr(session, field_name):
+            continue
+        parsed_bool = _as_bool_or_none(raw_value)
+        if parsed_bool is None:
+            continue
+        setattr(session, field_name, parsed_bool)
+        if field_name == "enable_rerank" and req.rerank is None:
+            session.rerank = parsed_bool
+
+    if req.force_retrieve_mode is not None and req.force_retrieve_mode.strip():
+        requested_mode = req.force_retrieve_mode.strip().upper()
+        allowed_modes = {
+            str(item).strip().upper()
+            for item in cfg.get_list("_ALLOWED_RETRIEVE_MODES")
+            if str(item).strip()
+        }
+        if allowed_modes and requested_mode not in allowed_modes:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Invalid force_retrieve_mode {req.force_retrieve_mode!r}. "
+                    f"Allowed: {sorted(allowed_modes)}"
+                ),
+            )
+        session.force_retrieve_mode = requested_mode
+
+    _apply_query_source(req.main_query_source, "main_query_source")
+    _apply_query_source(req.secondary_query_source, "secondary_query_source")
+
+    threshold = req.threshold if req.threshold is not None else req.chroma_threshold
+    if threshold is not None:
+        session.chroma_threshold = _clamp_01(threshold)
+
+    chunks = (
+        req.context_chunks
+        if req.context_chunks is not None
+        else req.final_chunks_to_llm
+    )
+    if chunks is not None:
+        session.final_chunks_to_llm = chunks
+
+    weight_overrides: dict[str, float | None] = {
+        "vector_weight": req.vector_weight,
+        "bm25_weight": req.bm25_weight,
+        "graph_weight": req.graph_weight,
+        "regex_weight": req.regex_weight,
+    }
+    for field_name, value in weight_overrides.items():
+        if value is not None:
+            setattr(session, field_name, _clamp_01(value))
+
+    if req.use_chat_context is not None:
+        session.use_chat_context = req.use_chat_context
+
+    # chat_name priority: explicit param > OpenWebUI chat_id > keep existing
+    if req.chat_name is not None:
+        session.chat_name = req.chat_name
+    elif req.chat_id is not None:
+        session.chat_name = req.chat_id
+
+    file_cap = req.file_cap if req.file_cap is not None else req.per_file_limit
+    if file_cap is not None:
+        session.per_file_limit = file_cap
+
+    if req.web_search is not None:
+        web_search_mode = _normalize_web_search_mode(req.web_search)
+        if web_search_mode in ("local_and_web", "web_only"):
+            web_mode = str(os.environ.get("WEB_SEARCH_MODE", "0")).strip().lower()
+            if web_mode != "1":
+                request_notices.append(
+                    "\U0001f6ab **Web search unavailable** \u2014 "
+                    "disabled by the administrator "
+                    '(`WEB_SEARCH_MODE != "1"` in `Config_Internet_Env.py`). '
+                    "Answering from the local knowledge base only.\n\n---\n\n"
+                )
+                session.web_search = False
+            else:
+                session.web_search = True
+                if web_search_mode == "web_only":
+                    session.retrieve_mode = "WEB"
+        else:  # "local_only" or unrecognised value
+            session.web_search = False
+            if getattr(session, "retrieve_mode", None) == "WEB":
+                # Keep session state coherent: if web search is off, WEB-only
+                # mode must be replaced with a local retrieval mode.
+                allowed_rm: list[str] = cfg.get_list("_ALLOWED_RETRIEVE_MODES")
+                session.retrieve_mode = "ALL" if "ALL" in allowed_rm else allowed_rm[0]
+    elif (
+        cfg.get_bool("_OPENWEB_UI_WEBSEARCH", False)
+        and str(os.environ.get("WEB_SEARCH_MODE", "0")).strip().lower() == "1"
+    ):
+        # No explicit per-request value — apply the service-level default.
+        session.web_search = True
+
+    if req.web_weight is not None:
+        session.web_weight = max(0.0, req.web_weight)
+    if req.fetch_page_content is not None:
+        session.fetch_page_content = req.fetch_page_content
+
+    # Enable visual markers (yellow highlighting) and HTTP serving only when enabled.
+    # Answer grounding (orange) works independently via chunk_texts_for_grounding.
+    session.mark_text = os.environ.get("SERVE_IN_MEMORY_DOCS_HTTP", "0") == "1"
+
+    if req.debug_level is not None or req.debug_mode is not None:
+        level = (
+            req.debug_level if req.debug_level is not None else session.debug_level or 0
+        )
+        mode = (
+            req.debug_mode.strip().lower() if req.debug_mode is not None else None
+        ) or "ge"
+        if mode not in ("ge", "is", "le"):
+            mode = "ge"
+        session.debug_level = level
+        session.debug_mode = mode
+        combined = "none" if level == 0 else f"{mode} {level}"
+        cfg.set("DEBUG_LEVEL", combined)
+
+    # Per-request LLM param overrides
+    if req.temperature is not None:
+        session.temperature = req.temperature
+    if req.top_p is not None:
+        session.top_p = req.top_p
+    if req.top_k is not None:
+        session.top_k = float(req.top_k)
+
+    max_out = (
+        req.max_output_tokens if req.max_output_tokens is not None else req.max_tokens
+    )
+    if max_out is not None:
+        session.max_output_tokens_override = max_out
+
+    ctx = req.context_size if req.context_size is not None else req.num_ctx
+    if ctx is not None:
+        session.context_size_override = ctx
 
     # Build extra Ollama options from the request
     extra_options: dict[str, Any] = {}
@@ -532,7 +643,7 @@ def _applyRequestToSession(
 
     session.query = _buildQuery(req.messages)
     session.base_kwargs = {"k": session.retriever_k}
-    return web_search_notice
+    return "".join(request_notices)
 
 
 # ---------------------------------------------------------------------------
@@ -815,16 +926,16 @@ def _format_session_for_error(
     """
     s = session
 
-    lbl = 14  # label column width — matches print_values() in QueryParts
+    lbl = 15  # label text width — matches print_values() in QueryParts
 
     def _kv(*pairs: tuple[str, Any]) -> str:
         return "  ".join(f"{k}={v!r}" for k, v in pairs)
 
     def _line(label: str, *pairs: tuple[str, Any]) -> str:
-        return f"  \u25b6 {label + ':':<{lbl}}{_kv(*pairs)}"
+        return f"  \u25b6 {label:<{lbl}}: {_kv(*pairs)}"
 
     def _sub(label: str, *pairs: tuple[str, Any]) -> str:
-        return f"    \u25b6 {label + ':':<{lbl}}{_kv(*pairs)}"
+        return f"    \u25b6 {label:<{lbl}}: {_kv(*pairs)}"
 
     web_val = (
         "web_only"
@@ -890,13 +1001,68 @@ def _format_session_for_error(
             ("path", getattr(s, "file_path", None)),
             ("file_cap", getattr(s, "per_file_limit", None)),
         ),
-        "  \u25b6 Retrieval:",
+        f"  \u25b6 {'Retrieval':<{lbl}}: ",
         _sub(
             "Strategies",
             ("strategy", getattr(s, "strategy", None)),
-            ("retrieve_mode", getattr(s, "retrieve_mode", None)),
+            ("orchestrator_flow", getattr(s, "orchestrator_flow", None)),
+            ("force_retrieve_mode", getattr(s, "force_retrieve_mode", None)),
+            ("main_query_source", getattr(s, "main_query_source", None)),
+            (
+                "secondary_query_source",
+                getattr(s, "secondary_query_source", None),
+            ),
             ("rerank", getattr(s, "rerank", None)),
             ("threshold", getattr(s, "chroma_threshold", None)),
+        ),
+        _sub(
+            "Flow stages",
+            ("secondary_query", getattr(s, "enable_guardrail_leg", None)),
+            (
+                "per_language_indexed_query",
+                getattr(s, "enable_indexed_query_shaping", None),
+            ),
+            (
+                "indexed_translate",
+                getattr(s, "enable_indexed_query_translation", None),
+            ),
+            (
+                "indexed_synonyms",
+                getattr(s, "enable_indexed_query_synonym_expansion", None),
+            ),
+            (
+                "orig_lang_vector",
+                getattr(s, "enable_original_language_vector_leg", None),
+            ),
+            (
+                "vector_alternates",
+                getattr(s, "enable_vector_alternate_queries", None),
+            ),
+        ),
+        _sub(
+            "Flow retrievers",
+            ("vector", getattr(s, "enable_vector_retriever", None)),
+            ("bm25", getattr(s, "enable_bm25_retriever", None)),
+            ("graph", getattr(s, "enable_graph_retriever", None)),
+            ("regex", getattr(s, "enable_regex_retriever", None)),
+        ),
+        _sub(
+            "Flow runtime",
+            ("query_rewrite", getattr(s, "enable_query_rewrite", None)),
+            (
+                "pronoun_subst",
+                getattr(s, "enable_pronoun_substitution", None),
+            ),
+            ("rerank_stage", getattr(s, "enable_rerank", None)),
+            (
+                "low_score_fallback",
+                getattr(s, "enable_low_score_fallback", None),
+            ),
+            (
+                "low_recall_rescue",
+                getattr(s, "enable_low_recall_rescue", None),
+            ),
+            ("grounding", getattr(s, "enable_grounding", None)),
         ),
         _sub(
             "Weights",
@@ -1155,7 +1321,7 @@ async def handleRequest(
             req.model_dump()
         )  # capture before applyRequestToSession mutates session
 
-        web_search_notice: str = _applyRequestToSession(req, session, queryParts, cfg)
+        request_notice: str = _applyRequestToSession(req, session, queryParts, cfg)
 
         # Grounding needs the complete answer text. If grounding is active,
         # downgrade requested streaming to a buffered/non-streaming reply.
@@ -1187,49 +1353,17 @@ async def handleRequest(
                 )
 
         if DebugHelper.check(cfg, 30):
-            ws_log = (
-                "web_only"
-                if getattr(session, "retrieve_mode", None) == "WEB"
-                else ("local_and_web" if session.web_search else "local_only")
-            )
-            bm25_pf = cfg.get_float("_WEB_SEARCH.bm25_pre_filter") or 0.0
-            cos_pf = cfg.get_float("_WEB_SEARCH.cosine_pre_filter") or 0.0
-            web_rthr = cfg.get_float("_WEB_SEARCH.rerank_threshold") or 0.0
             PrettyWriter().write(
                 "D",
                 "RAGChatService session:",
-                (
-                    f"collection={session.collection_name!r}  strategy={session.strategy!r}  "
-                    f"temperature={session.temperature}  top_k={session.top_k}  top_p={session.top_p}\n"
-                    f"retriever_k={session.retriever_k}  chroma_threshold={session.chroma_threshold}  "
-                    f"final_chunks_to_llm={session.final_chunks_to_llm}  "
-                    f"use_chat_context={session.use_chat_context}  "
-                    f"turns={session.turns}  "
-                    f"chat_name={session.chat_name!r}  "
-                    f"chat_id={req.chat_id!r}  "
-                    f"per_file_limit={session.per_file_limit}\n"
-                    f"prune_batch={session.prune_batch}  "
-                    f"max_history_turns={session.max_history_turns}  "
-                    f"topic_summary_mode={session.topic_summary_mode}  "
-                    f"retrieve_mode={session.retrieve_mode}  "
-                    f"vector_weight={session.vector_weight}  "
-                    f"bm25_weight={session.bm25_weight}  "
-                    f"graph_weight={session.graph_weight}  "
-                    f"regex_weight={getattr(session, 'regex_weight', None)}  "
-                    f"web_weight={session.web_weight}  "
-                    f"rerank={session.rerank}  "
-                    f"debug_level={session.debug_level}  "
-                    f"debug_mode={getattr(session, 'debug_mode', 'ge') or 'ge'}  "
-                    f"web_search={ws_log}  "
-                    f"bm25_pre_filter={bm25_pf}  cosine_pre_filter={cos_pf}  web_rerank_threshold={web_rthr}\n"
-                    f"fetch_page_content={session.fetch_page_content}  "
-                    f"mark_text={getattr(session, 'mark_text', False)}  "
-                    f"max_output_tokens(api: max_tokens)={session.max_output_tokens}  "
-                    f"max_output_tokens_override={session.max_output_tokens_override}  "
-                    f"context_size_override(api: num_ctx)={session.context_size_override}\n"
-                    f"extraOllamaOptions={session.extraOllamaOptions}  "
-                    f"ollamaTopLevelParams={session.ollamaTopLevelParams}"
-                ),
+                "Using QueryParts.print_values() session formatter",
+                color=MAGENTA,
+            )
+            QueryParts().print_values(session=session)
+            PrettyWriter().write(
+                "D",
+                "RAGChatService session:",
+                f"chat_id={req.chat_id!r}",
                 color=MAGENTA,
             )
 
@@ -1433,7 +1567,7 @@ async def handleRequest(
                     lock,
                     show_algo_results=show_algo_results,
                     prompt_check_md=prompt_check_md,
-                    preamble=web_search_notice,
+                    preamble=request_notice,
                     marked_docs_base_url=_marked_docs_base_url(cfg, request),
                 ),
                 media_type="text/event-stream",
@@ -1499,7 +1633,7 @@ async def handleRequest(
 
         created = int(time.time())
         # answer_text already has grounding applied (in Chatter.run())
-        answer_out = web_search_notice + (answer_text or "")
+        answer_out = request_notice + (answer_text or "")
         emit_cli_blocks: bool = (
             str(cfg.get_str("_FRIENDLY_NAME", "")).strip() == "RAGChatService"
         )

@@ -140,3 +140,71 @@ def test_prepare_for_csv_print_preserves_blank_cells_for_missing_algo_hits() -> 
     assert row["BM25"] == ""
     assert row["Score BM25"] == ""
     assert row["Threshold BM25"] == ""
+
+
+def test_prepare_for_csv_print_marks_disabled_algo_in_status_column_only() -> None:
+    collector = _build_collector([banned_cfg._REGEX, banned_cfg._BM25])
+    rows = [
+        _mk_result(
+            algo=banned_cfg._REGEX,
+            phrase="token",
+            score=0.4,
+            threshold=0.5,
+            detail="regex partial",
+            matched_algos_count=1,
+            algos_matched="0/2 1/2",
+        ),
+        ResultsForPrint(
+            algo=banned_cfg._BM25,
+            phrase="token",
+            score=None,
+            score_str="Disabled",
+            threshold=None,
+            detail=None,
+            matched_algos_count=1,
+            algos_matched="0/2 1/2",
+        ),
+    ]
+
+    out = collector.prepare_for_csv_print(rows)
+    row = out[0]
+
+    assert row["Regex+Levenshtein"] == "BREADTH"
+    assert row["BM25"] == "Disabled"
+    assert row["Score BM25"] == ""
+    assert row["Threshold BM25"] == ""
+
+
+def test_prepare_for_csv_print_handles_runtime_disabled_zero_values() -> None:
+    collector = _build_collector([banned_cfg._REGEX, banned_cfg._BM25])
+    rows = [
+        _mk_result(
+            algo=banned_cfg._REGEX,
+            phrase="ram",
+            score=2.0,
+            threshold=1.5,
+            detail="regex hit",
+            matched_algos_count=1,
+            algos_matched="1/1 1/1",
+        ),
+        ResultsForPrint(
+            algo=banned_cfg._BM25,
+            phrase="ram",
+            score=0.0,
+            score_str="Disabled",
+            threshold=0.0,
+            detail=None,
+            matched_algos_count=1,
+            algos_matched="1/1 1/1",
+        ),
+    ]
+
+    out = collector.prepare_for_csv_print(rows)
+    row = out[0]
+
+    assert row["Regex+Levenshtein"] == "DEPTH"
+    assert row["Score Regex+Levenshtein"] == "2.0000"
+    assert row["Threshold Regex+Levenshtein"] == "1.5000"
+    assert row["BM25"] == "Disabled"
+    assert row["Score BM25"] == ""
+    assert row["Threshold BM25"] == ""

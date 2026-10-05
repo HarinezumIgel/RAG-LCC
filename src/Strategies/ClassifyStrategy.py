@@ -233,14 +233,7 @@ class ClassifyStrategy(SingletonMixin, ProcessingStrategy):
                 stage="Check provided prompt",
             )
 
-    def _process_extract(self, doc: dict[str, Any]):  # Load
-        self.doc = doc
-        self.pretty.write(
-            "I",
-            "Count",
-            f"So far {self.processedCounter.get()} documents processed",
-        )
-        # Preprocess the document.
+    def _clean_and_detect_language(self, doc: dict[str, Any]) -> tuple[str, str]:
         self.pretty.write(
             "I",
             "Punctuation",
@@ -249,54 +242,50 @@ class ClassifyStrategy(SingletonMixin, ProcessingStrategy):
         cleaned_text: str = self.fileUtils.clean_text(
             doc.get("content", ""), cast(dict[str, str], self.unwanted_char_map)
         )
-
         language: str = self.fileUtils.get_text_language(cleaned_text, "iso-639")
+        return cleaned_text, language
 
-        # --- unsupported-language gate ---
+    def _gate_unsupported_language(self, doc: dict[str, Any], language: str) -> bool:
         file_path: str = doc.get("meta", {}).get("FilePath", "?")
         lang_action: str | None = SharedHelpers().check_language_support(
             language, file_path
         )
-        if lang_action == "NOT_OK":
-            doc.setdefault("meta", {}).update(
-                {
-                    "Status": "NOT_OK",
-                    "Stage": "Language",
-                    "Time": datetime.now().isoformat(),
-                }
-            )
-            self.csvWriter.write_json2csv(doc["meta"], "NOT_OK")
-            self.failedCounter.increment()
-            return
+        if lang_action != "NOT_OK":
+            return False
 
-        # Preprocess the document.
+        doc.setdefault("meta", {}).update(
+            {
+                "Status": "NOT_OK",
+                "Stage": "Language",
+                "Time": datetime.now().isoformat(),
+            }
+        )
+        self.csvWriter.write_json2csv(doc["meta"], "NOT_OK")
+        self.failedCounter.increment()
+        return True
+
+    def _to_keybert_embedding(self, embeddings: list[float]) -> Any:
+        emb_tensor: torch.Tensor = torch.tensor(embeddings, dtype=self.target_dtype)
+        emb_tensor = emb_tensor.unsqueeze(0)
+        if self.device_type == "cpu":
+            return (
+                emb_tensor.cpu()
+                .numpy()
+                .astype(self.tensorHelpers.dtype_from_bits("numpy"))
+            )
+        return emb_tensor.to(self.device_type)
+
+    def _extract_and_format_keywords(
+        self,
+        cleaned_text: str,
+    ) -> tuple[OrderedDict[str, float], Any, list[float]]:
         self.pretty.write(
             "I",
             "Embedding",
             f"Embedding document with {self.embed_model_name} using {self.target_dtype}",
         )
-
         embeddings: list[float] = self.embedder.embed_documents([cleaned_text])[0]
-        # embeddings is your list[float] from embed_documents([cleaned_text])[0]
-        # 1) Convert to torch tensor (optional)
-        emb_tensor: torch.Tensor = torch.tensor(
-            embeddings, dtype=self.target_dtype
-        )  # shape: (D,)
-
-        # 2) Ensure batched shape (1, D)
-        emb_tensor = emb_tensor.unsqueeze(0)  # shape: (1, D)
-
-        # 3) Convert to CPU numpy float32 (KeyBERT-friendly)
-        embeddings_for_keybert: Any
-
-        if self.device_type == "cpu":
-            embeddings_for_keybert = (
-                emb_tensor.cpu()
-                .numpy()
-                .astype(self.tensorHelpers.dtype_from_bits("numpy"))
-            )  # shape: (1, D)
-        else:
-            embeddings_for_keybert = emb_tensor.to(self.device_type)
+        embeddings_for_keybert: Any = self._to_keybert_embedding(embeddings)
 
         extraction_keywords: list[Any]
         keyword_embeddings: Any
@@ -310,36 +299,19 @@ class ClassifyStrategy(SingletonMixin, ProcessingStrategy):
             )
         )
 
-        human_review: bool
-        human_review, _, phrase_table = self.aiHelpers.run_ensemble_checks(
-            cleaned_text,
-            language,
-            stage="PIPELINE_CHECK",
-            accumulate=False,
-            require_keybert=True,
-            embedding=embeddings,
-        )
-
-        # 2) Prepare keyword list and embeddings
-        raw_keywords: list[str] = [
-            kw for kw, _weight in extraction_keywords
-        ]  # list[str]
-
-        # Ensure keyword_embeddings is a tensor (N, D)
+        raw_keywords: list[str] = [kw for kw, _weight in extraction_keywords]
         if isinstance(keyword_embeddings, list):
             keyword_matrix: torch.Tensor = torch.stack(
                 cast(list[torch.Tensor], keyword_embeddings)
-            )  # (N, D)
+            )
         else:
-            keyword_matrix: torch.Tensor = keyword_embeddings  # assume already (N, D)
+            keyword_matrix = keyword_embeddings
 
         self.pretty.write(
             "I",
             "Classify strategy",
             f"Cosine similarity between the input vector and all keyword embeddings top_n_second: {self.top_n_second}",
         )
-
-        # 4) Call the helper
         closest_keywords = self.classifyHelper.get_closest_word_with_weights(
             embeddings_for_keybert,
             raw_keywords,
@@ -353,7 +325,8 @@ class ClassifyStrategy(SingletonMixin, ProcessingStrategy):
             "Merging keywords obtained from double keyBERT and cosine similarity",
         )
         merged_keywords = self.classifyHelper.merge_keyword_weights(
-            extraction_keywords, closest_keywords
+            extraction_keywords,
+            closest_keywords,
         )
 
         self.pretty.write(
@@ -374,21 +347,40 @@ class ClassifyStrategy(SingletonMixin, ProcessingStrategy):
         formatted_keywords: OrderedDict[str, float] = OrderedDict(
             (stem, float(weight)) for stem, weight in stemmed_keywords
         )
-        # Ensure formatting consistency.
         formatted_keywords = OrderedDict(
             (stem, float(weight)) for stem, weight in formatted_keywords.items()
         )
 
-        self.doc["meta"]["Keywords"] = formatted_keywords
+        return formatted_keywords, reverse_stem_map, embeddings
 
+    def _run_pipeline_human_review(
+        self,
+        cleaned_text: str,
+        language: str,
+        embeddings: list[float],
+    ) -> tuple[bool, list[dict[str, Any]]]:
+        human_review: bool
+        phrase_table: list[dict[str, Any]]
+        human_review, _, phrase_table = self.aiHelpers.run_ensemble_checks(
+            cleaned_text,
+            language,
+            stage="PIPELINE_CHECK",
+            accumulate=False,
+            require_keybert=True,
+            embedding=embeddings,
+        )
+        return human_review, phrase_table
+
+    def _run_classification_llm(
+        self,
+        formatted_keywords: OrderedDict[str, float],
+    ) -> ModelOutput:
         prompt = self.classifyHelper.build_classify_prompt(
-            self.prompt, formatted_keywords
+            self.prompt,
+            formatted_keywords,
         )
 
-        # Compute output-token budget from the actual assembled prompt
         max_output_tokens_dyn: int = self.tokenBudget.compute_dynamic_max_tokens(prompt)
-
-        # Build the unified Ollama options dict
         ollama_options: dict[str, Any] = {
             "temperature": self.temperature_ext,
             "top_k": self.top_k_ext,
@@ -400,7 +392,6 @@ class ClassifyStrategy(SingletonMixin, ProcessingStrategy):
             ollama_options["num_gpu"] = 0
 
         handler = self.llmCaller.make_on_chunk(ollama_options)
-        # for cell in handler.__closure__: print(cell.cell_contents)
         llm_result = self.llmCaller.call_llm(
             self.llm_model,
             prompt,
@@ -412,32 +403,89 @@ class ClassifyStrategy(SingletonMixin, ProcessingStrategy):
             stage="Run classification prompt",
         )
 
-        # handle errors
         if isinstance(llm_result, dict) and "error" in llm_result:  # type: ignore[reportUnnecessaryIsInstance]
             self.pretty.write(
-                "E", "LLM", f"LLM error: {llm_result['error']}", color=RED
+                "E",
+                "LLM",
+                f"LLM error: {llm_result['error']}",
+                color=RED,
             )
             raise LLMComplianceCheckError(
                 f"Classification LLM failed: {llm_result['error']}"
             )
 
-        answer: ModelOutput = self.modelOutputAdapter.interpret(
+        return self.modelOutputAdapter.interpret(
             llm_result,
             self.llm_model,
             is_compliance=False,
             is_streaming=self.is_streaming,
         )
-        # print(answer.raw)
-        if answer.is_json is False:
-            self.doc["meta"].update({"Temperature": f"{self.temperature_ext}"})
-            self.globalsInstance.add_failed_doc(self.doc["meta"])
-            meta = self.doc.get("meta", {})
 
-            self.csvWriter.write_json2csv(
-                meta,
-                "NOT_OK",
+    def _persist_not_ok_result(self) -> None:
+        self.doc["meta"].update({"Temperature": f"{self.temperature_ext}"})
+        self.globalsInstance.add_failed_doc(self.doc["meta"])
+        meta = self.doc.get("meta", {})
+        self.csvWriter.write_json2csv(meta, "NOT_OK")
+        self.failedCounter.increment()
+
+    def _write_ok_summary_row(self) -> None:
+        self.doc["meta"].update(
+            {
+                "Status": "OK",
+                "Temperature": f"{self.temperature_ext}",
+                "Stage": "Summary",
+                "Time": datetime.now().isoformat(),
+            }
+        )
+        self.csvWriter.write_json2csv(self.doc["meta"], "OK")
+
+    def _write_human_review_row(self, phrase_table: list[dict[str, Any]]) -> None:
+        self.humanReviewCount.increment()
+        self.doc["meta"]["Status"] = "NOT_OK"
+        hr_data: list[dict[str, Any]] | dict[str, Any]
+        if phrase_table:
+            hr_data = self.bannedPhraseCollector.prepare_for_csv_print(
+                phrase_table,
+                self.doc["meta"],
             )
-            self.failedCounter.increment()
+        else:
+            hr_data = dict(self.doc["meta"])
+        self.csvWriter.write_json2csv(hr_data, "HUMAN_REVIEW")
+        orig_path = self.doc["meta"]["FilePath"]
+        self.pretty.write(
+            "W",
+            "HUMAN_REVIEW",
+            f"File {orig_path} selected for human review.",
+        )
+        if self.use_exclusions:
+            self.exclusions.add(orig_path)
+
+    def _process_extract(self, doc: dict[str, Any]):  # Load
+        self.doc = doc
+        self.pretty.write(
+            "I",
+            "Count",
+            f"So far {self.processedCounter.get()} documents processed",
+        )
+        cleaned_text, language = self._clean_and_detect_language(doc)
+        if self._gate_unsupported_language(doc, language):
+            return
+
+        formatted_keywords, reverse_stem_map, embeddings = (
+            self._extract_and_format_keywords(cleaned_text)
+        )
+        meta_ref: dict[str, Any] = self.doc.setdefault("meta", {})
+        meta_ref["Keywords"] = formatted_keywords
+
+        human_review, phrase_table = self._run_pipeline_human_review(
+            cleaned_text,
+            language,
+            embeddings,
+        )
+
+        answer: ModelOutput = self._run_classification_llm(formatted_keywords)
+        if answer.is_json is False:
+            self._persist_not_ok_result()
             return
 
         # Ensure the classification is a dictionary.
@@ -445,48 +493,24 @@ class ClassifyStrategy(SingletonMixin, ProcessingStrategy):
             return
 
         parsed: dict[str, Any] = json.loads(answer.content)
-        self.doc["meta"].update(parsed)
+        meta_ref.update(parsed)
 
         # Apply reverse stemming once here so both the OK write and the
         # HUMAN_REVIEW write see the restored surface forms – no duplication.
         if reverse_stem_map and self.cfg.get_bool("REVERSE_STEMMING"):
-            self.doc["meta"] = reverse_stem_map.apply_to_meta(
-                self.doc["meta"], self.user_classification_keys
+            meta_ref = reverse_stem_map.apply_to_meta(
+                meta_ref,
+                self.user_classification_keys,
             )
+            self.doc["meta"] = meta_ref
 
         if "meta" in self.doc:  # type: ignore[reportUnnecessaryComparison]
             self.globalsInstance.add_document(self.doc["meta"])
         self.info()
-        # Write the processed documents to file.
-        self.doc["meta"].update({"Status": f"OK"})
-        self.doc["meta"].update({"Temperature": f"{self.temperature_ext}"})
-        self.doc["meta"].update({"Stage": "Summary"})
-        self.doc["meta"].update({"Time": datetime.now().isoformat()})  # Must be string
-        self.doc["meta"].update({"Temperature": f"{self.temperature_ext}"})
-        self.csvWriter.write_json2csv(
-            self.doc["meta"],
-            "OK",
-        )
+        self._write_ok_summary_row()
 
         if human_review:
-            self.humanReviewCount.increment()
-            self.doc["meta"]["Status"] = "NOT_OK"
-            hr_data: list[dict[str, Any]] | dict[str, Any]
-            if phrase_table:
-                hr_data = self.bannedPhraseCollector.prepare_for_csv_print(
-                    phrase_table, self.doc["meta"]
-                )
-            else:
-                hr_data = dict(self.doc["meta"])
-            self.csvWriter.write_json2csv(hr_data, "HUMAN_REVIEW")
-            orig_path = self.doc["meta"]["FilePath"]
-            self.pretty.write(
-                "W",
-                "HUMAN_REVIEW",
-                f"File {orig_path} selected for human review.",
-            )
-            if self.use_exclusions:
-                self.exclusions.add(orig_path)
+            self._write_human_review_row(phrase_table)
 
     def _pretty_meta(self, value: Any, indent: int = 0) -> str:
         """Return a human-readable string without Python dict/list syntax."""

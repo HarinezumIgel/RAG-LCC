@@ -154,7 +154,7 @@ def main() -> int:
             "Config_Internet_Env.py.\n"
         )
         print(
-            f"{CYAN}Hint: run this only after you have intentionally edited one of "
+            f"{CYAN}Hint: You need to run this only after you have intentionally edited one of "
             "those files (src/Configuration/Config_Models.py, "
             "src/Configuration/Config_Banned_Detection.py, "
             "src/Configuration/Config_Banned_Content.py, "

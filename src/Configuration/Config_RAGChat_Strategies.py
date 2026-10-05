@@ -3,6 +3,9 @@
 # -----------------------------------------------------------------------------
 _ALLOWED_STRATEGIES = ["ULTRA_WIDE", "WIDE", "BALANCED_FILE_CAP", "NARROW", "DEFAULT"]
 _ACTIVE_CHUNK_SELECT_STRATEGY = "DEFAULT"  # Default: pick one of _ALLOWED_STRATEGIES
+# retrieve_mode values are now internal/runtime-facing.
+# Local retriever activation is controlled by orchestration-flow switches.
+# Rerank baseline is controlled by Config_Orchestrator._ORCHESTRATION_FLOWS.run_rerank.
 _ALLOWED_RETRIEVE_MODES = [
     "VECTOR",  # Embedding-based retrieval only
     "BM25",  # Keyword-based retrieval only
@@ -27,7 +30,6 @@ _STRATEGIES: dict[str, dict[str, int | float | bool | str]] = {
         "temperature": 0.1,  # Low temperature — near-deterministic output
         "top_k": 20,  # Narrow token sampling — focused word choices
         "top_p": 0.8,  # Tight nucleus sampling — conservative candidate pool
-        "rerank": 1,  # Cross-encoder reranking enabled
         "vector_weight": 1,  # RRF weight for vector retriever (1 = full, 0 = off)
         "bm25_weight": 1,  # RRF weight for BM25 retriever (1 = full, 0 = off)
         "graph_weight": 0,  # Graph disabled — SingleDocumentSelector discards cross-file results anyway
@@ -39,7 +41,6 @@ _STRATEGIES: dict[str, dict[str, int | float | bool | str]] = {
         "prune_batch": 5,  # Oldest turns summarized per prune pass
         "max_history_turns": 3,  # Recent turns sent to the query rewriter
         "TOPIC_SUMMARY_MODE": "last",  # "last" = most recent ASSISTANT turn; "all" = all turns joined
-        "retrieve_mode": "ALL",  # Retrieval mode (see _ALLOWED_RETRIEVE_MODES)
     },
     "BALANCED_FILE_CAP": {  # Balanced precision / recall with per-file chunk cap
         "final_chunks_to_llm": 40,  # Moderate selection window
@@ -49,7 +50,6 @@ _STRATEGIES: dict[str, dict[str, int | float | bool | str]] = {
         "temperature": 0.1,  # Low temperature — near-deterministic output
         "top_k": 40,  # Moderate token sampling — some variety
         "top_p": 0.92,  # Moderate nucleus sampling
-        "rerank": 1,  # Cross-encoder reranking enabled
         "vector_weight": 1,  # RRF weight for vector retriever (1 = full, 0 = off)
         "bm25_weight": 1,  # RRF weight for BM25 retriever (1 = full, 0 = off)
         "graph_weight": 1,  # RRF weight for graph retriever (1 = full, 0 = off)
@@ -61,7 +61,6 @@ _STRATEGIES: dict[str, dict[str, int | float | bool | str]] = {
         "prune_batch": 5,  # Oldest turns summarized per prune pass
         "max_history_turns": 3,  # Recent turns sent to the query rewriter
         "TOPIC_SUMMARY_MODE": "last",  # "last" = most recent ASSISTANT turn; "all" = all turns joined
-        "retrieve_mode": "ALL",  # Retrieval mode (see _ALLOWED_RETRIEVE_MODES)
     },
     "DEFAULT": {  # General-purpose balanced retrieval
         "final_chunks_to_llm": 50,  # Moderate selection window
@@ -71,7 +70,6 @@ _STRATEGIES: dict[str, dict[str, int | float | bool | str]] = {
         "temperature": 0.1,  # Low temperature — near-deterministic output
         "top_k": 40,  # Moderate token sampling — some variety
         "top_p": 0.92,  # Moderate nucleus sampling
-        "rerank": 1,  # Cross-encoder reranking enabled
         "vector_weight": 1,  # RRF weight for vector retriever (1 = full, 0 = off)
         "bm25_weight": 1,  # RRF weight for BM25 retriever (1 = full, 0 = off)
         "graph_weight": 1,  # RRF weight for graph retriever (1 = full, 0 = off)
@@ -83,7 +81,6 @@ _STRATEGIES: dict[str, dict[str, int | float | bool | str]] = {
         "prune_batch": 5,  # Oldest turns summarized per prune pass
         "max_history_turns": 3,  # Recent turns sent to the query rewriter
         "TOPIC_SUMMARY_MODE": "last",  # "last" = most recent ASSISTANT turn; "all" = all turns joined
-        "retrieve_mode": "ALL",  # Retrieval mode (see _ALLOWED_RETRIEVE_MODES)
     },
     "WIDE": {  # Recall-oriented — exploratory search across many chunks
         "final_chunks_to_llm": 60,  # Large selection window — more context for the LLM
@@ -93,7 +90,6 @@ _STRATEGIES: dict[str, dict[str, int | float | bool | str]] = {
         "temperature": 0.1,  # Low temperature — near-deterministic output
         "top_k": 100,  # Broad token sampling — 100 candidates per step
         "top_p": 0.97,  # Wide nucleus sampling — most of the probability mass
-        "rerank": 1,  # Cross-encoder reranking enabled
         "vector_weight": 1,  # RRF weight for vector retriever (1 = full, 0 = off)
         "bm25_weight": 1,  # RRF weight for BM25 retriever (1 = full, 0 = off)
         "graph_weight": 1,  # RRF weight for graph retriever (1 = full, 0 = off)
@@ -105,7 +101,6 @@ _STRATEGIES: dict[str, dict[str, int | float | bool | str]] = {
         "prune_batch": 5,  # Oldest turns summarized per prune pass
         "max_history_turns": 3,  # Recent turns sent to the query rewriter
         "TOPIC_SUMMARY_MODE": "last",  # "last" = most recent ASSISTANT turn; "all" = all turns joined
-        "retrieve_mode": "ALL",  # Retrieval mode (see _ALLOWED_RETRIEVE_MODES)
     },
     "ULTRA_WIDE": {  # Diagnostic / exploratory — very high recall, high cost
         "final_chunks_to_llm": 1500,  # Very large selection window (high computational cost)
@@ -115,7 +110,6 @@ _STRATEGIES: dict[str, dict[str, int | float | bool | str]] = {
         "temperature": 0.1,  # Low temperature — near-deterministic output
         "top_k": 100,  # Broad token sampling — 100 candidates per step
         "top_p": 0.97,  # Wide nucleus sampling — most of the probability mass
-        "rerank": 1,  # Cross-encoder reranking enabled
         "vector_weight": 1,  # RRF weight for vector retriever (1 = full, 0 = off)
         "bm25_weight": 1,  # RRF weight for BM25 retriever (1 = full, 0 = off)
         "graph_weight": 1,  # RRF weight for graph retriever (1 = full, 0 = off)
@@ -127,7 +121,6 @@ _STRATEGIES: dict[str, dict[str, int | float | bool | str]] = {
         "prune_batch": 5,  # Oldest turns summarized per prune pass
         "max_history_turns": 3,  # Recent turns sent to the query rewriter
         "TOPIC_SUMMARY_MODE": "last",  # "last" = most recent ASSISTANT turn; "all" = all turns joined
-        "retrieve_mode": "ALL",  # Retrieval mode (see _ALLOWED_RETRIEVE_MODES)
     },
 }
 

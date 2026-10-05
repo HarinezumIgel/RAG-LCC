@@ -103,9 +103,9 @@ class LoadAndClassifyProcessor(SingletonMixin):
             raise DocumentsDirError
 
         self.use_exclusions: bool = self.cfg.get_bool("USE_EXCLUSIONS")
-        # _PROCESS_IF_UNCHANGED only applies to RAGLoad (DOCUMENT_INGESTION)
+        # PROCESS_IF_UNCHANGED only applies to RAGLoad (DOCUMENT_INGESTION).
         self.process_unchanged: bool = (
-            self.cfg.get_bool("_PROCESS_IF_UNCHANGED")
+            self.cfg.get_bool("PROCESS_IF_UNCHANGED", True)
             if strategy.strategy_type == StrategyType.DOCUMENT_INGESTION
             else False
         )
@@ -185,7 +185,7 @@ class LoadAndClassifyProcessor(SingletonMixin):
                 self.pretty.write(
                     "I",
                     "Vector store",
-                    f"but PROCESS_UNCHANGED {self.process_unchanged} override",
+                    "but PROCESS_IF_UNCHANGED " f"{self.process_unchanged} override",
                 )
                 return True
             self.pretty.write(
@@ -234,6 +234,210 @@ class LoadAndClassifyProcessor(SingletonMixin):
 
         return self.doc
 
+    def _prepare_current_file(self, root: str, file_name: str) -> None:
+        self.fileName = file_name
+        self.filePath = os.path.join(root, self.fileName)
+        self.escapedFilePath = self.fileUtils.normalize_path(self.filePath)
+
+    def _skip_by_path_filters(self) -> bool:
+        # When a classify CSV allow-set is active it is the
+        # authoritative source — DocClassify already applied
+        # exclusions, so we skip the exclusion check here.
+        if self.allowed_paths is not None:
+            normalized = os.path.normpath(self.escapedFilePath)
+            if normalized not in self.allowed_paths:
+                self.pretty.write(
+                    "I",
+                    "ClassifyCSV",
+                    f"Skipped (not in classify CSV): {self.escapedFilePath}",
+                )
+                self.ignored_countInstance.increment()
+                return True
+            return False
+
+        if self.use_exclusions and self.exclusions.contains(self.escapedFilePath):
+            self.pretty.write(
+                "W",
+                "EXCLUSIONS",
+                f"Excluding: {self.escapedFilePath}",
+                color=ORANGE,
+            )
+            self.exclusions_countInstance.increment()
+            return True
+
+        return False
+
+    def _validate_current_extension(self) -> bool:
+        file_name: str = self.fileName or ""
+        self.ftype = self.valid_extsInstance.getFileType(self.escapedFilePath)
+        if self.valid_extsInstance.check(file_name, self.ftype):
+            return True
+
+        self.pretty.write(
+            "I",
+            "Ignored extensions",
+            f"Ignored (invalid ext): {self.escapedFilePath} ({self.ftype})",
+        )
+        self.ignored_countInstance.increment()
+        return False
+
+    def _skip_unchanged_ingestion_doc(self) -> bool:
+        if self.strategy.strategy_type != StrategyType.DOCUMENT_INGESTION:
+            return False
+        return self.docChanged() is False
+
+    def _set_creation_timestamp(self) -> None:
+        try:
+            c_ts: float = os.path.getctime(self.escapedFilePath)
+            self.creation_date = time.ctime(c_ts)
+        except OSError:
+            self.creation_date = ""
+
+    def _extract_content_for_current_file(self) -> tuple[str, str]:
+        file_name: str = self.fileName or ""
+        content: str = ""
+        disabled_office_component: str = ""
+
+        if self.valid_extsInstance.check(file_name, ["pdf"]):
+            logging.getLogger("pdfminer").setLevel(logging.ERROR)
+            content = extractPDF(self.escapedFilePath).strip()
+            if not content:
+                for page in convert_from_path(self.escapedFilePath, dpi=300):
+                    try:
+                        content = (
+                            str(pytesseract.image_to_string(page)) + "\n"  # type: ignore[reportUnknownMemberType]
+                        )
+                    finally:
+                        page.close()
+
+        # _CONSIDER_AS_TEXT_FILE: plain-text formats whose
+        # content is read as-is (txt, md, py, csv, log, …).
+        elif self.valid_extsInstance.check(file_name, self.consider_as_text_file):
+            with open(self.escapedFilePath, "r", encoding="utf-8") as f:
+                content = f.read()
+
+        elif self.valid_extsInstance.check(file_name, ["doc", "docx"]):
+            if (
+                self.office_doc_extraction.get("Word")
+                and OfficeDocConverter.is_windows_supported()
+            ):
+                _, doc_obj = self.office_convInstance.convert_office_file(
+                    self.escapedFilePath
+                )
+                content = "\n".join(p.text for p in doc_obj.paragraphs)
+                content += "\n".join(
+                    cell.text
+                    for tbl in doc_obj.tables
+                    for row in tbl.rows
+                    for cell in row.cells
+                )
+            else:
+                disabled_office_component = "MS Word"
+
+        elif self.valid_extsInstance.check(file_name, ["ppt", "pptx"]):
+            if (
+                self.office_doc_extraction.get("Power Point")
+                and OfficeDocConverter.is_windows_supported()
+            ):
+                _, pres = self.office_convInstance.convert_office_file(
+                    self.escapedFilePath
+                )
+                for slide in pres.slides:
+                    for shape in slide.shapes:
+                        if hasattr(shape, "text"):
+                            content += shape.text + "\n"
+            else:
+                disabled_office_component = "MS Power Point"
+
+        elif self.valid_extsInstance.check(file_name, ["xls", "xlsx"]):
+            if (
+                self.office_doc_extraction.get("Excel")
+                and OfficeDocConverter.is_windows_supported()
+            ):
+                _, wb = self.office_convInstance.convert_office_file(
+                    self.escapedFilePath
+                )
+                df = self.worksheet_to_dataframe(wb.active)
+                content = str(df.to_string(index=False))  # type: ignore[reportUnknownMemberType]
+            else:
+                disabled_office_component = "MS Excel"
+
+        elif self.valid_extsInstance.check(
+            file_name,
+            ["png", "jpg", "jpeg", "gif", "bmp", "tiff", "webp"],
+        ):
+            img = Image.open(self.escapedFilePath)
+            if file_name.lower().endswith(".webp"):
+                self.pretty.write("I", "Conversion", "Converting WebP → RGB for OCR")
+                img = img.convert("RGB")
+            content = str(pytesseract.image_to_string(img))  # type: ignore[reportUnknownMemberType]
+
+        return content, disabled_office_component
+
+    def _handle_extraction_error(self, error: Exception, is_office: bool) -> None:
+        if is_office:
+            self.pretty.write(
+                "W",
+                "Office conversion",
+                f"Office conversion failed (is MS Office installed?): {self.escapedFilePath}: {error}",
+                color=ORANGE,
+            )
+        else:
+            self.pretty.write(
+                "W",
+                "Extraction fail",
+                f"Extraction failed: {self.escapedFilePath}: {error}",
+            )
+        self.failed_countInstance.increment()
+        self.globalsInstance.add_failed_doc(
+            {"FilePath": self.escapedFilePath, "error": str(error)}
+        )
+
+    def _handle_empty_content(self, disabled_office_component: str) -> bool:
+        if disabled_office_component:
+            self.pretty.write(
+                "W",
+                "Office component",
+                f"File {self.escapedFilePath} was not processed because running on Unix or office component {disabled_office_component} is disabled in _OFFICE_DOC_EXTRACTION (Configuration/Config_Global.py)",
+                color=ORANGE,
+            )
+        else:
+            self.pretty.write(
+                "I",
+                "Empty file",
+                f"File {self.escapedFilePath} has no content and is ignored",
+            )
+        return False
+
+    def _normalize_and_route_current_doc(self, content: str) -> None:
+        self.content = self.unicode_normalizer.normalize(
+            content,
+            preserve_newlines=self._chunker_preserves_newlines(),
+        )
+        self.content = self.masker.mask(self.content)
+        self.doc = self._make_doc()
+        self.strategy.process(self.doc)
+        self.processed_countInstance.increment()
+
+    def _extract_and_process_current_file(self) -> bool:
+        self.pretty.write("I", "Extract text", "Extracting text from Document")
+        try:
+            content, disabled_office_component = (
+                self._extract_content_for_current_file()
+            )
+        except DataProcessingError as error:
+            self._handle_extraction_error(error, is_office=True)
+            return False
+        except Exception as error:
+            self._handle_extraction_error(error, is_office=False)
+            return False
+
+        if content == "":
+            return self._handle_empty_content(disabled_office_component)
+
+        self._normalize_and_route_current_doc(content)
+        return True
+
     def process_files(self) -> None:
         """
         Walk self.doc_dir, extract text from each file, then either
@@ -248,33 +452,10 @@ class LoadAndClassifyProcessor(SingletonMixin):
         _t0_batch = time.perf_counter()
 
         for root, _, files in os.walk(self.doc_dir):
-            for self.fileName in files:
-                self.filePath: str = os.path.join(root, self.fileName)
-                self.escapedFilePath: str = self.fileUtils.normalize_path(self.filePath)
+            for file_name in files:
+                self._prepare_current_file(root, file_name)
 
-                # When a classify CSV allow-set is active it is the
-                # authoritative source — DocClassify already applied
-                # exclusions, so we skip the exclusion check here.
-                if self.allowed_paths is not None:
-                    normalized = os.path.normpath(self.escapedFilePath)
-                    if normalized not in self.allowed_paths:
-                        self.pretty.write(
-                            "I",
-                            "ClassifyCSV",
-                            f"Skipped (not in classify CSV): {self.escapedFilePath}",
-                        )
-                        self.ignored_countInstance.increment()
-                        continue
-                elif self.use_exclusions and self.exclusions.contains(
-                    self.escapedFilePath
-                ):
-                    self.pretty.write(
-                        "W",
-                        "EXCLUSIONS",
-                        f"Excluding: {self.escapedFilePath}",
-                        color=ORANGE,
-                    )
-                    self.exclusions_countInstance.increment()
+                if self._skip_by_path_filters():
                     continue
 
                 self.pretty_always.write(
@@ -283,170 +464,15 @@ class LoadAndClassifyProcessor(SingletonMixin):
                     f"{BRIGHT_BLUE}Processing: {self.escapedFilePath}{RESET}",
                 )
 
-                # validate extension
-                self.ftype: str = self.valid_extsInstance.getFileType(
-                    self.escapedFilePath
-                )
-                if not self.valid_extsInstance.check(self.fileName, self.ftype):
-                    self.pretty.write(
-                        "I",
-                        "Ignored extensions",
-                        f"Ignored (invalid ext): {self.escapedFilePath} ({self.ftype})",
-                    )
-                    self.ignored_countInstance.increment()
+                if not self._validate_current_extension():
                     continue
 
-                if (
-                    self.strategy.strategy_type == StrategyType.DOCUMENT_INGESTION
-                    and self.docChanged() == False
-                ):
+                if self._skip_unchanged_ingestion_doc():
                     continue
-                # fetch creation timestamp
-                try:
-                    c_ts: float = os.path.getctime(self.escapedFilePath)
-                    self.creation_date: str = time.ctime(c_ts)
-                except OSError:
-                    self.creation_date = ""
 
-                # extract text
-                self.pretty.write("I", "Extract text", f"Extracting text from Document")
-                self.content: str = ""
-                disabled_office_component: str = ""
-                try:
-                    if self.valid_extsInstance.check(self.fileName, ["pdf"]):
-                        logging.getLogger("pdfminer").setLevel(logging.ERROR)
-                        self.content = extractPDF(self.escapedFilePath).strip()
-                        if not self.content:
-                            for page in convert_from_path(
-                                self.escapedFilePath, dpi=300
-                            ):
-                                try:
-                                    # Process the page
-                                    self.content = (
-                                        str(pytesseract.image_to_string(page)) + "\n"  # type: ignore[reportUnknownMemberType]
-                                    )
-                                finally:
-                                    page.close()
-
-                    # _CONSIDER_AS_TEXT_FILE: plain-text formats whose
-                    # content is read as-is (txt, md, py, csv, log, …).
-                    elif self.valid_extsInstance.check(
-                        self.fileName, self.consider_as_text_file
-                    ):
-                        with open(self.escapedFilePath, "r", encoding="utf-8") as f:
-                            self.content = f.read()
-
-                    elif self.valid_extsInstance.check(self.fileName, ["doc", "docx"]):
-                        if (
-                            self.office_doc_extraction.get("Word")
-                            and OfficeDocConverter.is_windows_supported()
-                        ):
-                            _, doc_obj = self.office_convInstance.convert_office_file(
-                                self.escapedFilePath
-                            )
-                            self.content = "\n".join(p.text for p in doc_obj.paragraphs)
-                            self.content += "\n".join(
-                                cell.text
-                                for tbl in doc_obj.tables
-                                for row in tbl.rows
-                                for cell in row.cells
-                            )
-                        else:
-                            disabled_office_component = "MS Word"
-
-                    elif self.valid_extsInstance.check(self.fileName, ["ppt", "pptx"]):
-                        if (
-                            self.office_doc_extraction.get("Power Point")
-                            and OfficeDocConverter.is_windows_supported()
-                        ):
-                            _, pres = self.office_convInstance.convert_office_file(
-                                self.escapedFilePath
-                            )
-                            for slide in pres.slides:
-                                for shape in slide.shapes:
-                                    if hasattr(shape, "text"):
-                                        self.content += shape.text + "\n"
-                        else:
-                            disabled_office_component = "MS Power Point"
-
-                    elif self.valid_extsInstance.check(self.fileName, ["xls", "xlsx"]):
-                        if (
-                            self.office_doc_extraction.get("Excel")
-                            and OfficeDocConverter.is_windows_supported()
-                        ):
-                            _, wb = self.office_convInstance.convert_office_file(
-                                self.escapedFilePath
-                            )
-                            df = self.worksheet_to_dataframe(wb.active)
-                            self.content = str(df.to_string(index=False))  # type: ignore[reportUnknownMemberType]
-                        else:
-                            disabled_office_component = "MS Excel"
-
-                    elif self.valid_extsInstance.check(
-                        self.fileName,
-                        ["png", "jpg", "jpeg", "gif", "bmp", "tiff", "webp"],
-                    ):
-                        img = Image.open(self.escapedFilePath)
-                        if self.fileName.lower().endswith(".webp"):
-                            self.pretty.write(
-                                "I", "Conversion", "Converting WebP → RGB for OCR"
-                            )
-                            img = img.convert("RGB")
-                        self.content = str(pytesseract.image_to_string(img))  # type: ignore[reportUnknownMemberType]
-
-                except DataProcessingError as e:
-                    self.pretty.write(
-                        "W",
-                        "Office conversion",
-                        f"Office conversion failed (is MS Office installed?): {self.escapedFilePath}: {e}",
-                        color=ORANGE,
-                    )
-                    self.failed_countInstance.increment()
-                    self.globalsInstance.add_failed_doc(
-                        {"FilePath": self.escapedFilePath, "error": str(e)}
-                    )
+                self._set_creation_timestamp()
+                if not self._extract_and_process_current_file():
                     continue
-                except Exception as e:
-                    self.pretty.write(
-                        "W",
-                        "Extraction fail",
-                        f"Extraction failed: {self.escapedFilePath}: {e}",
-                    )
-                    # record a failed doc stub and continue
-                    self.failed_countInstance.increment()
-                    self.globalsInstance.add_failed_doc(
-                        {"FilePath": self.escapedFilePath, "error": str(e)}
-                    )
-
-                    continue
-                if self.content == "":
-                    if disabled_office_component != "":
-                        self.pretty.write(
-                            "W",
-                            "Office component",
-                            f"File {self.escapedFilePath} was not processed because running on Unix or office component {disabled_office_component} is disabled in _OFFICE_DOC_EXTRACTION (Configuration/Config_Global.py)",
-                            color=ORANGE,
-                        )
-                    else:
-                        self.pretty.write(
-                            "I",
-                            "Empty file",
-                            f"File {self.escapedFilePath} has no content and is ignored",
-                        )
-
-                    continue
-                self.content = self.unicode_normalizer.normalize(
-                    self.content,
-                    preserve_newlines=self._chunker_preserves_newlines(),
-                )
-                self.content = self.masker.mask(self.content)
-                # build the document object
-                self.doc = self._make_doc()
-
-                # route to chunker or classifier
-                self.strategy.process(self.doc)
-
-                self.processed_countInstance.increment()
 
         # Log batch completion
         elapsed_batch = time.perf_counter() - _t0_batch

@@ -12,6 +12,7 @@ from langdetect import detect  # type: ignore[import-untyped]  # noqa: F401
 
 from AI.ModelsCache import ModelsCache
 from AI.TokenBudget import TokenBudget
+from Algos.Synonyms import Synonyms
 from Chat.ChatContext import ChatContext
 from Chat.Orchestrator import Orchestrator
 from Chat.PromptRewrite import PromptRewrite
@@ -470,50 +471,10 @@ class RAGChatImpl(SingletonMixin):
 
         Returns user_query_original (the query before any translation/rewrite).
         """
-        mySession.force_skip_rewrite = False
-        mySession.effective_query = None
-        mySession.effective_query_reason = None
+        mySession.reset_turn_state()
+
         self.confidence_logger.reset_turn(mySession)
         self._fileUtils.reset_lang_detection_events()
-        mySession.orchestration_step_confidence = {}
-        mySession.answer_confidence_level = None
-        mySession.answer_confidence_score = None
-        mySession.answer_confidence_summary = None
-        mySession.answer_confidence_components = {}
-        mySession.rerank_low_confidence_fallback_triggered = False
-        mySession.user_language = None
-        mySession.retrieval_language = "english"
-        mySession.orig_translated_query_en = None
-        mySession.seed_retrieval_query = None
-        mySession.t1_query = None
-        mySession.rewritten_query = None
-        mySession.rewrite_language = None
-        mySession.post_rewrite_query_en = None
-        mySession.final_retrieval_query = None
-        mySession.t2_query = None
-        mySession.retrieval_top_k_orig_query_en = None
-        mySession.retrieval_top_k_post_rewrite_query_en = None
-        mySession.retrieval_top_k_seed_query = None
-        mySession.retrieval_top_k_final_query = None
-        mySession.retrieval_top_k_before_t2 = None
-        mySession.retrieval_top_k_after_t2 = None
-        mySession.user_query_original = None
-        mySession.original_query_leg_enabled = False
-        mySession.original_query_leg_query = None
-        mySession.original_query_leg_language = None
-        mySession.original_query_leg_reason = None
-        mySession.original_query_leg_vector_hits = None
-        mySession.original_query_leg_vector_added = None
-        mySession.original_query_leg_vector_overlap = None
-        mySession.original_query_leg_bm25_hits = None
-        mySession.original_query_leg_bm25_added = None
-        mySession.original_query_leg_bm25_overlap = None
-        mySession.original_query_leg_graph_hits = None
-        mySession.original_query_leg_graph_added = None
-        mySession.original_query_leg_graph_overlap = None
-        mySession.original_query_leg_regex_hits = None
-        mySession.original_query_leg_regex_added = None
-        mySession.original_query_leg_regex_overlap = None
 
         if (
             mySession.last_web_search is not None
@@ -1008,42 +969,108 @@ class RAGChatImpl(SingletonMixin):
         language_bucket: str | None,
         primary_query: str,
         guardrail_query: str,
+        enable_translation: bool = True,
+        enable_synonym_expansion: bool = True,
     ) -> tuple[str, str]:
         """Shape Graph/Regex stage queries for one language bucket.
 
         Retrieval queries are normalized to English upstream. For non-English
-        stage buckets, translate from English to the bucket language only when
-        the configured query-translation backend is Argos.
+        stage buckets, translation and synonym expansion are independently
+        controlled by orchestration-flow toggles.
         """
         _ = mySession
         target_language = self._normalize_language_bucket(language_bucket)
-        if not target_language:
-            return primary_query, guardrail_query
 
-        if not target_language:
-            return primary_query, guardrail_query
-        if target_language == "en" or target_language.startswith("en-"):
-            return primary_query, guardrail_query
+        should_translate = bool(enable_translation)
+        if (
+            not target_language
+            or target_language == "en"
+            or target_language.startswith("en-")
+        ):
+            should_translate = False
 
-        backend = str(getattr(self, "_translation_backend", "off") or "off")
-        if backend.strip().lower() != "argos":
-            return primary_query, guardrail_query
+        translate_text = None
+        if should_translate:
+            backend = str(getattr(self, "_translation_backend", "off") or "off")
+            if backend.strip().lower() != "argos":
+                should_translate = False
+            else:
+                translate_text = getattr(self._shared, "translate_text", None)
+                if not callable(translate_text):
+                    should_translate = False
 
-        translate_text = getattr(self._shared, "translate_text", None)
-        if not callable(translate_text):
-            return primary_query, guardrail_query
+        def _shape_one_query(query: str) -> str:
+            stage_query = str(query or "").strip()
+            if not stage_query:
+                return stage_query
 
-        def _translate_query(query: str) -> str:
-            if not query:
-                return query
+            if enable_synonym_expansion:
+                expander = getattr(self, "_expand_indexed_query_with_synonyms", None)
+                if callable(expander):
+                    expanded = str(expander(stage_query) or "").strip()
+                    stage_query = expanded or stage_query
+
+            if should_translate and callable(translate_text):
+                try:
+                    translated_obj = translate_text(stage_query, target_language, "en")
+                except Exception:
+                    return stage_query
+                translated = str(translated_obj or "").strip()
+                return translated or stage_query
+
+            return stage_query
+
+        return _shape_one_query(primary_query), _shape_one_query(guardrail_query)
+
+    def _expand_indexed_query_with_synonyms(self, query: str) -> str:
+        """Append WordNet synonym terms to an indexed-retriever query string."""
+        query_text = str(query or "").strip()
+        if not query_text:
+            return query_text
+
+        tokenize = getattr(self._shared, "tokenize", None)
+        tokens: list[str] = []
+        if callable(tokenize):
             try:
-                translated_obj = translate_text(query, target_language, "en")
+                token_values: Any = tokenize(query_text)
             except Exception:
-                return query
-            translated = str(translated_obj or "").strip()
-            return translated or query
+                token_values = []
+            if isinstance(token_values, (list, tuple)):
+                token_sequence = cast(list[Any] | tuple[Any, ...], token_values)
+                tokens = [
+                    str(token_obj).strip().lower()
+                    for token_obj in token_sequence
+                    if str(token_obj).strip()
+                ]
+        if not tokens:
+            tokens = [
+                token.strip().lower() for token in query_text.split() if token.strip()
+            ]
+        if not tokens:
+            return query_text
 
-        return _translate_query(primary_query), _translate_query(guardrail_query)
+        try:
+            expanded_terms = Synonyms().expand(tokens)
+        except Exception:
+            return query_text
+
+        base_terms = {token.lower() for token in tokens}
+        extras: list[str] = []
+        seen_extras: set[str] = set()
+        for term in expanded_terms:
+            term_text = str(term or "").strip()
+            if not term_text:
+                continue
+            term_key = term_text.lower()
+            if term_key in base_terms or term_key in seen_extras:
+                continue
+            seen_extras.add(term_key)
+            extras.append(term_text)
+
+        if not extras:
+            return query_text
+
+        return f"{query_text} {' '.join(extras)}"
 
     def _run_indexed_retriever_with_guardrail(
         self,

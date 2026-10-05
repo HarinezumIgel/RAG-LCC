@@ -6,6 +6,140 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [2026-10-05]
+
+Todays release implements:
+
+- Cleaned up display of session related chat switches
+- Check toggle switches for both, PROMPT and PIPELINE checks
+- Made setup script Setup.py simpler
+- Strenghtened guards against serious misconfigurations
+- Other smaller fixes
+
+### 🛡️ Changed — Compliance stage startup validation now honors Check switches
+
+- Startup validation in `StartupCommons` now uses each stage-level
+  `Check=True/False` gate for both:
+  - `PROMPT_CHECK`
+  - `PIPELINE_CHECK`
+- When a stage has `Check=False`, its consensus-threshold validation is skipped.
+- When a stage has `Check=True`, startup now validates that:
+  - `REQUIRED_ALGOS_ABOVE_THRESHOLD >= 1`
+  - `REQUIRED_DIFFERENT_ALGOS_HAVE_A_SCORE >= 1`
+  - enabled algorithms in `ALGOS_TO_PROCESS` are not fewer than either required threshold.
+- If enabled algorithms are below required thresholds, startup aborts early with
+  a configuration error message and remediation guidance (`enable more algos`,
+  `lower required counts`, or set `<STAGE>.Check=False`).
+- Validation now checks both `PROMPT_CHECK` and `PIPELINE_CHECK` and reports
+  combined stage errors in one fail-fast startup exception.
+
+### ⚙️ Changed — Setup networking guidance is runtime-context aware
+
+- `Setup.py` now detects runtime context (`docker`, `windows`, `host`) and
+  prints matching networking hints at the start of runtime questions.
+- Endpoint connectivity probe examples (`curl`) now adapt to context-aware
+  addresses:
+  - container-oriented host access in Docker mode
+  - localhost/127.0.0.1 variants in host/Windows mode
+- Endpoint location guidance now explains when localhost is valid versus when a
+  host-accessible address is required.
+
+### ⚙️ Changed — Critical network inputs are now explicit and required
+
+- Removed placeholder-style defaults for critical network endpoints and bind
+  targets in interactive setup prompts.
+- The following prompts are now required non-empty values:
+  - endpoint `BASE_URL`
+  - `_MODELS.ragchatservice._RAGCHATSERVICE.HOST`
+  - `OpenWebUI BASE_URL`
+- `_prompt_text()` now suppresses the `(default: ...)` label when default is
+  empty, so prompts no longer show `(default: )`.
+
+### ⚙️ Changed — RAGChatService bind/port instructions tightened
+
+- Added context-specific host binding safety guidance for
+  `_MODELS.ragchatservice._RAGCHATSERVICE.HOST`.
+- Added Docker-only port-forwarding guidance immediately before the
+  `_MODELS.ragchatservice._RAGCHATSERVICE.PORT` prompt.
+- Docker guidance now states that changing listener port from `11435` requires:
+  - updating `.devcontainer/devcontainer.json` -> `forwardPorts`
+  - recreating/rebuilding the container
+  - starting `Setup.py` again
+- Non-default listener-port post-write guidance now branches by runtime:
+  - Docker/Dev Container: explicit forwardPorts + rebuild actions
+  - Host mode: update dependent client/OpenWebUI URLs
+
+### ✅ Validation
+
+- Interactive setup run completed in config-values-only mode:
+  - `python .\src\Scripts\Setup.py --skip-signature-verification --set-config-values-only`
+
+## [2026-09-30]
+
+### 🎛️ Changed — Session settings display regrouped and aligned
+
+- Refactored `QueryParts.print_values()` output into three explicit groups:
+  - `Chat settings`
+  - `Retrieval settings`
+  - `Orchestration settings`
+- Added dedicated strategy lines and labels:
+  - `Retrieval strategy`
+  - `Orchestration strategy`
+- Moved web-related values into retrieval strategy overrides and removed the
+  separate `Other session related values` block.
+- Removed duplicate `Visual` rendering in the retrieval area.
+- Applied consistent label-column alignment so `:` markers line up across
+  settings rows, while green group headers intentionally render without `:`.
+- Added spacing improvements in the CLI output:
+  - blank line after `Visual` before retrieval block
+  - blank line before orchestration strategy area
+  - blank line after `Exiting HarinezumIgel RAG chat.`
+
+### ⚙️ Changed — Orchestration flow default semantics simplified
+
+- Added `_DEFAULT_ORCHESTRATION_FLOW` as the canonical fallback slot in
+  `Config_Orchestrator.py`.
+- Removed `_ACTIVE_ORCHESTRATION_FLOW` from `Config_Orchestrator.py`.
+- Added indexed retriever synonym lookup control through orchestration flow
+  settings (`expand_indexed_queries`) with session/CLI visibility as
+  `indexed_synonyms` in flow-stage output.
+- Runtime flow resolution now follows one rule:
+  - use `session.orchestrator_flow` when set
+  - otherwise use `_DEFAULT_ORCHESTRATION_FLOW`
+- Updated fallback usage consistently across:
+  - `Session`
+  - `QueryParts`
+  - `ChatCompletionHandler`
+  - `Orchestrator`
+  - `RAGChat` startup
+
+### 🧱 Changed — `CliOverridePolicy` converted to class API
+
+- Refactored `src/Config/CliOverridePolicy.py` from free functions to
+  `CliOverridePolicy` class methods.
+- Updated imports/usages in:
+  - `src/Config/Config.py`
+  - `src/Config/AddConstantsFromConfigFile.py`
+
+### 📖 Documentation
+
+- Performed a two-way config/docs synchronization and updated stale slot names,
+  module paths, and retrieval-output examples in:
+  - `ARCHITECTURE.md`
+  - `CONFIGURATION_REFERENCE.md`
+  - `QUERY_OUTPUT_EXAMPLE.md`
+
+### ✅ Validation
+
+- Targeted regressions passed repeatedly during this work:
+  - `tests/test_query_language_contract.py`
+  - `tests/test_orchestrator.py`
+- Focused integration set also passed after core refactors:
+  - `tests/test_orchestrator.py`
+  - `tests/test_chat_completion_handler.py`
+  - `tests/test_query_language_contract.py`
+  - `tests/test_ragchat_impl_retrieve_delegation.py`
+
 ## [2026-09-28]
 
 Added confidence metrics shown after every query in `RAGChat` and
@@ -906,21 +1040,10 @@ Added the missing parameter.
 Second-pass two-way audit comparing every key in all `Configuration/Config_*.py`
 files against `CONFIGURATION_REFERENCE.md` section 8.
 
-**Corrected defaults (safe/shipping defaults restored in `Config_Internet_Env.py`):**
-
-- **`HF_HUB_OFFLINE`**: corrected to `"1"` — Hub access offline by default (safe).
-- **`ARGOS_STANZA_DOWNLOAD`**: corrected to `"0"` — package download disabled by default.
-- **`WEB_SEARCH_MODE`** (both the admin-knobs table and the section 8 table): corrected to `"0"` — web search disabled by default.
-- **`SERVE_OPENWEBUI_CHAT`**: corrected to `"0"` — service disabled by default.
-- **`SERVE_IN_MEMORY_DOCS_HTTP`**: corrected to `"0"` — in-memory docs store disabled by default.
-
 **Added missing entries to the Config_Internet_Env table:**
 
-- `WEB_SEARCH_MODE` — master web-search switch, default `"1"`.
 - `TESSERACT_PATH` — OS-aware Tesseract path (was only in a top-level quick-ref
   table; now also in section 8).
-- `SERVE_IN_MEMORY_DOCS_HTTP` — gate for the in-memory document HTTP server,
-  default `"1"`.
 - `TOKENIZERS_PARALLELISM` — prevents HuggingFace tokenizer parallelism
   warnings, set via `setdefault` to `"false"`.
 

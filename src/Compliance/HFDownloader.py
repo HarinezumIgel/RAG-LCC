@@ -69,6 +69,91 @@ class HFDownloader:
         with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
 
+    def _identity_needs_backfill(self, existing_meta: dict[str, Any]) -> bool:
+        return (
+            not existing_meta.get("accepted_by")
+            or not existing_meta.get("accepted_by_source")
+            or existing_meta.get("host") is None
+            or existing_meta.get("pid") is None
+        )
+
+    def _backfill_existing_identity(
+        self, existing_meta: dict[str, Any]
+    ) -> dict[str, Any]:
+        repaired_meta = dict(existing_meta)
+        repaired_meta["accepted_by"] = (
+            existing_meta.get("accepted_by")
+            or os.environ.get("_USER")
+            or os.environ.get("USERNAME")
+            or "unknown-user"
+        )
+        repaired_meta["accepted_by_source"] = (
+            existing_meta.get("accepted_by_source") or "os"
+        )
+        repaired_meta["accepted_by_verified"] = bool(
+            existing_meta.get("accepted_by_verified", False)
+        )
+        repaired_meta["host"] = (
+            existing_meta.get("host")
+            or os.environ.get("COMPUTERNAME")
+            or "unknown-host"
+        )
+        repaired_meta["pid"] = (
+            existing_meta.get("pid")
+            if existing_meta.get("pid") is not None
+            else os.getpid()
+        )
+        return repaired_meta
+
+    def _identity_from_existing_meta(
+        self, existing_meta: dict[str, Any]
+    ) -> dict[str, Any]:
+        return {
+            "accepted_by": existing_meta.get("accepted_by"),
+            "accepted_by_source": existing_meta.get("accepted_by_source"),
+            "accepted_by_verified": existing_meta.get("accepted_by_verified", False),
+            "host": existing_meta.get("host"),
+            "pid": existing_meta.get("pid"),
+        }
+
+    def _set_runtime_revision(
+        self,
+        key: str,
+        resolved_revision: str,
+        requested_revision: Any,
+    ) -> None:
+        if resolved_revision and resolved_revision != requested_revision:
+            self.cfg.set(f"{key}.REVISION", resolved_revision, force=True)
+
+    def _build_download_meta(
+        self,
+        *,
+        model_name: str,
+        friendly: Any,
+        revision: str,
+        source: Any,
+        cfg_hash: str,
+        identity: dict[str, Any],
+        local_path: str,
+        model_cfg: Dict[str, Any],
+    ) -> dict[str, Any]:
+        now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        return {
+            "model_id": model_name,
+            "friendly_name": friendly,
+            "revision": revision,
+            "source": source,
+            "downloaded_at": now,
+            "config_hash": cfg_hash,
+            "accepted_by": identity.get("accepted_by"),
+            "accepted_by_source": identity.get("accepted_by_source"),
+            "accepted_by_verified": identity.get("accepted_by_verified", False),
+            "host": identity.get("host"),
+            "pid": identity.get("pid"),
+            "local_path": local_path,
+            "config": model_cfg,
+        }
+
     def get_local_path(self, key: str) -> Optional[str]:
         """Return the local snapshot path recorded in download metadata, or None.
 
@@ -259,44 +344,16 @@ class HFDownloader:
                 and local_path_obj.exists()
                 and self._snapshot_has_content(local_path_obj)
             ):
-                needs_identity_backfill = (
-                    not existing_meta.get("accepted_by")
-                    or not existing_meta.get("accepted_by_source")
-                    or existing_meta.get("host") is None
-                    or existing_meta.get("pid") is None
-                )
-                if needs_identity_backfill:
-                    repaired_meta = dict(existing_meta)
-                    repaired_meta["accepted_by"] = (
-                        existing_meta.get("accepted_by")
-                        or os.environ.get("_USER")
-                        or os.environ.get("USERNAME")
-                        or "unknown-user"
-                    )
-                    repaired_meta["accepted_by_source"] = (
-                        existing_meta.get("accepted_by_source") or "os"
-                    )
-                    repaired_meta["accepted_by_verified"] = bool(
-                        existing_meta.get("accepted_by_verified", False)
-                    )
-                    repaired_meta["host"] = (
-                        existing_meta.get("host")
-                        or os.environ.get("COMPUTERNAME")
-                        or "unknown-host"
-                    )
-                    repaired_meta["pid"] = (
-                        existing_meta.get("pid")
-                        if existing_meta.get("pid") is not None
-                        else os.getpid()
-                    )
+                if self._identity_needs_backfill(existing_meta):
+                    repaired_meta = self._backfill_existing_identity(existing_meta)
                     self._write_meta(meta_path, repaired_meta)
                     existing_meta = repaired_meta
                 info = f"{key}: model already downloaded with matching revision and config hash. Skipping download."
                 self.logger.info(info)
                 self.pretty.write("O", "HF Download", info)
                 # Propagate the previously-resolved revision to runtime config
-                if recorded_revision and recorded_revision != revision:
-                    self.cfg.set(f"{key}.REVISION", recorded_revision, force=True)
+                if recorded_revision:
+                    self._set_runtime_revision(key, str(recorded_revision), revision)
                 return existing_meta
 
         # Determine HF hub cache path from config (allow both exact key and trimmed key)
@@ -339,37 +396,22 @@ class HFDownloader:
                     raise UserNoDownLoadAccept(msg)
                 identity = self.sharedHelpers.capture_acceptance_identity_once()
             else:
-                identity: dict[str, Any] = {
-                    "accepted_by": existing_meta.get("accepted_by"),
-                    "accepted_by_source": existing_meta.get("accepted_by_source"),
-                    "accepted_by_verified": existing_meta.get(
-                        "accepted_by_verified", False
-                    ),
-                    "host": existing_meta.get("host"),
-                    "pid": existing_meta.get("pid"),
-                }
+                identity = self._identity_from_existing_meta(existing_meta)
 
             # Persist resolved revision into runtime config so downstream
             # cache keys (get_hf_embeddings, load_quantized_model) are
             # deterministic and match the actual snapshot hash.
-            if effective_revision and effective_revision != revision:
-                self.cfg.set(f"{key}.REVISION", effective_revision, force=True)
-            now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-            meta: dict[str, Any] = {
-                "model_id": model_name,
-                "friendly_name": friendly,
-                "revision": effective_revision,
-                "source": source,
-                "downloaded_at": now,
-                "config_hash": cfg_hash,
-                "accepted_by": identity.get("accepted_by"),
-                "accepted_by_source": identity.get("accepted_by_source"),
-                "accepted_by_verified": identity.get("accepted_by_verified", False),
-                "host": identity.get("host"),
-                "pid": identity.get("pid"),
-                "local_path": str(cached_snapshot),
-                "config": model_cfg,
-            }
+            self._set_runtime_revision(key, effective_revision, revision)
+            meta = self._build_download_meta(
+                model_name=model_name,
+                friendly=friendly,
+                revision=effective_revision,
+                source=source,
+                cfg_hash=cfg_hash,
+                identity=identity,
+                local_path=str(cached_snapshot),
+                model_cfg=cast(Dict[str, Any], model_cfg),
+            )
             # Persist metadata to model_dir for auditability (overwrite or create)
             self._write_meta(meta_path, meta)
             return meta
@@ -470,28 +512,21 @@ class HFDownloader:
                 # Shouldn't happen, but guard
                 pass
             # Write resolved revision back to runtime config
-            if dl_effective_rev and dl_effective_rev != revision:
-                self.cfg.set(f"{key}.REVISION", dl_effective_rev, force=True)
+            self._set_runtime_revision(key, dl_effective_rev, revision)
 
         # -------------------------
         # Build and persist metadata
         # -------------------------
-        now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-        meta: dict[str, Any] = {
-            "model_id": model_name,
-            "friendly_name": friendly,
-            "revision": dl_effective_rev,
-            "source": source,
-            "downloaded_at": now,
-            "config_hash": cfg_hash,
-            "accepted_by": identity["accepted_by"],
-            "accepted_by_source": identity["accepted_by_source"],
-            "accepted_by_verified": identity["accepted_by_verified"],
-            "host": identity["host"],
-            "pid": identity["pid"],
-            "local_path": str(downloaded_path),  # type: ignore[reportUnknownArgumentType]
-            "config": model_cfg,
-        }
+        meta = self._build_download_meta(
+            model_name=model_name,
+            friendly=friendly,
+            revision=dl_effective_rev,
+            source=source,
+            cfg_hash=cfg_hash,
+            identity=identity,
+            local_path=str(downloaded_path),
+            model_cfg=cast(Dict[str, Any], model_cfg),
+        )
 
         self._write_meta(meta_path, meta)
         msg = f"Model: {key} downloaded to {downloaded_path}"

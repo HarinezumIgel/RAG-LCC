@@ -27,9 +27,7 @@ import Configuration.Config_RAGLoad as Config_RAGLoad
 import Configuration.Config_WebSearch as Config_WebSearch
 from Commons.Exceptions import ConfigPathError
 from Commons.SingletonMixin import SingletonMixin
-from Config.CliOverridePolicy import (app_uses_load_retrievers_cli_scope,
-                                      build_allowed_cli_overrides,
-                                      normalize_cli_overrides)
+from Config.CliOverridePolicy import CliOverridePolicy
 from Gui.Colors import RED
 from Gui.PrettyWriter import PrettyWriter
 
@@ -55,6 +53,11 @@ _config_modules_lower = {k.lower(): v for k, v in config_modules.items()}
 
 
 class Config(SingletonMixin):
+
+    @staticmethod
+    def _module_upper_dict(module: Any) -> dict[str, Any]:
+        """Return UPPER_CASE constants from a config module."""
+        return {k: getattr(module, k) for k in dir(module) if k.isupper()}
 
     @staticmethod
     def _collect_indirect_aliases(
@@ -141,11 +144,11 @@ class Config(SingletonMixin):
         # CLI overrides are restricted to Config_Global + active app slots.
         # For RAGLoad/RAGChat/RAGChatService, include Config_Load_Retrievers.
         load_retrievers_module: Any | None = None
-        if app_uses_load_retrievers_cli_scope(self.cfgPy):
+        if CliOverridePolicy.app_uses_load_retrievers_cli_scope(self.cfgPy):
             load_retrievers_module = self.cfgLoadRetrievers
 
         self._allowed_cli_override_slots: set[str] = set(
-            build_allowed_cli_overrides(
+            CliOverridePolicy.build_allowed_cli_overrides(
                 self.globalConfigPy,
                 self.cfgPy,
                 load_retrievers_module,
@@ -160,7 +163,7 @@ class Config(SingletonMixin):
                 if isinstance(args, dict)
                 else cast(dict[str, Any], vars(args))
             )
-            self.args = normalize_cli_overrides(
+            self.args = CliOverridePolicy.normalize_cli_overrides(
                 raw_args,
                 self._allowed_cli_override_slots,
             )
@@ -178,204 +181,54 @@ class Config(SingletonMixin):
         self.pretty: PrettyWriter = PrettyWriter()
 
     def _load_from_constants(self):
-        # Priority order (lowest → highest; last update wins in the merge below):
-        # 1) Config_Global  — shared defaults
-        glob_raw = {
-            k: getattr(self.globalConfigPy, k)
-            for k in dir(self.globalConfigPy)
-            if k.isupper()
-        }
+        # Priority order (lowest → highest; last update wins in the merge below).
+        layers: list[tuple[str, Any]] = [
+            ("Config_Global", self.globalConfigPy),
+            ("Config_Load_Retrievers", self.cfgLoadRetrievers),
+            ("Config_Load_Chunkers", self.cfgLoadChunkers),
+            ("Config_Languages", self.cfgLanguages),
+            ("Config_Models", self.cfgModels),
+            ("Config_Banned_Detection", self.cfgBannedDetection),
+            ("Config_Banned_HumanReview_CSV", self.cfgBannedHumanReviewCsv),
+            ("Config_Banned_Content", self.cfgBannedContent),
+            ("Config_Banned_Prompts", self.cfgBannedPrompts),
+            ("Config_WebSearch", self.cfgWebSearch),
+            ("Config_Orchestrator", self.cfgOrchestrator),
+        ]
 
-        # 2) Config_Load_Retrievers — collection and retriever-store settings
-        glob_load_retrievers = {
-            k: getattr(self.cfgLoadRetrievers, k)
-            for k in dir(self.cfgLoadRetrievers)
-            if k.isupper()
-        }
+        # RAGChat split modules are merged only for chat runtimes.
+        if self.cfgPy in (Config_RAGChat, Config_RAGChatService):
+            layers.extend(
+                [
+                    ("Config_RAGChat", self.cfgRagchatCore),
+                    ("Config_RAGChat_Strategies", self.cfgRagchatStrategies),
+                    ("Config_RAGChat_Prompts", self.cfgRagchatPrompts),
+                    ("Config_RAGChat_Rewrite", self.cfgRagchatRewrite),
+                    ("Config_RAGChat_Display", self.cfgRagchatDisplay),
+                ]
+            )
 
-        # 3) Config_Load_Chunkers — chunker routing and metadata extraction settings
-        glob_load_chunkers = {
-            k: getattr(self.cfgLoadChunkers, k)
-            for k in dir(self.cfgLoadChunkers)
-            if k.isupper()
-        }
+        extracted_layers: list[tuple[str, dict[str, Any]]] = [
+            (label, self._module_upper_dict(module)) for label, module in layers
+        ]
 
-        # 4) Config_Languages — active language sets and Argos pair catalog
-        glob_languages = {
-            k: getattr(self.cfgLanguages, k)
-            for k in dir(self.cfgLanguages)
-            if k.isupper()
-        }
-
-        # 5) Config_Models
-        glob_models = {
-            k: getattr(self.cfgModels, k) for k in dir(self.cfgModels) if k.isupper()
-        }
-
-        # 6) Config_Banned_Detection
-        glob_banned_detection = {
-            k: getattr(self.cfgBannedDetection, k)
-            for k in dir(self.cfgBannedDetection)
-            if k.isupper()
-        }
-
-        # 6.5) Config_Banned_HumanReview_CSV
-        glob_banned_human_review_csv = {
-            k: getattr(self.cfgBannedHumanReviewCsv, k)
-            for k in dir(self.cfgBannedHumanReviewCsv)
-            if k.isupper()
-        }
-
-        # 7) Config_Banned_Content
-        glob_banned_content = {
-            k: getattr(self.cfgBannedContent, k)
-            for k in dir(self.cfgBannedContent)
-            if k.isupper()
-        }
-
-        # 8) Config_Banned_Prompts
-        glob_banned_prompts = {
-            k: getattr(self.cfgBannedPrompts, k)
-            for k in dir(self.cfgBannedPrompts)
-            if k.isupper()
-        }
-
-        # 9) Config_WebSearch
-        glob_websearch = {
-            k: getattr(self.cfgWebSearch, k)
-            for k in dir(self.cfgWebSearch)
-            if k.isupper()
-        }
-
-        # 9.5) Config_Orchestrator — retrieval flow selector + profiles
-        glob_orchestrator = {
-            k: getattr(self.cfgOrchestrator, k)
-            for k in dir(self.cfgOrchestrator)
-            if k.isupper()
-        }
-
-        # 10) RAGChat split modules (loaded by lookup for RAGChat / RAGChatService)
-        use_ragchat_split = self.cfgPy in (Config_RAGChat, Config_RAGChatService)
-        glob_ragchat_core: dict[str, Any] = {}
-        glob_ragchat_strategies: dict[str, Any] = {}
-        glob_ragchat_prompts: dict[str, Any] = {}
-        glob_ragchat_rewrite: dict[str, Any] = {}
-        glob_ragchat_display: dict[str, Any] = {}
-
-        if use_ragchat_split:
-            glob_ragchat_core = {
-                k: getattr(self.cfgRagchatCore, k)
-                for k in dir(self.cfgRagchatCore)
-                if k.isupper()
-            }
-            glob_ragchat_strategies = {
-                k: getattr(self.cfgRagchatStrategies, k)
-                for k in dir(self.cfgRagchatStrategies)
-                if k.isupper()
-            }
-            glob_ragchat_prompts = {
-                k: getattr(self.cfgRagchatPrompts, k)
-                for k in dir(self.cfgRagchatPrompts)
-                if k.isupper()
-            }
-            glob_ragchat_rewrite = {
-                k: getattr(self.cfgRagchatRewrite, k)
-                for k in dir(self.cfgRagchatRewrite)
-                if k.isupper()
-            }
-            glob_ragchat_display = {
-                k: getattr(self.cfgRagchatDisplay, k)
-                for k in dir(self.cfgRagchatDisplay)
-                if k.isupper()
-            }
-
-        # 11) App-specific (Config_RAGChat / Config_RAGLoad / Config_DocClassify) — highest file priority
-        prog_raw = {k: getattr(self.cfgPy, k) for k in dir(self.cfgPy) if k.isupper()}
+        # App-specific constants always have highest precedence.
+        app_label = getattr(self.cfgPy, "__name__", "AppConfig")
+        prog_raw = self._module_upper_dict(self.cfgPy)
+        extracted_layers.append((app_label, prog_raw))
 
         # Strict alias policy: '$' indirections must stay within the module where
         # they are declared to avoid ambiguous cross-module coupling.
-        self._validate_indirect_lookup_scope("Config_Global", glob_raw)
-        self._validate_indirect_lookup_scope(
-            "Config_Load_Retrievers",
-            glob_load_retrievers,
-        )
-        self._validate_indirect_lookup_scope(
-            "Config_Load_Chunkers",
-            glob_load_chunkers,
-        )
-        self._validate_indirect_lookup_scope("Config_Languages", glob_languages)
-        self._validate_indirect_lookup_scope("Config_Models", glob_models)
-        self._validate_indirect_lookup_scope(
-            "Config_Banned_Detection",
-            glob_banned_detection,
-        )
-        self._validate_indirect_lookup_scope(
-            "Config_Banned_HumanReview_CSV",
-            glob_banned_human_review_csv,
-        )
-        self._validate_indirect_lookup_scope(
-            "Config_Banned_Content",
-            glob_banned_content,
-        )
-        self._validate_indirect_lookup_scope(
-            "Config_Banned_Prompts",
-            glob_banned_prompts,
-        )
-        self._validate_indirect_lookup_scope("Config_WebSearch", glob_websearch)
-        self._validate_indirect_lookup_scope(
-            "Config_Orchestrator",
-            glob_orchestrator,
-        )
-        if use_ragchat_split:
-            self._validate_indirect_lookup_scope(
-                "Config_RAGChat",
-                glob_ragchat_core,
-            )
-            self._validate_indirect_lookup_scope(
-                "Config_RAGChat_Strategies",
-                glob_ragchat_strategies,
-            )
-            self._validate_indirect_lookup_scope(
-                "Config_RAGChat_Prompts",
-                glob_ragchat_prompts,
-            )
-            self._validate_indirect_lookup_scope(
-                "Config_RAGChat_Rewrite",
-                glob_ragchat_rewrite,
-            )
-            self._validate_indirect_lookup_scope(
-                "Config_RAGChat_Display",
-                glob_ragchat_display,
-            )
-        self._validate_indirect_lookup_scope(
-            getattr(self.cfgPy, "__name__", "AppConfig"),
-            prog_raw,
-        )
+        for label, values in extracted_layers:
+            self._validate_indirect_lookup_scope(label, values)
 
-        # Merge: each layer overrides the previous; eligible CLI args override
-        # merged slots via _get.
-        raw = glob_raw.copy()
-        raw.update(glob_load_retrievers)
-        raw.update(glob_load_chunkers)
-        raw.update(glob_languages)
-        raw.update(glob_models)
-        raw.update(glob_banned_detection)
-        raw.update(glob_banned_human_review_csv)
-        raw.update(glob_banned_content)
-        raw.update(glob_banned_prompts)
-        raw.update(glob_websearch)
-        raw.update(glob_orchestrator)
-        raw.update(glob_ragchat_core)
-        raw.update(glob_ragchat_strategies)
-        raw.update(glob_ragchat_prompts)
-        raw.update(glob_ragchat_rewrite)
-        raw.update(glob_ragchat_display)
-        raw.update(prog_raw)
+        # Merge layers in order; later values override earlier values.
+        raw: dict[str, Any] = {}
+        for _, values in extracted_layers:
+            raw.update(values)
 
-        # build the resolved config
-        self.cfg = {}
-        for key, val in raw.items():
-            self.cfg[key] = val
+        # Build the resolved config.
+        self.cfg = dict(raw)
 
     def load(self, filepath: str):
         """

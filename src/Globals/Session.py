@@ -29,7 +29,20 @@ class Session:
         self.metadata_filters: dict[str, str] = {}
         self.query: str | None = None
         self.strategy: str | None = None
-        self.orchestrator_flow: str | None = None
+        default_orchestration_flow = (
+            str(
+                self.cfg.get_str(
+                    "_DEFAULT_ORCHESTRATION_FLOW", "THOROUGH_QUERY_REWRITE"
+                )
+                or "THOROUGH_QUERY_REWRITE"
+            )
+            .strip()
+            .upper()
+            or "THOROUGH_QUERY_REWRITE"
+        )
+        self.orchestrator_flow: str = default_orchestration_flow
+        # Alias used by orchestration pipeline diagnostics.
+        self.flow_name: str = default_orchestration_flow
         self.retriever_k: int | None = None
         self.rerank: bool | None = None
         self.final_chunks_to_llm: int | None = None
@@ -77,10 +90,23 @@ class Session:
         # None means "use global PromptRewrite defaults".
         self.enable_query_rewrite: bool | None = None
         self.enable_pronoun_substitution: bool | None = None
+        self.enable_guardrail_leg: bool | None = None
+        self.enable_vector_alternate_queries: bool | None = None
         self.enable_rerank: bool | None = None
         self.enable_low_score_fallback: bool | None = None
         self.enable_low_recall_rescue: bool | None = None
         self.enable_grounding: bool | None = None
+        self.enable_indexed_query_shaping: bool | None = None
+        self.enable_indexed_query_translation: bool | None = None
+        self.enable_indexed_query_synonym_expansion: bool | None = None
+        self.enable_original_language_vector_leg: bool | None = None
+        self.enable_vector_retriever: bool | None = None
+        self.enable_bm25_retriever: bool | None = None
+        self.enable_graph_retriever: bool | None = None
+        self.enable_regex_retriever: bool | None = None
+        self.force_retrieve_mode: str | None = None
+        self.main_query_source: str | None = None
+        self.secondary_query_source: str | None = None
         # Per-step confidence labels emitted by Orchestrator.
         self.orchestration_step_confidence: dict[str, str] = {}
         self.confidence_step_events: list[dict[str, Any]] = []
@@ -190,6 +216,52 @@ class Session:
         # Last chosen chunks for this query. Stored so that orange grounding
         # can map grounded sentences back to their source documents.
         self.last_chosen_chunks: list[Any] = []
+
+    def reset_turn_state(self) -> None:
+        """Reset per-turn retrieval/rewrite telemetry and language contract fields."""
+        self.force_skip_rewrite = False
+        self.effective_query = None
+        self.effective_query_reason = None
+        self.orchestration_step_confidence = {}
+        self.answer_confidence_level = None
+        self.answer_confidence_score = None
+        self.answer_confidence_summary = None
+        self.answer_confidence_components = {}
+        self.rerank_low_confidence_fallback_triggered = False
+        self.user_language = None
+        self.retrieval_language = "english"
+        self.orig_translated_query_en = None
+        self.seed_retrieval_query = None
+        self.t1_query = None
+        self.rewritten_query = None
+        self.rewrite_language = None
+        self.post_rewrite_query_en = None
+        self.final_retrieval_query = None
+        self.t2_query = None
+        self.retrieval_top_k_orig_query_en = None
+        self.retrieval_top_k_post_rewrite_query_en = None
+        self.retrieval_top_k_seed_query = None
+        self.retrieval_top_k_final_query = None
+        self.retrieval_top_k_before_t2 = None
+        self.retrieval_top_k_after_t2 = None
+        self.user_query_original = None
+        self.original_query_leg_enabled = False
+        self.original_query_leg_query = None
+        self.original_query_leg_language = None
+        self.original_query_leg_reason = None
+        self.original_query_leg_vector_hits = None
+        self.original_query_leg_vector_added = None
+        self.original_query_leg_vector_overlap = None
+        self.original_query_leg_bm25_hits = None
+        self.original_query_leg_bm25_added = None
+        self.original_query_leg_bm25_overlap = None
+        self.original_query_leg_graph_hits = None
+        self.original_query_leg_graph_added = None
+        self.original_query_leg_graph_overlap = None
+        self.original_query_leg_regex_hits = None
+        self.original_query_leg_regex_added = None
+        self.original_query_leg_regex_overlap = None
+        self.rewrite_was_underspecified = False
 
     def export_session_state_as_cell(self, max_items_per_line: int = 6) -> str:
         """

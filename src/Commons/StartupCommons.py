@@ -63,6 +63,7 @@ def suppress_argos_logging(debug_level: int = 0) -> None:
 
 
 class StartupCommons:
+    @staticmethod
     def _resolve_expected_stopwords_dir(cfg: Config) -> Path | None:
         """Resolve the expected stopwords directory from configured NLTK path.
 
@@ -359,6 +360,111 @@ class StartupCommons:
             raise InvalidCollectionName(str(raw))
 
     @staticmethod
+    def _normalize_algos_to_process(raw: Any) -> dict[str, bool]:
+        if isinstance(raw, dict):
+            raw_dict: dict[str, Any] = cast(dict[str, Any], raw)
+            return {str(k): bool(v) for k, v in raw_dict.items()}
+
+        if isinstance(raw, list):
+            entries: list[Any] = cast(list[Any], raw)
+            if all(isinstance(x, str) for x in entries):
+                return {str(name): True for name in entries}
+
+            parsed: dict[str, bool] = {}
+            for entry in entries:
+                if isinstance(entry, (list, tuple)):
+                    entry_values: list[Any] = list(
+                        cast(list[Any] | tuple[Any, ...], entry)
+                    )
+                    if len(entry_values) >= 2:
+                        parsed[str(entry_values[0])] = bool(entry_values[1])
+            return parsed
+
+        if isinstance(raw, tuple):
+            entries = list(cast(tuple[Any, ...], raw))
+            if all(isinstance(x, str) for x in entries):
+                return {str(name): True for name in entries}
+
+            parsed: dict[str, bool] = {}
+            for entry in entries:
+                if isinstance(entry, (list, tuple)):
+                    entry_values = list(cast(list[Any] | tuple[Any, ...], entry))
+                    if len(entry_values) >= 2:
+                        parsed[str(entry_values[0])] = bool(entry_values[1])
+            return parsed
+
+        return {}
+
+    @staticmethod
+    def _validate_stage_check_requirements(cfg: Config, stage_name: str) -> None:
+        check_type: str = cfg.get_str("_ACTIVE_DETECTION_CONFIG")
+        friendly_name: str = cfg.get_str("_FRIENDLY_NAME")
+        stage_slot: str = f"_BANNED_DETECT.{check_type}.{friendly_name}.{stage_name}"
+
+        stage_check_enabled: bool = cfg.get_bool(f"{stage_slot}.Check", True)
+        if not stage_check_enabled:
+            return
+
+        required_depth: int = cfg.get_int(
+            f"{stage_slot}.PIPELINE.REQUIRED_ALGOS_ABOVE_THRESHOLD"
+        )
+        required_breadth: int = cfg.get_int(
+            f"{stage_slot}.PIPELINE.REQUIRED_DIFFERENT_ALGOS_HAVE_A_SCORE"
+        )
+
+        if required_depth < 1 or required_breadth < 1:
+            raise ConfigurationError(
+                f"Invalid {stage_name} thresholds: "
+                f"REQUIRED_ALGOS_ABOVE_THRESHOLD={required_depth}, "
+                f"REQUIRED_DIFFERENT_ALGOS_HAVE_A_SCORE={required_breadth}. "
+                f"When {stage_name}.Check is True, both values must be >= 1. "
+                f"If you want to disable this stage, set {stage_name}.Check to False."
+            )
+
+        raw_algos: Any = cfg.get(f"{stage_slot}.PIPELINE.ALGOS_TO_PROCESS", {})
+        algos_to_process: dict[str, bool] = StartupCommons._normalize_algos_to_process(
+            raw_algos
+        )
+        enabled_algos: list[str] = [
+            name for name, enabled in algos_to_process.items() if enabled
+        ]
+        enabled_count: int = len(enabled_algos)
+
+        if enabled_count < required_depth or enabled_count < required_breadth:
+            enabled_repr: str = ", ".join(enabled_algos) if enabled_algos else "none"
+            raise ConfigurationError(
+                f"Invalid {stage_name} consensus requirements: "
+                f"enabled_algorithms={enabled_count} ({enabled_repr}), "
+                f"REQUIRED_ALGOS_ABOVE_THRESHOLD={required_depth}, "
+                f"REQUIRED_DIFFERENT_ALGOS_HAVE_A_SCORE={required_breadth}. "
+                "Enable more algorithms, lower required counts, or set "
+                f"{stage_name}.Check to False."
+            )
+
+    @staticmethod
+    def _validate_prompt_check_requirements(cfg: Config) -> None:
+        StartupCommons._validate_stage_check_requirements(cfg, "PROMPT_CHECK")
+
+    @staticmethod
+    def _validate_pipeline_check_requirements(cfg: Config) -> None:
+        StartupCommons._validate_stage_check_requirements(cfg, "PIPELINE_CHECK")
+
+    @staticmethod
+    def _validate_all_stage_check_requirements(cfg: Config) -> None:
+        stage_errors: list[str] = []
+        for stage_name in ("PROMPT_CHECK", "PIPELINE_CHECK"):
+            try:
+                StartupCommons._validate_stage_check_requirements(cfg, stage_name)
+            except ConfigurationError as exc:
+                stage_errors.append(str(exc))
+
+        if stage_errors:
+            all_errors: str = "\n".join(f"- {error}" for error in stage_errors)
+            raise ConfigurationError(
+                "Invalid compliance stage configuration:\n" f"{all_errors}"
+            )
+
+    @staticmethod
     def _suppress_argos_logging(debug_level: int = 0) -> None:
         """Delegate to the module-level function."""
         suppress_argos_logging(debug_level)
@@ -403,6 +509,142 @@ class StartupCommons:
         banner: Banner
 
     @staticmethod
+    def _report_environment_settings(
+        pretty: PrettyWriter,
+        cfg: Config,
+        friendly_name: str,
+    ) -> str:
+        """Emit startup environment status lines and return WEB_SEARCH_MODE."""
+        level = "O"
+        warn_print = False
+        env_checks = StartupCommons._environment_checks()
+        for key, (target_value, triggers_warn_flag) in env_checks.items():
+            current_value = os.environ.get(key, "")
+            color = BRIGHT_BLUE
+            if target_value is not None and current_value != target_value:
+                color = ORANGE
+                if triggers_warn_flag:
+                    warn_print = True
+            pretty.write(
+                "I",
+                "Environment variable",
+                f"{key}={current_value}",
+                color=color,
+            )
+
+        if friendly_name in ("RAGChat", "RAGChatService"):
+            web_mode_env = str(os.environ.get("WEB_SEARCH_MODE", "0")).strip().lower()
+            pretty.write(
+                "I",
+                "Environment variable",
+                f"WEB_SEARCH_MODE={web_mode_env}",
+                color=(ORANGE if web_mode_env == "1" else BRIGHT_BLUE),
+            )
+
+        if friendly_name == "RAGChatService":
+            # SERVE_OPENWEBUI_CHAT is an inbound-service flag, not outbound risk.
+            owui = os.environ.get("SERVE_OPENWEBUI_CHAT", "0")
+            pretty.write(
+                "I",
+                "Environment variable",
+                f"SERVE_OPENWEBUI_CHAT={owui}",
+                color=(ORANGE if owui == "1" else BRIGHT_BLUE),
+            )
+            docs_http = os.environ.get("SERVE_IN_MEMORY_DOCS_HTTP", "0")
+            pretty.write(
+                "I",
+                "Environment variable",
+                f"SERVE_IN_MEMORY_DOCS_HTTP={docs_http}",
+                color=(ORANGE if docs_http == "1" else BRIGHT_BLUE),
+            )
+
+        if warn_print:
+            pretty.write("N", "", "")
+            pretty.write(
+                level,
+                "Outbound downloads",
+                "One or more settings allow outbound model/data downloads "
+                "Set the relevant offline flags if you want to prevent network access.",
+                color=ORANGE,
+            )
+
+        if (
+            friendly_name == "RAGChatService"
+            and os.environ.get("SERVE_OPENWEBUI_CHAT") == "1"
+        ):
+            pretty.write("N", "", "")
+            pretty.write(
+                "I",
+                "RAGChatService",
+                "Accepting requests from OpenWebUI (SERVE_OPENWEBUI_CHAT=1) — inbound only, no outbound data risk.",
+                color=BRIGHT_BLUE,
+            )
+
+        web_mode = str(os.environ.get("WEB_SEARCH_MODE", "0")).strip().lower()
+        if web_mode not in ("0", "1"):
+            raise ConfigurationError(
+                f"WEB_SEARCH_MODE = {web_mode!r} is not a valid value. "
+                'Allowed values: "0" | "1". '
+                "Fix Config_Internet_Env.py and restart."
+            )
+
+        if friendly_name in ("RAGChat", "RAGChatService"):
+            if web_mode == "1":
+                pretty.write(
+                    "W",
+                    "Web search",
+                    'Web search is ENABLED (WEB_SEARCH_MODE="1"). User queries may be sent to the internet. '
+                    "Review LEGAL.md \u00a7 Web Search\nand SECURITY.md before deploying.",
+                    color=ORANGE,
+                )
+
+            if (
+                friendly_name == "RAGChatService"
+                and web_mode != "1"
+                and cfg.get_bool("_OPENWEB_UI_WEBSEARCH", False)
+            ):
+                pretty.write("N", "", "")
+                pretty.write(
+                    "W",
+                    "Web search",
+                    "_OPENWEB_UI_WEBSEARCH=True has no effect because WEB_SEARCH_MODE "
+                    f'is {web_mode!r}, not "1". '
+                    'Set WEB_SEARCH_MODE="1" in Config_Internet_Env.py to activate the default.',
+                    color=VIOLET,
+                )
+
+        if friendly_name == "RAGChatService":
+            docs_block: dict[str, Any] = cfg.get_dict("_SERVE_DOCS", {}, silent=True)
+            docs_http_enabled = os.environ.get("SERVE_IN_MEMORY_DOCS_HTTP", "0") == "1"
+            pretty.write("N", "", "")
+            if docs_http_enabled:
+                md_host = cfg.get_str("_MODELS.ragchatservice._RAGCHATSERVICE.HOST")
+                md_port = cfg.get_int("_MODELS.ragchatservice._RAGCHATSERVICE.PORT")
+                md_base = (
+                    str(docs_block.get("public_base_url") or "").strip().rstrip("/")
+                    or f"http://{md_host}:{md_port}"
+                )
+                pretty.write(
+                    "W",
+                    "Serve docs",
+                    f"In-memory document-serving service active — "
+                    f"endpoint: {md_base}/marked/<token>  "
+                    f"(TTL {docs_block.get('ttl_seconds', 1800)} s, "
+                    f"max {docs_block.get('max_total_mb', 200)} MB)",
+                    color=BRIGHT_ORANGE,
+                )
+            else:
+                pretty.write(
+                    "I",
+                    "Serve docs",
+                    "In-memory document-serving service is DISABLED "
+                    '(SERVE_IN_MEMORY_DOCS_HTTP="0" in Config_Internet_Env.py).',
+                    color=BRIGHT_BLUE,
+                )
+
+        return web_mode
+
+    @staticmethod
     def common_start(app_name: str, description: str) -> StartupContext:
         try:
             parser = AddConstantsFromConfigFile(description=description)
@@ -412,6 +654,7 @@ class StartupCommons:
             StartupCommons._ensure_safe_startup_root(cfg)
             StartupCommons._validate_collection_config(cfg)
             StartupCommons._validate_config_path_slots(cfg)
+            StartupCommons._validate_all_stage_check_requirements(cfg)
 
             banner = Banner(cfg)
             banner.startup_banner()
@@ -442,137 +685,8 @@ class StartupCommons:
             hf_home = cfg.get_str("_HF_HOME", "")
             hf_hub = cfg.get_str("_HF_HUB_CACHE", "")
 
-            # Toggle boolean-style HF/transformers related env vars based on connection mode
-            level = "O"
-            color = BRIGHT_BLUE
-            warn_print = False
-            _env_checks = StartupCommons._environment_checks()
             friendly_name: str = cfg.get_str("_FRIENDLY_NAME", "")
-            for key, (target_value, triggers_warn_flag) in _env_checks.items():
-                current_value = os.environ.get(key, "")
-                if target_value is not None and current_value != target_value:
-                    color = ORANGE
-                    if triggers_warn_flag:
-                        warn_print = True
-                else:
-                    color = BRIGHT_BLUE
-                pretty.write(
-                    "I", "Environment variable", f"{key}={current_value}", color=color
-                )
-            if friendly_name in ("RAGChat", "RAGChatService"):
-                _web_mode_env = (
-                    str(os.environ.get("WEB_SEARCH_MODE", "0")).strip().lower()
-                )
-                pretty.write(
-                    "I",
-                    "Environment variable",
-                    f"WEB_SEARCH_MODE={_web_mode_env}",
-                    color=(ORANGE if _web_mode_env == "1" else BRIGHT_BLUE),
-                )
-            if friendly_name == "RAGChatService":
-                # SERVE_OPENWEBUI_CHAT is a service mode flag (inbound connections),
-                # not an outbound download risk — reported as plain status, no warning.
-                _owui = os.environ.get("SERVE_OPENWEBUI_CHAT", "0")
-                pretty.write(
-                    "I",
-                    "Environment variable",
-                    f"SERVE_OPENWEBUI_CHAT={_owui}",
-                    color=(ORANGE if _owui == "1" else BRIGHT_BLUE),
-                )
-                _docs_http = os.environ.get("SERVE_IN_MEMORY_DOCS_HTTP", "0")
-                pretty.write(
-                    "I",
-                    "Environment variable",
-                    f"SERVE_IN_MEMORY_DOCS_HTTP={_docs_http}",
-                    color=(ORANGE if _docs_http == "1" else BRIGHT_BLUE),
-                )
-
-            if warn_print:
-                pretty.write("N", "", "")
-                pretty.write(
-                    f"{level}",
-                    "Outbound downloads",
-                    "One or more settings allow outbound model/data downloads "
-                    "Set the relevant offline flags if you want to prevent network access.",
-                    color=ORANGE,
-                )
-
-            if (
-                friendly_name == "RAGChatService"
-                and os.environ.get("SERVE_OPENWEBUI_CHAT") == "1"
-            ):
-                pretty.write("N", "", "")
-                pretty.write(
-                    "I",
-                    "RAGChatService",
-                    "Accepting requests from OpenWebUI (SERVE_OPENWEBUI_CHAT=1) — inbound only, no outbound data risk.",
-                    color=BRIGHT_BLUE,
-                )
-
-            _web_mode: str = str(os.environ.get("WEB_SEARCH_MODE", "0")).strip().lower()
-            if _web_mode not in ("0", "1"):
-                raise ConfigurationError(
-                    f"WEB_SEARCH_MODE = {_web_mode!r} is not a valid value. "
-                    'Allowed values: "0" | "1". '
-                    "Fix Config_Internet_Env.py and restart."
-                )
-            if friendly_name in ("RAGChat", "RAGChatService"):
-                if _web_mode == "1":
-                    pretty.write(
-                        "W",
-                        "Web search",
-                        'Web search is ENABLED (WEB_SEARCH_MODE="1"). User queries may be sent to the internet. '
-                        "Review LEGAL.md \u00a7 Web Search\nand SECURITY.md before deploying.",
-                        color=ORANGE,
-                    )
-
-                if (
-                    friendly_name == "RAGChatService"
-                    and _web_mode != "1"
-                    and cfg.get_bool("_OPENWEB_UI_WEBSEARCH", False)
-                ):
-                    pretty.write("N", "", "")
-                    pretty.write(
-                        "W",
-                        "Web search",
-                        "_OPENWEB_UI_WEBSEARCH=True has no effect because WEB_SEARCH_MODE "
-                        f'is {_web_mode!r}, not "1". '
-                        'Set WEB_SEARCH_MODE="1" in Config_Internet_Env.py to activate the default.',
-                        color=VIOLET,
-                    )
-
-            if friendly_name == "RAGChatService":
-                docs_block: dict[str, Any] = cfg.get_dict(
-                    "_SERVE_DOCS", {}, silent=True
-                )
-                docs_http_enabled = (
-                    os.environ.get("SERVE_IN_MEMORY_DOCS_HTTP", "0") == "1"
-                )
-                pretty.write("N", "", "")
-                if docs_http_enabled:
-                    md_host = cfg.get_str("_MODELS.ragchatservice._RAGCHATSERVICE.HOST")
-                    md_port = cfg.get_int("_MODELS.ragchatservice._RAGCHATSERVICE.PORT")
-                    md_base = (
-                        str(docs_block.get("public_base_url") or "").strip().rstrip("/")
-                        or f"http://{md_host}:{md_port}"
-                    )
-                    pretty.write(
-                        "W",
-                        "Serve docs",
-                        f"In-memory document-serving service active — "
-                        f"endpoint: {md_base}/marked/<token>  "
-                        f"(TTL {docs_block.get('ttl_seconds', 1800)} s, "
-                        f"max {docs_block.get('max_total_mb', 200)} MB)",
-                        color=BRIGHT_ORANGE,
-                    )
-                else:
-                    pretty.write(
-                        "I",
-                        "Serve docs",
-                        "In-memory document-serving service is DISABLED "
-                        '(SERVE_IN_MEMORY_DOCS_HTTP="0" in Config_Internet_Env.py).',
-                        color=BRIGHT_BLUE,
-                    )
+            StartupCommons._report_environment_settings(pretty, cfg, friendly_name)
 
             StartupCommons._suppress_argos_logging(DebugHelper.level(cfg))
 
@@ -656,9 +770,7 @@ class StartupCommons:
                 os.environ["HF_HOME"] = hf_home
             if hf_hub:
                 os.environ["HF_HUB_CACHE"] = hf_hub
-            pretty.write(
-                f"{level}", "HF cache", f"HF home: {hf_home} HF hub cache: {hf_hub}"
-            )
+            pretty.write("O", "HF cache", f"HF home: {hf_home} HF hub cache: {hf_hub}")
             pretty.write("N", "", "")
             pretty.write(
                 "N",

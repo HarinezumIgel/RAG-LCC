@@ -285,22 +285,21 @@ security restrictions**, not defects.
 
 This flow resolution defines the per-turn pipeline path and is also the control point for the additional confidence step (stage confidence signals plus downstream final-confidence evaluation).
 
-- `_ACTIVE_ORCHESTRATION_FLOW` sets the default profile.
+- `_DEFAULT_ORCHESTRATION_FLOW` sets the default profile when session `orchestrator_flow` is unset.
 - `_ALLOWED_ORCHESTRATION_FLOWS` optionally limits what can be selected.
 - Session/CLI `orchestrator_flow` can request a specific profile for the turn.
 
 Each profile in `_ORCHESTRATION_FLOWS` controls stage switches such as:
 
 - query processing (`use_query_rewrite`, `use_pronoun_substitution`, `use_vector_alternates`)
-- guardrail and language legs (`use_secondary_query`, `use_original_language_vector`, `shape_indexed_queries`)
-- stage gates (`run_local_stage`, `run_web_stage`)
+- guardrail and language legs (`use_secondary_query`, `use_original_language_vector`, `shape_indexed_queries`, `translate_indexed_queries`, `expand_indexed_queries`)
 - retriever gates (`run_vector`, `run_bm25`, `run_graph`, `run_regex`)
 - post-retrieval/answer stages (`run_rerank`, `run_grounding`)
 - rerank fallback controls (`run_low_score_fallback`, `run_low_recall_rescue`)
 
 Flow configuration is the baseline, but effective execution can still be changed by session CLI knobs:
 
-- `retrieve_mode` and `web_search=web_only` can disable local-stage execution even when flow enables it.
+- `web_search` (`local_only` / `local_and_web` / `web_only`) plus `retrieve_mode=WEB` decides local/web stage execution.
 - `retrieve_mode` can disable individual retrievers (Vector/BM25/Graph/Regex) despite `run_*` being enabled in flow.
 - `mark_text=false` can deactivate grounding even when `run_grounding=true` in flow.
 - `rerank=0` can deactivate reranking even when `run_rerank=true` in flow.
@@ -525,7 +524,7 @@ The pattern is used consistently across five config files:
 | `Config_Banned_Detection.py` | `_ACTIVE_DETECTION_CONFIG` | `_BANNED_DETECT` | **`STRICT_DETECT_CONFIG`** | Detection pipeline thresholds per app |
 | `Config_Banned_Content.py` | `_ACTIVE_BANNED_CONFIG` | (named dict) | **`_STRICT_BANNED`** | Banned keyword lists |
 | `Config_Banned_Content.py` | `_ACTIVE_MASKING_CONFIG` | (named dict) | **`_STRICT_MASKING_REGEXES`** | Masking regex rules |
-| `Config_RAGChat.py` | `_ACTIVE_CHUNK_SELECT_STRATEGY` | `_STRATEGIES` | `NARROW`, `BALANCED_FILE_CAP`, `WIDE`, `ULTRA_WIDE`, **`DEFAULT`** | Retrieval strategy profiles |
+| `Config_RAGChat_Strategies.py` | `_ACTIVE_CHUNK_SELECT_STRATEGY` | `_STRATEGIES` | `NARROW`, `BALANCED_FILE_CAP`, `WIDE`, `ULTRA_WIDE`, **`DEFAULT`** | Retrieval strategy profiles |
 
 At runtime, consumers read the selector once and resolve parameters via
 dot-notation, e.g.
@@ -802,7 +801,7 @@ Config slot template used by scorers:
 - Good for word-level variations
 - Config slot hints: `Jaccard.THRESHOLD`, `Jaccard.THRESHOLD_MIN`, `Jaccard.CHAR_NGRAM_RANGE`
 
-### 📏 Cosine Similarity Detector (`CosineKeyWordDetect.py`)
+### 📏 Cosine Similarity Detector (`CosineScorer.py`)
 
 - SBERT embeddings (Snowflake Arctic-embed default used in this repository)
 - Semantic similarity matching
@@ -811,7 +810,7 @@ Config slot template used by scorers:
 - CosineScorer and KeyBertScorer produce very similar results. This is why CosineScorer is not activated in the provided example configuration
 - Config slot hints: `Cosine.THRESHOLD`, `Cosine.THRESHOLD_MIN`
 
-### 🔑 KeyBERT Detector (`KeyBertWordDetect.py`)
+### 🔑 KeyBERT Detector (`KeyBertScorer.py`)
 
 - Keyword extraction using SBERT embeddings
 - Deterministic phrase ordering for stable results
@@ -1203,11 +1202,13 @@ Overridable settings include:
 | --- | --- | --- |
 | `max_output_tokens` | `▶ Output` | Warning emitted when override exceeds computed budget |
 | `context_size` | `▶ Output` | Warning emitted when override exceeds computed budget |
-| `terminal_line_size` | `▶ Output` | Controls wrapping width for all terminal output; takes effect immediately on the next printed line. `TERMINAL_LINE_SIZE` in `Config_RAGChat.py` (and for `Config_RAGChatService.py` via split-module lookup in `Config.py`) is a `{"debug": 180, "no_debug": 100}` dict; the active branch is resolved at use time from the live `session.debug_level` value, so toggling debug level mid-session changes the width immediately. Other apps read a flat `140` from `Config_Global.py`. |
-| `fetch_k`, `context_chunks` | `▶ Chunk takes` | |
+| `terminal_line_size` | `▶ Output` | Controls wrapping width for all terminal output; takes effect immediately on the next printed line. `TERMINAL_LINE_SIZE` in `Config_RAGChat_Display.py` (and for `Config_RAGChatService.py` via split-module lookup in `Config.py`) is a `{"debug": 200, "no_debug": 100}` dict; the active branch is resolved at use time from the live `session.debug_level` value, so toggling debug level mid-session changes the width immediately. Other apps read a flat `140` from `Config_Global.py`. |
+| `fetch_k`, `context_chunks`, `threshold` | `▶ Retriever tuning` | |
 | `temperature`, `top_p`, `top_k` | `▶ LLM` | |
-| `strategy`, `retrieve_mode`, `rerank`, `threshold` | `▶ Strategies` | |
-| `vector_weight`, `bm25_weight`, `graph_weight` | `▶ Weights` | |
+| `strategy` | `▶ Retrieval strategy` | |
+| `orchestrator_flow` | `▶ Orchestration strategy` | |
+| `force_retrieve_mode`, `main_query_source`, `secondary_query_source`, `rerank` | `▶ Flow selectors` | |
+| `vector_weight`, `bm25_weight`, `graph_weight`, `regex_weight`, `web_weight` | `▶ Retriever weights` | |
 | `debug_level`, `debug_mode` | `▶ Debug` | `debug_level!` shows a named-preset picker driven by `_ALLOWED_DEBUG_LEVELS`; also prompts for `ge`/`is` mode. `debug_mode` can be changed independently. Both write the combined string back to `Config.DEBUG_LEVEL` via `DebugHelper`. |
 
 See `Chatter._resolve_token_params()` for the token-budget resolution logic.
@@ -1839,7 +1840,7 @@ and return JSON-only output fields used by the post-parser decision logic.
 
 The rewrite model is selected independently via `_ACTIVE_LLM_REWRITE_PROMPT`
 (`mistral` default; `llama` also available). Rewrite-specific LLM
-parameters are configured in `_QUERY_REWRITE` in `Config_RAGChat.py`,
+parameters are configured in `_QUERY_REWRITE` in `Config_RAGChat_Rewrite.py`,
 separate from the main chat LLM parameters.
 
 | Key | Purpose | Default |
@@ -1902,8 +1903,8 @@ Prevent reprocessing of unchanged files and explicitly exclude non-compliant fil
 
 - Document hash in Chroma DB metadata will be compared on document extraction
   If same hash, don't process
-   `_PROCESS_IF_UNCHANGED` = False
-  This setting applies to `RAGLoad`only
+   `PROCESS_IF_UNCHANGED` = False
+  This setting applies to `RAGLoad` only
 
 - Exclusions files in ./Exclusions directory contain paths of excluded files
   If a file is in Exclusion list it will not be processed on document extraction

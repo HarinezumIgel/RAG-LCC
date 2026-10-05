@@ -94,6 +94,7 @@ SHOW_CLI_LIKE_ALGO_RESULTS = True
 
 # Keep service behavior aligned with pre-refactor retrieval orchestration.
 _ACTIVE_ORCHESTRATION_FLOW = "THOROUGH_QUERY_REWRITE"
+_DEFAULT_ORCHESTRATION_FLOW = _ACTIVE_ORCHESTRATION_FLOW
 
 # -----------------------------------------------------------------------------
 # Document-serving service (in-memory token store)

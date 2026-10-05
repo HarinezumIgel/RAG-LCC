@@ -10,8 +10,7 @@ import Configuration.Config_Load_Retrievers as Config_Load_Retrievers
 import Configuration.Config_RAGChat as Config_RAGChat
 import Configuration.Config_RAGChatService as Config_RAGChatService
 import Configuration.Config_RAGLoad as Config_RAGLoad
-from Config.CliOverridePolicy import (app_uses_load_retrievers_cli_scope,
-                                      build_allowed_cli_overrides)
+from Config.CliOverridePolicy import CliOverridePolicy
 
 config_modules = {
     "Config_RAGChat": Config_RAGChat,
@@ -107,9 +106,9 @@ class AddConstantsFromConfigFile(argparse.ArgumentParser):
         if app_module is None:
             app_module = self._active_app_module()
         load_retrievers_module: Any | None = None
-        if app_uses_load_retrievers_cli_scope(app_module):
+        if CliOverridePolicy.app_uses_load_retrievers_cli_scope(app_module):
             load_retrievers_module = Config_Load_Retrievers
-        return build_allowed_cli_overrides(
+        return CliOverridePolicy.build_allowed_cli_overrides(
             Config_Global,
             app_module,
             load_retrievers_module,

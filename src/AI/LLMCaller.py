@@ -62,6 +62,30 @@ class LLMCaller:
 
         return _on_chunk
 
+    @staticmethod
+    def _extract_backend_error(chunk_dict: dict[str, Any]) -> str | None:
+        """Extract a backend-reported error message from one response chunk."""
+        if "error" in chunk_dict:
+            err_value = chunk_dict.get("error")
+            if isinstance(err_value, dict):
+                err_dict = cast(dict[str, Any], err_value)
+                msg = str(err_dict.get("message", "")).strip()
+                if msg:
+                    return msg
+                return json.dumps(err_dict, ensure_ascii=False)
+            if isinstance(err_value, str):
+                err_text = err_value.strip()
+                return err_text or "Backend returned an empty error payload"
+            return str(err_value)
+
+        if str(chunk_dict.get("object", "")).lower() == "error":
+            msg = str(chunk_dict.get("message", "")).strip()
+            if msg:
+                return msg
+            return json.dumps(chunk_dict, ensure_ascii=False)
+
+        return None
+
     def _resolve_token_budget(
         self,
         model: str,
@@ -315,6 +339,20 @@ class LLMCaller:
 
                 if isinstance(parsed_chunk, dict):
                     chunk_dict = cast(dict[str, Any], parsed_chunk)
+                    backend_error: str | None = self._extract_backend_error(chunk_dict)
+                    if backend_error:
+                        self.pretty.write(
+                            "E",
+                            f"{provider_label} response",
+                            f"Backend reported error: {backend_error}",
+                        )
+                        return {
+                            "content": content_acc,
+                            "thinking": thinking_acc,
+                            "raw": raw_acc,
+                            "error": backend_error,
+                        }
+
                     if label_re.match(candidate) or label_re.match(candidate_tail):
                         label = (
                             candidate if label_re.match(candidate) else candidate_tail

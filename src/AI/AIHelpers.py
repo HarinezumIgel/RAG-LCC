@@ -348,6 +348,8 @@ class AIHelpers(SingletonMixin):
         human_review: bool = False
 
         compliance_config_slot: str = self.helpers.get_compliance_config_slot(stage)
+        if not self.cfg.get_bool(f"{compliance_config_slot}.Check", True):
+            return (False, keyword_embeddings, [])
         raw: Any = self.cfg.get(f"{compliance_config_slot}.PIPELINE.ALGOS_TO_PROCESS")
 
         algos_to_process: OrderedDict[str, bool] = self.helpers.make_ordered_dict(raw)

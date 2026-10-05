@@ -42,7 +42,7 @@ class ConfidenceHelper:
             return Symbols.sym_icon(normalized)
         return Symbols.sym_icon("INFO")
 
-    def _emit_rerank_select_confidence(
+    def _emit_selection_confidence(
         self,
         *,
         level: str,
@@ -50,13 +50,13 @@ class ConfidenceHelper:
         evidence_chunks: int,
         fallback_triggered: bool,
     ) -> None:
-        """Emit a user-facing confidence line when rerank-selection score is known."""
+        """Emit a user-facing confidence line for the final chunk-selection step."""
         if not self.confidence_logger.emit_pretty:
             return
         icon = self._confidence_icon_from_level(level)
         self.pretty.write(
             "I",
-            "Rerank Select Confidence",
+            "Selection Confidence",
             (
                 f"{icon}{level} C_final={score:.2f} "
                 f"evidence_chunks={evidence_chunks} "
@@ -241,7 +241,7 @@ class ConfidenceHelper:
                 fallback_triggered=False,
                 note="no selected evidence chunks",
             )
-            self._emit_rerank_select_confidence(
+            self._emit_selection_confidence(
                 level="LOW",
                 score=0.0,
                 evidence_chunks=0,
@@ -313,7 +313,7 @@ class ConfidenceHelper:
         session.answer_confidence_score = score
         session.answer_confidence_level = level
         session.answer_confidence_summary = summary
-        self._emit_rerank_select_confidence(
+        self._emit_selection_confidence(
             level=level,
             score=score,
             evidence_chunks=len(chosen),

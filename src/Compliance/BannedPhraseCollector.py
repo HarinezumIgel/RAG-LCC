@@ -80,9 +80,14 @@ class BannedPhraseCollector:
             for algo in self.default_algos:
                 # collect entries for this phrase+algo
                 algo_entries: list[Any] = [e for e in rows if e.algo == algo]
+                disabled_entry_present: bool = any(
+                    getattr(e, "score_str", "") == "Disabled" for e in algo_entries
+                )
 
                 best_entry: dict[str, Any] | None = None
                 for e in algo_entries:
+                    if getattr(e, "score_str", "") == "Disabled":
+                        continue
                     # prefer entries that have numeric score
                     score: Any = e.score
                     if score is None:
@@ -123,11 +128,12 @@ class BannedPhraseCollector:
                     if max_score_overall is None or best_score > max_score_overall:
                         max_score_overall = best_score
                 else:
-                    # No data for this algo
+                    # No numeric hit for this algo. If upstream marked it disabled,
+                    # write an explicit status marker in the algo column only.
                     row[score_key] = ""
                     row[thresh_key] = ""
                     row[f"{algo} detail"] = ""
-                    row[algo] = ""
+                    row[algo] = "Disabled" if disabled_entry_present else ""
 
             # Max Score column (formatted)
             row["Max Score"] = (

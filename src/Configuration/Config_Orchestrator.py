@@ -11,7 +11,8 @@ _ALLOWED_ORCHESTRATION_FLOWS = [
     # Empty means: expose all keys from _ORCHESTRATION_FLOWS.
 ]
 
-_ACTIVE_ORCHESTRATION_FLOW = "THOROUGH_QUERY_REWRITE"
+# Default flow used when session.orchestrator_flow is not set.
+_DEFAULT_ORCHESTRATION_FLOW = "THOROUGH_QUERY_REWRITE"
 
 _ALLOWED_ORCHESTRATION_QUERY_SOURCES = [
     "FINAL_QUERY",
@@ -29,16 +30,16 @@ _ALLOWED_ORCHESTRATION_QUERY_SOURCES = [
 # - use_secondary_query: run a second local retrieval leg with the secondary query
 # - use_original_language_vector: run original-language vector leg
 # - shape_indexed_queries: per-language query shaping for BM25/Graph/Regex stage
+# - translate_indexed_queries: allow per-language translation in indexed query shaping
+# - expand_indexed_queries: expand indexed query terms with WordNet synonyms
 # - use_vector_alternates: enable MultiQuery alternate fanout for vector stage
 # - use_query_rewrite: enable/disable query rewriting for this flow
 # - use_pronoun_substitution: enable/disable pronoun referent substitution in rewrite
-# - run_local_stage: allow local retrieval stage
-# - run_web_stage: allow web retrieval stage
 # - run_vector: enable vector local retriever leg
 # - run_bm25: enable BM25 local retriever leg
 # - run_graph: enable graph local retriever leg
 # - run_regex: enable regex local retriever leg
-# - run_rerank: enable reranking before chunk selection
+# - run_rerank: baseline rerank state; session rerank switch can override per turn
 # - run_low_score_fallback: allow low-score rerank fallback to retrieval order
 # - run_low_recall_rescue: allow query-overlap local rescue when rerank hits are sparse
 # - run_grounding: enable answer grounding / visual-marker stage
@@ -49,11 +50,11 @@ _ORCHESTRATION_FLOWS: dict[str, dict[str, str | bool]] = {
         "use_secondary_query": True,
         "use_original_language_vector": True,
         "shape_indexed_queries": True,
+        "translate_indexed_queries": True,
+        "expand_indexed_queries": True,
         "use_vector_alternates": True,
         "use_query_rewrite": True,
         "use_pronoun_substitution": True,
-        "run_local_stage": True,
-        "run_web_stage": True,
         "run_vector": True,
         "run_bm25": True,
         "run_graph": True,
@@ -69,11 +70,11 @@ _ORCHESTRATION_FLOWS: dict[str, dict[str, str | bool]] = {
         "use_secondary_query": False,
         "use_original_language_vector": False,
         "shape_indexed_queries": True,
+        "translate_indexed_queries": True,
+        "expand_indexed_queries": True,
         "use_vector_alternates": False,
         "use_query_rewrite": True,
         "use_pronoun_substitution": True,
-        "run_local_stage": True,
-        "run_web_stage": True,
         "run_vector": True,
         "run_bm25": True,
         "run_graph": True,
@@ -89,11 +90,11 @@ _ORCHESTRATION_FLOWS: dict[str, dict[str, str | bool]] = {
         "use_secondary_query": False,
         "use_original_language_vector": False,
         "shape_indexed_queries": False,
+        "translate_indexed_queries": False,
+        "expand_indexed_queries": False,
         "use_vector_alternates": True,
         "use_query_rewrite": True,
         "use_pronoun_substitution": True,
-        "run_local_stage": True,
-        "run_web_stage": False,
         "run_vector": True,
         "run_bm25": False,
         "run_graph": False,
@@ -107,13 +108,13 @@ _ORCHESTRATION_FLOWS: dict[str, dict[str, str | bool]] = {
         "force_retrieve_mode": "VECTOR",
         "main_query_source": "ORIGINAL_QUERY",
         "use_secondary_query": False,
-        "use_original_language_vector": False,
+        "use_original_language_vector": True,
         "shape_indexed_queries": False,
-        "use_vector_alternates": True,
+        "translate_indexed_queries": False,
+        "expand_indexed_queries": False,
+        "use_vector_alternates": False,
         "use_query_rewrite": True,
         "use_pronoun_substitution": True,
-        "run_local_stage": True,
-        "run_web_stage": False,
         "run_vector": True,
         "run_bm25": True,
         "run_graph": True,

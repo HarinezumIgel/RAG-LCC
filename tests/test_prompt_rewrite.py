@@ -387,27 +387,16 @@ _spec = importlib.util.spec_from_file_location(
 )
 
 
-def _load_rewrite_func():
-    """Extract the rewrite function source and compile it in an isolated namespace."""
+def _load_rewriter_methods() -> dict[str, Any]:
+    """Extract PromptRewrite methods and compile them in an isolated namespace."""
     src_path = os.path.join(
         os.path.dirname(__file__), "..", "src", "Chat", "PromptRewrite.py"
     )
     with open(src_path, "r", encoding="utf-8") as f:
         source = f.read()
 
-    # We only need the rewrite() method body.  Extract it by finding the class
-    # and compiling it in a namespace that provides BRIGHT_MAGENTA.
-    # Simpler approach: exec the method def in isolation.
+    # Compile only the methods we need in the lightweight shell.
     import textwrap, re, json, time
-
-    # Pull out the rewrite method source
-    match = re.search(
-        r"(    def rewrite\(self.*?)(?=\n    def |\nclass |\Z)",
-        source,
-        re.DOTALL,
-    )
-    assert match, "Could not find rewrite() method in PromptRewrite.py"
-    method_src = textwrap.dedent(match.group(1))
 
     from Gui.Colors import VIOLET
 
@@ -446,17 +435,48 @@ def _load_rewrite_func():
         "_CONTENT_POS": _CONTENT_POS,
         "DebugHelper": _DebugHelper,
     }
-    exec(compile(method_src, src_path, "exec"), ns)
-    return ns["rewrite"]
+    method_names: list[str] = [
+        "_log_no_history_skip",
+        "_collect_history_docs",
+        "_extract_previous_user_utterance",
+        "_build_rolling_topic_summary",
+        "_strip_context_tag",
+        "_build_topic_detect_prompt",
+        "_build_rewrite_ollama_options",
+        "rewrite",
+    ]
+    loaded: dict[str, Any] = {}
+    for method_name in method_names:
+        match = re.search(
+            rf"(    def {re.escape(method_name)}\(.*?)(?=\n    @|\n    def |\nclass |\Z)",
+            source,
+            re.DOTALL,
+        )
+        assert match, f"Could not find {method_name}() in PromptRewrite.py"
+        method_src = textwrap.dedent(match.group(1))
+        exec(compile(method_src, src_path, "exec"), ns)
+        loaded[method_name] = ns[method_name]
+    return loaded
 
 
-_rewrite_func = _load_rewrite_func()
+_REWRITER_METHODS = _load_rewriter_methods()
+_STATIC_METHODS: set[str] = {
+    "_extract_previous_user_utterance",
+    "_strip_context_tag",
+}
 
 
 class _RewriterShell:
     """Lightweight stand-in for PromptRewrite with rewrite() bound."""
 
-    rewrite = _rewrite_func
+    pass
+
+
+for _method_name, _method in _REWRITER_METHODS.items():
+    if _method_name in _STATIC_METHODS:
+        setattr(_RewriterShell, _method_name, staticmethod(_method))
+    else:
+        setattr(_RewriterShell, _method_name, _method)
 
     # Default attributes safely attached to avoid missing-attribute errors
     fileUtils = None
