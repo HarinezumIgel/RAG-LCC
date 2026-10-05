@@ -548,6 +548,12 @@ For RAGChat prompt checks, use the `RAGChat -> PROMPT_CHECK -> PIPELINE` block:
 - `REQUIRED_ALGOS_ABOVE_THRESHOLD`: how many algorithms must exceed their threshold.
 - `REQUIRED_DIFFERENT_ALGOS_HAVE_A_SCORE`: how many different algorithms must fire (non-zero score).
 
+Important startup behavior:
+
+- Both `PROMPT_CHECK` and `PIPELINE_CHECK` have a `Check` gate.
+- When a stage has `Check=False`, startup skips consensus-threshold validation for that stage.
+- When a stage has `Check=True`, startup enforces: `REQUIRED_ALGOS_ABOVE_THRESHOLD >= 1`, `REQUIRED_DIFFERENT_ALGOS_HAVE_A_SCORE >= 1`, and enabled algorithms in `ALGOS_TO_PROCESS` must not be fewer than either required count.
+
 Typical (current) chat-time values are:
 
 ```python

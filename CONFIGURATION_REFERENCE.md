@@ -79,6 +79,7 @@ This reference covers both a **quick-scan overview** (tables by topic and by con
 | **Detection Config** | `STRICT_DETECT_CONFIG` with per-app pipelines | Per-application detection profiles (RAGLoad, RAGChat, DocClassify) with independent thresholds, algorithm sets, and LLM-check parameters. |
 | **Masking** | `APPLY_MASKING`: True/False | Redacts matched spans in-place before storage or display. Prevents banned content from entering embeddings or reaching the user. |
 | **Required Algorithm Agreement** | `REQUIRED_ALGOS_ABOVE_THRESHOLD`: 2-4 | How many algorithms must agree before a block is triggered. Tune the precision/recall tradeoff for your content domain. |
+| **Stage Check Gates** | `PROMPT_CHECK.Check`, `PIPELINE_CHECK.Check` | Startup validation now honors stage gates. If a stage is `Check=False`, consensus-threshold validation for that stage is skipped. |
 | **WordNet Synonym Expansion** | `ENABLED`: True, `DEPTH`: 1, `MAX_SYNONYMS_PER_PHRASE`: 1 | Expands banned phrases with NLTK WordNet synonyms before detection. Increases coverage at some false-positive risk; only affects Regex/Jaccard/BM25 (KeyBERT already uses embeddings). |
 | **Leet Speak Normalization** | `_LEET_MAP`: 0→o, 1→i, 3→e, etc. | Decodes common leet-speak substitutions before detection. Catches evasion attempts that replace letters with visually similar digits or symbols. |
 | **Unicode Confusables** | `_CONFUSABLES`: Cyrillic/Turkish lookalikes | Normalizes Unicode lookalike characters (Cyrillic а→a, İ→i, ß→ss) before detection. Catches cross-script obfuscation invisible to the human eye. |
@@ -256,10 +257,12 @@ This reference covers both a **quick-scan overview** (tables by topic and by con
 | **Detection Per App** | `Config_Banned_Detection.py` | `_BANNED_DETECT[profile][app]` | Per-app (RAGLoad, RAGChat, DocClassify) settings |
 | **Masking** | `Config_Banned_Detection.py` | `_BANNED_DETECT[profile][app]["MASKING"]["APPLY_MASKING"]` | Enable/disable redaction |
 | **Prompt Check Enabled** | `Config_Banned_Detection.py` | `_BANNED_DETECT[profile][app]["PROMPT_CHECK"]["Check"]` | LLM-based safety check toggle |
+| **Pipeline Check Enabled** | `Config_Banned_Detection.py` | `_BANNED_DETECT[profile][app]["PIPELINE_CHECK"]["Check"]` | Pipeline-stage safety check toggle; when `False`, startup skips that stage's consensus-threshold validation |
 | **Prompt Check LLM Params** | `Config_Banned_Detection.py` | `_BANNED_DETECT[profile][app]["PROMPT_CHECK"]["LLM_PARAM"]` | temperature, top_k, top_p for guard model |
 | **Pipeline Algorithms** | `Config_Banned_Detection.py` | `_BANNED_DETECT[profile][app]["PIPELINE_CHECK"]["PIPELINE"]["ALGOS_TO_PROCESS"]` | Which algorithms to run |
 | **Algorithm Thresholds** | `Config_Banned_Detection.py` | `_BANNED_DETECT[profile][app]["PIPELINE_CHECK"]["PIPELINE"][algo]["THRESHOLD"]` | Per-algorithm detection thresholds |
 | **Required Algorithm Agreement** | `Config_Banned_Detection.py` | `_BANNED_DETECT[profile][app]["PIPELINE_CHECK"]["PIPELINE"]["REQUIRED_ALGOS_ABOVE_THRESHOLD"]` | Consensus count |
+| **Required Breadth Agreement** | `Config_Banned_Detection.py` | `_BANNED_DETECT[profile][app]["PIPELINE_CHECK"]["PIPELINE"]["REQUIRED_DIFFERENT_ALGOS_HAVE_A_SCORE"]` | Distinct algorithms that must produce non-zero score |
 | **Jaccard N-gram Range** | `Config_Banned_Detection.py` | `...["PIPELINE"][algo]["CHAR_NGRAM_RANGE"]` | Character n-grams for Jaccard |
 | **BM25 Hyperparameters** | `Config_Banned_Detection.py` | `...["PIPELINE"]["BM25"]["TERM_FREQ_SATURATION"]`, `["LENGTH_NORMALIZATION"]` | k1 and b parameters |
 | **Regex Fuzzy Settings** | `Config_Banned_Detection.py` | `...["PIPELINE"]["Regex"]["WINDOW_MAX_CHARS"]`, `["PREFIX_SUFFIX_LEN"]`, `["SOFT_SCORE_FUZZY"]` | Fuzzy matching parameters |
@@ -951,6 +954,15 @@ A chunk is flagged for human review when **either** condition is met:
 (any_phrase_breadth_count >= REQUIRED_DIFFERENT_ALGOS_HAVE_A_SCORE)
 ```
 
+#### Startup validation (Check-aware)
+
+At startup, configuration guards now validate consensus settings per stage:
+
+- Validation is evaluated for both `PROMPT_CHECK` and `PIPELINE_CHECK`.
+- If a stage has `Check=False`, threshold-consistency validation for that stage is skipped.
+- If a stage has `Check=True`, startup enforces: `REQUIRED_ALGOS_ABOVE_THRESHOLD >= 1`, `REQUIRED_DIFFERENT_ALGOS_HAVE_A_SCORE >= 1`, and enabled algorithms in `ALGOS_TO_PROCESS` are not fewer than either required count.
+- Violations fail fast at startup with remediation guidance.
+
 | Key | RAGLoad (pipeline) | RAGChat (prompt check) | RAGChat (pipeline) | DocClassify (prompt check) | Purpose |
 | --- | --- | --- | --- | --- | --- |
 | `REQUIRED_ALGOS_ABOVE_THRESHOLD` | `3` | `2` | `4` | `4` | How many algos must be above their thresholds to trigger a block |
@@ -1191,7 +1203,7 @@ Records the OpenWebUI provider details (license, BASE_URL). Used by `RAGChatServ
 
 | Key | Default used in this repository | Purpose |
 | --- | --- | --- |
-| `BASE_URL` | `"http://<openwebui host>:8080"` | URL where OpenWebUI is running. Used by Informer to verify OpenWebUI is reachable at RAGChatService startup. Must be accessible from RAGChatService (use `host.docker.internal` or `172.17.0.1` when RAGChatService runs in Docker and OpenWebUI is on the host). |
+| `BASE_URL` | `"http://<openwebui host>:8080"` | URL where OpenWebUI is running. Used by Informer to verify OpenWebUI is reachable at RAGChatService startup. Must be accessible from RAGChatService (use `host.docker.internal` or `172.17.0.1` when RAGChatService runs in Docker and OpenWebUI is on the host). `Setup.py` requires a non-empty value. |
 
 #### 📡 `ragchatservice` — RAGChatService HTTP Listener Configuration
 
@@ -1199,7 +1211,7 @@ Records the RAGChatService listener configuration (host, port, API key). The imp
 
 | Key | Default used in this repository | Purpose |
 | --- | --- | --- |
-| `HOST` | `"127.0.0.1"` | Bind address for the HTTP listener. `0.0.0.0` binds all interfaces (required for Docker port forwarding). Change to `127.0.0.1` to restrict to loopback only. |
+| `HOST` | `"localhost"` | Bind address for the HTTP listener. `0.0.0.0` binds all interfaces (required for Docker port forwarding). Use `localhost`/`127.0.0.1` for local-only host mode. `Setup.py` requires a non-empty value. |
 | `PORT` | `11435` | Port for the HTTP listener. |
 | `BASE_URL` | `"http://localhost:11435"` | Full service URL (derived from HOST and PORT). |
 | `API_KEY` | `""` | Bearer token for authenticating incoming requests from OpenWebUI. Must match the API key configured in OpenWebUI. |
@@ -1211,6 +1223,8 @@ Records the RAGChatService listener configuration (host, port, API key). The imp
 > - **RAGChatService → OpenWebUI connectivity:** `_MODELS.openwebui._OPENWEBUI.BASE_URL` (Informer checks if OpenWebUI is reachable)
 > - **OpenWebUI → RAGChatService connectivity:** `_MODELS.ragchatservice._RAGCHATSERVICE.HOST` and `_MODELS.ragchatservice._RAGCHATSERVICE.PORT` (where RAGChatService binds its listener)
 > - **Browser → `/marked` endpoint:** Browsers fetch from RAGChatService's `/marked` endpoint using the same host:port as the RAGChatService API
+>
+> **Docker port-forwarding note:** If you change the listener port from `11435`, update `.devcontainer/devcontainer.json` (`forwardPorts` and related port attributes), recreate/rebuild and reopen the container, then rerun `Setup.py`.
 
 ## 🌐 3b. Config_WebSearch.py — Web Search Configuration
 

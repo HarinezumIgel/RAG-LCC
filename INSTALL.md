@@ -30,6 +30,8 @@ The script guides you through:
 - **Step 5:** Optionally install Argos Translate language packages after explicit confirmation
 - **Step 6:** Optionally install spaCy model packages after explicit confirmation
 - **Runtime questions:** Ask for endpoint, internet-mode, and service settings (API keys masked in output)
+   Detects runtime context (`docker`, `windows`, `host`) and prints context-aware networking hints.
+   Requires non-empty values for endpoint `BASE_URL`, `_MODELS.ragchatservice._RAGCHATSERVICE.HOST`, and `OpenWebUI BASE_URL`.
 - **Step 7:** Recalculate and write SHA-256 config hashes in Config_Global.py
 
 Before performing an action, the script requires 3rd party license consents.
@@ -266,6 +268,8 @@ python ./src/Scripts/Setup.py
 
 ## Explanation to the steps performed in `Setup.py`
 
+`Setup.py` now adapts endpoint/listener guidance to where it runs (`docker`, `windows`, `host`) and requires explicit non-empty values for critical network fields.
+
 > **⚠️ Specify where Ollama/vLLM and Open WebUI are running:** During setup, you will be asked to enter the BASE_URL where your LLM backend (Ollama or vLLM) and Open WebUI (optional) are listening. This is critical for connectivity. Common scenarios:
 >
 > - **No Docker: Backends on same machine as RAG-LCC:**
@@ -302,8 +306,8 @@ python ./src/Scripts/Setup.py
 >
 > **GPU note:** GPU support may not be available inside your Docker container, depending on host drivers, runtime, and container toolkit configuration. If GPU is not available in the container, use the host virtual-environment installation path below.
 >
-> **RAGChatService port forwarding:** **Port forwarding is automatically configured** in `.devcontainer/devcontainer.json`. This is required for `RAGChatService` since it recieves queries from Open WebUI.
-> Disable these lines in `devcontainer.devcontainer.json` and do "Reopen in Container" in VS Code.
+> **RAGChatService port forwarding:** Default forwarding for port `11435` is defined in `.devcontainer/devcontainer.json` and is required for `RAGChatService` when used from host-side clients.
+> If you change `_MODELS.ragchatservice._RAGCHATSERVICE.PORT` from `11435`, you must update `.devcontainer/devcontainer.json` (`forwardPorts`/`portsAttributes`), then recreate/rebuild and reopen the container, and run `Setup.py` again.
 
 ``` json
   "forwardPorts": [

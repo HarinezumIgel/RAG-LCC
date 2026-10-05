@@ -433,6 +433,10 @@ git clone <this-repo>; cd RAG-LCC
 python -m venv .venv; ./.venv/Scripts/Activate.ps1   # or source .venv/bin/activate
 # Guided setup, recommended
 python src/Scripts/Setup.py                           # guided first-run setup (copies configs, downloads models)
+# Setup now prints runtime-context networking hints (docker/windows/host)
+# and requires explicit non-empty endpoint/OpenWebUI URLs and service host.
+# If you change RAGChatService port from 11435 in Docker, update
+# .devcontainer/devcontainer.json forwardPorts and rebuild/reopen container.
 # Note: License acceptance is required and recorded on startup
 python ./src/Apps/RAGLoad.py  --doc-dir TestDocs
 python ./src/Apps/RAGChat.py  --doc-dir TestDocs
