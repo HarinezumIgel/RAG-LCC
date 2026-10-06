@@ -65,14 +65,11 @@ Most RAG stacks optimize only retrieval score. RAG-LCC also optimizes context qu
   retrieval settings, configurable orchestration decisions, rerank diagnostics,
   grounding, and confidence-evaluation output.
 
-- [Gentle tuning showcase for dev.io](rag-lcc-tuning-showcase-dev-io.md)
+- [Gentle tuning showcase for dev.io](https://dev.to/harinezumigel/how-i-tune-rag-pipelines-with-rag-lcc-a-hands-on-local-guide-l8l)
   Beginner-friendly article that explains the RAG-LCC mental model,
   query-output reading, practical tuning paths across all four apps,
   plus an expert lane for orchestrator and query-rewrite tuning.
   Note: RAG-LCC is an experimental learning and tuning lab, not a production-ready deployment stack.
-
-- [How I Tune RAG Pipelines with RAG-LCC: A Hands-On Local Guide (DEV Community)](https://dev.to/harinezumigel/how-i-tune-rag-pipelines-with-rag-lcc-a-hands-on-local-guide-l8l)
-  Published DEV article version of the beginner-friendly hands-on tuning walkthrough.
 
 ### CLI grounding example: hedgehog query
 
