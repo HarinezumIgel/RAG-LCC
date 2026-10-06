@@ -370,6 +370,10 @@ Full slot-level details: [CONFIGURATION_REFERENCE.md](CONFIGURATION_REFERENCE.md
 
 Some design decisions in RAG‑LCC are motivated by concrete failure analyses:
 
+- **How I Tune RAG Pipelines with RAG-LCC: A Hands-On Local Guide**
+  DEV.to article with a beginner-friendly tuning walkthrough across DocClassify, optional filtered RAGLoad, RAGChat, and RAGChatService
+  [https://dev.to/harinezumigel/how-i-tune-rag-pipelines-with-rag-lcc-a-hands-on-local-guide-l8l](https://dev.to/harinezumigel/how-i-tune-rag-pipelines-with-rag-lcc-a-hands-on-local-guide-l8l)
+
 - **Experimenting with RAG‑LCC on constrained hardware**
   DEV.to article on classification as semantic compression and context reduction
   [https://dev.to/harinezumigel/experimenting-with-rag-lcc-on-constrained-hardware-3dlg](https://dev.to/harinezumigel/experimenting-with-rag-lcc-on-constrained-hardware-3dlg)
