@@ -2,7 +2,7 @@
 Deployment Manifest
 ================================================================================
 
-Generated      : 2026-10-05T12:48:20.470471+00:00
+Generated      : 2026-10-05T15:05:06.360728+00:00
 Python         : 3.12.10 (CPython)
 Platform       : Windows-11-10.0.26300-SP0
 Git commit     : unavailable
@@ -20,9 +20,9 @@ License Generation Tool
 SHA-256 Integrity Hashes
 ────────────────────────────────────────────────────────────────────────────────
   requirements_final.txt : 24029605ae367b13f49d1a653b099498e0525ab66782ceb6ceb125ca5beefe0a
-  Licenses.json          : 9f8991cbf980a31dc005312c42e18fb28339295a2162ba8725c971e073836d1a
-  Licenses.txt           : 4fa262951570bd2dc1f6ad9654eeccf844a430a18536997615245906c47f3ab8
-  Licenses.spdx          : cce539cb0e3764bbec7d3de0d6e49bd7977740a72d142b11951a602aa3271484
+  Licenses.json          : e89b46369e11218994ca573be21daf3f75279d8595575d7e1a818c7e97783906
+  Licenses.txt           : f1707187cf087916dd5f2bd5b311b851dc3de2f5ef161a6923fb95e0dda0df5c
+  Licenses.spdx          : 7fc7af5f1294544fb63220cbeba1983afa588fadec194a848b71d8cf0b329835
 
 ────────────────────────────────────────────────────────────────────────────────
 Installed Packages  (requirements_final.txt)
@@ -87,7 +87,7 @@ This overview is provided for informational purposes only. Signing attests only 
 this document, not to the legal validity, authorship, or completeness of any third-party licenses
 referenced herein. Users are responsible for reviewing and complying with all third-party terms.
 
-Generated : 2026-10-05T14:48:20.419757
+Generated : 2026-10-05T17:05:06.320810
 Packages  : 214
 
 ----------------------------------------------------------------------------------------------------------------------------------------------
@@ -140,7 +140,7 @@ et_xmlfile                               2.0.0         MIT License              
 executing                                2.2.1         MIT License                                        Alex Hall
 fastapi                                  0.142.2       MIT                                                =?utf-8?q?Sebasti=C3=A1n_Ram=C3=A...
 fastjsonschema                           2.22.2        BSD License                                        Michal Horejsek
-filelock                                 4.0.11        MIT                                                UNKNOWN
+filelock                                 4.0.12        MIT                                                UNKNOWN
 flatbuffers                              25.12.19      Apache Software License                            Derek Bailey
 frozenlist                               1.8.0         Apache-2.0                                         UNKNOWN
 fsspec                                   2026.9.0      BSD-3-Clause                                       UNKNOWN

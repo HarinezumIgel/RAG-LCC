@@ -56,7 +56,7 @@ This overview is provided for informational purposes only. Signing attests only 
 | executing | 2.2.1 | MIT License | Alex Hall |
 | fastapi | 0.142.2 | MIT | =?utf-8?q?Sebasti=C3=A1n_Ram=C3=ADrez?= <tiangolo@gmail.com> |
 | fastjsonschema | 2.22.2 | BSD License | Michal Horejsek |
-| filelock | 4.0.11 | MIT | UNKNOWN |
+| filelock | 4.0.12 | MIT | UNKNOWN |
 | flatbuffers | 25.12.19 | Apache Software License | Derek Bailey |
 | frozenlist | 1.8.0 | Apache-2.0 | UNKNOWN |
 | fsspec | 2026.9.0 | BSD-3-Clause | UNKNOWN |
@@ -3502,7 +3502,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ```
 
-### filelock 4.0.11
+### filelock 4.0.12
 
 **License:** MIT
 
