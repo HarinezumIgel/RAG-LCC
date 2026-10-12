@@ -88,6 +88,40 @@ class ModelsCache(SingletonMixin):
         self.cfg.set("EMBEDDER_BITS", 32, force=True)
         self.pretty.write("W", "HF", reason, color=ORANGE)
 
+    @staticmethod
+    def _legacy_model_dir_note(include_note: bool) -> str:
+        if not include_note:
+            return ""
+        return (
+            "\nNote: existing download metadata for this model predates "
+            "the 'model_dir' field. The explicit model directory will "
+            "be stored again after the next successful model download."
+        )
+
+    def _resolve_model_dir_for_hint(
+        self,
+        *,
+        downloader: HFDownloader,
+        meta: Dict[str, Any],
+        model_key: str,
+        model_name: str,
+        fallback_from_cache_dir: bool,
+    ) -> tuple[str, bool]:
+        """Resolve model dir for cleanup hints and detect legacy metadata."""
+        model_dir = str(meta.get("model_dir", "") or "").strip()
+        legacy_meta_missing_model_dir = not model_dir
+
+        if not model_dir:
+            model_dir = str(downloader.get_model_dir(model_key) or "").strip()
+
+        if not model_dir and fallback_from_cache_dir:
+            model_dir = os.path.join(
+                self.cache_dir,
+                f"models--{model_name.replace('/', '--')}",
+            )
+
+        return model_dir, legacy_meta_missing_model_dir
+
     # -----------------------------------------------------------------
     # Device selection
     # -----------------------------------------------------------------
@@ -277,7 +311,8 @@ class ModelsCache(SingletonMixin):
                 "HuggingFace embeddings",
                 f"{type(e).__name__}: {e} – requesting download via HFDownloader.",
             )
-            HFDownloader().download("_MODELS._EMBED")
+            downloader = HFDownloader()
+            download_meta: Dict[str, Any] = downloader.download("_MODELS._EMBED")
             model_args = self.helpers.get_model_args("_ACTIVE_EMBED")
             revision = model_args.get("revision")
             rev_key = revision if revision else "none"
@@ -288,8 +323,22 @@ class ModelsCache(SingletonMixin):
                     **base_kwargs, model_kwargs=local_kwargs
                 )
             except Exception as retry_err:
+                model_dir, legacy_meta_missing_model_dir = (
+                    self._resolve_model_dir_for_hint(
+                        downloader=downloader,
+                        meta=download_meta,
+                        model_key="_MODELS._EMBED",
+                        model_name=model_name,
+                        fallback_from_cache_dir=False,
+                    )
+                )
+
+                cleanup_hint = f"\nConsider cleaning: {model_dir}" if model_dir else ""
+                legacy_hint = self._legacy_model_dir_note(legacy_meta_missing_model_dir)
                 raise ModelLoadError(
-                    f"Failed to load HuggingFace embeddings '{model_name}'.  Maybe the HF cache for this model is corrupted?\nConsider cleaning "
+                    f"Failed to load HuggingFace embeddings '{model_name}'. "
+                    "Maybe the HF cache for this model is corrupted?"
+                    f"{cleanup_hint}{legacy_hint}"
                 ) from retry_err
 
         try:
@@ -374,22 +423,36 @@ class ModelsCache(SingletonMixin):
             # download() is a fast no-op when revision+config hash match.
             # When offline+not-downloaded it raises InternetConnectionDisabledError.
             # When online+not-downloaded it runs the consent+download flow.
+            downloader = HFDownloader()
+            meta: Dict[str, Any] = {}
             try:
-                meta = HFDownloader().download("_MODELS._CROSS")
+                meta = downloader.download("_MODELS._CROSS")
                 return _load_from_meta(meta, device)
             except torch.cuda.OutOfMemoryError:
                 self.fallback_to_cpu(
                     f"CUDA out of memory loading cross-encoder '{model_name}' – falling back to CPU."
                 )
-                meta = HFDownloader().download("_MODELS._CROSS")
+                meta = downloader.download("_MODELS._CROSS")
                 return _load_from_meta(meta, torch.device("cpu"))
             except ModelLoadError:
                 raise
             except Exception as err:
+                model_dir, legacy_meta_missing_model_dir = (
+                    self._resolve_model_dir_for_hint(
+                        downloader=downloader,
+                        meta=meta,
+                        model_key="_MODELS._CROSS",
+                        model_name=model_name,
+                        fallback_from_cache_dir=True,
+                    )
+                )
+                legacy_hint = self._legacy_model_dir_note(legacy_meta_missing_model_dir)
+
                 raise ModelLoadError(
                     f"Failed to load cross-encoder '{model_name}'. "
-                    f"Maybe the HF cache for this model is corrupted?"
-                    f"Consider deleting the model from {self.cache_dir}"
+                    "Maybe the HF cache for this model is corrupted?\n"
+                    f"Consider deleting cache for model '{model_name}' at: {model_dir}"
+                    f"{legacy_hint}"
                 ) from err
         finally:
             hf_logging.set_verbosity(prev_level)

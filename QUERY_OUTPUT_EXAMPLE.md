@@ -7,7 +7,7 @@
 🔵 Config path                    DOC_DIR -> D:\RAG-LCC\TestDocs present: YES
 🔵 Config path                    LOG_FILE -> D:\RAG-LCC\compliance.log present (containing dir): YES
 🔵 Config path                    _ABSOLUTE_PATH -> D:\RAG-LCC present: YES
-🔵 Config path                    _CUSTOM_NLTK_DATA_DIRECTORY -> D:\RAG-LCC\AppData\Roaming\nltk_data\corpora\stopwords present: YES
+🔵 Config path                    _CACHE_PATH -> D:\RAG-LCC\.caches present: YES
 🔵 Config path                    _EXCLUSIONS_DIR -> D:\RAG-LCC\Exclusions present: YES
 🔵 Config path                    _HF_HOME -> C:\Users\pfm\.cache present: YES
 🔵 Config path                    _HF_HUB_CACHE -> C:\Users\pfm\.cache\.hf-cache present: YES
@@ -107,7 +107,7 @@ Loading weights: 100%|███████████████████�
     ▶ Context/session       : file_cap=15  use_chat_context=True  history_keep=10  history_prune=5  rewrite_context=3  topic_summary='last'
     ▶ Output                : max_output_tokens='14366'  context_size='32768'  terminal_line_size=200
     ▶ API passthrough       : extraOllamaOptions=None  ollamaTopLevelParams=None
-    ▶ Web                   : web_search='local_only'  fetch_page_content='snippets only'  bm25_pre_filter=0.1  cosine_pre_filter=0.3  web_rerank_threshold=0.5
+   ▶ Web                   : web_search='local_only'  fetch_page_content='snippets only'  web_fetch_k=10  bm25_pre_filter=0.1  cosine_pre_filter=0.3  web_rerank_threshold=0.5
 
   ▶ Orchestration settings
     ▶ Orchestration strategy: orchestrator_flow='THOROUGH_QUERY_REWRITE'
@@ -154,7 +154,7 @@ Chat with your documents
     ▶ Context/session       : file_cap=15  use_chat_context=True  history_keep=10  history_prune=5  rewrite_context=3  topic_summary='last'
     ▶ Output                : max_output_tokens='14366'  context_size='32768'  terminal_line_size=200
     ▶ API passthrough       : extraOllamaOptions=None  ollamaTopLevelParams=None
-    ▶ Web                   : web_search='local_only'  fetch_page_content='snippets only'  bm25_pre_filter=0.1  cosine_pre_filter=0.3  web_rerank_threshold=0.5
+   ▶ Web                   : web_search='local_only'  fetch_page_content='snippets only'  web_fetch_k=10  bm25_pre_filter=0.1  cosine_pre_filter=0.3  web_rerank_threshold=0.5
 
   ▶ Orchestration settings
     ▶ Orchestration strategy: orchestrator_flow='THOROUGH_QUERY_REWRITE'

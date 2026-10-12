@@ -23,6 +23,17 @@ class StubPrettyWriter:
         return None
 
 
+class CollectingPrettyWriter:
+    """Collects write() calls so tests can assert warning emission."""
+
+    def __init__(self):
+        self.calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
+
+    def write(self, *a, **kw):
+        self.calls.append((a, kw))
+        return None
+
+
 class StubConfig:
     """Returns safe defaults for SharedHelpers config keys."""
 
@@ -230,6 +241,26 @@ class TestCheckLanguageSupport:
         sh.cfg = _cfg_with_action("NOT_OK")
         assert sh.check_language_support("ja", "/doc.pdf") == "NOT_OK"
 
+    def test_unsupported_not_ok_warns_once_per_language(self, sh):
+        sh.cfg = _cfg_with_action("NOT_OK")
+        pretty = CollectingPrettyWriter()
+        sh.pretty = pretty
+
+        assert sh.check_language_support("ja", "/doc_a.pdf") == "NOT_OK"
+        assert sh.check_language_support("ja", "/doc_b.pdf") == "NOT_OK"
+
+        warnings = [
+            str(args[2])
+            for args, _kwargs in pretty.calls
+            if len(args) >= 3 and args[1] == "Language"
+        ]
+        not_ok_warnings = [
+            message
+            for message in warnings
+            if "UNSUPPORTED_LANGUAGE_ACTION=NOT_OK" in message
+        ]
+        assert len(not_ok_warnings) == 1
+
     def test_unsupported_human_review_treated_as_fallback(self, sh):
         sh.cfg = _cfg_with_action("HUMAN_REVIEW")
         assert sh.check_language_support("ja") is None
@@ -238,10 +269,153 @@ class TestCheckLanguageSupport:
         sh.cfg = _cfg_with_action("FALLBACK_EN")
         assert sh.check_language_support("ja") is None
 
+    def test_unsupported_fallback_en_emits_orange_warning_once(self, sh):
+        sh.cfg = _cfg_with_action("FALLBACK_EN")
+        pretty = CollectingPrettyWriter()
+        sh.pretty = pretty
+
+        assert sh.check_language_support("ja") is None
+        assert sh.check_language_support("ja") is None
+
+        warnings = [
+            str(args[2])
+            for args, _kwargs in pretty.calls
+            if len(args) >= 3 and args[1] == "Language"
+        ]
+        fallback_warnings = [
+            message
+            for message in warnings
+            if "falling back to English-only checks" in message
+        ]
+        assert len(fallback_warnings) == 1
+
+    def test_runtime_language_warning_is_independent_from_translate_warnings(self, sh):
+        sh.cfg = _cfg_with_action("FALLBACK_EN")
+        # Simulate that translation paths already warned for this language.
+        sh.warned_langs.add("hu")
+        # Keep this deterministic across local environments with varying installs.
+        sh.installed_langs.pop("hu", None)
+        pretty = CollectingPrettyWriter()
+        sh.pretty = pretty
+
+        assert sh.check_language_support("hungarian") is None
+
+        warnings = [
+            str(args[2])
+            for args, _kwargs in pretty.calls
+            if len(args) >= 3 and args[1] == "Language"
+        ]
+        assert any(
+            "falling back to English-only checks" in message for message in warnings
+        )
+
     def test_installed_lang_always_none_regardless_of_action(self, sh):
         sh.installed_langs["de"] = object()
         sh.cfg = _cfg_with_action("NOT_OK")
         assert sh.check_language_support("de") is None
+
+
+class TestArgosStartupLanguageInventoryWarnings:
+    def test_warns_when_active_languages_missing_from_installed_inventory(
+        self,
+        monkeypatch,
+    ):
+        class _Lang:
+            def __init__(self, name, code):
+                self.name = name
+                self.code = code
+
+        class _Cfg(StubConfig):
+            def get(self, key, default=None):
+                mapping = {
+                    "_ARGOS_DEFINITIONS.ACTIVE_LANGUAGES": ["en", "de", "es"],
+                    "_ARGOS_DEFINITIONS.LANG_CODE_TO_NAME": {
+                        "en": "english",
+                        "de": "german",
+                        "es": "spanish",
+                    },
+                }
+                if key in mapping:
+                    return mapping[key]
+                return super().get(key, default)
+
+        monkeypatch.setattr(
+            "Compliance.SharedHelpers.translate.get_installed_languages",
+            lambda: [_Lang("English", "en")],
+        )
+
+        pretty = CollectingPrettyWriter()
+        _ = SharedHelpers(cfg=_Cfg(), pretty=pretty)  # type: ignore[reportArgumentType]
+
+        warning_messages = [
+            str(args[2])
+            for args, _kwargs in pretty.calls
+            if len(args) >= 3 and args[1] == "Argos Translate"
+        ]
+        assert any(
+            "Configured active language(s) not installed locally: de, es" in message
+            for message in warning_messages
+        )
+
+
+class TestWarnedMissingLanguages:
+    def test_should_warn_once_per_category_and_key(self, sh):
+        assert sh._should_warn_once("argos.translation-pair-missing", "en->de") is True
+        assert sh._should_warn_once("argos.translation-pair-missing", "en->de") is False
+        assert sh._should_warn_once("spacy.model-unavailable", "en->de") is True
+
+
+class TestSpacyStartupModelWarnings:
+    def test_warns_when_active_spacy_model_packages_are_missing(self, monkeypatch):
+        class _Lang:
+            def __init__(self, name, code):
+                self.name = name
+                self.code = code
+
+        class _Cfg(StubConfig):
+            def get(self, key, default=None):
+                mapping = {
+                    "_ARGOS_DEFINITIONS.ACTIVE_LANGUAGES": ["en", "de"],
+                    "_ARGOS_DEFINITIONS.LANG_CODE_TO_NAME": {
+                        "en": "english",
+                        "de": "german",
+                    },
+                    "_SPACY_MODELS_BY_ACTIVE_LANGUAGE": {
+                        "en": "en_core_web_sm",
+                        "de": "de_core_news_sm",
+                    },
+                }
+                if key in mapping:
+                    return mapping[key]
+                return super().get(key, default)
+
+            def get_dict(self, key, default=None):
+                value = self.get(key, default if default is not None else {})
+                return value if isinstance(value, dict) else {}
+
+        monkeypatch.setattr(
+            "Compliance.SharedHelpers.translate.get_installed_languages",
+            lambda: [_Lang("English", "en"), _Lang("German", "de")],
+        )
+        monkeypatch.setattr(
+            SharedHelpers,
+            "_is_spacy_package_installed",
+            staticmethod(lambda package: package == "en_core_web_sm"),
+        )
+
+        pretty = CollectingPrettyWriter()
+        _ = SharedHelpers(cfg=_Cfg(), pretty=pretty)  # type: ignore[reportArgumentType]
+
+        warning_messages = [
+            str(args[2])
+            for args, _kwargs in pretty.calls
+            if len(args) >= 3 and args[1] == "spaCy"
+        ]
+        assert any(
+            "Configured active spaCy model package(s) unavailable: de:de_core_news_sm"
+            in message
+            for message in warning_messages
+        )
 
 
 def _cfg_with_action(action: str):

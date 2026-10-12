@@ -216,6 +216,18 @@ class QueryParts(SingletonMixin):
             "type": "str",
             "attr": "fetch_page_content",
         },
+        "web_fetch_k": {
+            "section": "Retrieval",
+            "prompt": (
+                "Number of web documents fetched per query when web search is enabled. "
+                "Overrides _WEB_SEARCH.max_results for this session only. "
+                "Can be set permanently for a model via OpenWebUI → Admin → Models → "
+                "Advanced Parameters (web_fetch_k=10)."
+            ),
+            "mode": "normal",
+            "type": "int",
+            "attr": "web_fetch_k",
+        },
         "web_rerank_threshold": {
             "section": "Retrieval",
             "prompt": (
@@ -544,6 +556,7 @@ class QueryParts(SingletonMixin):
         "graph_weight",
         "regex_weight",
         "web_weight",
+        "web_fetch_k",
         "web_rerank_threshold",
         "use_chat_context",
         "history_keep",
@@ -573,6 +586,7 @@ class QueryParts(SingletonMixin):
         "regex_weight",
         "web_search",
         "web_weight",
+        "web_fetch_k",
         "web_rerank_threshold",
         "fetch_page_content",
         "use_chat_context",
@@ -753,6 +767,7 @@ class QueryParts(SingletonMixin):
                 )
             ),
             "web_weight": getattr(s, "web_weight", None),
+            "web_fetch_k": getattr(s, "web_fetch_k", None),
             "fetch_page_content": (
                 "fetch pages"
                 if getattr(s, "fetch_page_content", False)
@@ -928,6 +943,9 @@ class QueryParts(SingletonMixin):
         ww = getattr(s, "web_weight", None)
         bm25_pf = self.cfg.get_float("_WEB_SEARCH.bm25_pre_filter") or 0.0
         cos_pf = self.cfg.get_float("_WEB_SEARCH.cosine_pre_filter") or 0.0
+        web_fetch_k = values["web_fetch_k"]
+        if web_fetch_k is None:
+            web_fetch_k = self.cfg.get_int("_WEB_SEARCH.max_results") or 5
         web_rthr = getattr(s, "web_rerank_threshold", None)
         if web_rthr is None:
             web_rthr = self.cfg.get_float("_WEB_SEARCH.rerank_threshold") or 0.0
@@ -998,6 +1016,7 @@ class QueryParts(SingletonMixin):
                 "Web",
                 ("web_search", values["web_search"]),
                 ("fetch_page_content", values["fetch_page_content"]),
+                ("web_fetch_k", web_fetch_k),
                 ("bm25_pre_filter", bm25_pf),
                 ("cosine_pre_filter", cos_pf),
                 ("web_rerank_threshold", web_rthr),
@@ -1395,6 +1414,7 @@ class QueryParts(SingletonMixin):
             "graph_weight",
             "regex_weight",
             "web_weight",
+            "web_fetch_k",
             "web_rerank_threshold",
             "use_chat_context",
             "history_keep",
@@ -1526,6 +1546,12 @@ class QueryParts(SingletonMixin):
             mode = "fetch pages" if s.fetch_page_content else "snippets only"
             print(f"[fetch_page_content] {mode}")
 
+        def _show_web_fetch_k() -> None:
+            val = getattr(s, "web_fetch_k", None)
+            if val is None:
+                val = self.cfg.get_int("_WEB_SEARCH.max_results") or 5
+            print(f"[web_fetch_k] {val}")
+
         def _show_debug_level() -> None:
             mode = getattr(s, "debug_mode", "ge") or "ge"
             print(f"[debug_level] {int(s.debug_level or 0)}  mode={mode!r}")
@@ -1566,6 +1592,7 @@ class QueryParts(SingletonMixin):
             "regex_weight": lambda: print(f"[regex_weight] {s.regex_weight}"),
             "web_search": lambda: print(f"[web_search] {self._web_search_display()}"),
             "web_weight": lambda: print(f"[web_weight] {s.web_weight}"),
+            "web_fetch_k": _show_web_fetch_k,
             "web_rerank_threshold": _show_web_rerank_threshold,
             "fetch_page_content": _show_fetch_page_content,
             "rerank": lambda: print(f"[rerank] {s.rerank}"),
@@ -1826,6 +1853,12 @@ class QueryParts(SingletonMixin):
             s.context_size_override = None
             print(
                 f"[context_size] override cleared — auto={self.tokenBudget.get_context_limit()} will be used"
+            )
+        elif tok == "web_fetch_k":
+            s.web_fetch_k = None
+            default_k = self.cfg.get_int("_WEB_SEARCH.max_results") or 5
+            print(
+                f"[web_fetch_k] override cleared — default={default_k} from _WEB_SEARCH.max_results"
             )
         elif tok == "orchestrator_flow":
             configured_flows = list(self.allowed_orchestration_flows)
@@ -2265,6 +2298,13 @@ class QueryParts(SingletonMixin):
 
         # Cast and set
         val_cast = self._cast_value(tok, raw.strip())
+        if tok == "web_fetch_k" and int(val_cast) < 1:
+            msg = "web_fetch_k must be an integer >= 1."
+            if from_interactive:
+                raise ValidationError(message=msg)
+            print(f"⚠ {msg}")
+            return
+
         attr = self._get_attr_name(tok)
         if attr:
             setattr(self.session, attr, val_cast)

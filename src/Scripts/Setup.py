@@ -477,6 +477,32 @@ def _ensure_venv() -> None:
     print(f"{_DIM}  Active Python environment: {venv_path}{_RESET}")
 
 
+def _warn_if_not_python_314() -> None:
+    """Warn when setup is run outside the recommended Python 3.14 baseline."""
+    major = sys.version_info.major
+    minor = sys.version_info.minor
+    micro = sys.version_info.micro
+
+    if (major, minor) == (3, 14):
+        return
+
+    w = 70
+    print()
+    print(f"{_YELLOW}{'-' * w}{_RESET}")
+    print(f"{_BOLD}{_YELLOW}  Python Version Advisory{_RESET}")
+    print(f"{_YELLOW}{'-' * w}{_RESET}")
+    print(
+        f"{_YELLOW}  ⚠  Detected Python {major}.{minor}.{micro} at {sys.executable}.{_RESET}"
+    )
+    print(
+        f"{_YELLOW}     Recommended version for this setup flow is Python 3.14.x.{_RESET}"
+    )
+    print(
+        f"{_YELLOW}     Setup will continue, but dependency resolution may differ from the tested baseline.{_RESET}"
+    )
+    print()
+
+
 def _ensure_cache_ownership() -> None:
     """Ensure /home/vscode/.cache/ is owned by vscode user."""
     cache_dir = Path("/home/vscode/.cache")
@@ -2916,6 +2942,7 @@ def main() -> None:
     _ensure_project_root()
     _init_setup_log()
     _ensure_venv()
+    _warn_if_not_python_314()
     _ensure_cache_ownership()
     _write_setup_log(
         "setup_started",

@@ -16,9 +16,18 @@ Experimental Retrieval-Augmented Generation under constraints.
 
 RAG-LCC is a practical lab for understanding where RAG systems fail and how to fix them: retrieval misses, context poisoning, multilingual drift, and compliance edge cases.
 
+## Who this is for
+
+- Researchers and practitioners exploring *why* RAG pipelines succeed or fail
+- Engineers working with **large, multilingual, or conflicting document sets**
+- Teachers and students learning RAG internals through hands-on experimentation
+- Anyone debugging **multi‑turn chat‑context failures** in RAG systems
+- Users running RAG on **constrained or commodity hardware**
+- People who want to experiment beyond "embed + cosine + top‑k"
+
 Short: If you want to understand *why* your RAG fails, RAG-LCC gives you a playground to experiment with the parameters that matter. You can tune settings, compare alternatives on a small test corpus, and carry those insights back into your own RAG. In other words, RAG-LCC is an insight tool with reusable ideas, not an everyday production RAG.
 
-Current release: v0.5.1/1480 (2026-09-19)
+
 
 ## What you get
 

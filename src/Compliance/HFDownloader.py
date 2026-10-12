@@ -7,6 +7,7 @@ from typing import Any, Dict, Optional, cast
 
 from huggingface_hub import \
     snapshot_download  # type: ignore[reportUnknownVariableType]
+from huggingface_hub.utils import tqdm as hf_tqdm
 
 from Commons.Exceptions import (HFDownloaderError, HfHubHTTPError,
                                 InternetConnectionDisabledError,
@@ -26,6 +27,14 @@ _CONSENT_DISCLAIMER = (
 # Try to import the HF-specific HTTP exception; fall back gracefully if not present
 
 
+class _NoProgressHFTqdm(hf_tqdm):
+    """Hide HF transfer progress bars that spam newline-based terminals."""
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        kwargs["disable"] = True
+        super().__init__(*args, **kwargs)  # type: ignore[reportUnknownMemberType]
+
+
 class HFDownloader:
     def __init__(self) -> None:
         self.cfg: Config = Config()
@@ -43,6 +52,11 @@ class HFDownloader:
         self.base_dir.mkdir(exist_ok=True)
         self.identity_cache: dict[str, Any] | None = None
         self.hf_hub_offline: str | None = os.environ.get("HF_HUB_OFFLINE", "1")
+
+    @staticmethod
+    def _progress_bars_disabled() -> bool:
+        """Return True when HF progress bars should be suppressed."""
+        return str(os.environ.get("HF_HUB_DISABLE_PROGRESS_BARS", "0")).strip() == "1"
 
     # -------------------------
     # Deterministic hash helpers
@@ -68,42 +82,6 @@ class HFDownloader:
             return {}
         with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
-
-    def _identity_needs_backfill(self, existing_meta: dict[str, Any]) -> bool:
-        return (
-            not existing_meta.get("accepted_by")
-            or not existing_meta.get("accepted_by_source")
-            or existing_meta.get("host") is None
-            or existing_meta.get("pid") is None
-        )
-
-    def _backfill_existing_identity(
-        self, existing_meta: dict[str, Any]
-    ) -> dict[str, Any]:
-        repaired_meta = dict(existing_meta)
-        repaired_meta["accepted_by"] = (
-            existing_meta.get("accepted_by")
-            or os.environ.get("_USER")
-            or os.environ.get("USERNAME")
-            or "unknown-user"
-        )
-        repaired_meta["accepted_by_source"] = (
-            existing_meta.get("accepted_by_source") or "os"
-        )
-        repaired_meta["accepted_by_verified"] = bool(
-            existing_meta.get("accepted_by_verified", False)
-        )
-        repaired_meta["host"] = (
-            existing_meta.get("host")
-            or os.environ.get("COMPUTERNAME")
-            or "unknown-host"
-        )
-        repaired_meta["pid"] = (
-            existing_meta.get("pid")
-            if existing_meta.get("pid") is not None
-            else os.getpid()
-        )
-        return repaired_meta
 
     def _identity_from_existing_meta(
         self, existing_meta: dict[str, Any]
@@ -135,6 +113,7 @@ class HFDownloader:
         cfg_hash: str,
         identity: dict[str, Any],
         local_path: str,
+        model_dir: str,
         model_cfg: Dict[str, Any],
     ) -> dict[str, Any]:
         now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
@@ -151,8 +130,38 @@ class HFDownloader:
             "host": identity.get("host"),
             "pid": identity.get("pid"),
             "local_path": local_path,
+            "model_dir": model_dir,
             "config": model_cfg,
         }
+
+    @staticmethod
+    def _model_dir_from_snapshot(local_path: str) -> str:
+        """Return the HF model root dir for a snapshot path, if derivable."""
+        if not local_path:
+            return ""
+
+        try:
+            snapshot = Path(local_path).expanduser().resolve()
+        except Exception:
+            snapshot = Path(local_path).expanduser()
+
+        if snapshot.parent.name == "snapshots":
+            return str(snapshot.parent.parent)
+        return str(snapshot)
+
+    @staticmethod
+    def _model_dir_from_cache(model_id: str, hf_hub_cache: Optional[str]) -> str:
+        """Build the expected HF model root dir from cache root + model id."""
+        if not hf_hub_cache:
+            return ""
+
+        try:
+            cache_root = Path(str(hf_hub_cache)).expanduser().resolve()
+        except Exception:
+            cache_root = Path(str(hf_hub_cache)).expanduser()
+
+        sanitized = model_id.replace("/", "--")
+        return str(cache_root / f"models--{sanitized}")
 
     def get_local_path(self, key: str) -> Optional[str]:
         """Return the local snapshot path recorded in download metadata, or None.
@@ -173,6 +182,34 @@ class HFDownloader:
             local_path: str = meta.get("local_path", "")
             if local_path and Path(local_path).exists():
                 return local_path
+        except Exception:
+            pass
+        return None
+
+    def get_model_dir(self, key: str) -> Optional[str]:
+        """Return the HF model root directory for key, if it can be resolved.
+
+        Prefers ``model_dir`` from metadata. If missing (older metadata),
+        derives the value from ``local_path`` when present.
+        """
+        try:
+            model_type = key.rsplit(".", 1)[-1] if "." in key else key
+            selector = (
+                f"_ACTIVE{model_type}" if model_type.startswith("_") else model_type
+            )
+            impl: str = self.cfg.get_str(selector)
+            resolved_key = f"_MODELS.{impl}.{model_type}"
+            meta_path = self.base_dir / resolved_key / "download_meta.json"
+            meta = self._load_meta(meta_path)
+
+            model_dir = str(meta.get("model_dir", "") or "").strip()
+            if model_dir:
+                return model_dir
+
+            local_path = str(meta.get("local_path", "") or "").strip()
+            derived = self._model_dir_from_snapshot(local_path)
+            if derived:
+                return derived
         except Exception:
             pass
         return None
@@ -344,10 +381,6 @@ class HFDownloader:
                 and local_path_obj.exists()
                 and self._snapshot_has_content(local_path_obj)
             ):
-                if self._identity_needs_backfill(existing_meta):
-                    repaired_meta = self._backfill_existing_identity(existing_meta)
-                    self._write_meta(meta_path, repaired_meta)
-                    existing_meta = repaired_meta
                 info = f"{key}: model already downloaded with matching revision and config hash. Skipping download."
                 self.logger.info(info)
                 self.pretty.write("O", "HF Download", info)
@@ -410,6 +443,7 @@ class HFDownloader:
                 cfg_hash=cfg_hash,
                 identity=identity,
                 local_path=str(cached_snapshot),
+                model_dir=self._model_dir_from_snapshot(str(cached_snapshot)),
                 model_cfg=cast(Dict[str, Any], model_cfg),
             )
             # Persist metadata to model_dir for auditability (overwrite or create)
@@ -481,11 +515,21 @@ class HFDownloader:
             if hf_hub_cache:
 
                 Path(hf_hub_cache).mkdir(parents=True, exist_ok=True)
-                downloaded_path = snapshot_download(  # type: ignore[reportCallIssue]
-                    repo_id=model_name,
-                    revision=revision or None,
-                    cache_dir=hf_hub_cache,
-                    token=hf_api_key or None,
+                snapshot_kwargs: dict[str, Any] = {
+                    "repo_id": model_name,
+                    "revision": revision or None,
+                    "cache_dir": hf_hub_cache,
+                    "token": hf_api_key or None,
+                }
+                if self._progress_bars_disabled():
+                    # Keep newline-safe behavior only when bars are explicitly disabled.
+                    snapshot_kwargs["tqdm_class"] = _NoProgressHFTqdm
+
+                downloaded_path = cast(
+                    str,
+                    snapshot_download(  # type: ignore[reportCallIssue]
+                        **snapshot_kwargs,
+                    ),
                 )
                 self.pretty.write("N", "", "")
         except HfHubHTTPError as e:
@@ -517,6 +561,10 @@ class HFDownloader:
         # -------------------------
         # Build and persist metadata
         # -------------------------
+        model_root_dir = self._model_dir_from_snapshot(str(downloaded_path))
+        if not model_root_dir:
+            model_root_dir = self._model_dir_from_cache(model_name, hf_hub_cache)
+
         meta = self._build_download_meta(
             model_name=model_name,
             friendly=friendly,
@@ -525,6 +573,7 @@ class HFDownloader:
             cfg_hash=cfg_hash,
             identity=identity,
             local_path=str(downloaded_path),
+            model_dir=model_root_dir,
             model_cfg=cast(Dict[str, Any], model_cfg),
         )
 

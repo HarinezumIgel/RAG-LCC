@@ -97,8 +97,8 @@ def _print_summary(data: _GraphIndexData, top_edges: int) -> None:
     print()
 
     # Top N edges by co-occurrence weight
-    all_edges: List[tuple] = []
-    seen_pairs: set[frozenset] = set()
+    all_edges: List[tuple[int, str, str]] = []
+    seen_pairs: set[frozenset[str]] = set()
     for node_a, neighbours in data.adjacency.items():
         for node_b, weight in neighbours.items():
             pair = frozenset((node_a, node_b))

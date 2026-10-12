@@ -1551,13 +1551,17 @@ python src/Scripts/GraphIndexInspector.py -path chromadb/graph/Test -chunks 5 -e
 
 **Fetch-page mode** — when `fetch_page_content = 'fetch pages'` is set for a session, `_fetch_page()` retrieves the full page body via `httpx` and replaces `page_content` with the extracted text (sent to the LLM). `'snippets only'` (default) uses only the DuckDuckGo result snippet as `page_content`. In both modes the original search-engine snippet is always preserved in `metadata["snippet"]`. The cross-encoder reranker (`RAGChatImpl._rerank()`) scores web documents using the snippet rather than `page_content` — a full fetched page fills the cross-encoder's 512-token window with navigation headers and boilerplate, suppressing the relevance signal. The snippet is concise, already scoped to the query, and reliably within the token window.
 
+**Fetch-count override** — `web_fetch_k` can be set per session/request to
+override how many web documents are fetched. When `web_fetch_k` is unset,
+runtime falls back to `_WEB_SEARCH.max_results`.
+
 **Key configuration keys:**
 
 | Key | Location | Default | Purpose |
 | --- | --- | --- | --- |
 | `WEB_SEARCH_MODE` (environment variable) | `Config_Internet_Env.py` | `"0"` | Master switch — `"0"` blocks all web queries, `"1"` enables live web search |
 | `_WEB_SEARCH.backend` | `Config_WebSearch.py` | `"duckduckgo"` | Search backend (`"duckduckgo"` needs no API key) |
-| `_WEB_SEARCH.max_results` | `Config_WebSearch.py` | `10` | Maximum results fetched per query |
+| `_WEB_SEARCH.max_results` | `Config_WebSearch.py` | `10` | Default maximum results fetched per query (used when `web_fetch_k` is unset) |
 | `_WEB_SEARCH.max_query_length` | `Config_WebSearch.py` | `500` | Query truncation limit |
 | `_WEB_SEARCH.block_on_injection` | `Config_WebSearch.py` | `True` | Enable injection-pattern blocking |
 | `_WEB_SEARCH.default_web_weight` | `Config_WebSearch.py` | `0.5` | Default RRF weight for web results |
@@ -1565,13 +1569,14 @@ python src/Scripts/GraphIndexInspector.py -path chromadb/graph/Test -chunks 5 -e
 **Per-session switches** (displayed on the `▶ Web:` status line):
 
 ```text
-▶ Web:  web_search='local only'  web_weight=None  fetch_page_content='snippets only'
+▶ Web:  web_search='local only'  web_weight=None  web_fetch_k=10  fetch_page_content='snippets only'
 ```
 
 | Switch | Default display | Effect |
 | --- | --- | --- |
 | `web_search` | `'local only'` | Set to `'local + internet'` to enable the web leg |
 | `web_weight` | `None` (use `default_web_weight`) | Override the RRF weight per session |
+| `web_fetch_k` | `None` (use `_WEB_SEARCH.max_results`) | Override web documents fetched per session/request |
 | `fetch_page_content` | `'snippets only'` | Set to `'fetch pages'` to retrieve full page text |
 
 > ⚠️ When web search is active, the query is transmitted to DuckDuckGo (or the configured backend). See [LEGAL.md — Web / Internet Search](LEGAL.md#-web--internet-search--privacy-warning) and [SECURITY.md — Web / Internet Search](SECURITY.md#-web--internet-search) for privacy and security guidance.

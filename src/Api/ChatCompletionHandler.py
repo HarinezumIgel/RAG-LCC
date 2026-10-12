@@ -138,6 +138,7 @@ class ChatCompletionRequest(BaseModel):
     web_search: Optional[Union[bool, str]] = None
     web_weight: Optional[float] = None
     fetch_page_content: Optional[bool] = None
+    web_fetch_k: Optional[int] = None
     debug_level: Optional[int] = None
     debug_mode: Optional[str] = (
         None  # "ge" (>=, default), "is" (== exact), or "le" (<= less-equal)
@@ -588,6 +589,16 @@ def _applyRequestToSession(
         session.web_weight = max(0.0, req.web_weight)
     if req.fetch_page_content is not None:
         session.fetch_page_content = req.fetch_page_content
+    if req.web_fetch_k is not None:
+        if req.web_fetch_k < 1:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Invalid web_fetch_k {req.web_fetch_k!r}. "
+                    "Value must be an integer >= 1."
+                ),
+            )
+        session.web_fetch_k = req.web_fetch_k
 
     # Enable visual markers (yellow highlighting) and HTTP serving only when enabled.
     # Answer grounding (orange) works independently via chunk_texts_for_grounding.
@@ -915,10 +926,10 @@ def _summarise_request(raw_dump: Dict[str, Any]) -> str:
     return json.dumps(cleaned, ensure_ascii=False)
 
 
-def _format_session_for_error(
+def _format_session_snapshot(
     session: Session, req: Optional["ChatCompletionRequest"] = None
 ) -> str:
-    """Return a grouped markdown code block of all session values, appended to parameter-error messages.
+    """Return a grouped markdown code block of session values for diagnostics.
 
     When *req* is supplied the Output sub-section shows the effective per-request
     value (e.g. context_size set via OpenWebUI Advanced Parameters) rather than
@@ -948,6 +959,9 @@ def _format_session_for_error(
     cfg_local = Config()
     bm25_pf = cfg_local.get_float("_WEB_SEARCH.bm25_pre_filter") or 0.0
     cos_pf = cfg_local.get_float("_WEB_SEARCH.cosine_pre_filter") or 0.0
+    web_fetch_k = getattr(s, "web_fetch_k", None)
+    if web_fetch_k is None:
+        web_fetch_k = cfg_local.get_int("_WEB_SEARCH.max_results") or 5
 
     mot_val = str(getattr(s, "max_output_tokens", "auto"))
     if req is not None:
@@ -1076,6 +1090,7 @@ def _format_session_for_error(
             ("web_search", web_val),
             ("web_weight", getattr(s, "web_weight", None)),
             ("fetch_page_content", fp_val),
+            ("web_fetch_k", web_fetch_k),
             ("bm25_pre_filter", bm25_pf),
             ("cosine_pre_filter", cos_pf),
         ),
@@ -1750,7 +1765,7 @@ async def handleRequest(
             return _complianceResponse(
                 err_id,
                 req.model,
-                f"\u26a0\ufe0f **Parameter error** \u2014 {exc.detail}{_format_session_for_error(queryParts.session, req)}",
+                f"\u26a0\ufe0f **Parameter error** \u2014 {exc.detail}{_format_session_snapshot(queryParts.session, req)}",
                 stream=req.stream,
             )
         except Exception:

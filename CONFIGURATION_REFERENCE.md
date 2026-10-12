@@ -50,6 +50,7 @@ This reference covers both a **quick-scan overview** (tables by topic and by con
 |---------------|-------------------|-------------|
 | **Web Search** | `WEB_SEARCH_MODE`: "0" (disabled) / "1" (enabled) | Master switch for internet retrieval. When enabled, adds DuckDuckGo search results to retrieval pipeline via RRF fusion. |
 | **Web Search Backend** | `duckduckgo` (only implemented) | Search provider. Brave, Tavily, Bing recognized but not implemented. DuckDuckGo requires no API key. |
+| **Web Fetch Count Override** | `web_fetch_k`: integer `>= 1` (session/request) | Overrides how many web documents are fetched for the active session/request. Falls back to `_WEB_SEARCH.max_results` when unset. |
 | **Web Search Filters** | `bm25_pre_filter`: 0.10, `cosine_pre_filter`: 0.30, `rerank_threshold`: 0.50 | Multi-stage filtering of web results. BM25 filters by keyword relevance; cosine by semantic similarity; rerank after cross-encoder scoring. |
 | **Web Search Weight** | `web_weight`: 0.5 (default), range 0.0-1.0+ | RRF weight for web results relative to local retrievers (1.0). 0.5 means local results naturally outrank web; 1.0 gives equal weight; >1.0 favors web. |
 | **Web Intent Filter** | Entity categories, weight thresholds, `block_on_injection`: True | Blocks harmful web queries before they reach the search API. Intent is scored via entity extraction and verb analysis; categories and refuse/warn thresholds are extensible in `WEB_SEARCH_INTENT_EXTENSIONS`. |
@@ -202,7 +203,7 @@ This reference covers both a **quick-scan overview** (tables by topic and by con
 |---------------|----------------|----------------------|-----------|
 | **Web Search Master Switch** | `Config_Internet_Env.py` | `os.environ["WEB_SEARCH_MODE"]` | "0"=disabled, "1"=enabled |
 | **Web Search Backend** | `Config_WebSearch.py` | `_WEB_SEARCH["backend"]` | "duckduckgo" (only implemented) |
-| **Web Search Max Results** | `Config_WebSearch.py` | `_WEB_SEARCH["max_results"]` | Fetch limit per query |
+| **Web Search Max Results** | `Config_WebSearch.py` | `_WEB_SEARCH["max_results"]` | Default fetch limit per query (used when `web_fetch_k` is unset) |
 | **Web Search Filters** | `Config_WebSearch.py` | `_WEB_SEARCH["bm25_pre_filter"]`, `["cosine_pre_filter"]`, `["rerank_threshold"]` | Multi-stage filtering |
 | **Web Search Weight** | `Config_WebSearch.py` | `_WEB_SEARCH["default_web_weight"]` | RRF weight relative to local retrievers |
 | **Web Intent Filter Extensions** | `Config_WebSearch.py` | `WEB_SEARCH_INTENT_EXTENSIONS` | Custom entity categories and thresholds |
@@ -289,7 +290,7 @@ This reference covers both a **quick-scan overview** (tables by topic and by con
 | **Argos Language Pairs** | `Config_Languages.py` | `_ARGOS_DEFINITIONS["ARGOS_LANGUAGES"]` | List of (from_code, to_code) tuples |
 | **Active Languages** | `Config_Languages.py` | `_ARGOS_DEFINITIONS["ACTIVE_LANGUAGES"]` | Languages enabled at runtime (filters Argos/spaCy routing) |
 | **Unsupported Language Action** | `Config_Global.py` | `UNSUPPORTED_LANGUAGE_ACTION` | "NOT_OK" or "FALLBACK_EN" |
-| **NLTK Stopwords Path** | `Config_Global.py` | `_CUSTOM_NLTK_DATA_DIRECTORY` | Custom NLTK data location |
+| **Cache Root (NLTK/Argos/spaCy)** | `Config_Global.py` | `_CACHE_PATH` | Shared cache root. Relative values resolve under `_ABSOLUTE_PATH`; NLTK stopwords are expected at `<cache>/nltk/corpora/stopwords`. |
 
 ### 📊 Classification & Document Analysis
 
@@ -344,6 +345,7 @@ configs and are part of the effective configuration surface.
 | Config File | Slot Name / Path | Purpose |
 | --- | --- | --- |
 | `Config_Global.py` | `_ABSOLUTE_PATH` | Canonical project-root absolute path used by path-derived defaults and root-path guards. |
+| `Config_Global.py` | `_CACHE_PATH` | Shared project-local cache root for Argos/NLTK/spaCy assets; resolved and validated under project-root guards. |
 | `Config_Global.py` | `_CONFIDENCE_LOGGING` | Confidence signal controls (`enabled`, `emit_pretty`, `csv_enabled`). |
 | `Config_Banned_Content.py` | `HARDBLOCK_PATTERNS` | Always-on hard-block regex patterns for critical unsafe intents (web retrieval guard). |
 | `Config_Banned_Content.py` | `INJECTION_PATTERNS` | Prompt-injection / attack signature regex patterns used by injection gating. |
@@ -812,7 +814,7 @@ These keys are defined in `Config_Languages.py` and merged into the runtime conf
 
 | Key | Default used in this repository | Purpose |
 | --- | --- | --- |
-| `_CUSTOM_NLTK_DATA_DIRECTORY` | Windows: `<project>/AppData/Roaming/nltk_data/corpora/stopwords`<br>Linux/macOS: `/home/vscode/nltk_data` | Custom directory for NLTK stopwords data. Override if NLTK data is installed in a non-standard location. |
+| `_CACHE_PATH` | `.caches` (resolved as `<project>/.caches`) | Shared cache root for NLTK stopwords and Argos/spaCy script assets. Use a direct path (no `$...` indirection); path must stay within project root. |
 
 ### 📚 WordNet Synonym Expansion (Optional)
 
@@ -1237,6 +1239,7 @@ This file contains all web-search-specific settings shared across RAGChat and RA
 | `WEB_SEARCH_MODE` (environment variable) | `Config_Internet_Env.py` | **MASTER SWITCH.** Overrides all other web-search settings. Values: `"0"` — web search disabled; `"1"` — internet search enabled. |
 | `_OPENWEB_UI_WEBSEARCH` | `Config_WebSearch.py` | Default web-search state for new OpenWebUI sessions. Has **no effect** when `WEB_SEARCH_MODE` is not `"1"`. |
 | `web_search` (session) | per-request | Caller opt-in. Ignored when `WEB_SEARCH_MODE` is `"0"`. |
+| `web_fetch_k` (session/request) | per-request | Override web results fetched for the current session/request. Must be an integer `>= 1`. |
 
 ### 📊 Web Search Backend Configuration (`_WEB_SEARCH`)
 
@@ -1246,7 +1249,7 @@ Controls the optional internet retrieval leg added to the RRF pipeline at query 
 | --- | --- | --- |
 | `backend` | `"duckduckgo"` | Web search backend. Only `"duckduckgo"` is implemented. `"brave"`, `"tavily"`, `"bing"` are recognised but raise `NotImplementedError`. |
 | `api_key` | `""` | Reserved for future brave/tavily/bing backends. Leave empty for duckduckgo. |
-| `max_results` | `10` | Maximum web results fetched per query (used when `fetch_k` not set). |
+| `max_results` | `10` | Maximum web results fetched per query when `web_fetch_k` is not set. |
 | `max_query_length` | `500` | Queries longer than this are truncated before sending. |
 | `block_on_injection` | `True` | Block queries that match prompt-injection / attack patterns. |
 | `default_web_weight` | `0.5` | Default RRF weight for web results relative to local retrievers (Vector/BM25/Graph = 1.0). `0.5` means every local result naturally outranks any web result; raise to `1.0+` for equal or higher web influence. Overridable per-session with `web_weight=<value>`. |
@@ -1470,18 +1473,19 @@ See [Near-duplicate chunk removal in ARCHITECTURE.md](ARCHITECTURE.md#selection-
 | `_QUERY_LOG` | `Config_RAGChat.py` / `Config_RAGChatService.py` | `logs/RAGChat/queries.log` | Append-only audit log written for every web search attempt, including blocked ones. Each app writes to its own log subdirectory. Set to `""` to disable logging. |
 | `_INTENT_FILTER_LOG` | `Config_RAGChat.py` / `Config_RAGChatService.py` | `logs/RAGChat/intent_filter.log` | Append-only log for `WebSearchFilter` intent-classifier decisions (ALLOW, BLOCK, ESCALATE). Written for both web and local queries. Each app writes to its own log subdirectory. Set to `""` to disable. |
 
-The per-session knobs (`web_search`, `web_weight`, `fetch_page_content`) control web retrieval for the active session:
+The per-session knobs (`web_search`, `web_weight`, `web_fetch_k`, `fetch_page_content`) control web retrieval for the active session:
 
 | Switch | Values | Effect |
 | --- | --- | --- |
 | `web_search` | `'local_only'` / `'local_and_web'` / `'web_only'` | `local_only` — local indexes only (default). `local_and_web` — DuckDuckGo + local retrieval. `web_only` — skip local indexes entirely. Requires `WEB_SEARCH_MODE = "1"`. Session-persistent. |
 | `web_weight` | `None` (config default) / float | RRF weight for web results relative to local retrievers (Vector/BM25/Graph = 1.0). Default `0.5` — every local result naturally outranks any web result. Set to `1.0` for equal influence. Pre-set per strategy via `web_weight` in `_STRATEGIES`. |
+| `web_fetch_k` | `None` (use `_WEB_SEARCH.max_results`) / integer `>= 1` | Override web documents fetched for this session/request. When unset, runtime uses `_WEB_SEARCH.max_results` (default `10`). |
 | `fetch_page_content` | `'snippets only'` / `'fetch pages'` | `'snippets only'` uses only the DuckDuckGo snippet. `'fetch pages'` fetches the full page body via `httpx` — richer context at higher latency. In both modes the original snippet is kept in `metadata["snippet"]` for cross-encoder scoring; the full page (when fetched) goes only to the LLM prompt. Session-persistent. |
 
 The status line `▶ Web:` in the chat console shows the current state:
 
 ```text
-▶ Web:  web_search='local_only'  web_weight=None  fetch_page_content='snippets only'
+▶ Web:  web_search='local_only'  web_weight=None  web_fetch_k=10  fetch_page_content='snippets only'
 ```
 
 #### Topic (context) switch
@@ -2041,7 +2045,7 @@ To show current Argos package status, run without arguments:
 python src/Scripts/ArgosTranslatePackages.py
 ```
 
-To remove all installed packages, stanza models, and consent metadata:
+To remove all installed packages and consent metadata:
 
 ```bash
 python src/Scripts/ArgosTranslatePackages.py remove

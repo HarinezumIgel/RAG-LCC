@@ -9,8 +9,8 @@ abstract: >-
 authors:
   - alias: "HarinezumIgel"
     email: "259837285+HarinezumIgel@users.noreply.github.com"
-version: "0.2.0"
-date-released: "2026-04-12"
+version: "See current release"
+date-released: "See current Date"
 license: MIT
 repository-code: "https://github.com/HarinezumIgel/RAG-LCC"
 keywords:
@@ -19,3 +19,11 @@ keywords:
   - document-classification
   - natural-language-processing
   - research
+  - offline-first
+  - local-llm
+  - hybrid-retrieval
+  - vector-search
+  - bm25
+  - semantic-search
+  - document grounding
+  - confidence score

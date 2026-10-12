@@ -548,6 +548,80 @@ class TestGraphRegexStageQueryShaping:
         assert guardrail_query == "Q1"
         assert shared.calls == []
 
+    def test_warns_once_when_translation_returns_unchanged_text(self) -> None:
+        shell = FetchShell(bm25_map={})
+        shell._translation_backend = "argos"
+        shell._shared = StubSharedTranslate({})
+
+        first_primary, first_guardrail = shell._shape_graph_regex_stage_queries(
+            StubSession(query="Q2"),
+            language_bucket="german",
+            primary_query="Q2",
+            guardrail_query="Q1",
+        )
+        second_primary, second_guardrail = shell._shape_graph_regex_stage_queries(
+            StubSession(query="Q2"),
+            language_bucket="german",
+            primary_query="Q2",
+            guardrail_query="Q1",
+        )
+
+        assert first_primary == "Q2"
+        assert first_guardrail == "Q1"
+        assert second_primary == "Q2"
+        assert second_guardrail == "Q1"
+
+        warning_messages = [
+            str(args[2])
+            for args, _kwargs in shell.pretty.calls
+            if len(args) >= 3 and args[1] == "Translate"
+        ]
+        unchanged_warnings = [
+            message
+            for message in warning_messages
+            if "Indexed query translation for en->de returned unchanged text" in message
+        ]
+        assert len(unchanged_warnings) == 1
+
+    def test_warns_when_translation_raises_exception(self) -> None:
+        class _FailingShared:
+            lang_name_to_code: dict[str, str] = {
+                "english": "en",
+                "german": "de",
+            }
+
+            def translate_text(
+                self,
+                _text: str,
+                _target_lang: str,
+                _source_lang: str = "auto",
+            ) -> str:
+                raise RuntimeError("missing model files")
+
+        shell = FetchShell(bm25_map={})
+        shell._translation_backend = "argos"
+        shell._shared = _FailingShared()
+
+        primary_query, guardrail_query = shell._shape_graph_regex_stage_queries(
+            StubSession(query="Q2"),
+            language_bucket="german",
+            primary_query="Q2",
+            guardrail_query="Q1",
+        )
+
+        assert primary_query == "Q2"
+        assert guardrail_query == "Q1"
+
+        warning_messages = [
+            str(args[2])
+            for args, _kwargs in shell.pretty.calls
+            if len(args) >= 3 and args[1] == "Translate"
+        ]
+        assert any(
+            "Indexed query translation for en->de failed" in message
+            for message in warning_messages
+        )
+
 
 class TestLocalRetrieverModeFlags:
     @pytest.mark.parametrize(

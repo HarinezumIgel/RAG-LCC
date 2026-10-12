@@ -36,7 +36,6 @@ Module: requests
 Module: rich
 Module: sentence_transformers
 Module: spacy
-Module: stanza
 Module: starlette
 Module: torch
 Module: uvicorn

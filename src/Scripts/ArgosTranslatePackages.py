@@ -76,6 +76,17 @@ def _join_targets(labels: list[str]) -> str:
     return ", ".join(labels[:-1]) + f" and {labels[-1]}"
 
 
+def _argos_package_directory() -> str:
+    """Return the local Argos package root directory, if available."""
+    try:
+        from argostranslate import \
+            settings  # type: ignore[reportMissingTypeStubs]
+
+        return str(getattr(settings, "package_data_dir", "") or "").strip()
+    except Exception:
+        return ""
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Install or remove Argos Translate language packages."
@@ -95,9 +106,15 @@ def main() -> None:
         _PROJECT_ROOT,
         languages,
         emit_startup_inventory=False,
+        emit_startup_warnings=False,
     )
+    package_dir = _argos_package_directory()
 
     if args.action == "install":
+        if package_dir:
+            print(f"Argos package directory (install target): {package_dir}")
+        else:
+            print("Argos package directory (install target): unavailable")
         print_install_scope_note()
         print()
         if not downloader.ensure_packages():
@@ -110,24 +127,19 @@ def main() -> None:
         report_xx_sent_ud_sm_state()
 
     elif args.action == "remove":
+        if package_dir:
+            print(f"Argos package directory (remove target): {package_dir}")
+        else:
+            print("Argos package directory (remove target): unavailable")
         installed_packages = downloader.installed_packages()
         has_packages = bool(installed_packages)
-        tokenizer_resources_dir = downloader.tokenizer_resources_dir
-        has_tokenizer_resources = os.path.isdir(tokenizer_resources_dir)
         has_consent_metadata = downloader.has_consent_metadata()
 
-        if (
-            not has_packages
-            and not has_tokenizer_resources
-            and not has_consent_metadata
-        ):
+        if not has_packages and not has_consent_metadata:
             print(
-                "No Argos packages, tokenizer resources, or consent metadata installed - nothing to remove."
+                "No Argos packages or consent metadata installed - nothing to remove."
             )
             sys.exit(0)
-
-        if not has_tokenizer_resources:
-            print("No tokenizer resources directory present - nothing to remove.")
 
         if has_consent_metadata:
             print()
@@ -136,16 +148,12 @@ def main() -> None:
             )
             for cleanup_dir in downloader.consent_cleanup_directories():
                 print(f"  {cleanup_dir}")
-        if has_tokenizer_resources:
-            print(f"  {tokenizer_resources_dir}  (tokenizer resources)")
-        if has_consent_metadata or has_tokenizer_resources:
+        if has_consent_metadata:
             print()
 
         removal_targets: list[str] = []
         if has_packages:
             removal_targets.append("Argos packages")
-        if has_tokenizer_resources:
-            removal_targets.append("tokenizer resources")
         if has_consent_metadata:
             removal_targets.append("consent metadata")
 
@@ -155,13 +163,6 @@ def main() -> None:
 
         if has_packages:
             downloader.remove_all()
-        if has_tokenizer_resources:
-            if _confirm(
-                f"Recursively delete tokenizer resources directory '{tokenizer_resources_dir}'?"
-            ):
-                downloader.remove_tokenizer_resources()
-            else:
-                print("  Skipping tokenizer resources removal.")
         if has_consent_metadata:
             downloader.remove_consent()
         downloader.show_status()

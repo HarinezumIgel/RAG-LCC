@@ -20,7 +20,7 @@ import os
 
 from Compliance.path_validation import validate_absolute_path
 
-_VERSION = "v0.5.2.0/1533 2026-10-05"
+_VERSION = "v0.5.2.1/1547 2026-10-12"
 
 # -----------------------------------------------------------------------------
 # Adjust these hashes when you changed any of these files:
@@ -54,18 +54,23 @@ EMBEDDER_BITS = 32  # 16, 32 !! set to 32 if USE_CPU = TRUE
 # Base paths and modes
 # -----------------------------------------------------------------------------
 
-# Auto-detect project root from this file's location (source/Configuration/)
-_ABSOLUTE_PATH = os.path.normpath(
-    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..")
-)
-
-
-# Guard at source-of-truth module level as well.
+# Auto-detect and validate project root from this file's location
+# (source/Configuration/).
 _ABSOLUTE_PATH = validate_absolute_path(  # pyright: ignore[reportConstantRedefinition]
-    _ABSOLUTE_PATH,
+    os.path.normpath(
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..")
+    ),
     "Config_Global._ABSOLUTE_PATH",
     "Config_Global",
 )
+
+# Shared project-local cache root for Argos/NLTK/spaCy script assets.
+# Relative values are resolved against _ABSOLUTE_PATH by consumers.
+_CACHE_PATH = ".caches"
+
+_CACHE_PATH_ABSOLUTE = os.path.join(
+    _ABSOLUTE_PATH, _CACHE_PATH
+)  # pyright: ignore[reportConstantRedefinition]
 
 # -----------------------------------------------------------------------------
 # Paths for document loading and processing. Root folder for documents
@@ -187,16 +192,6 @@ CSV_DELIMITER = r";"
 
 # Seconds to wait for Ollama/OpenAI responses
 REQUEST_TIMEOUT = 600
-
-# -----------------------------------------------------------------------------
-# NLP resources
-# -----------------------------------------------------------------------------
-# Custom directory for NLTK stopwords data
-_CUSTOM_NLTK_DATA_DIRECTORY = (
-    _ABSOLUTE_PATH + r"\AppData\Roaming\nltk_data\corpora\stopwords"  # Windows
-    if os.name == "nt"
-    else "/home/vscode/nltk_data"  # Linux / macOS
-)
 
 # =============================================================================
 # Language detection tuning (lingua-language-detector)

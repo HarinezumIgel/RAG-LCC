@@ -451,6 +451,63 @@ class TestGetHFEmbeddings:
         assert download_calls[0] == "_MODELS._EMBED"
         assert emb is not None
 
+    def test_retry_failure_message_includes_model_dir(self, monkeypatch):
+        """Retry failure should include concrete cache directory guidance."""
+        mc = _build_models_cache()
+
+        def always_fail(**kwargs):
+            raise OSError("Model still unavailable")
+
+        monkeypatch.setattr(_mc_mod, "HuggingFaceEmbeddings", always_fail)
+
+        class PatchedHFDownloader:
+            def __init__(self):
+                pass
+
+            def download(self, key):
+                return {"model_dir": "C:/hf-cache/models--test-org--test-embed"}
+
+        monkeypatch.setattr(_mc_mod, "HFDownloader", PatchedHFDownloader)
+
+        from Commons.Exceptions import ModelLoadError
+
+        with pytest.raises(
+            ModelLoadError,
+            match=("Consider cleaning: " "C:/hf-cache/models--test-org--test-embed"),
+        ):
+            mc.get_hf_embeddings()
+
+    def test_retry_failure_message_mentions_legacy_model_dir_metadata(
+        self, monkeypatch
+    ):
+        """When model_dir is absent in metadata, explain legacy field behavior."""
+        mc = _build_models_cache()
+
+        def always_fail(**kwargs):
+            raise OSError("Model still unavailable")
+
+        monkeypatch.setattr(_mc_mod, "HuggingFaceEmbeddings", always_fail)
+
+        class PatchedHFDownloader:
+            def __init__(self):
+                pass
+
+            def download(self, key):
+                return {}
+
+            def get_model_dir(self, key):
+                return ""
+
+        monkeypatch.setattr(_mc_mod, "HFDownloader", PatchedHFDownloader)
+
+        from Commons.Exceptions import ModelLoadError
+
+        with pytest.raises(
+            ModelLoadError,
+            match="predates the 'model_dir' field",
+        ):
+            mc.get_hf_embeddings()
+
     def test_cuda_oom_falls_back_to_cpu(self, monkeypatch):
         """CUDA OOM during load should trigger CPU fallback."""
         mc = _build_models_cache(cfg_overrides={"USE_CPU": False})
@@ -686,6 +743,75 @@ class TestGetCrossEncoder:
 
         assert mc.use_cpu is True
         assert encoder is not None
+
+    def test_failure_message_includes_model_name_and_model_dir(
+        self, monkeypatch, tmp_path
+    ):
+        """Failure hint should include model name and concrete model directory."""
+        mc = _build_models_cache()
+        fake_local = tmp_path / "cross-model"
+        fake_local.mkdir()
+
+        class PatchedHFDownloader:
+            def __init__(self):
+                pass
+
+            def download(self, key):
+                return {
+                    "local_path": str(fake_local),
+                    "model_dir": "C:/hf-cache/models--cross-encoder--mmarco-mMiniLMv2-L12-H384-v1",
+                }
+
+        def failing_cross_encoder(**kwargs):
+            raise RuntimeError("simulated cross-encoder init failure")
+
+        monkeypatch.setattr(_mc_mod, "HFDownloader", PatchedHFDownloader)
+        monkeypatch.setattr(_mc_mod, "CrossEncoder", failing_cross_encoder)
+
+        from Commons.Exceptions import ModelLoadError
+
+        with pytest.raises(
+            ModelLoadError,
+            match=(
+                "Consider deleting cache for model 'test-cross-model' at: "
+                "C:/hf-cache/models--cross-encoder--mmarco-mMiniLMv2-L12-H384-v1"
+            ),
+        ):
+            mc.get_cross_encoder()
+
+    def test_cross_failure_message_mentions_legacy_model_dir_metadata(
+        self,
+        monkeypatch,
+        tmp_path,
+    ):
+        """Cross-encoder failure should explain missing legacy model_dir field."""
+        mc = _build_models_cache()
+        fake_local = tmp_path / "cross-model"
+        fake_local.mkdir()
+
+        class PatchedHFDownloader:
+            def __init__(self):
+                pass
+
+            def download(self, key):
+                return {"local_path": str(fake_local)}
+
+            def get_model_dir(self, key):
+                return ""
+
+        def failing_cross_encoder(**kwargs):
+            raise RuntimeError("simulated cross-encoder init failure")
+
+        monkeypatch.setattr(_mc_mod, "HFDownloader", PatchedHFDownloader)
+        monkeypatch.setattr(_mc_mod, "CrossEncoder", failing_cross_encoder)
+
+        from Commons.Exceptions import ModelLoadError
+
+        with pytest.raises(
+            ModelLoadError,
+            match="predates the 'model_dir' field",
+        ):
+            mc.get_cross_encoder()
 
 
 # ===================================================================

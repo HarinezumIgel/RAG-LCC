@@ -135,7 +135,7 @@ def test_indirect_dict_resolves_dotted_alias_target() -> None:
 
 
 def test_config_global_validate_absolute_path_rejects_indirection(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, capsys
 ) -> None:
     import Configuration.Config_Global as cfg_global
 
@@ -144,17 +144,22 @@ def test_config_global_validate_absolute_path_rejects_indirection(
 
     monkeypatch.setattr(cfg_global, alias_name, alias_value, raising=False)
 
-    with pytest.raises(RuntimeError, match="direct absolute path"):
+    with pytest.raises(SystemExit) as exc_info:
         cfg_global._validate_absolute_path(f"${alias_name}", "unit_test")
+    assert exc_info.value.code == 1
+    assert "direct absolute path" in capsys.readouterr().err
 
 
 def test_config_global_validate_absolute_path_rejects_relative_alias(
     monkeypatch,
+    capsys,
 ) -> None:
     import Configuration.Config_Global as cfg_global
 
     alias_name = "_TEST_RELATIVE_PATH_ALIAS"
     monkeypatch.setattr(cfg_global, alias_name, "relative/path", raising=False)
 
-    with pytest.raises(RuntimeError, match="direct absolute path"):
+    with pytest.raises(SystemExit) as exc_info:
         cfg_global._validate_absolute_path(f"${alias_name}", "unit_test")
+    assert exc_info.value.code == 1
+    assert "direct absolute path" in capsys.readouterr().err

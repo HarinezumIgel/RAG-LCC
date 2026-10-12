@@ -198,8 +198,8 @@ class Orchestrator:
         if field_name.startswith("enable_")
     )
 
-    def __init__(self, host: Any) -> None:
-        self._host = host
+    def __init__(self, rag_chat_impl: Any) -> None:
+        self._rag_chat_impl = rag_chat_impl
         self._last_language_status_signature: (
             tuple[
                 str,
@@ -226,7 +226,7 @@ class Orchestrator:
         self._respect_legacy_retrieve_mode = True
 
     def _cfg_get_list(self, key: str, default: list[Any]) -> list[Any]:
-        cfg = getattr(self._host, "cfg", None)
+        cfg = getattr(self._rag_chat_impl, "cfg", None)
         if cfg is None or not hasattr(cfg, "get_list"):
             return list(default)
         try:
@@ -235,7 +235,7 @@ class Orchestrator:
             return list(default)
 
     def _cfg_get_dict(self, key: str, default: dict[str, Any]) -> dict[str, Any]:
-        cfg = getattr(self._host, "cfg", None)
+        cfg = getattr(self._rag_chat_impl, "cfg", None)
         if cfg is None or not hasattr(cfg, "get_dict"):
             return dict(default)
         try:
@@ -244,7 +244,7 @@ class Orchestrator:
             return dict(default)
 
     def _cfg_get_str(self, key: str, default: str) -> str:
-        cfg = getattr(self._host, "cfg", None)
+        cfg = getattr(self._rag_chat_impl, "cfg", None)
         if cfg is None or not hasattr(cfg, "get_str"):
             return default
         try:
@@ -539,7 +539,7 @@ class Orchestrator:
         color: str | None = BRIGHT_MAGENTA,
     ) -> None:
         """Write retrieval orchestration lines with PrettyWriter always-on semantics."""
-        pretty = getattr(self._host, "pretty", None)
+        pretty = getattr(self._rag_chat_impl, "pretty", None)
         if pretty is None or not hasattr(pretty, "write"):
             return
 
@@ -573,7 +573,7 @@ class Orchestrator:
         color: str | None = CYAN,
     ) -> None:
         """Write MultiQuery lines with PrettyWriter always-on semantics."""
-        pretty = getattr(self._host, "pretty", None)
+        pretty = getattr(self._rag_chat_impl, "pretty", None)
         if pretty is None or not hasattr(pretty, "write"):
             return
 
@@ -739,7 +739,7 @@ class Orchestrator:
             confidence_map[stage_name] = step_confidence
             mySession.orchestration_step_confidence = confidence_map  # type: ignore[attr-defined]
 
-            confidence_logger = getattr(self._host, "confidence_logger", None)
+            confidence_logger = getattr(self._rag_chat_impl, "confidence_logger", None)
             if confidence_logger is not None and hasattr(confidence_logger, "log_step"):
                 confidence_logger.log_step(
                     mySession,
@@ -1478,17 +1478,17 @@ class Orchestrator:
         )
 
     def _prepare_session(self, mySession: Session) -> str:
-        return self._host._prepare_session(mySession)
+        return self._rag_chat_impl._prepare_session(mySession)
 
     def _normalize_query(
         self,
         mySession: Session,
         user_query_original: str,
     ) -> tuple[str, list[str]]:
-        return self._host._normalize_query(mySession, user_query_original)
+        return self._rag_chat_impl._normalize_query(mySession, user_query_original)
 
     def _check_gates(self, mySession: Session, final_query: str) -> bool:
-        return self._host._check_gates(mySession, final_query)
+        return self._rag_chat_impl._check_gates(mySession, final_query)
 
     def _resolve_plan(self, mySession: Session) -> _RetrievalPlan:
         user_query_original = self._prepare_session(mySession)
@@ -1554,21 +1554,21 @@ class Orchestrator:
         web_mode: str = str(os.environ.get("WEB_SEARCH_MODE", "0")).strip().lower()
         if web_mode == "0":
             if retrieve_mode == "WEB":
-                self._host.pretty.write(
+                self._rag_chat_impl.pretty.write(
                     "W",
                     "Web",
                     'retrieve_mode=WEB requested but WEB_SEARCH_MODE="0" '
                     "— no results will be returned.",
                 )
             else:
-                self._host.pretty.write(
+                self._rag_chat_impl.pretty.write(
                     "W",
                     "Web",
                     'Web search blocked by administrator (WEB_SEARCH_MODE = "0") — skipping',
                 )
             return web_docs
         if web_mode != "1":
-            self._host.pretty.write(
+            self._rag_chat_impl.pretty.write(
                 "W",
                 "Web",
                 f"Web search blocked (WEB_SEARCH_MODE = {web_mode!r}) — skipping",
@@ -1580,38 +1580,47 @@ class Orchestrator:
             if retrieve_mode == "WEB"
             else "Querying web search..."
         )
-        self._host.pretty.write("I", "Web", label)
-        self._host.perf_logger.log("RAGChatImpl._retrieve", "chat", "start web block")
+        self._rag_chat_impl.pretty.write("I", "Web", label)
+        self._rag_chat_impl.perf_logger.log(
+            "RAGChatImpl._retrieve", "chat", "start web block"
+        )
         _t_web = time.perf_counter()
-        web_docs = self._host.web_retriever.query(
+        web_fetch_k = getattr(mySession, "web_fetch_k", None)
+        if web_fetch_k is None:
+            web_fetch_k = (
+                self._rag_chat_impl.cfg.get_int("_WEB_SEARCH.max_results") or 5
+            )
+        web_docs = self._rag_chat_impl.web_retriever.query(
             mySession.query or "",
-            k=self._host.cfg.get_int("_WEB_SEARCH.max_results") or 5,
+            k=web_fetch_k,
             fetch_page_content=bool(mySession.fetch_page_content),
             original_query=user_query_original,
             collection=mySession.collection_name or "",
         )
-        self._host.pretty.write(
+        self._rag_chat_impl.pretty.write(
             "O",
             "Web",
             f"Web search returned {len(web_docs)} results",
             color=CYAN,
         )
-        self._host.perf_logger.log(
+        self._rag_chat_impl.perf_logger.log(
             "RAGChatImpl._retrieve",
             "chat",
             f"stop  web block n={len(web_docs)} elapsed={time.perf_counter() - _t_web:.3f}s",
         )
         if DebugHelper.check_session(mySession, 10):
-            self._host._print_web_debug(web_docs)
+            self._rag_chat_impl._print_web_debug(web_docs)
 
         # Apply optional pre-filters to trim noisy web snippets before merge.
-        pre_bm25: float = self._host.cfg.get_float("_WEB_SEARCH.bm25_pre_filter") or 0.0
+        pre_bm25: float = (
+            self._rag_chat_impl.cfg.get_float("_WEB_SEARCH.bm25_pre_filter") or 0.0
+        )
         pre_cosine: float = (
-            self._host.cfg.get_float("_WEB_SEARCH.cosine_pre_filter") or 0.0
+            self._rag_chat_impl.cfg.get_float("_WEB_SEARCH.cosine_pre_filter") or 0.0
         )
         if web_docs and (pre_bm25 > 0.0 or pre_cosine > 0.0):
             if DebugHelper.check_session(mySession, 30):
-                self._host.pretty.write(
+                self._rag_chat_impl.pretty.write(
                     "D",
                     "WebPreFilter",
                     f"Pre-filtering {len(web_docs)} web result(s) — "
@@ -1622,12 +1631,12 @@ class Orchestrator:
             before_pre = len(web_docs)
             if pre_bm25 > 0.0:
                 docs_before_bm25 = web_docs
-                web_docs = self._host.web_pre_filter.bm25_prefilter(
+                web_docs = self._rag_chat_impl.web_pre_filter.bm25_prefilter(
                     web_docs,
                     mySession.query or "",
                 )
                 if DebugHelper.check_session(mySession, 30):
-                    self._host.pretty.write(
+                    self._rag_chat_impl.pretty.write(
                         "D",
                         "WebPreFilter",
                         f"After BM25 pre-filter: {len(web_docs)}/{before_pre} kept",
@@ -1637,24 +1646,24 @@ class Orchestrator:
                     dropped_bm25 = [
                         d for d in docs_before_bm25 if id(d) not in kept_set
                     ]
-                    self._host._print_web_prefilter_debug(
+                    self._rag_chat_impl._print_web_prefilter_debug(
                         web_docs,
                         dropped_bm25,
                         "BM25",
                         pre_bm25,
                     )
             if pre_cosine > 0.0 and web_docs:
-                pre_query_vec: list[float] = self._host.embedder.embed_query(
+                pre_query_vec: list[float] = self._rag_chat_impl.embedder.embed_query(
                     mySession.query or ""
                 )
                 docs_before_cosine = web_docs
-                web_docs = self._host.web_pre_filter.cosine_prefilter(
+                web_docs = self._rag_chat_impl.web_pre_filter.cosine_prefilter(
                     web_docs,
                     mySession.query or "",
                     query_vec=pre_query_vec,
                 )
                 if DebugHelper.check_session(mySession, 30):
-                    self._host.pretty.write(
+                    self._rag_chat_impl.pretty.write(
                         "D",
                         "WebPreFilter",
                         f"After cosine pre-filter: {len(web_docs)}/{before_pre} kept",
@@ -1664,7 +1673,7 @@ class Orchestrator:
                     dropped_cosine = [
                         d for d in docs_before_cosine if id(d) not in kept_set
                     ]
-                    self._host._print_web_prefilter_debug(
+                    self._rag_chat_impl._print_web_prefilter_debug(
                         web_docs,
                         dropped_cosine,
                         "Cosine",
@@ -1679,7 +1688,7 @@ class Orchestrator:
         local_docs: _LocalDocs,
         web_docs: list[Any],
     ) -> Tuple[str, int]:
-        chosen = self._host._merge_and_select(
+        chosen = self._rag_chat_impl._merge_and_select(
             mySession,
             local_docs.vector_docs,
             local_docs.bm25_docs,
@@ -1687,7 +1696,7 @@ class Orchestrator:
             local_docs.regex_docs,
             web_docs,
         )
-        return self._host._build_context(mySession, chosen)
+        return self._rag_chat_impl._build_context(mySession, chosen)
 
     def _run_merge_and_context_stage(
         self,
@@ -1706,7 +1715,7 @@ class Orchestrator:
             f"retrieval completed chosen={count} context_chars={len(context)}",
         )
 
-        confidence_logger = getattr(self._host, "confidence_logger", None)
+        confidence_logger = getattr(self._rag_chat_impl, "confidence_logger", None)
         if confidence_logger is not None and hasattr(confidence_logger, "log_step"):
             confidence_logger.log_step(
                 mySession,
@@ -1725,12 +1734,12 @@ class Orchestrator:
         bm25_query: str,
         orig_translated_query_en: str,
     ) -> _GuardrailInputs:
-        """Resolve guardrail query inputs using host helper semantics."""
+        """Resolve guardrail query inputs using RAGChatImpl helper semantics."""
         (
             primary_query,
             guardrail_query,
             use_guardrail,
-        ) = self._host._resolve_guardrail_queries(
+        ) = self._rag_chat_impl._resolve_guardrail_queries(
             bm25_query=bm25_query,
             orig_translated_query_en=orig_translated_query_en,
         )
@@ -1834,7 +1843,7 @@ class Orchestrator:
         use_guardrail: bool,
         file_filter: dict[str, Any] | None,
     ) -> tuple[dict[str, list[Any]], int, int]:
-        """Run one indexed-spec stage through the host retriever executor."""
+        """Run one indexed-spec stage through the RAGChatImpl retriever executor."""
         empty_docs: dict[str, list[Any]] = {
             "BM25": [],
             "Graph": [],
@@ -1844,7 +1853,7 @@ class Orchestrator:
             return empty_docs, 0, 0
 
         stage_docs, top_k_orig_query_en, top_k_post_rewrite_query_en = (
-            self._host._run_indexed_local_retrievers(
+            self._rag_chat_impl._run_indexed_local_retrievers(
                 mySession,
                 indexed_specs=indexed_specs,
                 primary_query=primary_query,
@@ -1957,7 +1966,7 @@ class Orchestrator:
                 (
                     total_top_k_orig_query_en,
                     total_top_k_post_rewrite_query_en,
-                ) = self._host._accumulate_topk_counts(
+                ) = self._rag_chat_impl._accumulate_topk_counts(
                     total_top_k_orig_query_en,
                     total_top_k_post_rewrite_query_en,
                     stage_top_k_orig_query_en,
@@ -2055,10 +2064,12 @@ class Orchestrator:
 
     def _normalize_language_bucket(self, language: Any) -> str | None:
         """Normalize a language label into a lower-case bucket code."""
-        host_normalizer = getattr(self._host, "_normalize_language_bucket", None)
-        if callable(host_normalizer):
+        impl_normalizer = getattr(
+            self._rag_chat_impl, "_normalize_language_bucket", None
+        )
+        if callable(impl_normalizer):
             try:
-                normalized_obj = host_normalizer(language)
+                normalized_obj = impl_normalizer(language)
             except Exception:
                 normalized_obj = None
             normalized_text = str(normalized_obj or "").strip().lower()
@@ -2069,7 +2080,7 @@ class Orchestrator:
         if not text:
             return None
 
-        shared = getattr(self._host, "_shared", None)
+        shared = getattr(self._rag_chat_impl, "_shared", None)
         mapping_obj = getattr(shared, "lang_name_to_code", None)
         if isinstance(mapping_obj, dict):
             mapping = cast(dict[str, Any], mapping_obj)
@@ -2110,7 +2121,7 @@ class Orchestrator:
         file_filter: dict[str, Any] | None,
     ) -> list[str]:
         """Discover normalized language values from collection metadata."""
-        collection = getattr(self._host, "collection", None)
+        collection = getattr(self._rag_chat_impl, "collection", None)
         if collection is None or not hasattr(collection, "get"):
             return []
 
@@ -2147,7 +2158,7 @@ class Orchestrator:
 
     def _active_configured_language_codes(self) -> set[str]:
         """Return active language codes from shared ACTIVE_LANGUAGES config."""
-        cfg = getattr(self._host, "cfg", None)
+        cfg = getattr(self._rag_chat_impl, "cfg", None)
         if cfg is None:
             return {"en"}
 
@@ -2172,7 +2183,7 @@ class Orchestrator:
         )
 
         collection_name = str(
-            getattr(self._host, "collection_name", None)
+            getattr(self._rag_chat_impl, "collection_name", None)
             or getattr(mySession, "collection_name", None)
             or ""
         )
@@ -2198,7 +2209,7 @@ class Orchestrator:
         )
 
         if undefined_languages:
-            pretty = getattr(self._host, "pretty", None)
+            pretty = getattr(self._rag_chat_impl, "pretty", None)
             if pretty is None or not hasattr(pretty, "write"):
                 return
             undefined_label = ", ".join(undefined_languages)
@@ -2319,18 +2330,20 @@ class Orchestrator:
     ) -> tuple[str, str]:
         """Return per-language query forms for one Graph/Regex iteration.
 
-        Delegates query-shaping policy to the host seam when available.
+        Delegates query-shaping policy to the RAGChatImpl seam when available.
         This keeps translation/backend policy centralized in RAGChatImpl.
         """
         target_language = self._normalize_language_bucket(language_bucket)
         stage_primary_query = primary_query
         stage_guardrail_query = guardrail_query
 
-        host_shaper = getattr(self._host, "_shape_graph_regex_stage_queries", None)
-        if callable(host_shaper):
+        impl_shaper = getattr(
+            self._rag_chat_impl, "_shape_graph_regex_stage_queries", None
+        )
+        if callable(impl_shaper):
             try:
                 try:
-                    shaped_obj = host_shaper(
+                    shaped_obj = impl_shaper(
                         mySession,
                         language_bucket=target_language,
                         primary_query=primary_query,
@@ -2343,7 +2356,7 @@ class Orchestrator:
                         ),
                     )
                 except TypeError:
-                    shaped_obj = host_shaper(
+                    shaped_obj = impl_shaper(
                         mySession,
                         language_bucket=target_language,
                         primary_query=primary_query,
@@ -2352,12 +2365,12 @@ class Orchestrator:
                 if isinstance(shaped_obj, tuple):
                     shaped_tuple = cast(tuple[Any, ...], shaped_obj)
                     if len(shaped_tuple) == 2:
-                        host_primary_obj, host_guardrail_obj = shaped_tuple
+                        impl_primary_obj, impl_guardrail_obj = shaped_tuple
                         stage_primary_query = (
-                            str(host_primary_obj or "").strip() or primary_query
+                            str(impl_primary_obj or "").strip() or primary_query
                         )
                         stage_guardrail_query = (
-                            str(host_guardrail_obj or "").strip() or guardrail_query
+                            str(impl_guardrail_obj or "").strip() or guardrail_query
                         )
             except Exception:
                 stage_primary_query = primary_query
@@ -2554,7 +2567,7 @@ class Orchestrator:
                 (
                     top_k_orig_query_en,
                     top_k_post_rewrite_query_en,
-                ) = self._host._accumulate_topk_counts(
+                ) = self._rag_chat_impl._accumulate_topk_counts(
                     top_k_orig_query_en,
                     top_k_post_rewrite_query_en,
                     stage_top_k_orig_query_en,
@@ -2638,7 +2651,7 @@ class Orchestrator:
             vector_docs,
             vector_top_k_orig_query_en,
             vector_top_k_post_rewrite_query_en,
-        ) = self._host._run_vector_retriever_with_guardrail(
+        ) = self._rag_chat_impl._run_vector_retriever_with_guardrail(
             mySession=mySession,
             primary_query=primary_query,
             guardrail_query=guardrail_query,
@@ -2723,7 +2736,7 @@ class Orchestrator:
             native_docs,
             _native_top_k_orig,
             _native_top_k_post,
-        ) = self._host._run_vector_retriever_with_guardrail(
+        ) = self._rag_chat_impl._run_vector_retriever_with_guardrail(
             mySession=mySession,
             primary_query=original_query_leg.query,
             guardrail_query="",
@@ -2768,7 +2781,7 @@ class Orchestrator:
                 bm25_mode_enabled,
                 graph_mode_enabled,
                 regex_mode_enabled,
-            ) = self._host._mode_flags_for_local_retrievers(mode_text)
+            ) = self._rag_chat_impl._mode_flags_for_local_retrievers(mode_text)
             vector_enabled = bool(vector_enabled and vector_mode_enabled)
             bm25_enabled = bool(bm25_enabled and bm25_mode_enabled)
             graph_enabled = bool(graph_enabled and graph_mode_enabled)
@@ -2801,7 +2814,7 @@ class Orchestrator:
             guardrail_query=guardrail_inputs.guardrail_query,
             use_guardrail=guardrail_inputs.use_guardrail,
             alternate_queries=list(alternate_queries),
-            file_filter=self._host._resolve_file_filter(mySession),
+            file_filter=self._rag_chat_impl._resolve_file_filter(mySession),
             original_query_leg=original_query_leg,
         )
 
@@ -2836,7 +2849,7 @@ class Orchestrator:
             alternate_queries=alternate_queries_used,
         )
         top_k_orig_query_en, top_k_post_rewrite_query_en = (
-            self._host._accumulate_topk_counts(
+            self._rag_chat_impl._accumulate_topk_counts(
                 top_k_orig_query_en,
                 top_k_post_rewrite_query_en,
                 vector_stage_result.top_k_orig_query_en,
@@ -2867,7 +2880,7 @@ class Orchestrator:
                 color=BRIGHT_MAGENTA,
             )
 
-        indexed_specs = self._host._indexed_retriever_specs(
+        indexed_specs = self._rag_chat_impl._indexed_retriever_specs(
             mySession,
             bm25_enabled=local_inputs.bm25_enabled,
             graph_enabled=local_inputs.graph_enabled,
@@ -2883,7 +2896,7 @@ class Orchestrator:
             shape_queries=local_inputs.indexed_query_shaping,
         )
         top_k_orig_query_en, top_k_post_rewrite_query_en = (
-            self._host._accumulate_topk_counts(
+            self._rag_chat_impl._accumulate_topk_counts(
                 top_k_orig_query_en,
                 top_k_post_rewrite_query_en,
                 indexed_stage_result.top_k_orig_query_en,
@@ -3008,7 +3021,7 @@ class Orchestrator:
         """Persist guardrail top-k counters only when guardrail execution is active."""
         if not use_guardrail:
             return
-        self._host._store_guardrail_retrieval_topk(
+        self._rag_chat_impl._store_guardrail_retrieval_topk(
             mySession,
             top_k_orig_query_en=top_k_orig_query_en,
             top_k_post_rewrite_query_en=top_k_post_rewrite_query_en,
@@ -3112,7 +3125,7 @@ class Orchestrator:
                 f"graph={len(local_docs.graph_docs)} regex={len(local_docs.regex_docs)}",
             )
 
-            confidence_logger = getattr(self._host, "confidence_logger", None)
+            confidence_logger = getattr(self._rag_chat_impl, "confidence_logger", None)
             if confidence_logger is not None and hasattr(confidence_logger, "log_step"):
                 total_local_docs = (
                     len(local_docs.vector_docs)
@@ -3140,7 +3153,7 @@ class Orchestrator:
                 "local stage skipped " f"(web_mode={stage_gates.web_mode})",
             )
 
-            confidence_logger = getattr(self._host, "confidence_logger", None)
+            confidence_logger = getattr(self._rag_chat_impl, "confidence_logger", None)
             if confidence_logger is not None and hasattr(confidence_logger, "log_step"):
                 confidence_logger.log_step(
                     mySession,
@@ -3164,7 +3177,7 @@ class Orchestrator:
             )
             self._trace(mySession, f"web docs fetched count={len(web_docs)}")
 
-            confidence_logger = getattr(self._host, "confidence_logger", None)
+            confidence_logger = getattr(self._rag_chat_impl, "confidence_logger", None)
             if confidence_logger is not None and hasattr(confidence_logger, "log_step"):
                 confidence_logger.log_step(
                     mySession,
@@ -3181,7 +3194,7 @@ class Orchestrator:
                 "web stage skipped " f"(web_mode={stage_gates.web_mode})",
             )
 
-            confidence_logger = getattr(self._host, "confidence_logger", None)
+            confidence_logger = getattr(self._rag_chat_impl, "confidence_logger", None)
             if confidence_logger is not None and hasattr(confidence_logger, "log_step"):
                 confidence_logger.log_step(
                     mySession,
@@ -3226,7 +3239,7 @@ class Orchestrator:
             self._trace(
                 mySession, "gated: retrieval aborted by policy or retrieval gate"
             )
-            confidence_logger = getattr(self._host, "confidence_logger", None)
+            confidence_logger = getattr(self._rag_chat_impl, "confidence_logger", None)
             if confidence_logger is not None and hasattr(confidence_logger, "log_step"):
                 confidence_logger.log_step(
                     mySession,
@@ -3331,10 +3344,10 @@ class Orchestrator:
         orig_translated_query_en: str = "",
         resolved_guardrail: _GuardrailInputs | None = None,
     ) -> tuple[list[Any], list[Any], list[Any], list[Any]]:
-        """Run local retrievers and guardrail fusion using host retriever helpers.
+        """Run local retrievers and guardrail fusion using RAGChatImpl retriever helpers.
 
         This method centralizes local retrieval orchestration while keeping the
-        concrete retriever implementations on the host object.
+        concrete retriever implementations on the RAGChatImpl object.
         """
         self._flow_enable_indexed_query_shaping = True
         self._flow_enable_indexed_query_translation = True
@@ -3372,9 +3385,9 @@ class Orchestrator:
         self._emit_session_overrides(mySession)
         self._trace(mySession, "start retrieval turn")
 
-        if not self._host._set_vector_store(mySession):
+        if not self._rag_chat_impl._set_vector_store(mySession):
             self._trace(mySession, "vector store setup failed; aborting retrieval")
-            confidence_logger = getattr(self._host, "confidence_logger", None)
+            confidence_logger = getattr(self._rag_chat_impl, "confidence_logger", None)
             if confidence_logger is not None and hasattr(confidence_logger, "log_step"):
                 confidence_logger.log_step(
                     mySession,
@@ -3386,7 +3399,9 @@ class Orchestrator:
                 )
             return "", 0
 
-        self._host.perf_logger.log("RAGChatImpl._retrieve", "chat", "start retrieve")
+        self._rag_chat_impl.perf_logger.log(
+            "RAGChatImpl._retrieve", "chat", "start retrieve"
+        )
 
         pre_gate_result = self._run_pre_gate_pipeline(
             mySession,
@@ -3398,7 +3413,7 @@ class Orchestrator:
         pipeline_inputs = pre_gate_result.post_gate_inputs
         if pipeline_inputs is None:
             self._trace(mySession, "pre-gate pipeline produced no post-gate inputs")
-            confidence_logger = getattr(self._host, "confidence_logger", None)
+            confidence_logger = getattr(self._rag_chat_impl, "confidence_logger", None)
             if confidence_logger is not None and hasattr(confidence_logger, "log_step"):
                 confidence_logger.log_step(
                     mySession,

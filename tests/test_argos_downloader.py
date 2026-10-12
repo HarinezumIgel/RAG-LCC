@@ -12,7 +12,7 @@ import hashlib
 import json
 import os
 import sys
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
@@ -78,8 +78,21 @@ class StubHelpers:
 
 
 class StubFileUtils:
-    def __init__(self):
+    def __init__(self, project_root: str):
         self.deleted: list[str] = []
+        self.project_root = os.path.normpath(os.path.abspath(project_root))
+
+    def is_safe_delete_path(self, path: str) -> bool:
+        normalized_path = os.path.normpath(os.path.abspath(path))
+        if normalized_path in ("", os.path.sep):
+            return False
+        return normalized_path == self.project_root or normalized_path.startswith(
+            self.project_root + os.sep
+        )
+
+    def passes_delete_guard(self, path: str, *, on_error=None) -> bool:
+        _ = on_error
+        return self.is_safe_delete_path(path)
 
     def delete_file_or_dir(self, path):
         self.deleted.append(path)
@@ -91,9 +104,15 @@ class StubFileUtils:
 
 
 class StubArgosPackage:
-    def __init__(self, from_code: str, to_code: str):
+    def __init__(
+        self,
+        from_code: str,
+        to_code: str,
+        package_path: str | None = None,
+    ):
         self.from_code = from_code
         self.to_code = to_code
+        self.package_path = package_path
 
 
 def _installed_packages():
@@ -126,7 +145,7 @@ def _build(tmp_path, *, write_license=False, write_meta=None):
 
     dl.shared = StubSharedHelpers()
     dl.helpers = StubHelpers()
-    dl.file_utils = StubFileUtils()
+    dl.file_utils = StubFileUtils(str(tmp_path))
     dl.pretty = StubPrettyWriter()
     dl.logger = StubLogger()
 
@@ -276,7 +295,7 @@ class TestEnsurePackagesDeclineDownload:
 
 
 # ===================================================================
-# ensure_packages — full acceptance (mock install + tokenizer resources)
+# ensure_packages — full acceptance (mock install)
 # ===================================================================
 
 
@@ -292,7 +311,7 @@ class TestEnsurePackagesFullAccept:
         installed = []
         monkeypatch.setattr(
             "argostranslate.package.get_installed_packages",
-            lambda: [],
+            lambda: cast(list[Any], []),
         )
         monkeypatch.setattr(dl, "_install_packages", lambda: installed.append(True))
         responses = iter(["", "y", "y"])
@@ -310,23 +329,17 @@ class TestEnsurePackagesFullAccept:
 
         # Stub out network-hitting methods
         installed = []
-        tokenizer_resources_downloaded = []
         monkeypatch.setattr(dl, "_install_packages", lambda: installed.append(True))
-        monkeypatch.setattr(
-            dl,
-            "_download_tokenizer_resources",
-            lambda: tokenizer_resources_downloaded.append(True),
-        )
 
         result = dl.ensure_packages()
-        return dl, result, installed, tokenizer_resources_downloaded
+        return dl, result, installed
 
     def test_returns_true(self, tmp_path, monkeypatch):
-        _, result, _, _ = self._accept_and_install(tmp_path, monkeypatch)
+        _, result, _ = self._accept_and_install(tmp_path, monkeypatch)
         assert result is True
 
     def test_writes_consent_meta(self, tmp_path, monkeypatch):
-        dl, _, _, _ = self._accept_and_install(tmp_path, monkeypatch)
+        dl, _, _ = self._accept_and_install(tmp_path, monkeypatch)
         assert os.path.isfile(dl.license_meta_path)
         with open(dl.license_meta_path, "r") as f:
             meta = json.load(f)
@@ -336,19 +349,17 @@ class TestEnsurePackagesFullAccept:
         assert meta["component"] == "argostranslate"
 
     def test_copies_license_to_license_dir(self, tmp_path, monkeypatch):
-        dl, _, _, _ = self._accept_and_install(tmp_path, monkeypatch)
+        dl, _, _ = self._accept_and_install(tmp_path, monkeypatch)
         assert os.path.isfile(dl.license_path)
         with open(dl.license_path, "r") as f:
             assert f.read() == _LICENSE_TEXT
 
     def test_calls_install(self, tmp_path, monkeypatch):
-        _, _, installed, _tokenizer_resources = self._accept_and_install(
-            tmp_path, monkeypatch
-        )
+        _, _, installed = self._accept_and_install(tmp_path, monkeypatch)
         assert installed == [True]
 
     def test_meta_contains_identity_keys(self, tmp_path, monkeypatch):
-        dl, _, _, _ = self._accept_and_install(tmp_path, monkeypatch)
+        dl, _, _ = self._accept_and_install(tmp_path, monkeypatch)
         with open(dl.license_meta_path, "r") as f:
             meta = json.load(f)
         assert meta["host"] == "test-host"
@@ -356,14 +367,14 @@ class TestEnsurePackagesFullAccept:
         assert meta["accepted_by_source"] == "test"
 
     def test_meta_languages_match_config(self, tmp_path, monkeypatch):
-        _dl, _, _, _ = self._accept_and_install(tmp_path, monkeypatch)
+        _dl, _, _ = self._accept_and_install(tmp_path, monkeypatch)
         with open(_dl.download_meta_path, "r") as f:
             meta = json.load(f)
         assert meta["languages"] == [["en", "de"], ["en", "fr"]]
 
     def test_subsequent_run_skips_prompts(self, tmp_path, monkeypatch):
         """After a successful consent, the next call should not prompt."""
-        dl, _, _, _ = self._accept_and_install(tmp_path, monkeypatch)
+        dl, _, _ = self._accept_and_install(tmp_path, monkeypatch)
         # Now re-build pointing at the same tmp_path (meta already on disk)
         dl2 = _build(tmp_path, write_license=True)
         monkeypatch.setattr(
@@ -398,72 +409,126 @@ class TestRemoveConsent:
         dl.remove_consent()
         assert dl.file_utils.deleted == []
 
+    def test_skips_paths_outside_project_root(self, tmp_path):
+        meta = {"consent": True, "license_hash": _license_hash()}
+        dl = _build(tmp_path, write_license=True, write_meta=meta)
 
-# ===================================================================
-# remove_tokenizer_resources — path guard
-# ===================================================================
+        outside_path = tmp_path.parent / "outside_LICENSE.txt"
+        outside_path.write_text("license", encoding="utf-8")
+        dl.license_path = str(outside_path)
+
+        dl.remove_consent()
+
+        assert dl.license_meta_path in dl.file_utils.deleted
+        assert dl.download_meta_path in dl.file_utils.deleted
+        assert dl.license_path not in dl.file_utils.deleted
 
 
-class TestRemoveTokenizerResources:
-    def test_removes_existing_directory(self, tmp_path, monkeypatch):
-        resources_dir = str(tmp_path / "resources")
-        os.makedirs(resources_dir)
-        (tmp_path / "resources" / "en").mkdir()
-        monkeypatch.setattr("builtins.input", lambda *a: "y")
-
+class TestRemoveAllPathGuard:
+    def test_uninstalls_only_packages_with_guarded_paths(self, tmp_path, monkeypatch):
         dl = _build(tmp_path)
-        monkeypatch.setattr(
-            ArgosDownloader,
-            "tokenizer_resources_dir",
-            property(lambda _self: resources_dir),
+
+        safe_pkg = StubArgosPackage(
+            "en",
+            "de",
+            package_path=os.path.join(
+                str(tmp_path),
+                ".cache",
+                "argos",
+                "data",
+                "packages",
+                "translate-en_de",
+            ),
         )
-        dl.remove_tokenizer_resources()
+        outside_pkg = StubArgosPackage(
+            "en",
+            "fr",
+            package_path=os.path.join(
+                str(tmp_path.parent),
+                "outside",
+                "translate-en_fr",
+            ),
+        )
 
-        assert not os.path.isdir(resources_dir)
+        monkeypatch.setattr(dl, "installed_packages", lambda: [safe_pkg, outside_pkg])
+        monkeypatch.setattr("builtins.input", lambda _prompt="": "y")
 
-    def test_cancel_keeps_directory(self, tmp_path, monkeypatch):
-        resources_dir = str(tmp_path / "resources")
-        os.makedirs(resources_dir)
-        monkeypatch.setattr("builtins.input", lambda *a: "")  # decline
+        os.makedirs(str(safe_pkg.package_path), exist_ok=True)
 
+        import argostranslate.settings as argos_settings
+
+        monkeypatch.setattr(
+            argos_settings,
+            "package_data_dir",
+            os.path.join(str(tmp_path), ".cache", "argos", "data", "packages"),
+            raising=False,
+        )
+
+        captured: dict[str, Any] = {}
+
+        def _remove_packages(packages, *, on_uninstall_error=None):
+            captured["packages"] = list(packages)
+            return len(packages)
+
+        monkeypatch.setattr(
+            "Compliance.ArgosDownloader.remove_packages",
+            _remove_packages,
+        )
+
+        dl.remove_all()
+
+        removed_packages = cast(list[Any], captured.get("packages", []))
+        assert len(removed_packages) == 1
+        assert removed_packages[0].from_code == "en"
+        assert removed_packages[0].to_code == "de"
+
+    def test_skips_uninstall_when_package_directory_is_missing(
+        self,
+        tmp_path,
+        monkeypatch,
+    ):
         dl = _build(tmp_path)
-        monkeypatch.setattr(
-            ArgosDownloader,
-            "tokenizer_resources_dir",
-            property(lambda _self: resources_dir),
+
+        missing_dir_pkg = StubArgosPackage(
+            "en",
+            "de",
+            package_path=os.path.join(
+                str(tmp_path),
+                ".cache",
+                "argos",
+                "data",
+                "packages",
+                "translate-en_de",
+            ),
         )
-        dl.remove_tokenizer_resources()
 
-        assert os.path.isdir(resources_dir)
+        monkeypatch.setattr(dl, "installed_packages", lambda: [missing_dir_pkg])
+        monkeypatch.setattr("builtins.input", lambda _prompt="": "y")
 
-    def test_noop_when_directory_missing(self, tmp_path, monkeypatch):
-        resources_dir = str(tmp_path / "resources_nonexistent")
-        dl = _build(tmp_path)
+        import argostranslate.settings as argos_settings
+
         monkeypatch.setattr(
-            ArgosDownloader,
-            "tokenizer_resources_dir",
-            property(lambda _self: resources_dir),
+            argos_settings,
+            "package_data_dir",
+            os.path.join(str(tmp_path), ".cache", "argos", "data", "packages"),
+            raising=False,
         )
-        dl.remove_tokenizer_resources()
-        # Just check it doesn't crash
 
-    def test_blocks_drive_root(self, tmp_path, monkeypatch):
-        # rmtree is mocked so a drive/fs root is never actually deleted; if the
-        # guard is bypassed the AssertionError fails the test loudly.
-        def _fail_rmtree(*a, **kw):
-            raise AssertionError(
-                "shutil.rmtree reached with drive root — guard failed!"
-            )
+        captured: dict[str, Any] = {}
 
-        monkeypatch.setattr("shutil.rmtree", _fail_rmtree)
-        dl = _build(tmp_path)
+        def _remove_packages(packages, *, on_uninstall_error=None):
+            captured["packages"] = list(packages)
+            return len(packages)
+
         monkeypatch.setattr(
-            ArgosDownloader,
-            "tokenizer_resources_dir",
-            property(lambda _self: "C:\\"),
+            "Compliance.ArgosDownloader.remove_packages",
+            _remove_packages,
         )
-        dl.remove_tokenizer_resources()
-        assert any("Path Guard" in str(m) for m in dl.pretty.messages)
+
+        dl.remove_all()
+
+        removed_packages = cast(list[Any], captured.get("packages", []))
+        assert removed_packages == []
 
 
 # ===================================================================

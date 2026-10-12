@@ -64,6 +64,14 @@ class StubPrettyWriter:
         return None
 
 
+class CollectingPrettyWriter:
+    def __init__(self) -> None:
+        self.calls: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
+
+    def write(self, *a: Any, **kw: Any) -> None:
+        self.calls.append((a, kw))
+
+
 class StubSharedHelpers:
     """Lightweight tokenizer matching SharedHelpers.tokenize()."""
 
@@ -497,6 +505,30 @@ class TestLanguageAwareTokenization:
 
         assert tokens == ["dogs", "running"]
         assert nlp.calls == []
+
+    def test_spacy_unavailable_warning_emitted_once_per_model_language(self):
+        pretty = CollectingPrettyWriter()
+        r = _make_retriever(pretty=pretty)
+
+        r._warn_spacy_model_unavailable(
+            "de_core_news_sm",
+            language="de",
+            reason="model not installed",
+        )
+        r._warn_spacy_model_unavailable(
+            "de_core_news_sm",
+            language="de",
+            reason="model not installed",
+        )
+
+        warning_messages = [
+            str(args[2])
+            for args, _kwargs in pretty.calls
+            if len(args) >= 3 and args[1] == "BM25"
+        ]
+        assert len(warning_messages) == 1
+        assert "de_core_news_sm" in warning_messages[0]
+        assert "de_core_news_sm|de" in r._warned_spacy_model_unavailable
 
 
 # ===========================================================================

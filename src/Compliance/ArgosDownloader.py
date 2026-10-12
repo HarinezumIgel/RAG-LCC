@@ -19,13 +19,11 @@ Package-specific notices can be found in each installed package README.
 import json
 import logging
 import os
-import shutil
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Tuple, cast
 
 import requests
 
-from Commons.DriveRootGuard import is_drive_root, resolve_guard_path
 from Commons.Exceptions import ArgosConsentMissingError
 from Compliance.ArgosSpacySentencizerPatch import \
     prepare_argos_runtime_for_patch
@@ -46,7 +44,7 @@ from Gui.Colors import BRIGHT_BLUE, GREEN, ORANGE, RED, RESET, YELLOW
 from Gui.PrettyWriter import PrettyWriter
 from Helpers.FileUtils import FileUtils
 
-_CONSENT_DISCLAIMER = (
+consent_disclaimer = (
     "This record indicates technical acknowledgement of license terms. "
     "It does not constitute a legal contract or replace formal legal review."
 )
@@ -55,22 +53,11 @@ _CONSENT_DISCLAIMER = (
 class ArgosDownloader:
     """Manage Argos Translate package installation with license consent."""
 
-    _LICENSE_URL = (
+    license_url = (
         "https://raw.githubusercontent.com/argosopentech/argos-translate/master/LICENSE"
     )
-    _LICENSE_DIR_REL = os.path.join("ModelGovernance", "licenses", "argos_translate")
-    _CONSENT_DIR_REL = os.path.join("ModelGovernance", "consents", "argos_translate")
-    _TOKENIZER_RESOURCES_DEFAULT_DIR = os.path.join(
-        os.path.expanduser("~"), ".local", "share", "resources"
-    )
-    _TOKENIZER_RESOURCES_DEFAULT_PATH = os.path.normpath(
-        os.path.abspath(os.path.expanduser(_TOKENIZER_RESOURCES_DEFAULT_DIR))
-    )
-    if is_drive_root(_TOKENIZER_RESOURCES_DEFAULT_PATH):
-        raise RuntimeError(
-            "Invalid default tokenizer resources path: "
-            f"{_TOKENIZER_RESOURCES_DEFAULT_PATH!r} resolves to a drive/filesystem root."
-        )
+    license_dir_rel = os.path.join("ModelGovernance", "licenses", "argos_translate")
+    consent_dir_rel = os.path.join("ModelGovernance", "consents", "argos_translate")
 
     def __init__(
         self,
@@ -78,22 +65,24 @@ class ArgosDownloader:
         languages: List[Tuple[str, str]],
         *,
         emit_startup_inventory: bool = True,
+        emit_startup_warnings: bool = True,
     ) -> None:
         self.root: str = project_root
         self.languages: List[Tuple[str, str]] = languages
 
-        self.license_dir: str = os.path.join(project_root, self._LICENSE_DIR_REL)
+        self.license_dir: str = os.path.join(project_root, self.license_dir_rel)
         self.license_path: str = os.path.join(self.license_dir, "LICENSE.txt")
         self.license_meta_path: str = os.path.join(
             self.license_dir, "license_meta.json"
         )
-        self.consent_dir: str = os.path.join(project_root, self._CONSENT_DIR_REL)
+        self.consent_dir: str = os.path.join(project_root, self.consent_dir_rel)
         self.download_meta_path: str = os.path.join(
             self.consent_dir, "download_meta.json"
         )
 
         self.shared: SharedHelpers = SharedHelpers(
-            emit_startup_inventory=emit_startup_inventory
+            emit_startup_inventory=emit_startup_inventory,
+            emit_startup_warnings=emit_startup_warnings,
         )
         self.helpers: Helpers = Helpers()
         self.file_utils: FileUtils = FileUtils()
@@ -122,11 +111,6 @@ class ArgosDownloader:
             "Argos License",
             f"Consent valid for {n} configured language pair(s)",
             color=GREEN,
-        )
-        self.pretty.write(
-            "I",
-            "Tokenizer Resources",
-            self._tokenizer_resources_location_hint(),
         )
         return True
 
@@ -226,12 +210,12 @@ class ArgosDownloader:
 
         license_meta: Dict[str, Any] = {
             "component": "argostranslate",
-            "license_url": self._LICENSE_URL,
+            "license_url": self.license_url,
             "license_hash": license_hash,
             **identity,
             "accepted_at": now,
             "consent": True,
-            "disclaimer": _CONSENT_DISCLAIMER,
+            "disclaimer": consent_disclaimer,
         }
         had_license_meta = os.path.isfile(self.license_meta_path)
         had_download_meta = os.path.isfile(self.download_meta_path)
@@ -250,7 +234,7 @@ class ArgosDownloader:
             "accepted_at": now,
             "source": "downloaded",
             "consent": True,
-            "disclaimer": _CONSENT_DISCLAIMER,
+            "disclaimer": consent_disclaimer,
         }
         os.makedirs(self.consent_dir, exist_ok=True)
         with open(self.download_meta_path, "w", encoding="utf-8") as fh:
@@ -299,19 +283,99 @@ class ArgosDownloader:
                 "I", "Argos", "No packages installed — nothing to remove."
             )
             return
+
+        packages_root = ""
+        try:
+            from argostranslate import \
+                settings  # type: ignore[reportMissingTypeStubs]
+
+            packages_root = str(getattr(settings, "package_data_dir", "") or "").strip()
+        except Exception:
+            packages_root = ""
+
+        if packages_root and not self.file_utils.passes_delete_guard(packages_root):
+            self.pretty.write(
+                "E",
+                "Argos",
+                "Refusing package uninstall because Argos package root failed the path guard.",
+                color=RED,
+            )
+            return
+
+        guarded_packages: list[Any] = []
+        blocked_packages = 0
+        for pkg in installed:
+            from_code = str(getattr(pkg, "from_code", ""))
+            to_code = str(getattr(pkg, "to_code", ""))
+            package_path = str(
+                getattr(pkg, "package_path", "") or getattr(pkg, "path", "") or ""
+            ).strip()
+
+            if not package_path:
+                blocked_packages += 1
+                self.pretty.write(
+                    "W",
+                    "Argos",
+                    f"Skipping uninstall for {from_code} -> {to_code}: "
+                    "package path is unavailable.",
+                    color=YELLOW,
+                )
+                continue
+
+            if not self.file_utils.passes_delete_guard(package_path):
+                blocked_packages += 1
+                self.pretty.write(
+                    "W",
+                    "Argos",
+                    f"Skipping uninstall for {from_code} -> {to_code}: "
+                    f"path guard rejected '{package_path}'.",
+                    color=YELLOW,
+                )
+                continue
+
+            if not os.path.isdir(package_path):
+                blocked_packages += 1
+                self.pretty.write(
+                    "W",
+                    "Argos",
+                    f"Skipping uninstall for {from_code} -> {to_code}: "
+                    f"package directory '{package_path}' is not present.",
+                    color=YELLOW,
+                )
+                continue
+
+            guarded_packages.append(pkg)
+
+        if not guarded_packages:
+            self.pretty.write(
+                "W",
+                "Argos",
+                "No package paths passed the delete guard — nothing was removed.",
+                color=YELLOW,
+            )
+            return
+
         self.pretty.write(
             "W",
             "Argos",
-            f"About to uninstall {len(installed)} language package(s):",
+            f"About to uninstall {len(guarded_packages)} language package(s):",
             color=YELLOW,
         )
-        for pkg in installed:
+        for pkg in guarded_packages:
             print(f"    {pkg.from_code} \u2192 {pkg.to_code}")
         if input("Uninstall all of these? [y/N] ").strip().lower() != "y":
             self.pretty.write("I", "Argos", "Removal cancelled.")
             return
-        for pkg in installed:
+        for pkg in guarded_packages:
             print(f"  Removing {pkg.from_code} \u2192 {pkg.to_code} ...")
+
+        if blocked_packages:
+            self.pretty.write(
+                "W",
+                "Argos",
+                f"Skipped {blocked_packages} package(s) due to path guard failures.",
+                color=YELLOW,
+            )
 
         def _on_uninstall_error(from_code: str, to_code: str, exc: Exception) -> None:
             self.pretty.write(
@@ -321,9 +385,15 @@ class ArgosDownloader:
                 color=YELLOW,
             )
 
-        removed = remove_packages(installed, on_uninstall_error=_on_uninstall_error)
+        removed = remove_packages(
+            guarded_packages,
+            on_uninstall_error=_on_uninstall_error,
+        )
         self.pretty.write(
-            "O", "Argos", f"Removed {removed}/{len(installed)} package(s).", color=GREEN
+            "O",
+            "Argos",
+            f"Removed {removed}/{len(guarded_packages)} package(s).",
+            color=GREEN,
         )
 
     def installed_packages(self) -> list[Any]:
@@ -345,44 +415,10 @@ class ArgosDownloader:
         """Return metadata directories affected by consent cleanup."""
         return [self.license_dir, self.consent_dir]
 
-    @property
-    def tokenizer_resources_dir(self) -> str:
-        """Resolved absolute path of the tokenizer resources directory."""
-        return self._TOKENIZER_RESOURCES_DEFAULT_PATH
-
-    def remove_tokenizer_resources(self) -> None:
-        """Remove the tokenizer resources directory (outside project root)."""
-        abs_path = self.tokenizer_resources_dir
-
-        # Minimal safety: block drive/filesystem roots only.
-        if not self._passes_minimum_root_guard(abs_path):
-            return
-
-        if os.path.isdir(abs_path):
-            self.pretty.write(
-                "W",
-                "Tokenizer Resources",
-                f"About to permanently delete directory: {abs_path}",
-                color=YELLOW,
-            )
-            if input("Delete this directory? [y/N] ").strip().lower() != "y":
-                self.pretty.write("I", "Tokenizer Resources", "Removal cancelled.")
-                return
-            shutil.rmtree(abs_path)
-            self.pretty.write(
-                "O", "Tokenizer Resources", f"Removed {abs_path}", color=GREEN
-            )
-        else:
-            self.pretty.write(
-                "I",
-                "Tokenizer Resources",
-                "No tokenizer resources directory present - nothing to remove.",
-            )
-
     def remove_consent(self) -> None:
         """Remove consent metadata via FileUtils path guard."""
         for cleanup_dir in self.consent_cleanup_directories():
-            if not self._passes_minimum_root_guard(cleanup_dir):
+            if not self.file_utils.passes_delete_guard(cleanup_dir):
                 return
 
         for target_path in (
@@ -390,7 +426,7 @@ class ArgosDownloader:
             self.license_path,
             self.download_meta_path,
         ):
-            if not self._passes_minimum_root_guard(target_path):
+            if not self.file_utils.passes_delete_guard(target_path):
                 continue
             if os.path.isfile(target_path):
                 self.file_utils.delete_file_or_dir(target_path)
@@ -398,11 +434,6 @@ class ArgosDownloader:
     def show_status(self) -> None:
         """Print currently installed Argos languages and packages."""
         show_argos_status()
-        self.pretty.write(
-            "I",
-            "Tokenizer Resources",
-            self._tokenizer_resources_location_hint(),
-        )
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -458,18 +489,16 @@ class ArgosDownloader:
 
         return None
 
-    def _tokenizer_resources_location_hint(self) -> str:
-        """Return a status line for the default tokenizer resources path."""
-        resources_dir = self.tokenizer_resources_dir
-        existence = (
-            "directory exists"
-            if os.path.isdir(resources_dir)
-            else "directory not present yet"
-        )
-        return f"Default tokenizer resources directory: {resources_dir} ({existence})"
-
     def _install_packages(self) -> None:
         """Install configured language pairs and show local package license hints."""
+        from argostranslate import \
+            settings  # type: ignore[reportMissingTypeStubs]
+
+        self.pretty.write(
+            "I",
+            "Argos Packages",
+            f"Install location: {settings.package_data_dir}",
+        )
 
         def _warn_missing_pair(from_code: str, to_code: str) -> None:
             self.pretty.write(
@@ -487,7 +516,7 @@ class ArgosDownloader:
 
         Returns the license text on success, or None on failure.
         """
-        url = self._LICENSE_URL
+        url = self.license_url
         self.logger.info("Fetching Argos license from %s", url)
         try:
             resp = requests.get(url, timeout=15)
@@ -499,61 +528,7 @@ class ArgosDownloader:
             self.pretty.write("E", "Argos License", msg, color=RED)
             return None
 
-    def _download_tokenizer_resources(self) -> None:
-        """Download tokenizer resources for all configured language codes.
-
-        NOTE: Argos Translate already bundles stanza tokenizer models inside
-        each installed language package (``<pkg_path>/stanza/``) and passes
-        ``dir=<pkg_path>/stanza`` when creating ``stanza.Pipeline``.  This
-        method downloads a *separate* copy into ``~/.local/share/resources``,
-        which is only useful for standalone stanza usage outside of Argos.
-        """
-        tokenizer_resources_dir = self.tokenizer_resources_dir
-        self.pretty.write(
-            "I",
-            "Tokenizer Resources",
-            f"Tokenizer resources will be downloaded to {tokenizer_resources_dir}.",
-            color=YELLOW,
-        )
-
-        try:
-            import stanza  # type: ignore[reportMissingImports]
-        except ImportError:
-            self.pretty.write(
-                "W",
-                "Tokenizer Resources",
-                "stanza is not installed — skipping model downloads",
-                color=YELLOW,
-            )
-            return
-
-        all_codes = sorted({c for pair in self.languages for c in pair})
-        for code in all_codes:
-            try:
-                print(f"  Downloading stanza model for '{code}' ...")
-                stanza.download(code, processors="tokenize,mwt", logging_level="WARNING")  # type: ignore[reportUnknownMemberType]
-            except Exception as exc:
-                self.pretty.write(
-                    "W",
-                    "Tokenizer Resources",
-                    f"Failed to download stanza model for '{code}': {exc}",
-                    color=YELLOW,
-                )
-
     @staticmethod
     def _show_license_pager(text: str) -> None:
         """Display license text page-by-page."""
         show_license(text)
-
-    def _passes_minimum_root_guard(self, target_path: str) -> bool:
-        """Return False when a path resolves to a drive or filesystem root."""
-        normalized_path = resolve_guard_path(target_path)
-        if is_drive_root(normalized_path):
-            self.pretty.write(
-                "E",
-                "Path Guard",
-                f"Refusing to delete root or drive path '{normalized_path}'.",
-                color=RED,
-            )
-            return False
-        return True

@@ -981,6 +981,39 @@ class RAGChatImpl(SingletonMixin):
         _ = mySession
         target_language = self._normalize_language_bucket(language_bucket)
 
+        def _warn_stage_translation_once(pair_key: str, detail: str) -> None:
+            if not pair_key:
+                return
+
+            warned_pairs_obj = getattr(self._shared, "warned_pairs", None)
+            if isinstance(warned_pairs_obj, set) and pair_key in warned_pairs_obj:
+                return
+
+            warned_runtime_pairs_obj = getattr(
+                self._shared, "warned_runtime_pairs", None
+            )
+            if isinstance(warned_runtime_pairs_obj, set):
+                warned_runtime_pairs = cast(set[str], warned_runtime_pairs_obj)
+            else:
+                warned_runtime_pairs: set[str] = set()
+                try:
+                    setattr(self._shared, "warned_runtime_pairs", warned_runtime_pairs)
+                except Exception:
+                    # Best-effort in tests/stubs; fall back to ephemeral dedupe.
+                    warned_runtime_pairs = set()
+
+            if pair_key in warned_runtime_pairs:
+                return
+
+            warned_runtime_pairs.add(pair_key)
+            self.pretty.write(
+                "W",
+                "Translate",
+                f"Indexed query translation for {pair_key} {detail} — using English "
+                "fallback/unchanged text. Run src/Scripts/ArgosTranslatePackages.py "
+                "install to restore required language packages.",
+            )
+
         should_translate = bool(enable_translation)
         if (
             not target_language
@@ -997,6 +1030,11 @@ class RAGChatImpl(SingletonMixin):
             else:
                 translate_text = getattr(self._shared, "translate_text", None)
                 if not callable(translate_text):
+                    pair_key = f"en->{target_language or '?'}"
+                    _warn_stage_translation_once(
+                        pair_key,
+                        "is unavailable (missing translate_text helper)",
+                    )
                     should_translate = False
 
         def _shape_one_query(query: str) -> str:
@@ -1011,11 +1049,27 @@ class RAGChatImpl(SingletonMixin):
                     stage_query = expanded or stage_query
 
             if should_translate and callable(translate_text):
+                pair_key = f"en->{target_language or '?'}"
                 try:
                     translated_obj = translate_text(stage_query, target_language, "en")
-                except Exception:
+                except Exception as exc:
+                    _warn_stage_translation_once(
+                        pair_key,
+                        f"failed ({exc.__class__.__name__}: {exc})",
+                    )
                     return stage_query
                 translated = str(translated_obj or "").strip()
+                if not translated:
+                    _warn_stage_translation_once(
+                        pair_key,
+                        "returned empty text",
+                    )
+                    return stage_query
+                if translated == stage_query:
+                    _warn_stage_translation_once(
+                        pair_key,
+                        "returned unchanged text",
+                    )
                 return translated or stage_query
 
             return stage_query

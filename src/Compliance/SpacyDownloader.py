@@ -25,19 +25,19 @@ from typing import Any, Dict, List, Sequence, cast
 
 import requests
 
-from Commons.DriveRootGuard import is_drive_root, resolve_guard_path
 from Commons.Exceptions import SpacyConsentMissingError
+from Config.Config import Config
 from Gui.Colors import BRIGHT_BLUE, GREEN, ORANGE, RED, RESET, YELLOW
 from Gui.LicensePager import show_license
 from Gui.PrettyWriter import PrettyWriter
-from Helpers.FileUtils import FileUtils
+from Helpers.FileUtils import FileUtils, resolve_cache_root_absolute
 from Helpers.Helpers import Helpers
 from Scripts.SpacyLanguageModelsImpl import install_models
 from Scripts.SpacyLanguageModelsImpl import \
     installed_models as impl_installed_models
 from Scripts.SpacyLanguageModelsImpl import \
     missing_models as impl_missing_models
-from Scripts.SpacyLanguageModelsImpl import (remove_models,
+from Scripts.SpacyLanguageModelsImpl import (model_location, remove_models,
                                              report_spacy_model_license_hints)
 from Scripts.SpacyLanguageModelsImpl import show_status as show_spacy_status
 
@@ -60,6 +60,20 @@ class SpacyDownloader:
             {model.strip() for model in models if model.strip()}
         )
         self.models: List[str] = deduped or ["en_core_web_sm"]
+        self.config = Config()
+        self.spacy_cache_root: str = str(resolve_cache_root_absolute(self.config))
+        self.spacy_home_dir: str = os.path.join(self.spacy_cache_root, "home")
+        self.pip_cache_dir: str = os.path.join(self.spacy_cache_root, "pip")
+
+        for cache_dir in (
+            self.spacy_cache_root,
+            self.spacy_home_dir,
+            self.pip_cache_dir,
+        ):
+            os.makedirs(cache_dir, exist_ok=True)
+
+        os.environ["SPACY_HOME"] = self.spacy_home_dir
+        os.environ["PIP_CACHE_DIR"] = self.pip_cache_dir
 
         self.license_dir: str = os.path.join(project_root, self._LICENSE_DIR_REL)
         self.license_path: str = os.path.join(self.license_dir, "LICENSE.txt")
@@ -282,21 +296,76 @@ class SpacyDownloader:
             )
             return
 
+        guarded_models: list[str] = []
+        blocked_models = 0
+        for model in installed:
+            model_path = str(model_location(model) or "").strip()
+            if not model_path:
+                blocked_models += 1
+                self.pretty.write(
+                    "W",
+                    "spaCy",
+                    f"Skipping uninstall for {model}: model path is unavailable.",
+                    color=YELLOW,
+                )
+                continue
+
+            if not self.file_utils.passes_delete_guard(model_path):
+                blocked_models += 1
+                self.pretty.write(
+                    "W",
+                    "spaCy",
+                    f"Skipping uninstall for {model}: "
+                    f"path guard rejected '{model_path}'.",
+                    color=YELLOW,
+                )
+                continue
+
+            if not os.path.isdir(model_path):
+                blocked_models += 1
+                self.pretty.write(
+                    "W",
+                    "spaCy",
+                    f"Skipping uninstall for {model}: "
+                    f"model directory '{model_path}' is not present.",
+                    color=YELLOW,
+                )
+                continue
+
+            guarded_models.append(model)
+
+        if not guarded_models:
+            self.pretty.write(
+                "W",
+                "spaCy",
+                "No model paths passed the delete guard — nothing was removed.",
+                color=YELLOW,
+            )
+            return
+
         self.pretty.write(
             "W",
             "spaCy",
-            f"About to uninstall {len(installed)} configured model package(s):",
+            f"About to uninstall {len(guarded_models)} configured model package(s):",
             color=YELLOW,
         )
-        for model in installed:
+        for model in guarded_models:
             print(f"    {model}")
 
         if not self._prompt_yes_no("Uninstall all of these? [y/N] "):
             self.pretty.write("I", "spaCy", "Removal cancelled.")
             return
 
-        for model in installed:
+        for model in guarded_models:
             print(f"  Removing {model} ...")
+
+        if blocked_models:
+            self.pretty.write(
+                "W",
+                "spaCy",
+                f"Skipped {blocked_models} model package(s) due to path guard failures.",
+                color=YELLOW,
+            )
 
         def _on_uninstall_error(model: str, rc: int) -> None:
             self.pretty.write(
@@ -307,7 +376,7 @@ class SpacyDownloader:
             )
 
         removed, total = remove_models(
-            installed,
+            guarded_models,
             on_uninstall_error=_on_uninstall_error,
         )
 
@@ -340,7 +409,7 @@ class SpacyDownloader:
     def remove_consent(self) -> None:
         """Remove consent metadata via FileUtils path guard."""
         for cleanup_dir in self.consent_cleanup_directories():
-            if not self._passes_minimum_root_guard(cleanup_dir):
+            if not self.file_utils.passes_delete_guard(cleanup_dir):
                 return
 
         for target_path in (
@@ -348,7 +417,7 @@ class SpacyDownloader:
             self.license_path,
             self.download_meta_path,
         ):
-            if not self._passes_minimum_root_guard(target_path):
+            if not self.file_utils.passes_delete_guard(target_path):
                 continue
             if os.path.isfile(target_path):
                 self.file_utils.delete_file_or_dir(target_path)
@@ -448,19 +517,6 @@ class SpacyDownloader:
     def _show_license_pager(text: str) -> None:
         """Display license text page-by-page."""
         show_license(text)
-
-    def _passes_minimum_root_guard(self, target_path: str) -> bool:
-        """Apply minimum root guard before any delete operation."""
-        normalized_path = resolve_guard_path(target_path)
-        if is_drive_root(normalized_path):
-            self.pretty.write(
-                "E",
-                "Path Guard",
-                f"Refusing to delete root or drive path '{normalized_path}'.",
-                color=RED,
-            )
-            return False
-        return True
 
     def _wait_for_enter(self, prompt: str) -> bool:
         try:

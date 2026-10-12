@@ -1,4 +1,4 @@
-# pyright: reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownVariableType=false, reportUnknownMemberType=false, reportArgumentType=false, reportUnknownArgumentType=false, reportPrivateUsage=false, reportAttributeAccessIssue=false, reportUnusedImport=false, reportReturnType=false, reportUnusedVariable=false
+# pyright: reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownVariableType=false, reportUnknownMemberType=false, reportArgumentType=false, reportUnknownArgumentType=false, reportPrivateUsage=false, reportAttributeAccessIssue=false, reportUnusedImport=false, reportReturnType=false, reportUnusedVariable=false, reportUnknownLambdaType=false
 """
 Tests for SpacyDownloader - consent validation, metadata persistence,
 ensure_models orchestration, and consent cleanup.
@@ -62,8 +62,21 @@ class StubHelpers:
 
 
 class StubFileUtils:
-    def __init__(self):
+    def __init__(self, project_root: str):
         self.deleted: list[str] = []
+        self.project_root = os.path.normpath(os.path.abspath(project_root))
+
+    def is_safe_delete_path(self, path: str) -> bool:
+        normalized_path = os.path.normpath(os.path.abspath(path))
+        if normalized_path in ("", os.path.sep):
+            return False
+        return normalized_path == self.project_root or normalized_path.startswith(
+            self.project_root + os.sep
+        )
+
+    def passes_delete_guard(self, path: str, *, on_error=None) -> bool:
+        _ = on_error
+        return self.is_safe_delete_path(path)
 
     def delete_file_or_dir(self, path):
         self.deleted.append(path)
@@ -96,7 +109,7 @@ def _build(tmp_path, *, write_license=False, write_meta=None):
 
     dl.shared = StubSharedHelpers()
     dl.helpers = StubHelpers()
-    dl.file_utils = StubFileUtils()
+    dl.file_utils = StubFileUtils(str(tmp_path))
     dl.pretty = StubPrettyWriter()
     dl.logger = StubLogger()
 
@@ -251,6 +264,101 @@ class TestRemoveConsent:
         dl = _build(tmp_path)
         dl.remove_consent()
         assert dl.file_utils.deleted == []
+
+    def test_skips_paths_outside_project_root(self, tmp_path):
+        meta = {
+            "consent": True,
+            "license_hash": _license_hash(),
+            "models": list(_MODELS),
+        }
+        dl = _build(tmp_path, write_license=True, write_meta=meta)
+
+        outside_path = tmp_path.parent / "outside_spacy_LICENSE.txt"
+        outside_path.write_text("license", encoding="utf-8")
+        dl.license_path = str(outside_path)
+
+        dl.remove_consent()
+
+        assert dl.license_meta_path in dl.file_utils.deleted
+        assert dl.download_meta_path in dl.file_utils.deleted
+        assert dl.license_path not in dl.file_utils.deleted
+
+
+class TestRemoveAllPathGuard:
+    def test_uninstalls_only_models_with_guarded_paths(self, tmp_path, monkeypatch):
+        dl = _build(tmp_path)
+
+        safe_model = "en_core_web_sm"
+        outside_model = "de_core_news_sm"
+
+        safe_model_path = os.path.join(
+            str(tmp_path),
+            ".venv",
+            "Lib",
+            "site-packages",
+            safe_model,
+        )
+        os.makedirs(safe_model_path, exist_ok=True)
+
+        monkeypatch.setattr(dl, "installed_models", lambda: [safe_model, outside_model])
+        monkeypatch.setattr(dl, "_prompt_yes_no", lambda _prompt="": True)
+        monkeypatch.setattr(
+            "Compliance.SpacyDownloader.model_location",
+            lambda model: (
+                safe_model_path
+                if model == safe_model
+                else os.path.join(str(tmp_path.parent), "outside", model)
+            ),
+        )
+
+        captured: dict[str, Any] = {}
+
+        def _remove_models(models, *, on_uninstall_error=None):
+            captured["models"] = list(models)
+            return len(models), len(models)
+
+        monkeypatch.setattr("Compliance.SpacyDownloader.remove_models", _remove_models)
+
+        dl.remove_all()
+
+        removed_models = captured.get("models", [])
+        assert removed_models == [safe_model]
+
+    def test_skips_uninstall_when_model_directory_is_missing(
+        self,
+        tmp_path,
+        monkeypatch,
+    ):
+        dl = _build(tmp_path)
+
+        model_name = "en_core_web_sm"
+        missing_model_path = os.path.join(
+            str(tmp_path),
+            ".venv",
+            "Lib",
+            "site-packages",
+            model_name,
+        )
+
+        monkeypatch.setattr(dl, "installed_models", lambda: [model_name])
+        monkeypatch.setattr(dl, "_prompt_yes_no", lambda _prompt="": True)
+        monkeypatch.setattr(
+            "Compliance.SpacyDownloader.model_location",
+            lambda _model: missing_model_path,
+        )
+
+        captured: dict[str, Any] = {}
+
+        def _remove_models(models, *, on_uninstall_error=None):
+            captured["models"] = list(models)
+            return len(models), len(models)
+
+        monkeypatch.setattr("Compliance.SpacyDownloader.remove_models", _remove_models)
+
+        dl.remove_all()
+
+        removed_models = captured.get("models", [])
+        assert removed_models == []
 
 
 class TestShowLicensePager:

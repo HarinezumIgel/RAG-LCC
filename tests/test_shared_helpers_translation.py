@@ -6,7 +6,7 @@
 
 import os
 import sys
-from typing import Any
+from typing import Any, cast
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
@@ -19,12 +19,25 @@ class _StubPretty:
         _ = k
 
 
+class _CollectingPretty:
+    def __init__(self) -> None:
+        self.calls: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
+
+    def write(self, *a: Any, **k: Any) -> None:
+        self.calls.append((a, k))
+
+
 class _Translator:
     def __init__(self, tag: str) -> None:
         self.tag = tag
 
     def translate(self, text: str) -> str:
         return f"{self.tag}:{text}"
+
+
+class _FailingTranslator:
+    def translate(self, _text: str) -> str:
+        raise RuntimeError("missing model files")
 
 
 class _Lang:
@@ -40,13 +53,25 @@ def _make_shared(
     installed_langs: dict[str, _Lang],
     *,
     lang_name_to_code: dict[str, str] | None = None,
+    pretty: Any | None = None,
 ) -> SharedHelpers:
     shared = SharedHelpers.__new__(SharedHelpers)
     shared.lang_load_failed = False
     shared.installed_langs = installed_langs
-    shared.warned_langs = set()
-    shared.warned_pairs = set()
-    shared.pretty = _StubPretty()
+    shared._warned_by_category = {}
+    shared.warned_langs = shared._warning_bucket("argos.target-language-missing")
+    shared.warned_unsupported_langs = shared._warning_bucket(
+        "argos.runtime-language-unsupported"
+    )
+    shared.warned_pairs = shared._warning_bucket("argos.translation-pair-missing")
+    shared.warned_runtime_pairs = shared._warning_bucket(
+        "argos.translation-runtime-failure"
+    )
+    shared.warned_spacy_model_unavailable = shared._warning_bucket(
+        "spacy.model-unavailable"
+    )
+    shared.translation_cache = {}
+    shared.pretty = cast(Any, pretty or _StubPretty())
     shared.lang_name_to_code = lang_name_to_code or {}
     return shared
 
@@ -72,3 +97,51 @@ def test_get_translation_allows_source_fallback_when_source_is_auto() -> None:
     tr = shared._get_translation("auto", "en")
 
     assert tr is fr_to_en
+
+
+def test_translate_text_warns_when_runtime_translation_fails_once() -> None:
+    failing = _FailingTranslator()
+    en = _Lang("en", {"de": failing})
+    de = _Lang("de", {})
+    pretty = _CollectingPretty()
+    shared = _make_shared({"en": en, "de": de}, pretty=pretty)
+
+    first = shared.translate_text("hello", target_lang="de", source_lang="en")
+    second = shared.translate_text("world", target_lang="de", source_lang="en")
+
+    assert first == "hello"
+    assert second == "world"
+
+    messages = [
+        str(args[2])
+        for args, _kwargs in pretty.calls
+        if len(args) >= 3 and args[1] == "Translate"
+    ]
+    runtime_warnings = [
+        message
+        for message in messages
+        if "Argos translation failed for en->de" in message
+    ]
+    assert len(runtime_warnings) == 1
+
+
+def test_translate_text_can_suppress_fallback_warning() -> None:
+    en = _Lang("en", {})
+    pretty = _CollectingPretty()
+    shared = _make_shared({"en": en}, pretty=pretty)
+
+    translated = shared.translate_text(
+        "what do hedgehogs eat",
+        target_lang="de",
+        source_lang="en",
+        warn_on_fallback=False,
+    )
+
+    assert translated == "what do hedgehogs eat"
+
+    warning_messages = [
+        str(args[2])
+        for args, _kwargs in pretty.calls
+        if len(args) >= 3 and args[1] == "Translate"
+    ]
+    assert warning_messages == []

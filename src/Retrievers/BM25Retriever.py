@@ -128,7 +128,14 @@ class BM25Retriever(SingletonMixin, RetrieverBase):
         )
         self._spacy_loader: Any = None
         self._nlp_by_model: Dict[str, Any] = {}
-        self._warned_spacy_model_unavailable: set[str] = set()
+        warned_spacy_obj = getattr(self._shared, "warned_spacy_model_unavailable", None)
+        if isinstance(warned_spacy_obj, set):
+            self._warned_spacy_model_unavailable: set[str] = cast(
+                set[str],
+                warned_spacy_obj,
+            )
+        else:
+            self._warned_spacy_model_unavailable = set()
 
         if self._spacy_model or self._spacy_models_by_language:
             try:

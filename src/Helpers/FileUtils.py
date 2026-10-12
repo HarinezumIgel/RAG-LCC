@@ -8,15 +8,17 @@ import string
 import tempfile
 import uuid
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import Any, Callable, ClassVar
 
 import json5
 import nltk  # type: ignore[reportMissingTypeStubs]
 from nltk.corpus import stopwords  # type: ignore[reportMissingTypeStubs]
 
 from Commons.DriveRootGuard import is_drive_root, resolve_guard_path
-from Commons.Exceptions import NLTKStopwordsMissingError
+from Commons.Exceptions import ConfigurationError, NLTKStopwordsMissingError
+from Compliance.path_validation import validate_absolute_path
 from Config.Config import Config
+from Configuration import Config_Global
 from Globals.CounterInstance import FailedCount, ProcessedCount
 from Globals.Globals import Globals
 from Gui.PrettyWriter import PrettyWriter
@@ -38,6 +40,101 @@ class _LangResult:
         self.prob = prob
 
 
+def _cfg_get_str(cfg: Config, key: str, default: str = "") -> str:
+    """Return a stripped string config value with a safe default."""
+    return str(cfg.get_str(key, default, silent=True) or "").strip()
+
+
+def _validated_absolute_path_or_raise(path_value: str, setting_name: str) -> str:
+    """Validate a path and raise ConfigurationError on invalid values."""
+    raw_path = str(path_value or "").strip()
+    if raw_path.startswith("$"):
+        raise ConfigurationError(
+            f"{setting_name} must be a direct path; indirection values ('$...') are not allowed."
+        )
+
+    resolved_path = resolve_guard_path(raw_path)
+    try:
+        return validate_absolute_path(
+            resolved_path,
+            setting_name,
+            "FileUtils.resolve_cache_root_absolute",
+        )
+    except SystemExit as exc:
+        raise ConfigurationError(
+            f"{setting_name} is invalid for FileUtils cache-path resolution: '{raw_path}'"
+        ) from exc
+
+
+def _ensure_within_project_root(
+    path_value: str,
+    project_root: str,
+    setting_name: str,
+) -> None:
+    """Raise when a resolved path escapes the configured project root."""
+    normalized_path = os.path.normcase(os.path.normpath(path_value))
+    normalized_root = os.path.normcase(os.path.normpath(project_root))
+
+    try:
+        common_root = os.path.normcase(
+            os.path.normpath(os.path.commonpath([normalized_path, normalized_root]))
+        )
+    except ValueError as exc:
+        raise ConfigurationError(
+            f"{setting_name} must stay within project root '{project_root}', got '{path_value}'."
+        ) from exc
+
+    if common_root != normalized_root:
+        raise ConfigurationError(
+            f"{setting_name} must stay within project root '{project_root}', got '{path_value}'."
+        )
+
+
+def resolve_cache_root_absolute(cfg: Config | None = None) -> Path:
+    """Resolve configured _CACHE_PATH to a validated absolute cache root."""
+    config_obj = cfg or Config()
+
+    project_root = _validated_absolute_path_or_raise(
+        _cfg_get_str(
+            config_obj,
+            "_ABSOLUTE_PATH",
+            str(getattr(Config_Global, "_ABSOLUTE_PATH", "") or ""),
+        ),
+        "Config_Global._ABSOLUTE_PATH",
+    )
+
+    configured_cache_path = _cfg_get_str(
+        config_obj,
+        "_CACHE_PATH",
+        str(getattr(Config_Global, "_CACHE_PATH", ".caches") or ".caches"),
+    )
+    if not configured_cache_path:
+        configured_cache_path = str(
+            getattr(Config_Global, "_CACHE_PATH", ".caches") or ".caches"
+        ).strip()
+    if configured_cache_path.startswith("$"):
+        raise ConfigurationError(
+            "Config_Global._CACHE_PATH must be a direct path; "
+            "indirection values ('$...') are not allowed."
+        )
+
+    resolved_cache_root = resolve_guard_path(
+        configured_cache_path,
+        base_dir=project_root,
+    )
+
+    validated_cache_root = _validated_absolute_path_or_raise(
+        resolved_cache_root,
+        "Config_Global._CACHE_PATH",
+    )
+    _ensure_within_project_root(
+        validated_cache_root,
+        project_root,
+        "Config_Global._CACHE_PATH",
+    )
+    return Path(validated_cache_root)
+
+
 class FileUtils:
     # Utility class for file operations and text processing.
     _stopwords_cache: ClassVar[dict[str, list[str]]] = {}
@@ -53,7 +150,13 @@ class FileUtils:
         self.globalsInstance: Globals = Globals()
         self.pretty: PrettyWriter = pretty or PrettyWriter()
         self.cfg: Config = cfg or Config()
-        self.custom_ntlk_data_dir: str = self.cfg.get_str("_CUSTOM_NLTK_DATA_DIRECTORY")
+
+        cache_root = resolve_cache_root_absolute(self.cfg)
+
+        self.custom_ntlk_data_dir: str = os.path.normpath(
+            os.path.abspath(str(cache_root / "nltk"))
+        )
+
         if self.custom_ntlk_data_dir not in nltk.data.path:  # type: ignore[reportUnknownMemberType]
             nltk.data.path.append(self.custom_ntlk_data_dir)  # type: ignore[reportUnknownMemberType]
         self.label_alias: dict[str, str] = self.cfg.get_dict("_LABEL_ALIAS")
@@ -663,6 +766,34 @@ class FileUtils:
             return False
 
         return True
+
+    def passes_delete_guard(
+        self,
+        filepath: str,
+        *,
+        on_error: Callable[[str], None] | None = None,
+    ) -> bool:
+        """Return False when a delete target fails guard validation.
+
+        Central wrapper used by downloader/script remove flows so they can share
+        one safety behavior while optionally customizing how errors are emitted.
+        """
+
+        def _emit(message: str) -> None:
+            if callable(on_error):
+                on_error(message)
+                return
+            self.pretty.write("E", "Path Guard", message)
+
+        if not str(filepath or "").strip():
+            _emit("Refusing delete operation with an empty target path.")
+            return False
+
+        try:
+            return bool(self.is_safe_delete_path(filepath))
+        except Exception as exc:
+            _emit(f"Delete guard helper failed for '{filepath}': {exc}")
+            return False
 
     def delete_file_or_dir(self, filepath: str) -> bool:
         """

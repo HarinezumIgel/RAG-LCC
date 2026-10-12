@@ -64,6 +64,7 @@ class Session:
         self.web_weight: float | None = None
         self.web_rerank_threshold: float | None = None
         self.fetch_page_content: bool = False
+        self.web_fetch_k: int | None = None
         self.chat_name: str = self.cfg.get_str("_DEFAULT_CHAT_NAME")
         self.max_output_tokens: int | None = None
         self.max_output_tokens_override: int | None = None
@@ -294,6 +295,7 @@ class Session:
             "web_search",
             "web_weight",
             "fetch_page_content",
+            "web_fetch_k",
             "chat_name",
             "max_output_tokens",
             "temperature",

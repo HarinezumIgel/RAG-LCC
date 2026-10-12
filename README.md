@@ -13,6 +13,7 @@
 
 - 🔬 Researchers and practitioners exploring *why* RAG pipelines succeed or fail
 - 🧠 Engineers working with **large, multilingual, or conflicting document sets**
+- 👩‍🏫 Teachers and students learning RAG internals through hands-on experimentation
 - 💬 Anyone debugging **multi‑turn chat‑context failures** in RAG systems
 - 💻 Users running RAG on **constrained or commodity hardware**
 - 🧪 People who want to experiment beyond "embed + cosine + top‑k" — see [Query Output Example](QUERY_OUTPUT_EXAMPLE.md) for what a full pipeline run looks like
@@ -118,7 +119,7 @@ Answers are **grounded** — every sentence is checked for overlap with retrieve
 
 `RAGChatService` wraps the complete RAGChat pipeline in an **OpenAI‑compatible REST API** (`POST /v1/chat/completions`). Point [OpenWebUI](https://github.com/open-webui/open-webui) at it — or any OpenAI client — and your local RAG pipeline becomes a selectable model with no prompt engineering required on the client side.
 
-ChromaDB collections appear as models in the OpenWebUI dropdown. RAG‑LCC knobs (`strategy`, `retriever_k`, `threshold`, `web_search`, `web_weight`) are exposed as OpenWebUI Advanced Parameters so non‑technical users can tune retrieval without editing config files.
+ChromaDB collections appear as models in the OpenWebUI dropdown. RAG‑LCC knobs (`strategy`, `retriever_k`, `threshold`, `web_search`, `web_weight`, `web_fetch_k`) are exposed as OpenWebUI Advanced Parameters so non‑technical users can tune retrieval without editing config files.
 
 Supports Bearer‑token authentication, optional streaming, configurable host/port, and fully offline operation after initial setup.
 
@@ -300,12 +301,12 @@ Key capabilities organized by application. Full configuration details, defaults,
 - **Multi-turn conversational memory** — rolling topic summary, configurable turn window, batch pruning; `new:` prefix isolates topics without discarding history
 - **Translation** — Argos Translate normalises non-English queries to English before retrieval and rewriting; the same Argos runtime translates banlists for document-language compliance checks
 - **Language-aware indexed retrievers** — `BM25`, `Graph`, and `Regex` run per discovered corpus language bucket constrained by active language config. Query-relevant language runs first, then remaining active-and-present buckets, preserving mixed-language recall. Configure active languages/models in [src/Configuration/Config_Languages.py](src/Configuration/Config_Languages.py) and translation behavior in [Translation configuration (Argos)](CONFIGURATION_REFERENCE.md#-translation-configuration-argos).
-- **Per-session web knobs** — `web_search` (`local_only` / `local_and_web` / `web_only`), `web_weight`, `fetch_page_content` (`snippets only` / `fetch pages`); see [CONFIGURATION_REFERENCE.md § Web Search Admin Knobs](CONFIGURATION_REFERENCE.md#-web-search--admin-knobs)
+- **Per-session web knobs** — `web_search` (`local_only` / `local_and_web` / `web_only`), `web_weight`, `web_fetch_k` (web document fetch count override), `fetch_page_content` (`snippets only` / `fetch pages`); see [CONFIGURATION_REFERENCE.md § Web Search Admin Knobs](CONFIGURATION_REFERENCE.md#-web-search--admin-knobs)
 
 ### 🌐 RAGChatService
 
 - **OpenAI-compatible REST API** (`POST /v1/chat/completions`) — any OpenAI client, LiteLLM proxy, or custom integration works without modification
-- **OpenWebUI integration** — ChromaDB collections appear as selectable models in the dropdown; retrieval knobs (`strategy`, `retriever_k`, `threshold`, `web_search`, `web_weight`) surface as Advanced Parameters
+- **OpenWebUI integration** — ChromaDB collections appear as selectable models in the dropdown; retrieval knobs (`strategy`, `retriever_k`, `threshold`, `web_search`, `web_weight`, `web_fetch_k`) surface as Advanced Parameters
 - **In-memory document cache** — highlighted source documents served as short-lived `GET /marked/<token>` links; configurable TTL, total size cap, and CORS origins
 - **Bearer-token authentication**, configurable host/port, optional streaming, automatic streaming downgrade when document grounding is active
 - **`_OPENWEB_UI_WEBSEARCH`** — when `True` (and `WEB_SEARCH_MODE="1"`), the web leg is auto-enabled for every incoming OpenWebUI request that doesn't supply an explicit parameter

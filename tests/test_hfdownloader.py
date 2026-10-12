@@ -17,6 +17,7 @@ from typing import Any, Dict
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
+import Compliance.HFDownloader as hf_mod
 from Compliance.HFDownloader import HFDownloader
 from Commons.Exceptions import HFDownloaderError, InternetConnectionDisabledError
 
@@ -450,6 +451,7 @@ class TestDownload:
         download_result = dl.download("_MODELS._EMBED")
 
         assert download_result["model_id"] == "test-org/test-_embed"
+        assert "model_dir" not in download_result
         # No actual download should have occurred
 
     def test_download_uses_cached_snapshot(self, tmp_path, monkeypatch):
@@ -470,6 +472,7 @@ class TestDownload:
 
         assert result["local_path"] == str(snap_dir)
         assert result["revision"] == "snap_hash"
+        assert result["model_dir"] == str(hf_cache / "models--test-org--test-_embed")
 
     def test_download_raises_when_no_hf_cache_configured(self, tmp_path):
         """If _HF_HUB_CACHE is empty and no cached snapshot, raise HFDownloaderError."""
@@ -529,6 +532,58 @@ class TestDownload:
             k == "_MODELS._EMBED.REVISION" and v == "abc123hash"
             for k, v in dl.cfg._sets
         )
+
+    def test_download_keeps_progress_bar_when_env_zero(self, tmp_path, monkeypatch):
+        """HF_HUB_DISABLE_PROGRESS_BARS=0 should not force custom no-progress tqdm."""
+        dl = _build_hfdownloader()
+        self._make_downloadable(dl, tmp_path)
+        dl.hf_hub_offline = "0"
+        monkeypatch.setenv("HF_HUB_DISABLE_PROGRESS_BARS", "0")
+        monkeypatch.setattr("builtins.input", lambda _prompt="": "y")
+
+        captured: dict[str, Any] = {}
+
+        def _fake_snapshot_download(**kwargs):
+            captured.update(kwargs)
+            return str(
+                tmp_path
+                / "hf_cache"
+                / "models--test-org--test-_embed"
+                / "snapshots"
+                / "abc123"
+            )
+
+        monkeypatch.setattr(hf_mod, "snapshot_download", _fake_snapshot_download)
+
+        dl.download("_MODELS._EMBED")
+
+        assert "tqdm_class" not in captured
+
+    def test_download_hides_progress_bar_when_env_one(self, tmp_path, monkeypatch):
+        """HF_HUB_DISABLE_PROGRESS_BARS=1 should use the no-progress tqdm wrapper."""
+        dl = _build_hfdownloader()
+        self._make_downloadable(dl, tmp_path)
+        dl.hf_hub_offline = "0"
+        monkeypatch.setenv("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+        monkeypatch.setattr("builtins.input", lambda _prompt="": "y")
+
+        captured: dict[str, Any] = {}
+
+        def _fake_snapshot_download(**kwargs):
+            captured.update(kwargs)
+            return str(
+                tmp_path
+                / "hf_cache"
+                / "models--test-org--test-_embed"
+                / "snapshots"
+                / "abc123"
+            )
+
+        monkeypatch.setattr(hf_mod, "snapshot_download", _fake_snapshot_download)
+
+        dl.download("_MODELS._EMBED")
+
+        assert captured.get("tqdm_class") is hf_mod._NoProgressHFTqdm
 
 
 # ===================================================================

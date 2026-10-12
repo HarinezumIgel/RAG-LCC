@@ -112,7 +112,7 @@ Most-used keys in this tour:
 - `collection`, `chat_name`
 - `strategy`, `orchestrator_flow`, `force_retrieve_mode`
 - `file`, `path`, `metadata`
-- `web_search`, `web_weight`, `fetch_page_content`
+- `web_search`, `web_weight`, `web_fetch_k`, `fetch_page_content`
 - `mark_text`, `debug`
 
 ---
@@ -282,6 +282,12 @@ Adjust web influence in fusion:
 🛠️  > web_weight=0.5
 ```
 
+Override how many web documents are fetched:
+
+```text
+🛠️  > web_fetch_k=10
+```
+
 Choose snippet-only or full-page mode:
 
 ```text
@@ -392,6 +398,7 @@ Use this reset sequence at the end of experiments:
 🛠️  > path-
 🛠️  > metadata-
 🛠️  > web_search=local_only
+🛠️  > web_fetch_k-
 🛠️  > mark_text=false
 🛠️  > show?
 ```
@@ -400,7 +407,7 @@ Important:
 
 - `strategy*DEFAULT` resets strategy slots (weights, thresholds, limits).
 - `orchestrator_flow*THOROUGH_QUERY_REWRITE` resets flow profile slots (query source, guardrail/rewrite/rerank/retriever switches).
-- These defaults do **not** reset session web knobs: `web_search` and `fetch_page_content`.
+- These defaults do **not** reset session web knobs: `web_search`, `web_fetch_k`, and `fetch_page_content`.
 - Keep `web_search=local_only` in the reset path for a local-only baseline.
 - If you previously used `web_search=web_only`, setting `web_search=local_only` also clears the implicit `retrieve_mode=WEB`.
 
@@ -600,7 +607,7 @@ Run: use mixed-language prompts like `Was fressen Igel?` and an English follow-u
 Observe: rewrite behavior, retrieval source changes, and grounding differences.
 
 3. Local vs web retrieval modes
-Change: set `web_search` to `local_only`, `local_and_web`, and `web_only`; vary `web_weight`.
+Change: set `web_search` to `local_only`, `local_and_web`, and `web_only`; vary `web_weight` and `web_fetch_k`.
 Run: one query with strong local coverage and one with weak local coverage.
 Observe: fusion impact, ranking shifts, and when web context dominates.
 

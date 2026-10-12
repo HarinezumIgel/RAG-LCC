@@ -65,25 +65,20 @@ def suppress_argos_logging(debug_level: int = 0) -> None:
 class StartupCommons:
     @staticmethod
     def _resolve_expected_stopwords_dir(cfg: Config) -> Path | None:
-        """Resolve the expected stopwords directory from configured NLTK path.
+        """Resolve expected stopwords directory from configured _CACHE_PATH."""
+        configured_cache_path = cfg.get_str(
+            "_CACHE_PATH", ".caches", silent=True
+        ).strip()
+        if not configured_cache_path:
+            configured_cache_path = ".caches"
 
-        The configured value may point to a data root, ``.../corpora``, or
-        directly to ``.../corpora/stopwords``.
-        """
-        configured = cfg.get_str("_CUSTOM_NLTK_DATA_DIRECTORY", "", silent=True).strip()
-        if not configured:
-            return None
+        cache_root = Path(configured_cache_path).expanduser()
+        if not cache_root.is_absolute():
+            project_root = cfg.get_str("_ABSOLUTE_PATH", "", silent=True).strip()
+            if project_root:
+                cache_root = Path(project_root).expanduser() / cache_root
 
-        resolved = Path(configured).expanduser().resolve()
-        parts_lower = [part.lower() for part in resolved.parts]
-
-        if len(parts_lower) >= 2 and parts_lower[-2] == "corpora":
-            if parts_lower[-1] == "stopwords":
-                return resolved
-            if parts_lower[-1] == "corpora":
-                return resolved / "stopwords"
-
-        return resolved / "corpora" / "stopwords"
+        return cache_root.resolve() / "nltk" / "corpora" / "stopwords"
 
     @staticmethod
     def _ensure_nltk_stopwords_installed(cfg: Config) -> None:

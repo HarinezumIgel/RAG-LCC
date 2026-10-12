@@ -41,7 +41,6 @@ rich
 sentence_transformers
 sentencepiece>=0.2.1
 spacy
-stanza
 starlette
 torch
 uvicorn

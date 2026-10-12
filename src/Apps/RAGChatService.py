@@ -53,7 +53,7 @@ from starlette.responses import Response
 
 from AI.AIHelpers import AIHelpers
 from Api.ChatCompletionHandler import (  # pyright: ignore[reportPrivateUsage]; pyright: ignore[reportPrivateUsage, reportUnknownVariableType]
-    ChatCompletionRequest, _complianceResponse, _format_session_for_error,
+    ChatCompletionRequest, _complianceResponse, _format_session_snapshot,
     handleRequest)
 from Api.MarkedDocsStore import \
     configure_default as configure_marked_docs_store
@@ -290,7 +290,7 @@ class RAGChatService:
                 )
                 self.queryParts.print_values()
             session_block = (
-                _format_session_for_error(self.queryParts.session)
+                _format_session_snapshot(self.queryParts.session)
                 if self.queryParts is not None
                 else ""
             )

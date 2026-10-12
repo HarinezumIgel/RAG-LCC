@@ -6,6 +6,7 @@ import re
 import socket
 import subprocess
 import unicodedata
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from Commons.StartupCommons import suppress_argos_logging
@@ -14,7 +15,7 @@ from Compliance.ArgosSpacySentencizerPatch import \
 
 prepare_argos_runtime_for_patch()
 
-from argostranslate import translate  # type: ignore[import-untyped]
+from argostranslate import package, translate  # type: ignore[import-untyped]
 
 from Commons.SingletonMixin import SingletonMixin
 from Config.Config import Config
@@ -24,6 +25,19 @@ from Helpers.DebugHelper import DebugHelper
 from Helpers.LanguageConfig import (get_active_language_codes,
                                     get_lang_code_to_name,
                                     get_lang_name_to_code)
+
+
+def _incomplete_argos_package_dirs() -> list[Path]:
+    """Return package directories missing their required metadata file."""
+    try:
+        return [
+            package_dir
+            for package_root in package.settings.package_dirs
+            for package_dir in Path(package_root).iterdir()
+            if package_dir.is_dir() and not (package_dir / "metadata.json").is_file()
+        ]
+    except Exception:
+        return []
 
 
 class SharedHelpers(SingletonMixin):
@@ -41,6 +55,7 @@ class SharedHelpers(SingletonMixin):
         cfg: "Config | None" = None,
         pretty: "PrettyWriter | None" = None,
         emit_startup_inventory: bool = True,
+        emit_startup_warnings: bool = True,
     ) -> None:
         if self._initialized:
             return
@@ -57,11 +72,22 @@ class SharedHelpers(SingletonMixin):
             langs = []
             self.lang_load_failed = True
             pretty = pretty or PrettyWriter(always_on=True)
+            warning = (
+                f"Installed language inventory unavailable: "
+                f"get_installed_languages() failed: {exc!r}"
+            )
+            if isinstance(exc, FileNotFoundError) and "no metadata.json" in str(exc):
+                incomplete_dirs = _incomplete_argos_package_dirs()
+                if incomplete_dirs:
+                    warning += (
+                        "; consider cleaning incomplete package directory "
+                        "(metadata.json is missing): "
+                        + ", ".join(str(path) for path in incomplete_dirs)
+                    )
             pretty.write(
                 "W",
                 "Argos Translate",
-                f"get_installed_languages() failed: {exc!r} — "
-                f"translation will retry on first use",
+                warning,
                 color=ORANGE,
             )
 
@@ -71,16 +97,31 @@ class SharedHelpers(SingletonMixin):
         # compiled regex cache keyed by (pattern_text, flags)
         self.regex_compile_cache: Dict[Tuple[str, int], re.Pattern[str]] = {}
         # translation cache keyed by (text, target_lang, source_lang)
-        self.translation_cache: Dict[Tuple[str, str, str], str] = {}
+        self.translation_cache: Dict[Tuple[str, str, str, bool], str] = {}
         # translated wordlist cache keyed by (tuple(wordlist_en), lang)
         self.translated_list_cache: Dict[Tuple[Tuple[str, ...], str], List[str]] = {}
-        # track languages for which a "not installed" warning has been issued
-        self.warned_langs: set[str] = set()
-        # track src->tgt pairs for which a "pair not installed" warning has been issued
-        self.warned_pairs: set[str] = set()
+        # Warning dedupe buckets keyed by category.
+        self._warned_by_category: Dict[str, set[str]] = {}
+        # Backward-compatible alias sets used by existing code paths/tests.
+        self.warned_langs: set[str] = self._warning_bucket(
+            "argos.target-language-missing"
+        )
+        self.warned_unsupported_langs: set[str] = self._warning_bucket(
+            "argos.runtime-language-unsupported"
+        )
+        self.warned_pairs: set[str] = self._warning_bucket(
+            "argos.translation-pair-missing"
+        )
+        self.warned_runtime_pairs: set[str] = self._warning_bucket(
+            "argos.translation-runtime-failure"
+        )
+        self.warned_spacy_model_unavailable: set[str] = self._warning_bucket(
+            "spacy.model-unavailable"
+        )
         self.pretty: PrettyWriter = pretty or PrettyWriter(always_on=True)
         self.cfg: Config = cfg or Config()
         self._emit_startup_inventory: bool = emit_startup_inventory
+        self._emit_startup_warnings: bool = emit_startup_warnings
 
         if self._emit_startup_inventory and DebugHelper.check(self.cfg, 10):
             self._log_installed_argos_languages(langs)
@@ -90,12 +131,107 @@ class SharedHelpers(SingletonMixin):
         self.confusables: dict[str, Any] = self.cfg.get_dict("_CONFUSABLES")
         # Reverse of LANG_CODE_TO_NAME: NLTK name → ISO code
         self.lang_name_to_code: Dict[str, str] = get_lang_name_to_code(self.cfg)
+        if self._emit_startup_warnings:
+            self._warn_missing_active_argos_languages_once()
+            self._warn_missing_active_spacy_models_once()
         # Module-level cache so the identity is captured only once per process
         self.identity_cache: Optional[Dict[str, object]] = None
+
+    def _warn_missing_active_argos_languages_once(self) -> None:
+        """Warn once at startup when active config languages are not installed."""
+        active_codes = sorted(
+            code
+            for code in get_active_language_codes(self.cfg)
+            if code and not code.startswith("en")
+        )
+        if not active_codes:
+            return
+
+        missing_codes = [
+            code for code in active_codes if code not in self.installed_langs
+        ]
+        if not missing_codes:
+            return
+
+        self.pretty.write(
+            "W",
+            "Argos Translate",
+            "Configured active language(s) not installed locally: "
+            + ", ".join(missing_codes)
+            + ". Translation-dependent checks will fall back to English until "
+            "packages are installed. Run src/Scripts/ArgosTranslatePackages.py "
+            "install.",
+            color=ORANGE,
+        )
+
+    def _warn_missing_active_spacy_models_once(self) -> None:
+        """Warn once at startup when active language spaCy packages are unavailable."""
+        try:
+            models_by_language: dict[str, Any] = self.cfg.get_dict(
+                "_SPACY_MODELS_BY_ACTIVE_LANGUAGE",
+                {},
+                silent=True,
+            )
+        except TypeError:
+            # Test stubs may expose a narrower ``get_dict(key, default)`` signature.
+            models_by_language = self.cfg.get_dict(
+                "_SPACY_MODELS_BY_ACTIVE_LANGUAGE",
+                {},
+            )
+        if not models_by_language:
+            return
+
+        active_codes = sorted(get_active_language_codes(self.cfg))
+        missing_labels: list[str] = []
+        for language_code in active_codes:
+            model_name = str(models_by_language.get(language_code, "") or "").strip()
+            if not model_name:
+                continue
+
+            warn_key = f"{language_code}:{model_name}"
+            if not self._is_spacy_package_installed(model_name):
+                if self._should_warn_once(
+                    "spacy.model-unavailable",
+                    warn_key,
+                ):
+                    missing_labels.append(warn_key)
+
+        if not missing_labels:
+            return
+
+        self.pretty.write(
+            "W",
+            "spaCy",
+            "Configured active spaCy model package(s) unavailable: "
+            + ", ".join(missing_labels)
+            + ". Retrieval components may fall back or fail depending on retriever. "
+            "Run src/Scripts/SpacyLanguageModels.py install.",
+            color=ORANGE,
+        )
 
     def get_installed_langs(self) -> Dict[str, Any]:
         """Return the map of installed Argos Translate language codes to language objects."""
         return self.installed_langs
+
+    def _warning_bucket(self, category: str) -> set[str]:
+        """Return the mutable warning-key bucket for *category*."""
+        normalized_category = str(category or "").strip().lower() or "default"
+        bucket: set[str] | None = self._warned_by_category.get(normalized_category)
+        if bucket is None:
+            bucket = set[str]()
+            self._warned_by_category[normalized_category] = bucket
+        return bucket
+
+    def _should_warn_once(self, category: str, key: str) -> bool:
+        """Return True once per ``(category, key)`` pair."""
+        normalized_key = str(key or "").strip().lower()
+        if not normalized_key:
+            return False
+        bucket = self._warning_bucket(category)
+        if normalized_key in bucket:
+            return False
+        bucket.add(normalized_key)
+        return True
 
     def is_language_supported(self, lang: str) -> bool:
         """Return *True* if *lang* is English or is installed in Argos Translate.
@@ -123,15 +259,39 @@ class SharedHelpers(SingletonMixin):
         action: str = self.cfg.get_str(
             "UNSUPPORTED_LANGUAGE_ACTION", "FALLBACK_EN"
         ).upper()
+        lang_code = self.lang_name_to_code.get(
+            (language or "").lower(), (language or "").lower()
+        )
+        warning_key = lang_code or (language or "").lower()
+
         if action == "NOT_OK":
+            if self._should_warn_once(
+                "argos.runtime-language-unsupported",
+                warning_key,
+            ):
+                self.pretty.write(
+                    "W",
+                    "Language",
+                    f"Language '{language}' not installed — "
+                    f"skipping {file_path} (UNSUPPORTED_LANGUAGE_ACTION=NOT_OK)",
+                    color=ORANGE,
+                )
+            return "NOT_OK"
+
+        if self._should_warn_once(
+            "argos.runtime-language-unsupported",
+            warning_key,
+        ):
             self.pretty.write(
                 "W",
                 "Language",
                 f"Language '{language}' not installed — "
-                f"skipping {file_path} (UNSUPPORTED_LANGUAGE_ACTION=NOT_OK)",
+                "falling back to English-only checks "
+                "(UNSUPPORTED_LANGUAGE_ACTION=FALLBACK_EN). "
+                "Run src/Scripts/ArgosTranslatePackages.py install to add the "
+                "required language pairs.",
                 color=ORANGE,
             )
-            return "NOT_OK"
         return None
 
     def refresh_installed_languages(self) -> None:
@@ -273,55 +433,96 @@ class SharedHelpers(SingletonMixin):
     # Translation / banlist helpers (cached)
     # -------------------------
     def translate_text(
-        self, text: str, target_lang: str, source_lang: str = "auto"
+        self,
+        text: str,
+        target_lang: str,
+        source_lang: str = "auto",
+        *,
+        warn_on_fallback: bool = True,
     ) -> str:
         if not text or not target_lang:
             return text
-        key = (text, (target_lang or "").lower(), (source_lang or "auto").lower())
+        key = (
+            text,
+            (target_lang or "").lower(),
+            (source_lang or "auto").lower(),
+            bool(warn_on_fallback),
+        )
         cached = self.translation_cache.get(key)
         if cached is not None:
             return cached
 
-        translator = self._get_translation(source_lang, target_lang)
+        translator = self._get_translation(
+            source_lang,
+            target_lang,
+            emit_warning=warn_on_fallback,
+        )
         if translator is None:
             translated = text
-            # One-time, source-aware warning: distinguishes "pair not installed"
-            # (e.g. de→en when only en→de is installed) from the existing
-            # target-only warning emitted by _get_translation. Without this,
-            # the user-query normalisation path silently returned the original
-            # text and the caller saw "FinalQuery: ... (unchanged)".
-            src_norm: str = self.lang_name_to_code.get(
-                (source_lang or "").lower(), (source_lang or "").lower()
-            )
-            tgt_norm: str = self.lang_name_to_code.get(
-                (target_lang or "").lower(), (target_lang or "").lower()
-            )
-            if src_norm and src_norm != "auto" and src_norm != tgt_norm:
-                pair_key: str = f"{src_norm}->{tgt_norm}"
-                if pair_key not in self.warned_pairs:
-                    self.warned_pairs.add(pair_key)
-                    self.pretty.write(
-                        "W",
-                        "Translate",
-                        f"No Argos translation pair {src_norm}\u2192{tgt_norm} "
-                        f"installed \u2014 returning text unchanged. Ensure both "
-                        f"languages are listed in "
-                        f"_ARGOS_DEFINITIONS.ACTIVE_LANGUAGES, add "
-                        f"('{src_norm}', '{tgt_norm}') to "
-                        f"_ARGOS_DEFINITIONS.ARGOS_LANGUAGES and run "
-                        f"src/Scripts/ArgosTranslatePackages.py to install it.",
-                        color=ORANGE,
-                    )
+            if warn_on_fallback:
+                src_norm: str = self.lang_name_to_code.get(
+                    (source_lang or "").lower(), (source_lang or "").lower()
+                )
+                tgt_norm: str = self.lang_name_to_code.get(
+                    (target_lang or "").lower(), (target_lang or "").lower()
+                )
+                if src_norm and src_norm != "auto" and src_norm != tgt_norm:
+                    pair_key: str = f"{src_norm}->{tgt_norm}"
+                    if self._should_warn_once(
+                        "argos.translation-pair-missing",
+                        pair_key,
+                    ):
+                        self.pretty.write(
+                            "W",
+                            "Translate",
+                            f"No Argos translation pair {src_norm}->{tgt_norm} "
+                            f"installed - returning text unchanged. Ensure both "
+                            f"languages are listed in "
+                            f"_ARGOS_DEFINITIONS.ACTIVE_LANGUAGES, add "
+                            f"('{src_norm}', '{tgt_norm}') to "
+                            f"_ARGOS_DEFINITIONS.ARGOS_LANGUAGES and run "
+                            f"src/Scripts/ArgosTranslatePackages.py to install it.",
+                            color=ORANGE,
+                        )
         else:
             try:
                 translated = translator.translate(text)
-            except Exception:
+            except Exception as exc:
                 translated = text
+                if warn_on_fallback:
+                    src_norm: str = self.lang_name_to_code.get(
+                        (source_lang or "").lower(), (source_lang or "").lower()
+                    )
+                    tgt_norm: str = self.lang_name_to_code.get(
+                        (target_lang or "").lower(), (target_lang or "").lower()
+                    )
+                    pair_key = f"{src_norm or 'auto'}->{tgt_norm or '?'}"
+                    if self._should_warn_once(
+                        "argos.translation-runtime-failure",
+                        pair_key,
+                    ):
+                        self.pretty.write(
+                            "W",
+                            "Translate",
+                            f"Argos translation failed for {pair_key} "
+                            f"({exc.__class__.__name__}: {exc}) — using English "
+                            "fallback/unchanged text. This can happen when Argos "
+                            "package cache files are missing. Run "
+                            "src/Scripts/ArgosTranslatePackages.py install "
+                            "to restore required language pairs.",
+                            color=ORANGE,
+                        )
 
         self.translation_cache[key] = translated
         return translated
 
-    def _get_translation(self, source_code: str, target_code: str) -> Any:
+    def _get_translation(
+        self,
+        source_code: str,
+        target_code: str,
+        *,
+        emit_warning: bool = True,
+    ) -> Any:
         source_code = (source_code or "auto").lower()
         target_code = (target_code or "").lower()
         # Normalise NLTK names ("german") → ISO codes ("de")
@@ -373,8 +574,14 @@ class SharedHelpers(SingletonMixin):
         # --- no installed pair found ---
         # Only emit the target-language warning when the target itself is
         # missing. Pair-specific misses are logged by translate_text().
-        if tgt_lang is None and target_code not in self.warned_langs:
-            self.warned_langs.add(target_code)
+        if (
+            emit_warning
+            and tgt_lang is None
+            and self._should_warn_once(
+                "argos.target-language-missing",
+                target_code,
+            )
+        ):
             self.pretty.write(
                 "W",
                 "Translate Banned",
@@ -428,7 +635,12 @@ class SharedHelpers(SingletonMixin):
 
         translated_phrases: List[str] = []
         for p in wordlist_en:
-            tp: str = self.translate_text(p, target_lang=lang, source_lang="en")
+            tp: str = self.translate_text(
+                p,
+                target_lang=lang,
+                source_lang="en",
+                warn_on_fallback=False,
+            )
             if DebugHelper.check(self.cfg, 40):
                 self.pretty.write(
                     "D",

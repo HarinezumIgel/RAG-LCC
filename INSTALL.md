@@ -51,7 +51,7 @@ Most-used configuration shortcuts:
 
 ## 📋 Prerequisites
 
-- **Python 3.13** (developed and tested with 3.13; minimum 3.10)
+- **Python 3.14.8** (current RAG-LCC runtime; minimum 3.10)
 - Memory and disk resources appropriate for the example models
 - Optional GPU for faster inference (see [GPU Setup](#-gpu-setup) below)
 - Optional: Visual Studio Code (used during development)
@@ -487,13 +487,16 @@ Calling `python src/Scripts/NLTK_Stopwords_WordNet.py` without arguments shows s
 RAG‑LCC expects the stopwords corpus to be installed by this helper script.
 All app entrypoints stop with an install hint when stopwords are missing.
 
-Adjust the NLTK data path in `Configuration/Config_Global.py` if needed:
+Adjust the shared cache root in `Configuration/Config_Global.py` if needed:
 
 ```python
-_CUSTOM_NLTK_DATA_DIRECTORY = (
-   _ABSOLUTE_PATH + "/AppData/Roaming/nltk_data/corpora/stopwords"
-)
+# Shared cache root for Argos / NLTK / spaCy assets.
+# Relative values resolve under _ABSOLUTE_PATH.
+_CACHE_PATH = ".caches"
 ```
+
+The NLTK stopwords directory is derived automatically from `_CACHE_PATH`
+as `<cache>/nltk/corpora/stopwords`.
 
 ## 📖 8a. NLTK WordNet Synonyms (Optional — Banned‑Word Expansion)
 
@@ -891,12 +894,16 @@ to return only the LLM answer.
    | URL | `http://127.0.0.1:11435/v1` |
 
    Click the **⚙️ gear icon** on the right-hand side of the new connection
-   entry to open its detail settings and enter the **API Key** (Bearer
-   token):
+   entry to open its detail settings. Set **API Type** to **Chat Completions**
+   (RAGChatService implements `POST /v1/chat/completions`), and set **Auth** to
+   **Bearer** with the **API Key** (Bearer token) configured here:
 
    | Field | Value |
    | --- | --- |
    | API Key | The value of `_MODELS.ragchatservice._RAGCHATSERVICE.API_KEY` (configured in `Config_Models.py`) |
+   | API Type | Chat Completions |
+
+   ![Open WebUI connection settings for RAGChatService with API Type set to Chat Completions](Documentation/Pics/OpenWebUI2RAGChatService.jpg)
 
 4. **Select a collection** — after saving the connection, the Chroma DB
    collections loaded by `RAGLoad` appear as selectable models in the
@@ -1080,6 +1087,9 @@ _WEB_SEARCH = {
 }
 ```
 
+`max_results` is the default fetch count and can be overridden per session or
+per API request with `web_fetch_k`.
+
 - `duckduckgo` is the default and requires **no API key**.
 - `brave`, `tavily`, `bing` are recognised names but currently raise
   `NotImplementedError`. Adding a key for one of these is not enough — the
@@ -1106,9 +1116,10 @@ chat / per request:
 
 - **RAGChat CLI:** type `web_search=local_and_web` (or `web_search=local_only`) at the
   prompt. `web_search=web_only` skips local indexes entirely. Boolean `True`/`False` is also accepted as shorthand for `local_and_web`/`local_only`. Also `web_weight=0.7` (RRF weight applied to web results) and
-  `fetch_page_content=True` (download page bodies, not just snippets; the original snippet is always retained in metadata for cross-encoder scoring).
-- **OpenWebUI Controls sidebar:** the same three knobs appear as Advanced
-  Parameters.
+   `web_fetch_k=10` (override web documents fetched per query for this session/request), and
+   `fetch_page_content=True` (download page bodies, not just snippets; the original snippet is always retained in metadata for cross-encoder scoring).
+- **OpenWebUI Controls sidebar:** the same knobs appear as Advanced
+   Parameters, including `web_fetch_k`.
 
 ### 6. Audit log
 

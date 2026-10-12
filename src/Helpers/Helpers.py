@@ -39,14 +39,17 @@ from pdf2image import \
     convert_from_path  # type: ignore[reportMissingImports]; type: ignore[reportUnknownVariableType, reportUnusedImport]
 from pptx import Presentation  # type: ignore[reportUnusedImport]
 
+from Commons.DriveRootGuard import is_drive_root, resolve_guard_path
 from Commons.Exceptions import (ConfigurationError, DeviceConfigurationError,
                                 DriveRootExecutionError, NoVirtualEnvError,
                                 TesseractPathError)
 from Config.Config import Config
+from Configuration import Config_Global
 from Globals.CounterInstance import FailedCount, ProcessedCount
 from Globals.Globals import Globals
 from Gui.Colors import BRIGHT_RED, ORANGE, RED, RESET, VIOLET
 from Gui.PrettyWriter import PrettyWriter
+from Helpers.FileUtils import resolve_cache_root_absolute
 
 
 def truncate_for_print(content: str, width: int) -> str:
@@ -105,25 +108,44 @@ def _current_uid() -> str:
 
 class Helpers:
     def prepare_argos_runtime_dirs(self) -> None:
-        """Configure Argos to use writable user-owned XDG directories.
+        """Configure Argos to keep runtime data under the project root.
 
         Argos imports its settings module at import time and creates
-        data/config/cache folders under XDG_* paths. On this container the
-        default parent ~/.local/share is root-owned and not writable by the
-        current user, so we redirect Argos to writable subfolders under the
-        existing ~/.local/share/hf-cache, pip-cache and resources tree.
+        data/config/cache folders under XDG_* paths. Redirect those paths and
+        the package directory into ``<_CACHE_PATH>/argos`` (default:
+        ``<project>/.caches/argos``) while enforcing strict root and
+        path-containment guards.
         """
-        user_home = Path.home()
-        base_dir = user_home / ".cache" / "argos"
+        self.is_in_drive_root(required=True)
+        project_root = Path(
+            resolve_guard_path(Config_Global.require_absolute_path("Helpers"))
+        ).resolve(strict=True)
+        if is_drive_root(str(project_root)):
+            raise DriveRootExecutionError(
+                "Argos project root resolves to a drive/filesystem root: "
+                f"{project_root}"
+            )
+
+        cache_root = resolve_cache_root_absolute(self.cfg)
+
+        base_dir = cache_root / "argos"
         data_dir = base_dir / "data"
         config_dir = base_dir / "config"
         cache_dir = base_dir / "cache"
+        packages_dir = data_dir / "packages"
 
-        for candidate in (data_dir, config_dir, cache_dir):
+        for candidate in (data_dir, config_dir, cache_dir, packages_dir):
+            resolved_candidate = candidate.resolve()
             try:
-                # Create directory if it does not exist
-                if not candidate.exists():
-                    candidate.mkdir(parents=True, exist_ok=True)
+                resolved_candidate.relative_to(project_root)
+            except ValueError as exc:
+                raise RuntimeError(
+                    "Argos runtime path escapes the project root: "
+                    f"{resolved_candidate} (project root: {project_root})"
+                ) from exc
+
+            try:
+                candidate.mkdir(parents=True, exist_ok=True)
 
                 # Check if directory is writable
                 if not os.access(candidate, os.W_OK):
@@ -175,7 +197,7 @@ class Helpers:
         os.environ["XDG_DATA_HOME"] = str(data_dir)
         os.environ["XDG_CONFIG_HOME"] = str(config_dir)
         os.environ["XDG_CACHE_HOME"] = str(cache_dir)
-        os.environ.setdefault("ARGOS_PACKAGES_DIR", str(data_dir / "packages"))
+        os.environ["ARGOS_PACKAGES_DIR"] = str(packages_dir)
 
     # Utility class for common helper functions used throughout the application.
     # Utility class for common helper functions used throughout the application.
@@ -203,7 +225,13 @@ class Helpers:
         self.globalsInstance: Globals = Globals()
         self.pretty: PrettyWriter = pretty or PrettyWriter()
         self.cfg: Config = cfg or Config()
-        self.custom_ntlk_data_dir: str = self.cfg.get_str("_CUSTOM_NLTK_DATA_DIRECTORY")
+
+        cache_root = resolve_cache_root_absolute(self.cfg)
+
+        self.custom_ntlk_data_dir: str = os.path.normpath(
+            os.path.abspath(str(cache_root / "nltk"))
+        )
+
         # Ensure that our custom directory is in nltk.data.path.
         nltk_path: list[str] = nltk.data.path  # type: ignore[reportUnknownMemberType]
         if self.custom_ntlk_data_dir not in nltk_path:

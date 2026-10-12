@@ -3,6 +3,7 @@ import uuid
 from typing import Any
 
 import numpy as np
+import numpy.typing as npt
 from langchain_core.documents.base import Document as langchainDoc
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
@@ -335,15 +336,15 @@ class SemanticChunker(ChunkerStrategy):
         would produce for the concatenated text (most sentence-transformer
         models output unit-norm vectors).
         """
-        vecs = np.array(sentence_embeddings)
-        weights = np.array([len(s.split()) for s in sentences], dtype=float).reshape(
-            -1, 1
-        )
-        avg = (vecs * weights).sum(axis=0) / weights.sum()
-        norm = np.linalg.norm(avg)
+        vecs: npt.NDArray[np.float64] = np.array(sentence_embeddings, dtype=float)
+        weights: npt.NDArray[np.float64] = np.array(
+            [len(s.split()) for s in sentences], dtype=float
+        ).reshape(-1, 1)
+        avg: npt.NDArray[np.float64] = (vecs * weights).sum(axis=0) / weights.sum()
+        norm = float(np.linalg.norm(avg))
         if norm > 0:
             avg = avg / norm
-        return avg.tolist()
+        return [float(x) for x in avg]
 
     def _split_oversized(self, text: str) -> list[str]:
         """Fall back to RecursiveCharacterTextSplitter for oversized segments."""

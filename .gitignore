@@ -27,12 +27,15 @@ pytorch_wheels/
 # Tooling / config files (local only)
 # =====================================================
 .fossa.yml
+.continueignore
 
 # =====================================================
 # Local data / documents (not for version control)
 # =====================================================
 DocsToLoadOrClassify/
+Articles/
 Documentation/Private/
+.caches/
 
 # =====================================================
 # Security: PEM keys

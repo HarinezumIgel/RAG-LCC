@@ -6,6 +6,41 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [2026-10-12]
+
+### 📚 Changed — _CACHE_PATH documentation synced
+
+- Updated configuration docs to replace legacy `_CUSTOM_NLTK_DATA_DIRECTORY`
+  references with `Config_Global._CACHE_PATH`.
+- Clarified that `_CACHE_PATH` defaults to `.caches`, resolves relative values
+  under `_ABSOLUTE_PATH`, and drives the derived NLTK stopwords path
+  `<cache>/nltk/corpora/stopwords`.
+- Refreshed setup guidance and query output example to match current runtime
+  path-slot names.
+
+## [2026-10-10]
+
+### ⚙️ Changed — Python runtime updated
+
+- RAG-LCC now uses Python 3.14.8.
+
+### ⚙️ Changed — Cache diagnostics and download output improved
+
+- Hugging Face cache corruption now produces clearer user-facing diagnostics.
+- Argos language inventory warnings identify incomplete package directories
+  missing `metadata.json` and suggest cleanup; no files are removed automatically.
+- Hugging Face downloads no longer emit repetitive byte-progress refreshes in
+  captured or non-interactive console output.
+
+## [2026-10-09]
+
+### 🎛️ Added — Session/API switch for WEB fetch count (`web_fetch_k`)
+
+- Added `web_fetch_k` as a per-session/per-request override for how many web
+  documents are fetched in the WEB retrieval stage.
+- Default behavior is unchanged: when `web_fetch_k` is not set, runtime falls
+  back to configured `_WEB_SEARCH.max_results`.
+
 ## [2026-10-05]
 
 Todays release implements:

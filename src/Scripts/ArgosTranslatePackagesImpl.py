@@ -9,6 +9,7 @@ from typing import Any, Callable, Sequence
 from Compliance.ArgosSpacySentencizerPatch import \
     prepare_argos_runtime_for_patch
 from Gui.Colors import ORANGE, RESET
+from Helpers.FileUtils import resolve_cache_root_absolute
 
 prepare_argos_runtime_for_patch()
 
@@ -142,7 +143,9 @@ def report_xx_sent_ud_sm_state() -> None:
         for path in hits:
             print(f"  {path}")
     else:
-        print("No xx_sent_ud_sm artifacts detected in Argos cache/package paths.")
+        print(
+            "No xx_sent_ud_sm artifacts detected in configured _CACHE_PATH/Argos paths."
+        )
 
 
 def report_argos_package_license_hints() -> None:
@@ -176,13 +179,37 @@ def report_argos_package_license_hints() -> None:
 
 def _find_xx_sent_ud_sm_artifacts() -> list[Path]:
     """Return filesystem paths indicating xx_sent_ud_sm artifacts."""
-    roots = [
-        Path.home() / ".local" / "cache" / "argos-translate",
-        Path.home() / ".local" / "share" / "argos-translate" / "packages",
-        Path.home() / ".local" / "share" / "resources",
+    configured_cache_root = resolve_cache_root_absolute()
+    roots: list[Path] = [
+        configured_cache_root / "argos",
+        configured_cache_root / "argos" / "data" / "packages",
+        configured_cache_root / "spacy",
     ]
-    hits: list[Path] = []
+
+    roots.extend(
+        [
+            Path.home() / ".local" / "cache" / "argos-translate",
+            Path.home() / ".local" / "share" / "argos-translate" / "packages",
+            Path.home() / ".local" / "share" / "resources",
+        ]
+    )
+
+    deduped_roots: list[Path] = []
+    seen_roots: set[str] = set()
     for root in roots:
+        try:
+            normalized_root = root.expanduser().resolve()
+        except Exception:
+            normalized_root = root.expanduser()
+
+        key = str(normalized_root).lower()
+        if key in seen_roots:
+            continue
+        seen_roots.add(key)
+        deduped_roots.append(normalized_root)
+
+    hits: list[Path] = []
+    for root in deduped_roots:
         if not root.exists():
             continue
         try:

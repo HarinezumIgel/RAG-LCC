@@ -77,6 +77,8 @@ import Configuration.Config_Global as _ConfigGlobal  # noqa: E402
 from Commons.DriveRootGuard import (assert_script_project_root,  # noqa: E402
                                     is_drive_root, resolve_guard_path)
 from Gui.PrettyWriter import PrettyWriter  # noqa: E402
+from Helpers.FileUtils import (FileUtils,  # noqa: E402
+                               resolve_cache_root_absolute)
 
 _PROJECT_ROOT = Path(
     assert_script_project_root(
@@ -121,6 +123,39 @@ _WORDNET_LICENSE_URL = (
 )
 
 _pretty_writer_instance: PrettyWriter | None = None
+_file_utils_instance: FileUtils | None = None
+
+
+class _NLTKOutputWriter:
+    def __init__(self, stream: Any, download_dir: str) -> None:
+        self._stream = stream
+        self._download_dir = download_dir
+
+    def write(self, text: str) -> int:
+        original_length = len(text)
+        continuation = "\n[nltk_data]     "
+        if (
+            text.startswith("[nltk_data] Downloading package ")
+            and continuation in text
+            and text.endswith("...")
+        ):
+            heading, separator, _ = text.partition(" to ")
+            if separator:
+                heading_body = heading.removeprefix("[nltk_data] ")
+                text = (
+                    f"[nltk_data]     {heading_body} to:\n"
+                    f"[nltk_data]     {self._download_dir}..."
+                )
+
+        # Align secondary NLTK status lines (e.g. "Unzipping", "Package ...")
+        # with the wrapped destination line indentation.
+        text = re.sub(r"(?m)^\[nltk_data\] {3}(?! )", "[nltk_data]     ", text)
+
+        self._stream.write(text)
+        return original_length
+
+    def flush(self) -> None:
+        self._stream.flush()
 
 
 def _pretty_writer() -> PrettyWriter:
@@ -129,6 +164,14 @@ def _pretty_writer() -> PrettyWriter:
     if _pretty_writer_instance is None:
         _pretty_writer_instance = PrettyWriter(always_on=True)
     return _pretty_writer_instance
+
+
+def _file_utils() -> FileUtils:
+    """Return a cached FileUtils instance for path-guard checks."""
+    global _file_utils_instance
+    if _file_utils_instance is None:
+        _file_utils_instance = FileUtils(pretty=_pretty_writer())
+    return _file_utils_instance
 
 
 # ---------------------------------------------------------------------------
@@ -475,7 +518,7 @@ def _download_corpus(
         download_root = _configured_nltk_download_root()
         if download_root is None:
             print(
-                f"{_RED}  ✖  Could not resolve _CUSTOM_NLTK_DATA_DIRECTORY from Config_Global.py.{_RESET}"
+                f"{_RED}  ✖  Could not resolve _CACHE_PATH from Config_Global.py.{_RESET}"
             )
             sys.exit(1)
 
@@ -513,12 +556,20 @@ def _download_corpus(
                 print(f"{_DIM}  Derived download root : {download_root}{_RESET}")
         print(f"{_DIM}  Download directory : {download_dir}{_RESET}")
         print(
-            f"{_DIM}  (Set _CUSTOM_NLTK_DATA_DIRECTORY in Config_Global.py"
+            f"{_DIM}  (Set _CACHE_PATH in Config_Global.py"
             f" to change where the application reads NLTK data.){_RESET}"
         )
 
         print(f"{_DIM}  Downloading NLTK corpus '{corpus_id}'...{_RESET}")
-        nltk.download(corpus_id, quiet=False, download_dir=download_dir)
+        downloaded = nltk.download(
+            corpus_id,
+            quiet=False,
+            download_dir=download_dir,
+            print_error_to=_NLTKOutputWriter(sys.stderr, download_dir),
+        )
+        if not downloaded:
+            print(f"{_RED}  ✖  Failed to download NLTK corpus '{corpus_id}'.{_RESET}")
+            sys.exit(1)
         print(f"{_GREEN}  ✔  '{corpus_id}' downloaded.{_RESET}")
     except ImportError:
         print(f"{_RED}  ✖  NLTK is not installed.{_RESET}")
@@ -584,20 +635,33 @@ def _passes_minimum_root_guard(
     return True
 
 
-def _custom_nltk_data_directory() -> str:
-    """Return configured custom NLTK data directory from Config when available."""
-    try:
-        from Config.Config import Config  # noqa: PLC0415
+def _passes_delete_guard(target_path: Path) -> bool:
+    """Return False when delete target fails the existing FileUtils guard."""
+    normalized_target = _normalize_abs_path(target_path)
 
-        return str(Config().get_str("_CUSTOM_NLTK_DATA_DIRECTORY") or "").strip()
+    def _emit_error(message: str) -> None:
+        print(f"{_RED}  ✖  {message}{_RESET}")
+
+    return _file_utils().passes_delete_guard(
+        str(normalized_target),
+        on_error=_emit_error,
+    )
+
+
+def _custom_nltk_data_directory() -> str:
+    """Return NLTK stopwords directory derived from configured _CACHE_PATH."""
+    try:
+        cache_root = resolve_cache_root_absolute()
     except Exception:
         return ""
+
+    return str(_normalize_abs_path(cache_root / "nltk" / "corpora" / "stopwords"))
 
 
 def _configured_nltk_download_root() -> Path | None:
     """Resolve the concrete NLTK download root from configured path.
 
-    _CUSTOM_NLTK_DATA_DIRECTORY may point either to a data root, to
+    The resolved NLTK stopwords path may point either to a data root, to
     ``.../corpora``, or to a concrete corpus directory such as
     ``.../corpora/stopwords``. Downloads must target the NLTK data root.
     """
@@ -688,15 +752,16 @@ def _print_custom_nltk_directory_hint() -> None:
     config_value = _custom_nltk_data_directory()
     print(
         f"{_CYAN}  Hint: change this path in Config_Global.py via "
-        f"_CUSTOM_NLTK_DATA_DIRECTORY.{_RESET}"
+        f"_CACHE_PATH.{_RESET}"
     )
     if config_value:
         print(
-            f"{_DIM}  Current _CUSTOM_NLTK_DATA_DIRECTORY: " f"{config_value}{_RESET}"
+            f"{_DIM}  Current _CACHE_PATH-derived NLTK directory: "
+            f"{config_value}{_RESET}"
         )
     else:
         print(
-            f"{_YELLOW}  Current _CUSTOM_NLTK_DATA_DIRECTORY: "
+            f"{_YELLOW}  Current _CACHE_PATH-derived NLTK directory: "
             f"(not set or unavailable){_RESET}"
         )
 
@@ -769,7 +834,7 @@ def _collect_governance_removal_targets() -> list[tuple[str, Path]]:
 def _remove_target(target_path: Path) -> bool:
     """Delete one file/directory target when it exists and passes guard."""
     resolved_target = _normalize_abs_path(target_path)
-    if not _passes_minimum_root_guard(resolved_target):
+    if not _passes_delete_guard(resolved_target):
         return False
 
     if not resolved_target.exists():
@@ -987,7 +1052,7 @@ def _remove_action() -> None:
         print(f"  {path}  [{label}]")
 
     for _, path in present_targets:
-        if not _passes_minimum_root_guard(path):
+        if not _passes_delete_guard(path):
             print(f"{_RED}Removal aborted due to unsafe target path.{_RESET}")
             sys.exit(1)
 
