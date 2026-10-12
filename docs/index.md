@@ -27,8 +27,6 @@ RAG-LCC is a practical lab for understanding where RAG systems fail and how to f
 
 Short: If you want to understand *why* your RAG fails, RAG-LCC gives you a playground to experiment with the parameters that matter. You can tune settings, compare alternatives on a small test corpus, and carry those insights back into your own RAG. In other words, RAG-LCC is an insight tool with reusable ideas, not an everyday production RAG.
 
-
-
 ## What you get
 
 - Hybrid retrieval pipeline with Vector, BM25, Graph, and Regex retrieval
@@ -115,3 +113,5 @@ evidence traceability, not just CLI output.
 ## Source repository
 
 [HarinezumIgel/RAG-LCC](https://github.com/HarinezumIgel/RAG-LCC)
+
+⭐ If you find this project useful, please consider giving it a star on GitHub. It helps others discover the project and motivates continued development.

@@ -504,3 +504,5 @@ Scope includes:
 
 Use of RAG‑LCC is entirely **at the operator’s own risk**.
 Nothing in this repository guarantees correctness, safety, regulatory conformity, or suitability for any specific environment or risk profile.
+
+⭐ If you find this project useful, please consider giving it a star on GitHub. It helps others discover the project and motivates continued development.
