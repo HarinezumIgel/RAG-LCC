@@ -35,6 +35,7 @@ pytorch_wheels/
 DocsToLoadOrClassify/
 Articles/
 Documentation/Private/
+JupiterNoteBooks/
 .caches/
 
 # =====================================================
@@ -51,4 +52,9 @@ scripts_posh/
 
 # But keep the public verification key
 !verify_sign/RAG_LCC_public.pem
+
+# =====================================================
+# AI Stuff
+# =====================================================
+.agents/
 ``

@@ -11,7 +11,7 @@ import pickle
 import sys
 from collections import Counter
 from typing import Any, Dict, List
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -20,6 +20,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 from langchain_core.documents.base import Document as LangchainDocument
 
 from Retrievers.BM25Retriever import BM25Retriever, _BM25IndexData
+from Retrievers.GraphRetriever import GraphRetriever
+from Retrievers.RegexRetriever import RegexRetriever
 
 # ---------------------------------------------------------------------------
 # Stubs
@@ -52,11 +54,14 @@ class StubConfig:
     def get_float(self, key: str, default: float = 0.0) -> float:
         return float(self._DEFAULTS.get(key, default))
 
-    def get_list(self, key: str, default=None) -> list:
+    def get_list(self, key: str, default=None, *, silent: bool = False) -> list:
         return default if default is not None else []
 
-    def get_dict(self, key: str, default=None) -> dict:
+    def get_dict(self, key: str, default=None, *, silent: bool = False) -> dict:
         return default if default is not None else {}
+
+    indirect_list = get_list
+    indirect_dict = get_dict
 
 
 class StubPrettyWriter:
@@ -129,6 +134,69 @@ def _build_index(r: BM25Retriever, chunks: List[Dict[str, Any]]) -> None:
     metas = [c.get("meta", {}) for c in chunks]
     r.add_chunks(ids, texts, metas)
     r._data.collection_name = "test_coll"
+
+
+@pytest.mark.parametrize("kind", [BM25Retriever, GraphRetriever, RegexRetriever])
+@pytest.mark.parametrize("ids", [[], ["new"]])
+def test_incremental_update_refreshes_count_before_persistence(kind, ids):
+    retriever = object.__new__(kind)
+    retriever._data = MagicMock()
+    retriever._data.doc_count_at_build = 10
+    collection = MagicMock()
+    collection.count.return_value = 12
+    with (
+        patch.object(kind, "is_loaded_for", return_value=True),
+        patch.object(kind, "remove_by_filepath"),
+        patch.object(kind, "add_chunks"),
+        patch.object(kind, "persist") as persist,
+        patch.object(
+            kind,
+            {
+                BM25Retriever: "get_bm25_dir",
+                GraphRetriever: "get_graph_dir",
+                RegexRetriever: "get_regex_dir",
+            }[kind],
+            return_value="index",
+        ),
+    ):
+        persist.side_effect = lambda directory: (
+            None
+            if retriever._data.doc_count_at_build == 12
+            else pytest.fail("Persisted stale collection count")
+        )
+        retriever.ingest_file(
+            "file.pdf",
+            "collection",
+            collection,
+            ids,
+            ["text"] if ids else [],
+            [{}] if ids else [],
+        )
+        persist.assert_called_once_with("index")
+
+
+def test_incremental_bm25_saved_index_is_reused_by_fresh_reader(tmp_path):
+    retriever = _make_retriever()
+    retriever._data.collection_name = "collection"
+    retriever.add_chunks(["old"], ["old text"], [{"FilePath": "old.pdf"}])
+    retriever._data.doc_count_at_build = 1
+    collection = MagicMock()
+    collection.count.return_value = 2
+    with patch.object(BM25Retriever, "get_bm25_dir", return_value=str(tmp_path)):
+        retriever.ingest_file(
+            "new.pdf",
+            "collection",
+            collection,
+            ["new"],
+            ["new text"],
+            [{"FilePath": "new.pdf"}],
+        )
+    fresh = _make_retriever()
+    with patch.object(BM25Retriever, "_rebuild_from_collection") as rebuild:
+        fresh.load_or_rebuild(str(tmp_path), "collection", collection)
+        rebuild.assert_not_called()
+    assert fresh._data.doc_count_at_build == 2
+    assert fresh._data.chunk_ids == ["old", "new"]
 
 
 # ---------------------------------------------------------------------------

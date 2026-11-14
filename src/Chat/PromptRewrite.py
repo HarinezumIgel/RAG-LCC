@@ -78,7 +78,9 @@ class PromptRewrite(SingletonMixin):
         # spaCy caches loaded models per process so there is no duplicate cost.
         if nlp is not None:
             self._nlp: Any = nlp
+            self._nlp_injected: bool = True
         else:
+            self._nlp_injected = False
             spacy_model_value, _ = self.cfg.indirect_get(
                 "_GRAPH_INDEX.spacy_model",
                 "en_core_web_sm",
@@ -94,6 +96,51 @@ class PromptRewrite(SingletonMixin):
                     "Run: python ./src/Scripts/SpacyLanguageModels.py install "
                     f"(or python -m spacy download {spacy_model})"
                 ) from exc
+        self._nlp_by_model: dict[str, Any] = {}
+
+    def _nlp_for_session(self, session: Session) -> Any:
+        """Return the spaCy pipeline matching the session retrieval language.
+
+        Falls back to the default model when the language has no configured
+        or installed spaCy package.
+        """
+        if getattr(self, "_nlp_injected", True):
+            return self._nlp
+        language = str(getattr(session, "retrieval_language", "") or "").strip().lower()
+        if not language or language in {"english", "en"}:
+            return self._nlp
+        try:
+            from Helpers.LanguageConfig import get_lang_name_to_code
+
+            code = get_lang_name_to_code(self.cfg).get(language, language)
+            models: dict[str, Any] = self.cfg.get_dict(
+                "_SPACY_MODELS_BY_ACTIVE_LANGUAGE", {}
+            )
+            model_name = str(models.get(code, "") or "").strip()
+        except Exception:
+            return self._nlp
+        if not model_name:
+            return self._nlp
+        cache: dict[str, Any] = getattr(self, "_nlp_by_model", None) or {}
+        self._nlp_by_model = cache
+        cached = cache.get(model_name)
+        if cached is not None:
+            return cached
+        try:
+            import spacy  # type: ignore[import-untyped]
+
+            loaded = spacy.load(model_name)
+        except OSError:
+            self.pretty.write(
+                "W",
+                "QueryRewrite",
+                f"spaCy model '{model_name}' for '{language}' not installed - "
+                "using default model for pronoun detection.",
+                color=ORANGE,
+            )
+            loaded = self._nlp
+        self._nlp_by_model[model_name] = loaded
+        return loaded
 
     def _log_no_history_skip(self) -> None:
         self.pretty.write(
@@ -181,6 +228,7 @@ class PromptRewrite(SingletonMixin):
         rolling_topic_summary: str,
         *,
         strict_english: bool,
+        strict_language: str | None = None,
     ) -> str:
         # NOTE: We intentionally omit the actual file path from current_user_utterance.
         # The chat history is already scoped to the same file_tag by ChromaDB's where-filter
@@ -197,8 +245,18 @@ class PromptRewrite(SingletonMixin):
             rolling_topic_summary=rolling_topic_summary,
             current_user_utterance=current_user_utterance,
             output_language=retrieval_language,
-            strict_rewrite_mode=("strict" if strict_english else "standard"),
+            strict_rewrite_mode=(
+                "strict" if (strict_english or strict_language) else "standard"
+            ),
         )
+        if strict_language and not strict_english:
+            formatted += (
+                "\n\nSTRICT ENFORCEMENT (retry mode):\n"
+                f"- Output BOTH rewrites in {strict_language} only.\n"
+                "- Do NOT translate the query into English or any other language.\n"
+                "- Keep named entities, product names, policy IDs, document titles, acronyms,\n"
+                "  and quoted strings unchanged.\n"
+            )
         if strict_english:
             formatted += (
                 "\n\nSTRICT ENFORCEMENT (retry mode):\n"
@@ -224,14 +282,21 @@ class PromptRewrite(SingletonMixin):
             options["num_gpu"] = 0
         return options
 
-    def rewrite(self, session: Session, *, strict_english: bool = False) -> str:
+    def rewrite(
+        self,
+        session: Session,
+        *,
+        strict_english: bool = False,
+        strict_language: str | None = None,
+    ) -> str:
         """Detect topic continuity and rewrite the user query for retrieval.
 
         Returns contextual_rewrite when the LLM determines the current
         utterance depends on the previous turn with sufficient confidence,
         standalone_rewrite otherwise. Falls back to the original query on
         parse failure or LLM error. When ``strict_english`` is True, appends
-        an additional enforcement block to force English retrieval output.
+        an additional enforcement block to force English retrieval output;
+        ``strict_language`` does the same for a native retrieval language.
         """
         # Performance logging
         self.perf_logger.log(
@@ -301,6 +366,7 @@ class PromptRewrite(SingletonMixin):
             previous_user_utterance,
             rolling_topic_summary,
             strict_english=strict_english,
+            strict_language=strict_language,
         )
         ollama_options = self._build_rewrite_ollama_options(session)
 
@@ -309,7 +375,12 @@ class PromptRewrite(SingletonMixin):
             "QueryRewrite",
             f"Topic detection using {len(history_docs)} history turns",
         )
-        rewrite_mode = "strict English retry" if strict_english else "standard"
+        if strict_english:
+            rewrite_mode = "strict English retry"
+        elif strict_language:
+            rewrite_mode = f"strict {strict_language} retry"
+        else:
+            rewrite_mode = "standard"
         self.pretty.write(
             "I",
             "LLM Plan",
@@ -326,6 +397,8 @@ class PromptRewrite(SingletonMixin):
                 template_name=self.prompt_name,
                 streaming=self.streaming,
                 stage="Topic detect / query rewrite",
+                purpose="Query rewrite",
+                model_role="_ACTIVE_LLM_REWRITE_PROMPT",
             )
         except Exception as exc:
             self.pretty.write(
@@ -389,9 +462,10 @@ class PromptRewrite(SingletonMixin):
         previous_referents: list[str] | None = session.last_topic_referents
         session.last_topic_referents = referents if referents else None
 
+        nlp = self._nlp_for_session(session)
         pronoun_rewrite_locked_to_original = False
         if not pronoun_substitution_enabled:
-            orig_doc_for_toggle = self._nlp(original_query)
+            orig_doc_for_toggle = nlp(original_query)
             has_third_person_pronouns = any(
                 tok.pos_ == "PRON" and "3" in tok.morph.get("Person", [])
                 for tok in orig_doc_for_toggle
@@ -420,7 +494,7 @@ class PromptRewrite(SingletonMixin):
         #
         # EXAMPLE (failure path): depends=False, referents=[] => condition is True => enter block.
         if not depends and not referents and not pronoun_rewrite_locked_to_original:
-            orig_doc = self._nlp(original_query)
+            orig_doc = nlp(original_query)
             # 3rd-person and demonstrative pronouns — those that require a prior
             # referent from context.  1st/2nd-person forms are excluded because
             # they refer to conversation participants, not to prior entities.
@@ -437,7 +511,7 @@ class PromptRewrite(SingletonMixin):
                     if tok.pos_ in _CONTENT_POS and len(tok.text) > 2
                 }
                 # EXAMPLE: orig_words = {"have", "spines"}  ("it" is PRON, "does" < 3 chars)
-                sa_doc = self._nlp(standalone)
+                sa_doc = nlp(standalone)
                 sa_words = {
                     tok.lemma_.lower()
                     for tok in sa_doc
@@ -452,7 +526,7 @@ class PromptRewrite(SingletonMixin):
                     # "bee" is not in the original but IS in the chat history — not a hallucination.
                     history_words = {
                         tok.lemma_.lower()
-                        for tok in self._nlp(rolling_topic_summary)
+                        for tok in nlp(rolling_topic_summary)
                         if tok.pos_ in _CONTENT_POS and len(tok.text) > 2
                     }
                     true_hallucinations = invented - history_words

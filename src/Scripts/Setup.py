@@ -36,10 +36,9 @@ Execution order:
              manifest maps each pinned dependency version to its recorded
              license metadata and signed evidence files.
 
-  3. Copy example configuration files
-             Copy Example_*.py files from Examples/ into Configuration/
-             where missing, so the application has default configuration
-             files to start from.
+  3. Review configuration files
+             Review and optionally edit the installed files directly in
+             src/Configuration/ before applying runtime settings.
 
   4. Download NLTK stopwords and WordNet
              Fetch NLTK and WordNet licenses for the installed versions,
@@ -78,6 +77,12 @@ Integrity note:
     have not changed since signing. Signature verification itself is expected
     to be performed by the release verification tooling.
 
+Logging note:
+    The full console transcript (all output and interactive answers) is
+    written to logs/Installation/Setup_YYYYMMDD_HHMM.log. Secrets entered
+    by the user are never written to the log; secret-like values are
+    redacted. The log file location is printed when the script ends.
+
 Compliance note:
     This script records technical consent and setup metadata for auditability.
     It does not provide legal advice and does not replace legal review of
@@ -86,6 +91,8 @@ Compliance note:
 
 from __future__ import annotations
 
+import atexit
+import builtins
 import getpass
 import hashlib
 import json
@@ -109,7 +116,7 @@ import sys
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Literal, TypedDict, cast
+from typing import Any, Literal, TextIO, TypedDict, cast
 
 
 def _enable_windows_ansi() -> None:
@@ -151,6 +158,7 @@ if str(_SRC_DIR) not in sys.path:
 import Configuration.Config_Global as _ConfigGlobal  # noqa: E402
 # Resolve and validate project root before any setup actions.
 from Commons.DriveRootGuard import assert_script_project_root  # noqa: E402
+from Helpers.SensitiveData import mask_sensitive_data  # noqa: E402
 
 _PROJECT_ROOT = Path(
     assert_script_project_root(
@@ -163,7 +171,7 @@ _PROJECT_ROOT = Path(
 _SCRIPTS_DIR = Path(__file__).resolve().parent
 _LICENSE_DIR = _PROJECT_ROOT / "3rdPartyLicenses"
 _REQUIREMENTS = _PROJECT_ROOT / "requirements" / "requirements_final.txt"
-_SETUP_LOG_DIR = _PROJECT_ROOT / "logs" / "setup"
+_INSTALL_LOG_DIR = _PROJECT_ROOT / "logs" / "Installation"
 _setup_log_path: Path | None = None
 _CFG_DIR = _SRC_DIR / "Configuration"
 _CONSENTS_DIR = _PROJECT_ROOT / "ModelGovernance" / "consents"
@@ -297,7 +305,7 @@ def _print_execution_plan() -> None:
         f"{_DIM}  Step 2:{_RESET} Install Python requirements from requirements/requirements_final.txt into the active virtual environment."
     )
     print(
-        f"{_DIM}  Step 3:{_RESET} Copy Example_*.py files from Examples/ to src/Configuration/ (skips existing unless forced by child script options)."
+        f"{_DIM}  Step 3:{_RESET} Review and optionally edit the installed files in src/Configuration/."
     )
     print(
         f"{_DIM}  Step 4:{_RESET} Download NLTK stopwords + WordNet resources with consent flow for installed versions."
@@ -377,6 +385,9 @@ def _relaunch_setup_with_venv(venv_python: Path) -> None:
         )
         sys.exit(1)
 
+    # The relaunched child prints the log location itself; avoid a duplicate.
+    global _suppress_log_notice
+    _suppress_log_notice = True
     sys.exit(result.returncode)
 
 
@@ -725,8 +736,19 @@ def _print_endpoint_connectivity_examples(
     print(f"{_CYAN}  Test connectivity {source_label} before continuing:{_RESET}")
     for label, url in examples:
         print(f"{_DIM}    # {label}:{_RESET}")
-        print(f"{_DIM}    curl -v {url}{auth_header}{_RESET}")
+        print(f"{_DIM}    {mask_sensitive_data(f'curl -v {url}{auth_header}')}{_RESET}")
         print()
+
+
+def _print_vllm_orchestration_hint(endpoint: str) -> None:
+    if endpoint == "vllm":
+        print(
+            f"{_DIM}  For configuration-driven orchestration of models, LLMs, "
+            f"embedders, and rerankers, see the companion project:{_RESET}"
+        )
+        print(
+            f"{_DIM}  https://github.com/HarinezumIgel/harinezumigel-llm-stack{_RESET}"
+        )
 
 
 def _print_ragchatservice_listener_guidance(
@@ -850,7 +872,7 @@ def _print_endpoint_access_info(
 
 def _run_required_command(command: list[str], label: str) -> None:
     """Run a command and abort setup if it fails."""
-    print(f"{_DIM}  Running: {' '.join(command)}{_RESET}")
+    print(f"{_DIM}  Running: {mask_sensitive_data(' '.join(command))}{_RESET}")
     result = subprocess.run(command)
 
     if result.returncode != 0:
@@ -862,21 +884,158 @@ def _run_required_command(command: list[str], label: str) -> None:
         sys.exit(result.returncode)
 
 
+# ---------------------------------------------------------------------------
+# Setup transcript logging
+#
+# Everything printed by this script (including the in-process runpy steps)
+# and every interactive answer is mirrored into
+# logs/Installation/Setup_YYYYMMDD_HHMM.log with ANSI colour codes stripped.
+# Secrets are never written to the log: masked secret entry only ever emits
+# '*' characters, and answers to secret-looking prompts are redacted.
+# ---------------------------------------------------------------------------
+
+_ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+# Broader than _SECRET_FIELD_RE: also matches "API key" / "api key" in prose.
+_SECRET_PROMPT_RE = re.compile(
+    r"(secret|token|password|passwd|api[\s_-]?key|bearer|credential|auth)",
+    re.IGNORECASE,
+)
+_transcript_file: TextIO | None = None
+_suppress_log_notice: bool = False
+_real_input = builtins.input
+
+
+def _log_transcript(text: str) -> None:
+    """Append plain text (ANSI codes and backspaces stripped) to the log."""
+    if _transcript_file is None:
+        return
+    try:
+        cleaned = _ANSI_ESCAPE_RE.sub("", text).replace("\b \b", "").replace("\b", "")
+        _transcript_file.write(cleaned)
+        _transcript_file.flush()
+    except Exception:
+        pass  # Logging must never break the setup flow.
+
+
+class _TeeStream:
+    """Mirror writes to the real console stream and the setup log file."""
+
+    def __init__(self, stream: Any) -> None:
+        self._stream = stream
+
+    def write(self, text: str) -> int:
+        result = self._stream.write(text)
+        _log_transcript(text)
+        return result
+
+    def flush(self) -> None:
+        self._stream.flush()
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._stream, name)
+
+
+def _logging_input(prompt: object = "") -> str:
+    """input() replacement that records prompts and answers in the log.
+
+    Answers to prompts that look secret-related are redacted as a safety
+    net; actual secret entry goes through _prompt_secret_masked and never
+    reaches this function.
+    """
+    text = str(prompt)
+    # On an interactive console input() prints the prompt directly to the
+    # terminal, bypassing the teed sys.stdout, so it must be logged here.
+    # With piped stdin/stdout the prompt goes through sys.stdout and is
+    # captured by the tee already.
+    try:
+        interactive = sys.stdin.isatty() and sys.stdout.isatty()
+    except Exception:
+        interactive = False
+    if interactive:
+        _log_transcript(text)
+    try:
+        answer = _real_input(prompt)
+    except (EOFError, KeyboardInterrupt):
+        _log_transcript("\n[input interrupted]\n")
+        raise
+    if _SECRET_PROMPT_RE.search(text):
+        _log_transcript("<redacted>\n")
+    else:
+        _log_transcript(f"{answer}\n")
+    return answer
+
+
 def _write_setup_log(event: str, **fields: object) -> None:
-    """No-op: logging disabled."""
-    pass
+    """Append a structured event line to the setup log file (not the console)."""
+    if _transcript_file is None:
+        return
+    parts = [
+        f"[{datetime.now().isoformat(timespec='seconds')}]",
+        f"EVENT {event}",
+    ]
+    for key, value in fields.items():
+        shown: object = "<redacted>" if _SECRET_FIELD_RE.search(key) else value
+        parts.append(f"{key}={shown}")
+    _log_transcript("  ".join(parts) + "\n")
+
+
+def _close_setup_log() -> None:
+    global _transcript_file
+    if _transcript_file is None:
+        return
+    _log_transcript(
+        f"===== Setup transcript ended {datetime.now().isoformat(timespec='seconds')} =====\n"
+    )
+    try:
+        _transcript_file.close()
+    except Exception:
+        pass
+    _transcript_file = None
 
 
 def _init_setup_log() -> None:
-    """No-op: logging disabled."""
-    pass
+    """Start transcript logging into logs/Installation/Setup_YYYYMMDD_HHMM.log."""
+    global _setup_log_path, _transcript_file
+    if _transcript_file is not None:
+        return
+    try:
+        _INSTALL_LOG_DIR.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.now().strftime("%Y%m%d_%H%M")
+        _setup_log_path = _INSTALL_LOG_DIR / f"Setup_{stamp}.log"
+        # Append mode: the pre-venv relaunch and the venv run share one file.
+        _transcript_file = open(
+            _setup_log_path, "a", encoding="utf-8", errors="replace"
+        )
+    except OSError as exc:
+        print(f"{_YELLOW}  ⚠  Could not create setup log file: {exc}{_RESET}")
+        _setup_log_path = None
+        _transcript_file = None
+        return
+    _log_transcript(
+        f"===== Setup transcript started {datetime.now().isoformat(timespec='seconds')} "
+        f"(pid {os.getpid()}, python {sys.version.split()[0]}) =====\n"
+    )
+    sys.stdout = _TeeStream(sys.stdout)
+    sys.stderr = _TeeStream(sys.stderr)
+    builtins.input = _logging_input
+    atexit.register(_close_setup_log)
+
+
+def _print_log_location() -> None:
+    """Tell the user where the setup log file was written."""
+    if _setup_log_path is None or _suppress_log_notice:
+        return
+    print()
+    print(f"{_CYAN}  Setup log written to: {_BOLD}{_setup_log_path}{_RESET}")
 
 
 def _print_correction_hint(label: str, display_value: str) -> None:
     """Print current value and keep/replace instructions in correction mode."""
     print()
     print(f"  {_CYAN}◈  {label}{_RESET}")
-    print(f"  {_DIM}   Current value:  {_CYAN}{_BOLD}{display_value}{_RESET}")
+    print(
+        f"  {_DIM}   Current value:  {_CYAN}{_BOLD}{mask_sensitive_data(display_value)}{_RESET}"
+    )
     print(
         f"  {_DIM}   Press Enter to keep it, or type a new value to replace it.{_RESET}"
     )
@@ -1309,6 +1468,7 @@ def _run_setup_questions() -> None:
             correction_value=endpoint if correction_mode else None,
         )
 
+        _print_vllm_orchestration_hint(endpoint)
         _print_endpoint_connectivity_examples(endpoint, runtime_context)
         print()
         print(f"{_RED}{'='*70}{_RESET}")
@@ -1578,7 +1738,9 @@ def _run_setup_questions() -> None:
         print(f"{_BOLD}{_TURQUOISE}  Review your selected runtime settings{_RESET}")
         print(f"{_CYAN}{'-' * w}{_RESET}")
         print(f"{_WHITE}  _ACTIVE_ENDPOINT:{_RESET} {endpoint}")
-        print(f"{_WHITE}  {endpoint.upper()} BASE_URL:{_RESET} {endpoint_url}")
+        print(
+            f"{_WHITE}  {endpoint.upper()} BASE_URL:{_RESET} {mask_sensitive_data(endpoint_url)}"
+        )
         print(
             f"{_WHITE}  {endpoint.upper()} API key:{_RESET} {'<set>' if endpoint_api_key else '<empty>'}"
         )
@@ -1601,7 +1763,9 @@ def _run_setup_questions() -> None:
         print(
             f"{_WHITE}  _MODELS.ragchatservice._RAGCHATSERVICE.PORT:{_RESET} {rag_chat_service_listener_port}"
         )
-        print(f"{_WHITE}  OpenWebUI BASE_URL:{_RESET} {openwebui_base_url}")
+        print(
+            f"{_WHITE}  OpenWebUI BASE_URL:{_RESET} {mask_sensitive_data(openwebui_base_url)}"
+        )
         print(
             f"{_WHITE}  _MODELS.ragchatservice._RAGCHATSERVICE.API_KEY:{_RESET} {'<set>' if openwebui_api_key else '<empty>'}"
         )
@@ -1740,13 +1904,15 @@ def _run_setup_questions() -> None:
         _conf = _u.get("conf", "")
         _key = _u.get("slot_name", "")
         _val = _u.get("value", "")
-        _display = "<redacted>" if _SECRET_FIELD_RE.search(_key) else _val
+        _display = (
+            "<redacted>" if _SECRET_FIELD_RE.search(_key) else mask_sensitive_data(_val)
+        )
         print(f"{_DIM}    {_conf:<30}  {_key:<45}  = {_display}{_RESET}")
     print(f"{_CYAN}{'-' * w}{_RESET}")
     _write_setup_log(
         "runtime_questions_applied",
         active_endpoint=endpoint,
-        endpoint_base_url=endpoint_url,
+        endpoint_base_url=mask_sensitive_data(endpoint_url),
         endpoint_api_key_set=bool(endpoint_api_key),
         hf_api_key_set=bool(hf_api_key),
         hf_hub_offline=hf_hub_offline,
@@ -2111,46 +2277,41 @@ def _open_file_in_editor(file_path: Path) -> None:
             print(f"{_RED}  ✖  Could not read file: {read_exc}{_RESET}")
 
 
-def _collect_example_files() -> list[tuple[str, str, Path]]:
-    """Return list of (filename, criticality, path) tuples for example files.
+def _collect_config_files() -> list[tuple[str, str, Path]]:
+    """Return the configuration files previously offered for review.
 
     Criticality is either 'critical' or empty string.
     """
-    examples_dir = _PROJECT_ROOT / "Examples"
-    prefix = "Example_"
-
-    # Define which examples are critical
-    critical_examples = {
-        "Example_Config_Models.py",
-        "Example_Config_Banned_Detection.py",
-        "Example_Config_Banned_Content.py",
-        "Example_Config_Banned_Prompts.py",
-        "Example_Config_Load_Retrievers.py",
-        "Example_Config_Load_Chunkers.py",
-        "Example_Config_WebSearch.py",
-        "Example_Config_Internet_Env.py",
+    config_dir = _PROJECT_ROOT / "src" / "Configuration"
+    critical_configs = {
+        "Config_Models.py",
+        "Config_Banned_Detection.py",
+        "Config_Banned_Content.py",
+        "Config_Banned_Prompts.py",
+        "Config_Load_Retrievers.py",
+        "Config_Load_Chunkers.py",
+        "Config_WebSearch.py",
+        "Config_Internet_Env.py",
     }
-
-    all_sources = sorted(examples_dir.glob(f"{prefix}*.py"))
-
-    result: list[tuple[str, str, Path]] = []
-    for src in all_sources:
-        criticality = "critical" if src.name in critical_examples else ""
-        result.append((src.name, criticality, src))
-
-    return result
+    files = [config_dir / name for name in sorted(critical_configs)]
+    missing = [str(path) for path in files if not path.is_file()]
+    if missing:
+        raise FileNotFoundError(
+            "Required configuration files not found: " + ", ".join(missing)
+        )
+    return [(path.name, "critical", path) for path in files]
 
 
-def _display_example_files_table(files: list[tuple[str, str, Path]]) -> None:
-    """Display example files in a styled table format."""
+def _display_config_files_table(files: list[tuple[str, str, Path]]) -> None:
+    """Display installed configuration files in a styled table format."""
     w = 70
 
     print()
     print(f"{_CYAN}{'-' * w}{_RESET}")
-    print(f"{_BOLD}{_WHITE}  Example Configuration Files Review{_RESET}")
+    print(f"{_BOLD}{_WHITE}  Configuration Files Review{_RESET}")
     print(f"{_CYAN}{'-' * w}{_RESET}")
     print()
-    print(f"{_DIM}  The following configuration files will be installed:{_RESET}")
+    print(f"{_DIM}  Review the following installed configuration files:{_RESET}")
     print()
 
     # Display table header
@@ -2166,14 +2327,14 @@ def _display_example_files_table(files: list[tuple[str, str, Path]]) -> None:
     print(f"{_CYAN}{'-' * w}{_RESET}")
 
 
-def _review_example_files_interactive(files: list[tuple[str, str, Path]]) -> bool:
-    """Interactive review of example files with pager/editor options.
+def _review_config_files_interactive(files: list[tuple[str, str, Path]]) -> bool:
+    """Interactive review of installed configs with pager/editor options.
 
-    Returns True if user wants to continue with copy, False to skip.
+    Returns True if the user approves continuing setup.
     """
     w = 70
 
-    _display_example_files_table(files)
+    _display_config_files_table(files)
 
     print()
     print(f"{_WHITE}  Review files now?{_RESET}")
@@ -2901,9 +3062,11 @@ def main() -> None:
         formatter_class=argparse.RawTextHelpFormatter,
     )
     parser.add_argument(
+        "--no-config-review",
         "--no-examples-copy",
+        dest="no_config_review",
         action="store_true",
-        help="Skip Step 3 — do not copy Example_*.py files into Configuration/.",
+        help="Skip Step 3 configuration review (--no-examples-copy is a legacy alias).",
     )
     parser.add_argument(
         "--no-config-rehash",
@@ -2937,16 +3100,16 @@ def main() -> None:
     if args.set_config:
         args.set_config_values_only = True
 
+    _init_setup_log()
     _banner()
     _print_execution_plan()
     _ensure_project_root()
-    _init_setup_log()
     _ensure_venv()
     _warn_if_not_python_314()
     _ensure_cache_ownership()
     _write_setup_log(
         "setup_started",
-        no_examples_copy=args.no_examples_copy,
+        no_config_review=args.no_config_review,
         no_config_rehash=args.no_config_rehash,
         set_config_values_only=args.set_config_values_only,
         skip_signature_verification=args.skip_signature_verification,
@@ -3180,25 +3343,22 @@ def main() -> None:
     _enrich_pip_install_meta_with_consent()
 
     # ------------------------------------------------------------------
-    # Step 3 – Copy example configs into Configuration/.
-    # Existing files are left untouched unless the child script changes that.
+    # Step 3 – Review installed configs directly in Configuration/.
     # ------------------------------------------------------------------
-    if args.no_examples_copy:
-        print(f"{_YELLOW}  ⏭  Step 3 skipped (--no-examples-copy).{_RESET}")
+    if args.no_config_review:
+        print(f"{_YELLOW}  ⏭  Step 3 skipped (--no-config-review).{_RESET}")
         _write_setup_log(
             "step_skipped",
             step=3,
-            reason="--no-examples-copy",
+            reason="--no-config-review",
         )
     else:
-        examples_dir = _PROJECT_ROOT / "Examples"
+        config_dir = _PROJECT_ROOT / "src" / "Configuration"
         print()
+        print(f"{_DIM}  Please review the installed configuration files in:{_RESET}")
+        print(f"{_WHITE}  {config_dir}{_RESET}")
         print(
-            f"{_DIM}  Before copying, please review the example configuration files in:{_RESET}"
-        )
-        print(f"{_WHITE}  {examples_dir}{_RESET}")
-        print(
-            f"{_DIM}  These files will be copied into Configuration/ as your default settings.{_RESET}"
+            f"{_DIM}  Any editor changes apply directly to these configuration files.{_RESET}"
         )
         print(
             f"{_DIM}  In particular, review Config_Models.py before enabling internet access{_RESET}"
@@ -3207,44 +3367,21 @@ def main() -> None:
         _print_next_action_block(
             "Next action",
             [
-                ("Step", "Review example config files"),
-                ("If approved", "Copy Example_*.py into src/Configuration/"),
+                ("Step", "Review installed configuration files"),
+                ("If approved", "Continue setup using src/Configuration/"),
             ],
         )
         print()
 
-        # Collect example files
-        example_files = _collect_example_files()
-
-        if not example_files:
-            print(f"{_ORANGE}  WARN   No example files found in {examples_dir}{_RESET}")
+        config_files = _collect_config_files()
+        if not _review_config_files_interactive(config_files):
             _write_setup_log(
-                "step_skipped",
+                "step_cancelled",
                 step=3,
-                reason="no example files found",
+                reason="user declined configuration review",
             )
-        else:
-            # Show interactive review
-            if not _review_example_files_interactive(example_files):
-                print(f"{_YELLOW}  Skipping example config copy.{_RESET}")
-                _write_setup_log(
-                    "step_skipped",
-                    step=3,
-                    reason="user declined example copy after review",
-                )
-            else:
-                _run_step(
-                    step=3,
-                    label="Copy example configuration files",
-                    script="CopyExampleConfigs.py",
-                    description=(
-                        "Copies Example_*.py from Examples/ into Configuration/, "
-                        "backing up existing files to .sav and overwriting them "
-                        "to ensure fresh configs before applying runtime values."
-                    ),
-                    extra_argv=["--force"],
-                    required=True,
-                )
+            return
+        _write_setup_log("step_completed", step=3, label="Review configuration files")
 
     # ------------------------------------------------------------------
     # Step 4 – Download NLTK corpora (stopwords + WordNet).
@@ -3418,3 +3555,6 @@ if __name__ == "__main__":
         print()
         print(f"{_YELLOW}  Setup cancelled by user.{_RESET}")
         sys.exit(130)  # Standard exit code for Ctrl+C
+    finally:
+        # Runs on normal completion, sys.exit() and cancellation alike.
+        _print_log_location()

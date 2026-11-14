@@ -57,11 +57,14 @@ class StubConfig:
     def get_float(self, key, default=0.0) -> float:
         return float(self.get(key, default))  # type: ignore[reportArgumentType]
 
-    def get_list(self, key, default=None) -> list[object]:
+    def get_list(self, key, default=None, *, silent=False) -> list[object]:
         return self.get(key, default if default is not None else [])  # type: ignore[reportReturnType]
 
-    def get_dict(self, key, default=None) -> dict[str, object]:
+    def get_dict(self, key, default=None, *, silent=False) -> dict[str, object]:
         return self.get(key, default if default is not None else {})  # type: ignore[reportReturnType]
+
+    indirect_list = get_list
+    indirect_dict = get_dict
 
 
 @pytest.fixture(autouse=True)
@@ -389,7 +392,7 @@ class TestSpacyStartupModelWarnings:
                     return mapping[key]
                 return super().get(key, default)
 
-            def get_dict(self, key, default=None):
+            def get_dict(self, key, default=None, *, silent=False):
                 value = self.get(key, default if default is not None else {})
                 return value if isinstance(value, dict) else {}
 
@@ -501,6 +504,9 @@ class TestInstalledInventoryAlignment:
                 _ = silent
                 value = self.get(key, default if default is not None else {})
                 return value if isinstance(value, dict) else {}
+
+            indirect_list = get_list
+            indirect_dict = get_dict
 
         monkeypatch.setattr(
             "Compliance.SharedHelpers.translate.get_installed_languages",

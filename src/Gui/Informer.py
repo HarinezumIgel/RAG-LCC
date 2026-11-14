@@ -71,7 +71,7 @@ class Informer:
         Throws OpenWebUINotRunning if not reachable.
         """
         openwebui_args: dict[str, Any] = self.helpers.get_model_args(
-            "_ACTIVE_OPENWEBUI"
+            "openwebui", role="_OPENWEBUI"
         )
         base_url: str = str(openwebui_args.get("BASE_URL", ""))
 
@@ -276,7 +276,7 @@ class Informer:
 
     def _delete_collection(self) -> None:
         keepIndexes: bool = self.cfg.get_bool("RETRIEVAL_STORES_KEEP")
-        collection: str = self.cfg.get_str("COLLECTION")
+        collection: str = self.helpers.embedder_collection_name()
 
         if keepIndexes is False:
             self.pretty.write(

@@ -24,7 +24,7 @@ Detection only: RAG‑LCC performs automated detection and scoring; it does not 
 
 Operator control: Keyword lists, thresholds, and consensus rules are supplied and tunable by the operator.
 
-Human review required: Any blocking, redaction, or external disclosure requires human review and recorded sign‑off.
+Human responsibility: Configured rules can automatically mask or block content. Operators should review results and establish appropriate approval and disclosure procedures.
 
 Scope: Applies to document ingestion, prompt validation, and LLM output validation as configured in Configuration/Config_*.py.
 
@@ -43,7 +43,7 @@ Four applications share the same core infrastructure:
 
 ## 🖼️ Overview Diagram
 
-![RAG-LCC Overview Diagram](Documentation/Presentations/RAG-LCC-Overview.png)
+![RAG-LCC Overview Diagram](Documentation/Pics/RAG-LCC-Overview.png)
 
 ## 🎯 Core Design Principles
 
@@ -68,22 +68,37 @@ src/
 │
 ├── Configuration/                 Config files read at startup
 │   ├── Config_Global.py           Shared defaults (paths, hardware, debug)
+│   ├── Config_Confidence.py       Confidence logging, quality evaluation, judge prompt
+│   ├── Config_ConfidenceEvaluator.py  C_final weights, fallback penalty, band thresholds
+│   ├── Config_ContextSummarizer.py    Document-summary length, prompts, temperature
+│   ├── Config_Grounder.py         Grounding sensitivity, source marking, summary word limits
 │   ├── Config_Load_Retrievers.py  Collection/store lifecycle and HNSW retrieval params
 │   ├── Config_Load_Chunkers.py    Chunker routing, chunker params, metadata extraction
-│   ├── Config_Languages.py        Active languages, Argos pairs, spaCy language maps, BM25/Graph/Regex language slots
-│   ├── Config_Models.py           Model definitions and endpoint metadata
+│   ├── Config_Languages.py        Re-exports the three Config_Languages_* modules below
+│   ├── Config_Languages_Catalog.py        Language catalog, active languages, Argos pairs
+│   ├── Config_Languages_Normalization.py  WordNet, leet-speak and confusable maps
+│   ├── Config_Languages_Retrievers.py     spaCy model maps, BM25/Graph/Regex index settings
+│   ├── Config_Models.py           Model definitions, _ACTIVE_* selectors, endpoint metadata
 │   ├── Config_Banned_Detection.py Detection pipelines, thresholds, and per-app checks
+│   ├── Config_Banned_HumanReview_CSV.py  HUMAN_REVIEW CSV presentation settings
 │   ├── Config_Banned_Content.py   Banned-word lists and masking regex configuration
 │   ├── Config_Banned_Prompts.py   Prompt-check templates for compliance LLMs
 │   ├── Config_WebSearch.py        Web search backend and intent-filter settings
 │   ├── Config_Internet_Env.py     Internet access and network-tracing env vars
-│   ├── Config_RAGChat.py          Chat strategies, query rewrite, multi-query, grounding
+│   ├── Config_Orchestrator.py     Orchestration flow catalog, default flow, aliases, _INDEXED_QUERY
+│   ├── Config_RAGChat.py          RAGChat core defaults (log/history paths, KeyBERT, default chat)
+│   ├── Config_RAGChat_Strategies.py  Chunk-selection strategies and allowed retrieve modes
+│   ├── Config_RAGChat_Prompts.py  Chat and topic-detection prompt templates
+│   ├── Config_RAGChat_Rewrite.py  Query rewrite/expansion, multi-query, dedup, low-score fallback
+│   ├── Config_KeywordActionSplitter.py  Split-query defaults, limits, sampling, and JSON prompt
+│   ├── Config_RAGChat_Display.py  Terminal width, single-chunk score boost, highlight colours
 │   ├── Config_RAGChatService.py   Service-specific overrides for REST/OpenWebUI mode
 │   ├── Config_RAGLoad.py          Ingestion-specific settings
 │   └── Config_DocClassify.py      Classification model params and extraction keys
 │
 ├── Config/                        Config loader
 │   ├── Config.py                  Hierarchical config resolver (lookup-order chain)
+│   ├── CliOverridePolicy.py       Which constants may be overridden from the CLI
 │   └── AddConstantsFromConfigFile.py  Injects config module attributes into a Config instance
 │
 ├── Pipeline/                      Pipeline orchestration
@@ -106,6 +121,8 @@ src/
 │       ├── PageBasedChunker.py    ABC for page-oriented chunkers
 │       ├── SlideChunker.py        Per-slide chunking (PPTX / PPT)
 │       ├── PdfPageChunker.py      Per-page chunking (PDF)
+│       ├── TableChunker.py        Ordered Word/PDF extraction with table-aware chunks
+│       ├── DocumentMetadataExtractor.py  Document-level metadata (author, title, dates) for PDF/Office
 │       └── SentenceSplitter.py    Sentence boundary utility used by multiple chunkers
 │
 ├── Retrievers/                    Retrieval engines and web-leg filters
@@ -113,22 +130,52 @@ src/
 │   ├── GraphRetriever.py          Entity co-occurrence graph retrieval (spaCy NER + BFS)
 │   ├── RegexRetriever.py          Verb/noun lemma retrieval with strict + fallback gates
 │   ├── RetrieverProtocol.py       Structural protocol for persistent local retrievers
+│   ├── RetrieverBase.py           Shared PerfLogger helpers for retrievers
 │   ├── WebRetriever.py            DuckDuckGo web search retrieval leg
 │   ├── WebPreFilter.py            Query sanitisation and injection-detection before web calls
 │   └── WebSearchFilter.py         Intent-classifier gate on web queries
 │
 ├── Chat/                          RAGChat conversation layer
-│   ├── RAGChatImpl.py             Core retrieval + generation loop
+│   ├── RAGChatImpl.py             Retrieval facade, store lifecycle, and summary access
+│   ├── QueryNormalizer.py         Detection, translation, rewrite, gates, and query expansion
+│   ├── LocalRetrieverExecutor.py  Vector and indexed retrieval dispatch and guardrails
+│   ├── RetrievalReranker.py       Ordinary and split-query scoring and language selection
+│   ├── RetrievalContextBuilder.py  Candidate merging, chunk selection, and context assembly
+│   ├── DocumentMarkingService.py  Highlighted local source generation
+│   ├── RagRetrievalContext.py     Typed shared-state contract for retrieval responsibilities
 │   ├── Chatter.py                 Session shell and turn management
 │   ├── CommandProcessor.py        In-chat command dispatch (strategy!, mode!, debug!, …)
 │   ├── ChatContext.py             Multi-turn context storage and pruning
 │   ├── PromptRewrite.py           Query rewriting / coreference resolution (LLM-based)
-│   ├── QueryParts.py              Query decomposition and session parameter access
+│   ├── QueryParts.py              CLI command coordinator and concrete settings picker
+│   ├── QueryCommandMetadata.py    Command definitions, aliases, and grouped display metadata
+│   ├── QuerySettingsPresenter.py  Settings help and current-value presentation
+│   ├── SessionSettingsApplier.py  Session changes, flow defaults, and context-window warnings
+│   ├── QueryPartsProtocol.py     Typed shared-state contract for CLI settings responsibilities
 │   ├── RetrievalGate.py           Blocks under-specified queries; returns ❔ clarification
+│   ├── ConfidenceEvaluator.py     Final answer confidence (C_final, HIGH/MEDIUM/LOW band)
+│   ├── ContextSummarizer.py       Context-budgeted map/reduce document summarization
+│   ├── KeywordActionSplitter.py   Validated local needs, keywords, and answer/operation tasks
 │   └── MarkedDocsViewer.py        CLI picker for highlighted source documents
+│
+├── Orchestrator/                  Retrieval pipeline control
+│   ├── Orchestrator.py            Stage sequencing, gates, retrieval, and context assembly
+│   ├── IndexedRetrievalPlanner.py  Indexed language buckets, shaping, and iteration planning
+│   ├── IndexedRetrievalExecutor.py  Indexed stage dispatch and variant merging
+│   ├── OriginalQueryLegExecutor.py  Original-language retrieval and rank fusion
+│   ├── LocalRetrievalPipeline.py  Local stage inputs, pipeline execution, and split-query legs
+│   ├── OrchestrationStageContext.py  Typed shared-state contract for orchestration stages
+│   ├── FlowConfig.py              Flow names, aliases, default flow, and startup validation
+│   ├── OrchestratorHelper.py      Candidate identity, native-leg merging, and variant ranking
+│   ├── OrchestratorMessages.py    Traces, confidence events, notices, and buffered reports
+│   ├── OrchestratorOverrides.py   Flow profiles and session/CLI override precedence
+│   └── OrchestratorTypes.py       Shared pipeline data records
 │
 ├── Api/                           RAGChatService REST layer
 │   ├── ChatCompletionHandler.py   OpenAI /v1/chat/completions request handler
+│   ├── ChatRequestSessionMapper.py  Request overrides and request-scoped session mapping
+│   ├── ChatResponseStreamer.py    SSE generation and transferred-lock release
+│   ├── OpenWebUIHousekeeping.py   Recognition of synthetic OpenWebUI requests
 │   ├── MarkedDocsService.py       HTTP server for /marked/<token> highlighted-doc links
 │   └── MarkedDocsStore.py         In-memory TTL cache for highlighted document bytes
 │
@@ -151,10 +198,14 @@ src/
 │   ├── SharedHelpers.py           Shared detection utilities (consensus rules, CSV output)
 │   ├── Exclusions.py              Exclusion-list management (previously-flagged files)
 │   ├── ArgosDownloader.py         Argos Translate package download and consent workflow
+│   ├── ArgosSpacySentencizerPatch.py  Offline blingfire sentence splitting for Argos SPACY mode
+│   ├── SpacyDownloader.py         spaCy model license consent and installer
+│   ├── path_validation.py         Validation of configured path values (drive-root guard)
 │   └── HFDownloader.py            HuggingFace model download, cache scan, and consent
 │
 ├── AI/                            Model loading and inference
 │   ├── AIHelpers.py               Embedder and cross-encoder loading (singleton wrappers)
+│   ├── VllmClients.py             Remote embedding / reranking clients for vLLM servers
 │   ├── LLMCaller.py               LLM call dispatcher (Ollama / vLLM)
 │   ├── LLMBackendAdapter.py       Protocol adapter (Ollama ↔ vLLM REST differences)
 │   ├── ModelOutputAdapter.py      Normalises raw LLM output to a common response shape
@@ -171,6 +222,11 @@ src/
 │   ├── CSVWriter.py               Compliance and classification CSV output
 │   ├── ClassifyCSVReader.py       Reads DocClassify CSV for classify-then-load filtering
 │   ├── ValidExtensions.py         Supported file-type registry and routing
+│   ├── ModelSelection.py          Resolves _ACTIVE_* selectors to _MODELS entries (runtime + compliance)
+│   ├── LanguageConfig.py          Active-language configuration and Argos pair filtering
+│   ├── ConfidenceLogger.py        Per-turn confidence events and flat CONFIDENCE_FLAT CSV export
+│   ├── QualityDimensionEvaluator.py  Retrieval diagnostics and answer-text LLM review
+│   ├── SensitiveData.py           Masks credentials/tokens in terminal, log, and request output
 │   ├── OfficeDocConverter.py      MS Office → text via COM automation (pywin32)
 │   ├── PerfLogger.py              Performance event logging (start/stop timestamps)
 │   ├── PipelineSettingsSummarizer.py  Human-readable pipeline-state summary for the startup banner
@@ -187,6 +243,7 @@ src/
 │   ├── Banner.py                  Application header / logo display
 │   ├── Colors.py                  ANSI colour constants (truecolor + 256-color fallback)
 │   ├── CollectionPicker.py        Interactive ChromaDB collection selector
+│   ├── MetadataPicker.py          Interactive metadata-filter picker (ChromaDB where condition)
 │   ├── FileList.py                Interactive file-picker for marked documents
 │   ├── HistoryManager.py          Chat history persistence (load / save)
 │   ├── LicensePager.py            License text pager for model consent workflow
@@ -196,10 +253,15 @@ src/
 │   ├── Exceptions.py              Custom exception hierarchy
 │   ├── SingletonMixin.py          Thread-safe singleton base class
 │   ├── StartupCommons.py          Shared startup sequence (env vars, config hash checks)
+│   ├── DriveRootGuard.py          Early stdlib-only refusal to run from a drive root
 │   └── NetworkTracer.py           Optional socket-level network activity tracer
 │
-├── VisualMarkers/                 Answer grounding and source highlighting
-│   ├── AnswerGrounder.py          Sentence-level overlap detection (grounded vs ungrounded)
+├── Grounding/                     Answer grounding and evidence validation
+│   ├── Grounder.py                Sentence-level overlap detection and translated evidence checks
+│   └── SourceReferences.py        Structured summary statements and their context chunk IDs
+│
+├── VisualMarkers/                 Source-document highlighting
+│   ├── MarkWorker.py              Lightweight document-marking subprocess (parallel PDF marking)
 │   ├── VisualMarker.py            Abstract base for per-format highlight injectors
 │   ├── VisualMarkerFactory.py     Selects the right marker implementation by file type
 │   ├── PdfVisualMarker.py         /Highlight annotations via pdfplumber + pypdf
@@ -212,14 +274,35 @@ src/
     ├── CopyExampleConfigs.py      Copies example Config_*.py files into place
     ├── RecalcConfigHashes.py      Recomputes and updates _CRITICAL_CONFIG_HASHES[...] values
     ├── ArgosTranslatePackages.py  Install / remove Argos Translate language packages
+    ├── ArgosTranslatePackagesImpl.py  Shared Argos package operations (CLI + compliance)
     ├── SpacyLanguageModels.py     Install / remove spaCy model packages
+    ├── SpacyLanguageModelsImpl.py Shared spaCy package operations (CLI + compliance)
     ├── BM25IndexInspector.py      Inspect persisted BM25 index contents
     ├── GraphIndexInspector.py     Inspect persisted entity-graph index contents
+    ├── DiagnoseChunks.py          Search / inspect chunks in a ChromaDB collection
+    ├── check_path_guard.py        Exercise the drive-/project-root guards
+    ├── check_path_guard_driveroot.py  Drive-root variant of check_path_guard.py
     ├── NLTK_Stopwords_WordNet.py  Download NLTK stopwords and WordNet corpora
     ├── PipInstall.py              Offline pip install helper
     ├── UpdateConfigValues.py      Batch-update config values from the CLI
     └── VerifySignatures.py        Verify file integrity / signatures
 ```
+
+### Runtime responsibility boundaries
+
+`QueryParts`, `RAGChatImpl`, and `Orchestrator` retain their existing public
+entrypoints and shared state. Their typed responsibility base classes separate
+presentation, normalization, retrieval, scoring, and stage execution without
+copying mutable session/store state, adding singleton instances, or injecting
+callbacks. The concrete CLI picker remains in `QueryParts.py` so its existing
+`inquirer` and `pick_value` integration points remain unchanged.
+
+`ChatCompletionHandler.handleRequest` coordinates HTTP handling and
+request-scoped state. `RequestSessionMapper` applies request overrides,
+`OpenWebUIHousekeeping` recognizes synthetic prompts, and
+`ChatResponseStreamer` owns SSE generation and transferred-lock release.
+Request defaults, response formats, retrieval order, and cancellation ownership
+are unchanged.
 
 ## 🔀 Data Flow
 
@@ -229,19 +312,96 @@ The following diagrams illustrate the intended data flow for experimentation; ac
 
 ![RAGLoad Pipeline](Documentation/FlowCharts/RAGLoad.png)
 
+[Mermaid source](Documentation/FlowCharts/RAGLoad.md)
+
 ### 💬 RAGChat / RAGChatService Pipeline
 
 `RAGChatService` follows the same pipeline as `RAGChat`. The difference is the entry point: `RAGChat` uses an interactive terminal GUI, while `RAGChatService` accepts requests through an OpenAI-compatible HTTP listener and dispatches them to worker threads.
 
 After query rewrite, a **RetrievalGate** step checks whether the rewritten query is specific enough to retrieve meaningfully. If not (e.g. *"what are the specifications?"* or *"does it have spines?"* with no prior entity anchor), the gate short-circuits retrieval and returns a `❔` clarification message to the user instead of calling the LLM. Detection uses spaCy `Person=3` morphology — no hand-maintained word lists.
 
+#### Keyword/action query splitting
+
+[`KeywordActionSplitter`](src/Chat/KeywordActionSplitter.py) adds a separate,
+non-streaming JSON LLM call **after query normalization, approved history-aware
+rewriting, and retrieval gates**. It is enabled by default through
+[`Config_KeywordActionSplitter.py`](src/Configuration/Config_KeywordActionSplitter.py)
+and the flow's `use_keyword_action_splitter` switch. Both CLI and service use
+the existing `_ACTIVE_LLM_REWRITE_PROMPT` model role, caller, JSON parser, and
+token-budget helpers; no additional model selector or singleton is introduced.
+
+The supplied input is the original request, its translation, and the accepted
+rewrite. The splitter uses approved previous-turn referents rather than
+independently interpreting history; within-request pronouns follow
+`enable_pronoun_substitution`, and retrieval output follows the effective
+retrieval language. Translation and rewrite remain separate upstream stages.
+
+Its validated `KeywordActionSplit` contains:
+
+| Field | Purpose |
+| --- | --- |
+| `retrieval_queries` | Self-contained information needs; at most 8 by default. |
+| `key_words` | 3–8 distinct retrieval terms/domain synonyms; no guessed answer values. |
+| `entities` | Explicit names/concepts grounded in the supplied request variants. |
+| `action_part` | Operation on evidence, such as a list, table, comparison, or classification; `null` for plain retrieval. |
+| `answer_instruction` | Complete task beginning `Using only the retrieved context,`; covers all requested answers and operations. |
+
+There is no `intent` field in this schema. Existing intent/compliance gates
+remain unchanged. String lists are case-insensitively deduplicated; exact
+generic action keywords are removed with a warning, and the remaining list
+must still meet its configured limits. Invalid decomposition emits an explicit
+warning and restores the legacy retrieval/MultiQuery path.
+
+The successful split path is:
+
+1. [`LocalRetrievalPipeline`](src/Orchestrator/LocalRetrievalPipeline.py) runs the
+   enabled local retrievers for each information need. BM25 also searches the
+   combined keywords when enabled with nonzero weight. Existing indexed-language
+   shaping and file/metadata filters apply. Guardrail and original-language legs
+   run at most once per turn; successful splitting does not add MultiQuery
+   paraphrases.
+2. Existing best-rank variant merging, language-scoped RRF, candidate caps, and
+   near-duplicate removal produce the shared pool. Zero-based query IDs and
+   language-shaped queries are kept on `Session`, outside document metadata.
+3. [`RetrievalReranker`](src/Chat/RetrievalReranker.py) scores local chunks against
+   their associated information needs; keyword-only hits are evaluated against
+   every need. It retains per-need diagnostic scores and uses each chunk's
+   maximum raw score for the existing best-language, threshold, and strategy
+   selection paths. Web scoring remains independent.
+4. [`Chatter`](src/Chat/Chatter.py) sends the selected local/web context, complete
+   request, and self-contained answer/operation instructions to the answer LLM.
+   `_PROMPT_KEYWORD_ACTION_ANSWER` and `_PROMPT_KEYWORD_ACTION_OPERATION` in
+   [`Config_RAGChat_Prompts.py`](src/Configuration/Config_RAGChat_Prompts.py)
+   control this wrapper; the existing main answer prompt is retained.
+
+Splitting replaces the main **local** query selected by `main_query_source`;
+the guardrail still uses `secondary_query_source`. It does not replace the
+stored session query, web search/prefilter query, or web `rerank_query_source`
+path. Conversation history retains the existing user-query/answer behavior;
+decomposition/debug output is not stored as a conversation turn.
+
+This is bounded retrieval plus evidence transformation, **not an agent loop**.
+There is no round-robin coverage balancing, per-need context quota, or guarantee
+that all comparison subjects survive selection. Missing evidence must be
+identified, not treated as proof of a negative. Standalone actions without a
+retrieval topic are unsupported. `summarize:` / `summary:` bypass splitting
+and retain the full-document summary path.
+
+For switches, prompt placeholders, defaults, and level-30 diagnostics, see
+[keyword/action configuration](CONFIGURATION_REFERENCE.md#optional-keywordaction-splitting)
+and [the flow guide](ORCHESTRATION_FLOWS.md#optional-keywordaction-splitting).
+
 #### RAGChat
 
 ![RAGChat Pipeline](Documentation/FlowCharts/RAGChat.png)
 
+[Mermaid source](Documentation/FlowCharts/RAGChat.md)
+
 #### RAGChatService
 
 ![RAGChatService Pipeline](Documentation/FlowCharts/RAGChatService.png)
+
+[Mermaid source](Documentation/FlowCharts/RAGChatService.md)
 
 #### 🔒 RAGChatService — OpenAI Surface (Intentional Restrictions vs. Known Gaps)
 
@@ -281,18 +441,24 @@ security restrictions**, not defects.
 
 ### Orchestration Flows and CLI Override Precedence
 
-`Orchestrator` resolves one flow profile per retrieval turn from `Config_Orchestrator.py`:
+[`Orchestrator`](src/Orchestrator/Orchestrator.py) coordinates each retrieval turn. Its `self.orchestratorOverrides` helper ([OrchestratorOverrides.py](src/Orchestrator/OrchestratorOverrides.py)) resolves one flow profile per turn from `Config_Orchestrator.py` and applies session overrides. Its `self.orchestratorMessages` helper ([OrchestratorMessages.py](src/Orchestrator/OrchestratorMessages.py)) owns message formatting, deferred indexed-query reports, corpus-language status caching, and confidence-event emission. The helpers share pipeline records from [OrchestratorTypes.py](src/Orchestrator/OrchestratorTypes.py), without depending on the orchestration execution class.
+
+`self.orchestratorHelper` ([OrchestratorHelper.py](src/Orchestrator/OrchestratorHelper.py)) contains state-independent candidate identity and merging policies. Query variants use the best weighted reciprocal rank per candidate rather than summing repeated alternate hits. The orchestrator's stage methods separately handle required-query failure policy, optional-query failures, native indexed retrieval, flow-control setup, local retrieval, and web retrieval.
+
+For a user-oriented explanation of the shipped flows, query versions and legs, see [ORCHESTRATION_FLOWS.md](ORCHESTRATION_FLOWS.md).
 
 This flow resolution defines the per-turn pipeline path and is also the control point for the additional confidence step (stage confidence signals plus downstream final-confidence evaluation).
 
 - `_DEFAULT_ORCHESTRATION_FLOW` sets the default profile when session `orchestrator_flow` is unset.
 - `_ALLOWED_ORCHESTRATION_FLOWS` optionally limits what can be selected.
 - Session/CLI `orchestrator_flow` can request a specific profile for the turn.
+- `_ORCHESTRATION_FLOW_ALIASES` maps legacy flow names (for example `THOROUGH_QUERY_REWRITE`) to current ones.
+- [`FlowConfig.py`](src/Orchestrator/FlowConfig.py) is the single place that resolves flow names, aliases and the default flow, and validates the flow configuration at startup (unknown keys or invalid values raise `ConfigurationError`).
 
 Each profile in `_ORCHESTRATION_FLOWS` controls stage switches such as:
 
-- query processing (`use_query_rewrite`, `use_pronoun_substitution`, `use_vector_alternates`)
-- guardrail and language legs (`use_secondary_query`, `use_original_language_vector`, `shape_indexed_queries`, `translate_indexed_queries`, `expand_indexed_queries`)
+- query processing (`use_query_rewrite`, `use_pronoun_substitution`, `use_keyword_action_splitter`, `use_vector_alternates`)
+- guardrail and language legs (`use_secondary_query`, `use_original_language_vector`, `shape_indexed_queries`, `translate_indexed_queries`, `expand_indexed_queries_with_wordnet`)
 - retriever gates (`run_vector`, `run_bm25`, `run_graph`, `run_regex`)
 - post-retrieval/answer stages (`run_rerank`, `run_grounding`)
 - rerank fallback controls (`run_low_score_fallback`, `run_low_recall_rescue`)
@@ -301,6 +467,9 @@ Flow configuration is the baseline, but effective execution can still be changed
 
 - `web_search` (`local_only` / `local_and_web` / `web_only`) plus `retrieve_mode=WEB` decides local/web stage execution.
 - `retrieve_mode` can disable individual retrievers (Vector/BM25/Graph/Regex) despite `run_*` being enabled in flow.
+- `force_retrieve_mode=<local mode>` (flow or session) switches off the local retrievers that the mode does not name for that turn; `ALL`/`WEB` do not narrow.
+- `main_query_source`, `secondary_query_source`, `rerank_query_source`, `retrieval_language` and `confidence_evaluation` override the corresponding flow values.
+- `keyword_action_splitter` (alias `enable_keyword_action_splitter`; API field `enable_keyword_action_splitter`) overrides `use_keyword_action_splitter`. Shipped flow profiles set it to `True`; choosing another flow reapplies its defaults, so set session switches afterwards.
 - `mark_text=false` can deactivate grounding even when `run_grounding=true` in flow.
 - `rerank=0` can deactivate reranking even when `run_rerank=true` in flow.
 - when rerank is effectively off, `run_low_score_fallback` and `run_low_recall_rescue` are auto-deactivated for that turn.
@@ -313,13 +482,29 @@ Fallback precedence inside chunk selection is deterministic:
 - if it triggers, rerank filtering is skipped and retrieval-order ranking is used immediately.
 - low-recall rescue (`run_low_recall_rescue`) runs only when low-score fallback did not short-circuit the turn.
 
-![THOROUGH_QUERY_REWRITE Orchestration Flow](Documentation/FlowCharts/THOROUGH_QUERY_REWRITE.png)
+Low-recall rescue operates on large local candidate pools with sparse threshold
+hits. It scopes rejected candidates to files already represented among the local
+hits, ranks lexical candidates by query-term overlap with retrieval score as the
+tie-breaker, and adds a bounded number of candidates. If no table is represented
+among the threshold hits, it reserves one of those slots for the highest
+retrieval-scored table fragment in the scoped rejected pool, even when that
+fragment has no query-term overlap. This is one fragment, not the complete table.
+Web candidates keep their strict threshold path. Rescue limits derive from
+`retriever_k` and `final_chunks_to_llm` without changing either session setting.
+After rescue, normal strategy ranking and context/per-file caps still apply.
+The log reports the actual overlap count and separately identifies the best
+table retained in the reserved slot. Neither retrieval nor reservation forces
+the answer model to use or cite that source.
+
+![ENGLISH_ALL_MULTILEG (formerly THOROUGH_QUERY_REWRITE) Orchestration Flow](Documentation/FlowCharts/THOROUGH_QUERY_REWRITE.png)
 
 Source Mermaid diagram: [Documentation/FlowCharts/THOROUGH_QUERY_REWRITE.md](Documentation/FlowCharts/THOROUGH_QUERY_REWRITE.md)
 
 ### Confidence Evaluation and Signals
 
-Confidence is tracked at two levels: stage signals and final-answer evidence confidence.
+Confidence is tracked at three levels: stage signals, final-answer evidence
+confidence, and answer quality dimensions. These are diagnostic signals, not
+calibrated probabilities that an answer is correct.
 
 1. Stage signals
 
@@ -329,7 +514,9 @@ Confidence is tracked at two levels: stage signals and final-answer evidence con
 
 2. Final answer confidence
 
-Final confidence is computed from selected evidence chunks in `Helpers/ConfidenceHelper.py`:
+Final confidence is computed from selected evidence chunks in `Chat/ConfidenceEvaluator.py`.
+Weights, penalty and band thresholds are configured in `_CONFIDENCE_EVALUATOR`
+(`Configuration/Config_ConfidenceEvaluator.py`); defaults shown:
 
 ```text
 score = 0.50 * top_score
@@ -354,9 +541,37 @@ Score bands:
 
 Persistence and output:
 
-- A confidence notice can be appended to answers as a multi-line block with aligned per-metric explanations (`Answer confidence:` + one line per metric).
+- A confidence notice can be appended to answers as a multi-line block with aligned per-metric explanations under `Heuristic Confidence:`.
 - Final components include both weighted terms (`C_top`, `C_mean_top3`, `C_coverage`, `C_local`, `C_fallback_penalty`) and supporting raw signals (`top_score`, `mean_top3`, `coverage`, `local_share`, `evidence_chunks`, `rerank_fallback`).
-- Turn confidence signals are written to a dedicated confidence CSV (`..._CONFIDENCE_...csv`) with dynamic `step_*` columns, serialized event payloads, session snapshot fields, and per-component columns (`answer_confidence_<component>`).
+- `Session.answer_confidence_result` owns the `AnswerConfidenceResult` dataclass.
+  Retrieval creates it; no-evidence grounding replaces it with a zero-confidence
+  result. Quality evaluation and rendering receive the object explicitly.
+  There are no parallel session score/summary/quality fields; turn reset clears
+  the entire object.
+- Turn signals are written to `..._CONFIDENCE_FLAT_...csv`: one row per turn,
+  scalar metric columns, dotted nested-setting columns, indexed language events,
+  and `step.<name>.<occurrence>.<field>` columns. Repeated executions are retained.
+  Summaries, raw judge JSON, and duplicate session copies are omitted; large
+  document/chunk payloads are represented by counts.
+
+3. Answer quality dimensions
+
+- `QualityDimensionEvaluator` computes accuracy, completeness, reasoning, and
+  provenance heuristics after answer generation.
+- When enabled, the LLM judge evaluates the answer using the generation model.
+  Its prompt and settings are obtained through the merged `Config` lookup from
+  [Config_Confidence.py](src/Configuration/Config_Confidence.py), not direct
+  constant imports. Valid judge results produce `hybrid` mode; otherwise
+  evaluation remains `heuristic_only`.
+- Quality scores appear after the retrieval metrics under
+  `Quality Dimensions (judge model: <model>):`, with aligned labels and
+  `heuristic`, `llm`, and `avg` values. Without a judge call, the model annotation
+  is omitted. Judge call errors are logged and stored on the result.
+- These quality scores do not modify retrieval `C_final` or its confidence band.
+  The current judge prompt receives the answer, not the original query and
+  retrieved evidence, so its scores are not an independent grounding check.
+
+See [confidence settings and CSV schema](CONFIGURATION_REFERENCE.md#answer-quality-confidence).
 
 Using the metrics to tune ingestion and retrieval:
 
@@ -369,6 +584,8 @@ Using the metrics to tune ingestion and retrieval:
 
 ![DocClassify Pipeline](Documentation/FlowCharts/DocClassify.png)
 
+[Mermaid source](Documentation/FlowCharts/DocClassify.md)
+
 ## ⚙️ Configuration System
 
 All default values referenced in this document reflect the state of this repository and are not recommendations or guarantees of suitability.
@@ -378,20 +595,29 @@ Configuration is hierarchically resolved:
 1. **Defaults** - Default used in this repository
 2. **Configuration Files** - `Configuration/Config_*.py` files
 3. **Environment Variables** - Override via ENV
-4. **CLI Flags** - Command-line argument override (applies only to `Config_Global.py` and the active app config; keys must not start with `_` or `$`)
+4. **CLI Flags** - Command-line argument override (applies only to `Config_Global.py`, the active app config and, for RAGLoad/RAGChat/RAGChatService, `Config_Load_Retrievers.py`; UPPERCASE non-dict keys only, not starting with `_`, `$` or `INTERNAL_`)
 
 Each application loads from:
 
 - `Config_Global.py` - Common settings
+- `Config_Confidence.py` - Confidence logging, quality scoring, and judge prompt
 - `Config_Load_Retrievers.py` - Collection/store lifecycle and HNSW retrieval parameters
 - `Config_Load_Chunkers.py` - Chunker routing, chunker parameters, metadata extraction
-- `Config_Languages.py` - Active languages, Argos language pairs, per-language spaCy maps
+- `Config_ContextSummarizer.py` - Document summary length, overlap, prompts, temperature
+- `Config_Grounder.py` - Answer grounding, parallel PDF marking, summary word limits
+- `Config_ConfidenceEvaluator.py` - Answer-confidence weights and bands
+- `Config_Languages.py` - Active languages, Argos language pairs, per-language spaCy maps (re-exports `Config_Languages_*.py`)
 - `Config_Models.py` - Model selections
 - `Config_Banned_Detection.py` - Detection pipelines and thresholds
+- `Config_Banned_HumanReview_CSV.py` - Human-review CSV settings
 - `Config_Banned_Content.py` - Banned-word lists and masking regexes
 - `Config_Banned_Prompts.py` - Prompt-check templates
 - `Config_WebSearch.py` - Web search settings
-- Application-specific `Config_*.py`
+- `Config_Orchestrator.py` - Orchestrator flows
+- `Config_RAGChat_Strategies.py`, `Config_RAGChat_Prompts.py`, `Config_RAGChat_Rewrite.py`, `Config_KeywordActionSplitter.py`, `Config_RAGChat_Display.py` - RAGChat split modules (RAGChat/RAGChatService only)
+- Application-specific `Config_*.py` (loaded last, highest priority)
+
+The authoritative order is `Config._load_from_constants()`; see [Lookup order](CONFIGURATION_REFERENCE.md#-lookup-order).
 
 Parameters are accessible via `Config().get(key_path)` using dot notation.
 
@@ -399,14 +625,20 @@ Parameters are accessible via `Config().get(key_path)` using dot notation.
 
 **Notes:**
 
-- CLI overrides apply **only** to `Config_Global.py` and the app-specific config files (`Config_RAGChat.py`, `Config_RAGLoad.py`, `Config_DocClassify.py`, `Config_RAGChatService.py`).
-- Keys in `Config_Load_Retrievers.py`, `Config_Load_Chunkers.py`, `Config_Languages.py`, `Config_Models.py`, `Config_Banned_Detection.py`, `Config_Banned_Content.py`, `Config_Banned_Prompts.py`, `Config_WebSearch.py`, and `Config_Internet_Env.py` are **not** exposed as CLI arguments — edit these files directly to change their values.
+- CLI overrides apply **only** to `Config_Global.py`, the app-specific config files (`Config_RAGChat.py`, `Config_RAGLoad.py`, `Config_DocClassify.py`, `Config_RAGChatService.py`), and `Config_Load_Retrievers.py` for RAGLoad/RAGChat/RAGChatService (`src/Config/CliOverridePolicy.py`). Dict-valued keys are never exposed.
+- Keys in `Config_Confidence.py`, `Config_Load_Chunkers.py`, `Config_ContextSummarizer.py`, `Config_Grounder.py`, `Config_ConfidenceEvaluator.py`, `Config_Languages*.py`, `Config_Orchestrator.py`, `Config_KeywordActionSplitter.py`, `Config_RAGChat_*.py`, `Config_Models.py`, `Config_Banned_Detection.py`, `Config_Banned_Content.py`, `Config_Banned_Prompts.py`, `Config_WebSearch.py`, and `Config_Internet_Env.py` are **not** exposed as CLI arguments — edit these files directly to change their values. Interactive session settings such as `keyword_action_splitter` are a separate interface.
 - Keys starting with `_` are internal and cannot be overridden via CLI arguments.
 - Keys starting with `$` are indirect lookups (the value names another config key).
 
 | Area | File | Purpose | CLI Overridable |
 | --- | --- | --- | --- |
 | Global | `Config_Global.py` | Paths, device, debugging | ✅ Yes |
+| Confidence | `Config_Confidence.py` | Confidence logging, quality scoring, judge prompt | ❌ No |
+| Retrievers | `Config_Load_Retrievers.py` | Collection/store lifecycle, HNSW parameters | ✅ Yes (RAGLoad, RAGChat, RAGChatService) |
+| Chunkers | `Config_Load_Chunkers.py` | Chunker routing and parameters | ❌ No |
+| Summarizer | `Config_ContextSummarizer.py` | Summary length, overlap, prompts, temperature | ❌ No |
+| Grounding | `Config_Grounder.py` | `_GROUNDING`, `_GROUNDING_MARKING`, `SUMMARY_WORD_LIMITS` | ❌ No |
+| Answer confidence | `Config_ConfidenceEvaluator.py` | Confidence weights and HIGH/MEDIUM bands | ❌ No |
 | Languages | `Config_Languages.py` | Active languages, Argos pairs, WordNet/leet/confusables, BM25/Graph/Regex language-aware slots | ❌ No |
 | Models | `Config_Models.py` | Embedding, cross-encoder, LLM | ❌ No |
 | RAGLoad | `Config_RAGLoad.py` | Chunking, batch sizes | ✅ Yes |
@@ -415,6 +647,8 @@ Parameters are accessible via `Config().get(key_path)` using dot notation.
 | DocClassify | `Config_DocClassify.py` | Classification settings, `REVERSE_STEMMING` | ✅ Yes |
 | Compliance | `Config_Banned_Detection.py`, `Config_Banned_Content.py`, `Config_Banned_Prompts.py` | Detection pipelines, keyword/phrase lists, masking rules, prompt-check templates | ❌ No |
 | Web Search | `Config_WebSearch.py` | Web search mode, backend, query compliance gates | ❌ No |
+| Orchestrator | `Config_Orchestrator.py` | Orchestrator flow definitions | ❌ No |
+| Query splitter | `Config_KeywordActionSplitter.py` | Default switch, query/keyword limits, sampling, decomposition prompt | ❌ No (session/API switch available) |
 | Network | `Config_Internet_Env.py` | Network connection, network trace | ❌ No |
 
 ### 🌍 Add and install a new language
@@ -449,19 +683,21 @@ There are no legacy runtime toggles for automatic Argos or spaCy downloads. If c
 
 ### 🔩 Model Implementation Selectors
 
-`Config_Models.py` uses a two-level lookup to resolve model configurations. Eight top-level variables select which *implementation* (impl) to use for each model *role*:
+`Config_Models.py` uses a two-level lookup to resolve model configurations. One top-level `_ACTIVE_*` variable per model *role* selects which *implementation* (impl) to use:
 
 ```python
-_ACTIVE_LLM_CHK            = "llama_guard"   # llama_guard, llama, mistral
-_ACTIVE_LLM                = "mistral"       # mistral, llama
-_ACTIVE_LLM_REWRITE_PROMPT = "mistral"       # mistral, llama
-_ACTIVE_EMBED              = "snowflake"     # snowflake
-_ACTIVE_CROSS              = "mmarco"        # mmarco
-_ACTIVE_ENDPOINT           = "ollama"        # ollama, vllm
-_ACTIVE_OPENWEBUI          = "openwebui"     # openwebui
+_ACTIVE_LLM_CHK            = "llama_guard"           # llama_guard, llama, mistral, qwen2_5_7b_instruct
+_ACTIVE_LLM                = "qwen2_5_7b_instruct"   # qwen2_5_7b_instruct, mistral, llama
+_ACTIVE_LLM_REWRITE_PROMPT = "qwen2_5_7b_instruct"   # qwen2_5_7b_instruct, mistral, llama
+_ACTIVE_LLM_JUDGE          = "qwen2_5_14b_instruct"  # qwen2_5_14b_instruct, qwen2_5_1_5b_instruct
+_ACTIVE_EMBED              = "bge_m3"                # bge_m3, snowflake
+_ACTIVE_CROSS              = "bge_reranker"          # bge_reranker, mmarco
+_ACTIVE_ENDPOINT           = "vllm"                  # ollama, vllm
 ```
 
-At runtime the framework resolves a role via `_MODELS[<impl>][<role>]`. For example, with `_ACTIVE_LLM = "mistral"` the LLM configuration is read from `_MODELS["mistral"]["_LLM"]`.
+The service entries `_MODELS["openwebui"]["_OPENWEBUI"]` and `_MODELS["ragchatservice"]["_RAGCHATSERVICE"]` have no selector; they are fixed and always in use.
+
+At runtime the framework resolves a role via `_MODELS[<impl>][<role>]`. For example, with `_ACTIVE_LLM = "qwen2_5_7b_instruct"` the LLM configuration is read from `_MODELS["qwen2_5_7b_instruct"]["_LLM"]`.
 
 To switch models, change the impl value to another key that carries a matching role entry in `_MODELS` (the allowed values are listed in the inline comments above).
 
@@ -516,7 +752,7 @@ The pattern is used consistently across five config files:
 
 | Config file | Selector variable | Dictionary | Variants (default **bold**) | Purpose |
 | --- | --- | --- | --- | --- |
-| `Config_Models.py` | `_ACTIVE_LLM`, `_ACTIVE_LLM_CHK`, `_ACTIVE_LLM_REWRITE_PROMPT`, `_ACTIVE_EMBED`, `_ACTIVE_CROSS`, `_ACTIVE_ENDPOINT`, `_ACTIVE_OPENWEBUI`, `_ACTIVE_RAGCHATSERVICE` | `_MODELS[<impl>][<role>]` | see [Model Implementation Selectors](#-model-implementation-selectors) | Model selection per role |
+| `Config_Models.py` | `_ACTIVE_LLM`, `_ACTIVE_LLM_CHK`, `_ACTIVE_LLM_REWRITE_PROMPT`, `_ACTIVE_EMBED`, `_ACTIVE_LLM_JUDGE`, `_ACTIVE_CROSS`, `_ACTIVE_ENDPOINT` | `_MODELS[<impl>][<role>]` | see [Model Implementation Selectors](#-model-implementation-selectors) | Model selection per role |
 | `Config_Load_Retrievers.py` | `_ACTIVE_CHROMA_EMBED_AND_RETRIEVE_PARAMS_CONFIG` | `_CHROMA_EMBED_AND_RETRIEVE_PARAMS` | **`THOROUGH`**, `COMPACT` | HNSW neighbor counts |
 | `Config_Load_Chunkers.py` | `_ACTIVE_CHUNKER_CONFIG` | `_CHUNK_STRATEGY` | **`DETAILED`**, `FAST` | Chunker strategy profile and per-file-type routing (see [Chunking Architecture](#-chunking-architecture)) |
 | `Config_DocClassify.py` | `_ACTIVE_EXTRACTION_CONFIG` | `_EXTRACTION_MODEL_PARAMS` | **`STRICT`**, `BALANCED`, `RECALL` | LLM sampling (temperature, top-k, top-p) |
@@ -559,7 +795,7 @@ across all config files:
 ```text
 ┌──────────────────────────────┐       ┌──────────────────────────────────┐
 │  Selector variable           │       │  Companion dictionary            │
-│  _ACTIVE_CHUNKER_CONFIG      │──────▶│  _CHUNK_STRATEGY["DETAILED"]     │
+│  _ACTIVE_CHUNKER_CONFIG      │──────>│  _CHUNK_STRATEGY["DETAILED"]     │
 │  = "DETAILED"                │       │  _CHUNK_STRATEGY["FAST"]         │
 └──────────────────────────────┘       └──────────────────────────────────┘
 ```
@@ -740,16 +976,16 @@ GENERATION & RESPONSE VALIDATION PHASE:
 
 ### 📖 WordNet Synonym Expansion (Optional)
 
-When enabled (`_WORDNET.ENABLED = True` in `Config_Languages.py`), the banned‑word list is expanded with English synonyms from [NLTK WordNet](https://wordnet.princeton.edu/) before translation and detection.
+When enabled (`_WORDNET.ENABLED = True` **and** `_WORDNET.SCORERS_ENABLED = True` in `Config_Languages_Normalization.py`, re-exported by `Config_Languages.py`), the banned‑word list used by the compliance scorers is expanded with English synonyms from [NLTK WordNet](https://wordnet.princeton.edu/) before translation and detection.
 This is handled by `Algos/Synonyms.py` (singleton, lazy‑loaded, cached).
 
 **Which algorithms receive the expanded list:**
 
 | Algorithm | Uses expanded list? | Reason |
 | ----------- | -------------------- | ------- |
-| RegexScorer | Yes | Strict `\b` matching only fires on exact words; synonyms give it new targets. |
-| JaccardScorer | Yes | Character n‑gram overlap misses semantic synonyms; expansion fills the gap. |
-| BM25Scorer | Yes | Pure term‑frequency scorer — cannot match words absent from the list. |
+| RegexScorer | Yes (if `SCORERS_ENABLED`) | Strict `\b` matching only fires on exact words; synonyms give it new targets. |
+| JaccardScorer | Yes (if `SCORERS_ENABLED`) | Character n‑gram overlap misses semantic synonyms; expansion fills the gap. |
+| BM25Scorer | Yes (if `SCORERS_ENABLED`) | Pure term‑frequency scorer — cannot match words absent from the list. |
 | KeyBertScorer | **No** | Embedding similarity already captures semantic neighbours; expansion would be redundant. |
 | LevenshteinScorer | Indirect | Post‑processes RegexScorer output, so it automatically benefits from Regex's expanded list. |
 | Masker | No | Pattern‑based (credit cards, SSNs, etc.), not driven by the banned‑word list. |
@@ -758,11 +994,11 @@ This is handled by `Algos/Synonyms.py` (singleton, lazy‑loaded, cached).
 
 ```text
 Banned list (English)  ───▶  Synonyms.expand()  ───▶  Expanded list
-    ~70 phrases             │                        ~70-280 phrases
+    ~70 phrases             │                        ~70-140 phrases
                             │
-                   WordNet lookup (depth=1)
-                   POS filter (noun + verb)
-                   Max 3 synonyms / phrase
+                   WordNet lookup (DEPTH=1)
+                   POS_FILTER (noun + verb)
+                   MAX_SYNONYMS_PER_PHRASE (1)
                    Stoplist exclusion
                    Deduplication
 ```
@@ -877,8 +1113,8 @@ All configured algorithms run for a given phrase; results are combined using **d
 
 **Depth** measures how many distinct algorithms **passed their individual thresholds** for a chunk.
 
-- Each algorithm has a per-algorithm threshold (e.g., `THRESHOLD_REGEX`, `THRESHOLD_JACCARD`)
-- A result **counts toward depth** only if `score >= algorithm_threshold`
+- Each algorithm has a per-algorithm primary threshold (`PIPELINE.<algo>.THRESHOLD` in the per-app detection profile, e.g. `PIPELINE.Regex.THRESHOLD`)
+- A result **counts toward depth** only if `score >= THRESHOLD`
 - Depth is the count of unique algorithms meeting this criterion
 - **Use case**: Require higher confidence by mandating multiple independent algorithms agree at strong confidence levels
 
@@ -1020,6 +1256,11 @@ Model load (local_files_only=True)
         │
         └── Failure → HFDownloader.download(key)
                 │
+                ├─ 0. Remote vLLM short-circuit
+                │     _EMBED/_CROSS with _ACTIVE_ENDPOINT == "vllm"?
+                │     YES → return {"execution": "remote"} (no local weights;
+                │           licence verification still enforced by Compliance)
+                │
                 ├─ 1. Metadata short-circuit
                 │     Existing download_meta.json has matching
                 │     config_hash + valid local_path?
@@ -1106,7 +1347,7 @@ If the operator changes the model configuration (different model name, different
 
 ## 🌐 Internet Access
 
-Internet access is configured in `Config_Internet_Env.py`.  All defaults ship as offline (`HF_HUB_OFFLINE="1"`, `TRANSFORMERS_OFFLINE="1"`, etc.).
+Internet access is configured in `Config_Internet_Env.py`. Deployment disables the web-search master switch; development configurations may differ. Hugging Face access and model endpoints also depend on the deployment and configuration, so verify the settings in use.
 See [Internet Access in INSTALL.md](INSTALL.md#-internet-access) for the full environment‑variable reference table and startup‑banner examples.
 
 ## 🌍 Argos Translate
@@ -1175,7 +1416,8 @@ prompt_tokens  ≈ word_count(prompt) × 1.3      (no tokeniser dependency)
 reserved_output, reserved_system = read_from(model_role or "_ACTIVE_LLM")
 
 available      = context_limit - reserved_system - prompt_tokens
-max_output_tokens = clamp(available, 1, reserved_output)
+max_output_tokens = reserved_output             if available <= 0  (warning logged)
+                    min(available, reserved_output)  otherwise
 ```
 
 The resulting `max_output_tokens` is passed to the backend alongside `num_ctx` (the
@@ -1207,7 +1449,7 @@ Overridable settings include:
 | `temperature`, `top_p`, `top_k` | `▶ LLM` | |
 | `strategy` | `▶ Retrieval strategy` | |
 | `orchestrator_flow` | `▶ Orchestration strategy` | |
-| `force_retrieve_mode`, `main_query_source`, `secondary_query_source`, `rerank` | `▶ Flow selectors` | |
+| `force_retrieve_mode`, `main_query_source`, `secondary_query_source`, `rerank_query_source`, `retrieval_language`, `rerank` | `▶ Flow selectors` | |
 | `vector_weight`, `bm25_weight`, `graph_weight`, `regex_weight`, `web_weight` | `▶ Retriever weights` | |
 | `debug_level`, `debug_mode` | `▶ Debug` | `debug_level!` shows a named-preset picker driven by `_ALLOWED_DEBUG_LEVELS`; also prompts for `ge`/`is` mode. `debug_mode` can be changed independently. Both write the combined string back to `Config.DEBUG_LEVEL` via `DebugHelper`. |
 
@@ -1245,7 +1487,7 @@ When `mark_text=true` is set in a session, RAG-LCC produces highlighted copies o
 VisualMarkerFactory.for_path(src_path)
 ├── .pdf   → PdfVisualMarker    (pdfplumber bbox extraction + pypdf /Highlight annotations)
 ├── .docx  → DocxVisualMarker   (python-docx  <w:highlight> XML injection)
-├── .pptx  → PptxVisualMarker   (python-pptx + lxml  <a:highlight> XML injection)
+├── .pptx / .ppt → PptxVisualMarker   (python-pptx + lxml  <a:highlight> XML injection)
 └── .md / .txt → PlainTextVisualMarker  (<mark>…</mark> on matching lines)
 ```
 
@@ -1257,7 +1499,7 @@ Each highlighter returns `bytes` — the annotated document as an in-memory byte
 
 1. Groups retrieved chunks by their on-disk `FilePath`.
 2. Skips web results (`Source == "Web"`) and missing files.
-3. Dispatches to the appropriate highlighter via `VisualMarkerFactory`.
+3. Dispatches to the appropriate highlighter via `VisualMarkerFactory`. When at least two PDFs are marked and the estimated scan reaches `_GROUNDING_MARKING.min_scan_pages`, PDFs are marked in parallel by up to `_GROUNDING_MARKING.max_workers` `MarkWorker` subprocesses; a failed or timed-out worker falls back to in-process marking.
 4. Stores `(source_path, highlighted_bytes)` tuples on `session.marked_documents`.
 5. Stores raw chunk texts on `session.chunk_texts_for_grounding` for the CLI answer-grounding step.
 
@@ -1267,7 +1509,7 @@ Each highlighter returns `bytes` — the annotated document as an in-memory byte
 strategy (`_find_rects`), applied in order until one produces bounding boxes:
 
 1. **Full token sequence** — the whole snippet matched as one contiguous run of tokens.
-2. **Line / sentence fragments** — each newline- or sentence-delimited fragment (≥ `_MARKED_DOCS_GROUNDING["min_fragment_len"]` chars) matched independently.
+2. **Line / sentence fragments** — each newline- or sentence-delimited fragment (≥ `_GROUNDING["min_fragment_len"]` chars) matched independently.
 3. **Fixed token windows** — consecutive 4-token slices matched individually. This last resort covers tables and numbered legends that have neither newlines nor sentence punctuation and whose token order on the page differs from the stored chunk text (e.g. multi-column connector tables), which would otherwise be left unmarked.
 
 **Source-page confinement.** Both the yellow chunk snippets and the orange
@@ -1305,7 +1547,7 @@ the cost, so confining work to the selected source pages is the primary speed-up
 
 ### 🎨 Answer grounding
 
-**CLI (`RAGChat`):** After the LLM answer is produced, `ground_answer_cli()` wraps sentences that can be traced back to a retrieved chunk with an ANSI background colour (`_MARKED_DOCS_COLORS.answer_ansi`, default `48;5;214` — orange). Grounding strictness is controlled by `_MARKED_DOCS_GROUNDING.min_sentence_tokens`, `_MARKED_DOCS_GROUNDING.min_fragment_len`, and `_MARKED_DOCS_GROUNDING.min_overlap_window`. `PrettyWriter` re-applies the active ANSI codes at the start of each continuation line so the background colour is preserved across terminal line-wraps.
+**CLI (`RAGChat`):** After the LLM answer is produced, `Grounder.ground_answer_cli()` ([Grounder.py](src/Grounding/Grounder.py)) wraps sentences that can be traced back to a retrieved chunk with an ANSI background colour (`_MARKED_DOCS_COLORS.answer_ansi`, default `48;5;214` — orange). Grounding strictness is controlled by `_GROUNDING.min_sentence_tokens`, `_GROUNDING.min_fragment_len`, `_GROUNDING.min_overlap_window` and the `_GROUNDING.relaxed_*` second-pass keys in [Config_Grounder.py](src/Configuration/Config_Grounder.py). When the answer language matches none of the evidence languages, the answer is translated into the evidence language first; a grounded translation is kept as the session grounding proxy (`session.grounding_proxy_text` / `grounding_proxy_sentences`) and drives both CLI and source-document highlights without replacing the displayed answer. `PrettyWriter` re-applies the active ANSI codes at the start of each continuation line so the background colour is preserved across terminal line-wraps.
 
 **API (`RAGChatService`):** Grounding is shown only in the marked PDF/DOCX/PPTX documents (orange highlights). The chat response text is not annotated — inline HTML `<mark>` tags are not used because OpenWebUI's DOMPurify sanitiser strips `style=` attributes, which would cause the raw tags to appear as literal text.
 
@@ -1324,14 +1566,15 @@ Streaming resumes automatically when `mark_text` is disabled.
 Strategy pattern allows pluggable processing pipelines:
 
 ```text
-ProcessingStrategy (Abstract)          ← Strategies/ProcessingStrategy.py
+ProcessingStrategy (Protocol)          ← Strategies/ProcessingStrategy.py
+│                                        strategy_type + process(doc); structural typing
 ├── DocumentIngestionStrategy          ← Strategies/DocumentIngestionStrategy.py
 ├── ClassifyStrategy                   ← Strategies/ClassifyStrategy.py
 └── [Custom strategies can be added]
 
 Supporting modules in Strategies/:
 ├── ClassifyHelper          - Classification workflow helpers
-├── HomeBrewChunkSelector   - Custom chunking logic
+├── HomeBrewChunkSelector   - Chunk selection (ScoreRanked / PerFileCap / SingleDocument selectors)
 └── StrategyType            - Strategy enum / type constants
 
 Orchestration:
@@ -1413,7 +1656,7 @@ subclasses only need to implement `_parse_pages()` (and optionally
 | **SlidingWindowChunker** | Packs sentences until `MAX_CHUNK_SIZE` words, re-includes last `OVERLAP_SENTENCES` in next chunk | `RecursiveCharacterTextSplitter` fallback |
 | **HeadingChunker** | Parses Markdown headings (`#`-`######`) or DOCX heading styles; prepends breadcrumb trail (`H1 > H2 > H3`) | `RecursiveCharacterTextSplitter` fallback; breadcrumb prefix preserved |
 | **SlideChunker** | Re-reads `.pptx` via python-pptx; one chunk per slide (`Slide N: <title>\n\n<body>`) | `RecursiveCharacterTextSplitter` fallback; slide prefix preserved |
-| **PdfPageChunker** | Re-reads PDF via pypdf; one chunk per page (`Page N\n\n<body>`); adds `PageNumber` int to metadata | `RecursiveCharacterTextSplitter` fallback; page prefix preserved |
+| **PdfPageChunker** | Re-reads PDF via pypdf; one chunk per page (`Page <printed label>\n\n<body>`, or `PDF page N` when unknown); stores physical `PageNumber` and printed `PageLabel` | `RecursiveCharacterTextSplitter` fallback; page prefix preserved |
 
 #### Legacy format handling
 
@@ -1423,6 +1666,61 @@ which creates a temporary converted file, loads it into memory, then deletes
 the temp file. Because the original path no longer points to readable XML,
 these chunkers fall back to flat `RecursiveCharacterTextSplitter` splitting
 with an orange console warning.
+
+#### Word/PDF table delegation
+
+For table-bearing Word/PDF documents, the loader preserves ordered prose/table
+blocks before normalization and masking. `TableChunker.extract_word()` walks
+native Word elements, including the in-memory conversion of legacy `.doc`.
+`extract_pdf()` uses pdfplumber table geometry and removes successfully extracted
+table regions from prose to avoid duplicate cells.
+
+The configured chunker remains in charge: its shared
+`ChunkerStrategy.chunk_document()` entry point sends prose to `chunk_prose()`,
+delegates only detected table blocks to `TableChunker.chunk_table()`, then
+resumes prose chunking. This works with FAST and DETAILED routing; `TableChunker`
+is not a selectable replacement for heading, PDF-page or window chunkers.
+Documents without detected tables retain the existing `chunk()` path.
+In table-bearing `.doc` documents, headings survive via the loaded conversion
+instead of the original-file reread described above.
+
+Each table fragment repeats its document-local table number, available section,
+printed PDF page (explicit physical `PDF page N` only when its label is unknown),
+associated Word caption and complete column header. Scalar
+metadata includes `TableIndex`, `TableHeader`, `TableContext` and
+`TableHeaderSource` (`explicit`, `inferred` or `positional`). Explicit Word header
+rows take precedence; ambiguous all-text tables retain every row as data.
+Merged header labels are preserved where Word structure or PDF geometry allows.
+
+Fragments are packed between rows against the active embedding tokenizer budget.
+Oversized rows use labelled row/column continuations; impossible header budgets
+raise an actionable error before existing stored chunks are deleted. Final table
+text is embedded and stored without truncation/decoding, preserving its headers
+and row boundaries for vector and secondary retrieval indexes.
+
+PDF detection and reading order are best-effort, particularly for borderless or
+multi-column layouts. Detection errors warn and retain page/plain-text fallback.
+Tables on different PDF pages receive separate identities, not guessed
+continuation links. Scanned PDFs retain OCR text fallback, without reconstructed
+table geometry. Markdown table parsing is not included.
+
+#### PDF page identity and grounding
+
+PDF page identity is captured at ingestion independently of optional document
+metadata extraction. `PageNumber` is the physical 1-based PDF index;
+`PageLabel` is the printed numeric/Roman label, or an empty string when unknown.
+Table extraction attaches both fields to ordered prose/table blocks, so every
+configured prose chunker preserves the same page identity. Page-based prose and
+table prefixes use the same formatter as the LLM source header.
+
+When a printed label is known, context uses only `Page 6`, not
+`Page 6 (PDF page 12)`, and omits physical `PageNumber` from the metadata shown
+to the LLM. When unknown, context explicitly uses `PDF page 12`. Grounding
+continues to use the stored physical index directly; prefix removal only strips
+synthetic context text before matching source text, not page-number correction.
+Marked-document links are presented before the answer, while document metadata
+remains after it. Existing collections require re-ingestion; no compatibility
+conversion repairs older stored prefixes.
 
 #### Short-fragment consolidation (`MIN_SENTENCE_WORDS`)
 
@@ -1480,6 +1778,10 @@ ChunkerStrategy (ABC)                     ← Strategies/Chunkers/ChunkerStrateg
 
 Supporting:
 ├── SentenceSplitter                      ← Strategies/Chunkers/SentenceSplitter.py
+├── TableChunker                          ← Strategies/Chunkers/TableChunker.py
+│     (ordered Word/PDF block extraction and table chunks; not a ChunkerStrategy subclass,
+│      called by DocumentIngestionStrategy for tables)
+├── DocumentMetadataExtractor (singleton) ← Strategies/Chunkers/DocumentMetadataExtractor.py
 └── DocumentIngestionStrategy._make_chunker()    ← factory
     DocumentIngestionStrategy._resolve_chunker_for_file()  ← per-file-type router
 ```
@@ -1623,18 +1925,21 @@ chunks are sent to the LLM as context.  Three selector classes in
      fifth RRF arm (weight `web_weight`, default `0.5`).  This is orthogonal
      to `retrieve_mode` — web results are merged *alongside* whichever local
      stores are active.
-   - **Multi-query expansion (optional)** — when `_MULTI_QUERY.enabled` is `True`
-     in `Config_RAGChat.py`, the retrieval LLM is called once to generate
-     `num_variants` semantically distinct paraphrases of the query.  Each
-     paraphrase runs an additional **VECTOR-only** search (`retriever_k`
-     candidates per variant); the hits are deduplicated and folded into the
-     main candidate pool before the RRF merge step.  The prompt template used
-     for this call is `PROMPT_QUERY_EXPAND` (configured in `Config_Models.py`
-    under `_LLM_REWRITE_PROMPT`).  Alternate-query candidates are logged at
-    debug level 29 (`ChunkDedup` label).  This is orthogonal to
-    `retrieve_mode` — BM25, Graph, and Regex legs are not affected.
+   - **Keyword/action splitting (default on)** — retrieve each validated
+     information need through the enabled local stores, plus the combined
+     keywords through BM25 when enabled with nonzero weight. Guardrail and
+     original-language legs remain once-per-turn. See
+     [query splitting](#keywordaction-query-splitting) for the answer-operation
+     handoff and unchanged web/history behavior.
+   - **Multi-query expansion (legacy fallback)** — when splitting is disabled
+     or fails and `_MULTI_QUERY.enabled` is `True` in `Config_RAGChat_Rewrite.py`,
+     the rewrite LLM generates `num_variants` alternate phrasings. Vector
+     fan-out follows `use_vector_alternates`; indexed alternates follow
+     `_INDEXED_QUERY.use_alternates` and shaping controls. Shared translated
+     language queries, best-rank variant merging, and normal RRF/caps apply.
+     Successful splitting does not also run this paraphrase call.
 2. **Near-duplicate chunk removal (optional)** — when `_CHUNK_DEDUP.enabled` is
-   `True` in `Config_RAGChat.py`, chunks in the merged candidate pool are
+   `True` in `Config_RAGChat_Rewrite.py`, chunks in the merged candidate pool are
    compared pairwise using token-level Jaccard similarity.  Any chunk whose
    similarity to an already-kept chunk exceeds `threshold` (default `0.85`) is
    discarded; the first-seen chunk (highest RRF rank) is retained.  This step
@@ -1642,32 +1947,44 @@ chunks are sent to the LLM as context.  Three selector classes in
    the number of chunks the cross-encoder must score without affecting
    retrieval recall.  The number of removed chunks is logged at level `"I"` when
    at least one chunk is dropped (`ChunkDedup` label).
-3. **Cross-encoder reranking** — score every candidate with the cross-encoder
-   model; discard candidates below `threshold`.
+3. **Cross-encoder reranking** — score candidates with the cross-encoder;
+   split local candidates retain their maximum associated-need raw score.
+   Existing language selection, thresholds, and low-score/low-recall fallback
+   controls then determine which candidates reach strategy selection.
 4. **Chunk selection** — fill the context window (`final_chunks_to_llm`) from the
-   surviving candidates.  *How* the window is filled depends on `filelim`.
+   surviving candidates.  *How* the window is filled depends on the strategy
+   name (`ChunkSelectionService.get_selector()`), not on `filelim`.
 
-### Score-ranked selection (`filelim = 0`)
+### Score-ranked selection (DEFAULT, WIDE, ULTRA_WIDE)
 
-When `filelim` is `0` (DEFAULT, WIDE, ULTRA_WIDE), `ScoreRankedSelector`
-selects chunks strictly by descending reranker score until `final_chunks_to_llm`
-is reached.  A single large file can contribute all of the context if its
-chunks score highest.
+The CLI rechecks context-window risk after strategy selection and changes to
+`context_chunks` / `context_size`. It estimates nominal retrieved-text size from
+the **active session** `final_chunks_to_llm`, the active chunker, and the effective
+model window after system/output reserves—not from preset counts or candidate
+`retriever_k`. Warnings suggest a narrower strategy, fewer chunks, or a larger
+window supported by the actual backend. This is approximate feedback, not a
+tokenizer-based fit guarantee or automatic truncation. A RAG-side override alone
+cannot increase the served model's context limit.
+
+`ScoreRankedSelector` selects chunks strictly by descending reranker score
+until `final_chunks_to_llm` is reached.  `filelim` (session `per_file_limit`)
+is loaded with the strategy but **not applied** by this selector, so a single
+large file can contribute all of the context if its chunks score highest.
 
 ### Single-document selection (NARROW)
 
-`SingleDocumentSelector` also uses `filelim = 0` but applies a much higher
-`threshold` (0.75) and a smaller `final_chunks_to_llm` (20).  After filtering,
-it compares the file with the highest individual chunk score against the
-file that contributed the most chunks.  When these agree, all context
-comes from that single file; when they differ, the file with the most
-chunks wins.  This makes NARROW ideal for questions targeting a specific
-document.
+`SingleDocumentSelector` uses a higher `threshold` (0.60) and a smaller
+`final_chunks_to_llm` (20).  After filtering, it compares the file with the
+highest individual chunk score against the file that contributed the most
+chunks.  When these agree, all context comes from that single file; when they
+differ, the file with the most chunks wins.  `filelim` is not applied.  This
+makes NARROW ideal for questions targeting a specific document.
 
-### Per-file cap selection (`BALANCED_FILE_CAP`, `filelim > 0`)
+### Per-file cap selection (`BALANCED_FILE_CAP`)
 
-`PerFileCapSelector` is used when `BALANCED_FILE_CAP` sets `filelim = 10`,
-which changes the selection algorithm:
+`PerFileCapSelector` is the only selector that applies `filelim`
+(`per_file_limit`, default `10` for `BALANCED_FILE_CAP`; falls back to
+`final_chunks_to_llm` when unset or `0`):
 
 1. **Group** surviving chunks by source file.
 2. **Rank files** by how many chunks each file contributed (most-common
@@ -1689,25 +2006,24 @@ Retriever candidates (retriever_k)
 Cross-encoder reranking (threshold filter)
   │
   ▼
-filelim = 0?  ──yes──▶  NARROW?  ──yes──▶  SingleDocumentSelector  ──▶  context window
-  │                        │
-  │                        no (DEFAULT / WIDE / ULTRA_WIDE)
-  │                        ▼
-  │                    ScoreRankedSelector  ──▶  context window
+strategy?
+  ├── DEFAULT / WIDE / ULTRA_WIDE ──▶  ScoreRankedSelector     ──▶  context window
   │
-  no (BALANCED_FILE_CAP)
+  ├── NARROW ──────────────────────▶  SingleDocumentSelector  ──▶  context window
   │
-  ▼
-PerFileCapSelector
-  │
-  ▼
-Group by file → rank files by frequency
-  │
-  ▼
-Per file: take top-scored chunks up to filelim
-  │
-  ▼
-Context window filled
+  └── BALANCED_FILE_CAP
+        │
+        ▼
+      PerFileCapSelector
+        │
+        ▼
+      Group by file → rank files by frequency
+        │
+        ▼
+      Per file: take top-scored chunks up to filelim
+        │
+        ▼
+      Context window filled
 ```
 
 `filelim` can also be overridden at query time through the API or the
@@ -1755,22 +2071,24 @@ in follow-up queries when chat context is enabled. Before retrieval, the
 user's query and recent conversation history are sent to a dedicated LLM
 that rewrites the query as a self-contained question (e.g. "are they
 mammals?" → "which of cats, hedgehogs, and dogs are mammals"). If rewriting
-is disabled, no history exists, or the LLM call fails, the original query is
-used unchanged.
+is disabled, no history exists, or the LLM call fails, the query supplied to
+the rewriter is used unchanged.
 
 ![Query Rewrite Flow — Coreference Resolution Before Retrieval](Documentation/FlowCharts/rag_query_rewrite_correct_flow.png)
 
+[Mermaid source](Documentation/FlowCharts/rag_query_rewrite_correct_flow.md)
+
 #### Worked examples
 
-**Initial query (no history, rewrite skipped):**
+**Initial query (`new:` clears history; rewrite skipped):**
 
-> *"For each source document, name the animal it describes."*
+> *"new: For each source document name the animals it contains."*
 
 ![Query Rewrite — Query 1](Documentation/Pics/Prompt_Rewrite_Query1.jpg)
 
 **Follow-up query (1 history turn, rewrite triggered):**
 
-> *"For each animal in the answer, tell if it is a mammal or not."* → rewritten to *"For each of Pferde (horses), Cats, Fish, Dogs, Hedgehogs, Lions, Apes, and Elephants, determine if it is a mammal."*
+> *"Are these animals mammals?"* → rewritten to *"Are cats, hedgehogs, lions, apes, and fish mammals?"*
 
 ![Query Rewrite — Query 2](Documentation/Pics/Prompt_Rewrite_Query2.jpg)
 
@@ -1817,7 +2135,7 @@ the active `file=` filter at the time the turn was recorded; it is `""`
                               |
      format _PROMPT_TOPIC_DETECT template
                               |
-       call dedicated rewrite LLM (mistral:7b)
+       call dedicated rewrite LLM (_ACTIVE_LLM_REWRITE_PROMPT)
          with _QUERY_REWRITE LLM params
               LLM error? --> log + return original
                               |
@@ -1963,11 +2281,13 @@ For class-level design and relationships, see:
 src/
 ├── AI/                             AI model interaction
 │   ├── AIHelpers.py
+│   ├── LLMBackendAdapter.py
 │   ├── LLMCaller.py
 │   ├── ModelOutputAdapter.py
 │   ├── ModelsCache.py
 │   ├── TensorHelpers.py
-│   └── TokenBudget.py
+│   ├── TokenBudget.py
+│   └── VllmClients.py
 │
 ├── Algos/                          Detection algorithms
 │   ├── BM25Scorer.py
@@ -1982,27 +2302,46 @@ src/
 │   ├── Synonyms.py
 │   └── UnicodeNormalizer.py
 │
+├── Api/                            OpenAI-compatible REST API handler
+│   ├── ChatCompletionHandler.py
+│   ├── ChatRequestSessionMapper.py
+│   ├── ChatResponseStreamer.py
+│   ├── OpenWebUIHousekeeping.py
+│   ├── MarkedDocsService.py
+│   └── MarkedDocsStore.py
+│
 ├── Apps/                           Application entry points
+│   ├── resources/                      Static assets (favicon)
 │   ├── DocClassify.py
 │   ├── RAGChat.py
 │   ├── RAGChatService.py
 │   └── RAGLoad.py
 │
-├── Api/                            OpenAI-compatible REST API handler
-│   ├── ChatCompletionHandler.py
-│   ├── MarkedDocsService.py
-│   └── MarkedDocsStore.py
-│
 ├── Chat/                           Conversation and query handling
 │   ├── ChatContext.py
 │   ├── Chatter.py
 │   ├── CommandProcessor.py
+│   ├── ConfidenceEvaluator.py
+│   ├── ContextSummarizer.py
+│   ├── DocumentMarkingService.py
+│   ├── KeywordActionSplitter.py
+│   ├── LocalRetrieverExecutor.py
+│   ├── MarkedDocsViewer.py
 │   ├── PromptRewrite.py
+│   ├── QueryCommandMetadata.py
+│   ├── QueryNormalizer.py
 │   ├── QueryParts.py
+│   ├── QueryPartsProtocol.py
+│   ├── QuerySettingsPresenter.py
 │   ├── RAGChatImpl.py
-│   └── RetrievalGate.py
+│   ├── RagRetrievalContext.py
+│   ├── RetrievalContextBuilder.py
+│   ├── RetrievalGate.py
+│   ├── RetrievalReranker.py
+│   └── SessionSettingsApplier.py
 │
 ├── Commons/                        Shared infrastructure
+│   ├── DriveRootGuard.py
 │   ├── Exceptions.py
 │   ├── NetworkTracer.py
 │   ├── SingletonMixin.py
@@ -2010,35 +2349,58 @@ src/
 │
 ├── Compliance/                     License management and verification
 │   ├── ArgosDownloader.py
+│   ├── ArgosSpacySentencizerPatch.py
 │   ├── BannedPhraseCollector.py
 │   ├── Compliance.py
 │   ├── Exclusions.py
 │   ├── HFDownloader.py
-│   └── SharedHelpers.py
+│   ├── path_validation.py
+│   ├── SharedHelpers.py
+│   └── SpacyDownloader.py
 │
 ├── Config/                         Runtime configuration singleton
 │   ├── AddConstantsFromConfigFile.py
+│   ├── CliOverridePolicy.py
 │   └── Config.py
 │
 ├── Configuration/                  Static parameter definitions
-│   ├── Config_Banned_Detection.py
 │   ├── Config_Banned_Content.py
+│   ├── Config_Banned_Detection.py
+│   ├── Config_Banned_HumanReview_CSV.py
 │   ├── Config_Banned_Prompts.py
+│   ├── Config_Confidence.py
+│   ├── Config_ConfidenceEvaluator.py
+│   ├── Config_ContextSummarizer.py
 │   ├── Config_DocClassify.py
 │   ├── Config_Global.py
-│   ├── Config_Load_Retrievers.py
-│   ├── Config_Load_Chunkers.py
-│   ├── Config_Languages.py
+│   ├── Config_Grounder.py
 │   ├── Config_Internet_Env.py
+│   ├── Config_KeywordActionSplitter.py
+│   ├── Config_Languages.py
+│   ├── Config_Languages_Catalog.py
+│   ├── Config_Languages_Normalization.py
+│   ├── Config_Languages_Retrievers.py
+│   ├── Config_Load_Chunkers.py
+│   ├── Config_Load_Retrievers.py
 │   ├── Config_Models.py
+│   ├── Config_Orchestrator.py
 │   ├── Config_RAGChat.py
+│   ├── Config_RAGChat_Display.py
+│   ├── Config_RAGChat_Prompts.py
+│   ├── Config_RAGChat_Rewrite.py
+│   ├── Config_RAGChat_Strategies.py
 │   ├── Config_RAGChatService.py
-│   └── Config_RAGLoad.py
+│   ├── Config_RAGLoad.py
+│   └── Config_WebSearch.py
 │
 ├── Globals/                        Shared state
 │   ├── CounterInstance.py
 │   ├── Globals.py
 │   └── Session.py
+│
+├── Grounding/                      Answer grounding and evidence validation
+│   ├── Grounder.py
+│   └── SourceReferences.py
 │
 ├── Gui/                            Terminal UI helpers
 │   ├── Banner.py
@@ -2047,6 +2409,8 @@ src/
 │   ├── FileList.py
 │   ├── HistoryManager.py
 │   ├── Informer.py
+│   ├── LicensePager.py
+│   ├── MetadataPicker.py
 │   ├── PrettyWriter.py
 │   └── Symbols.py
 │
@@ -2054,66 +2418,94 @@ src/
 │   ├── Accumulator.py
 │   ├── ChromaDBHelper.py
 │   ├── ClassifyCSVReader.py
+│   ├── ConfidenceLogger.py
 │   ├── CSVWriter.py
 │   ├── DebugHelper.py
 │   ├── FileUtils.py
 │   ├── Helpers.py
+│   ├── LanguageConfig.py
+│   ├── ModelSelection.py
 │   ├── OfficeDocConverter.py
+│   ├── PerfLogger.py
 │   ├── PipelineSettingsSummarizer.py
+│   ├── QualityDimensionEvaluator.py
+│   ├── SensitiveData.py
 │   ├── SourcePathLinkifier.py
 │   └── ValidExtensions.py
 │
+├── Orchestrator/                   Retrieval pipeline control (flows, overrides, messages)
+│   ├── FlowConfig.py
+│   ├── IndexedRetrievalExecutor.py
+│   ├── IndexedRetrievalPlanner.py
+│   ├── LocalRetrievalPipeline.py
+│   ├── OrchestrationStageContext.py
+│   ├── Orchestrator.py
+│   ├── OrchestratorHelper.py
+│   ├── OrchestratorMessages.py
+│   ├── OrchestratorOverrides.py
+│   ├── OrchestratorTypes.py
+│   └── OriginalQueryLegExecutor.py
+│
 ├── Pipeline/                       Orchestration
 │   └── LoadAndClassifyProcessor.py
-│
-├── Scripts/                        Standalone maintenance scripts
-│   ├── ArgosTranslatePackages.py
-│   ├── BM25IndexInspector.py
-│   ├── CopyExampleConfigs.py
-│   ├── GraphIndexInspector.py
-│   ├── NLTK_Stopwords_WordNet.py
-│   ├── PipInstall.py
-│   ├── RecalcConfigHashes.py
-│   ├── Setup.py
-│   ├── UpdateConfigValues.py
-│   └── VerifySignatures.py
-│
-├── Strategies/                     Processing strategies + helpers
-│   ├── Chunkers/                   Chunking strategies
-│   │   ├── ChunkerStrategy.py          Abstract base (chunk_size + chunk())
-│   │   ├── PageBasedChunker.py         Abstract base for page/slide chunkers
-│   │   ├── RecursiveChunker.py         RecursiveCharacterTextSplitter wrapper
-│   │   ├── SemanticChunker.py          Cosine-similarity breakpoint detection
-│   │   ├── SentenceWindowChunker.py    Sentence packing (no overlap)
-│   │   ├── SlidingWindowChunker.py     Sentence packing with overlap
-│   │   ├── HeadingChunker.py           Heading-aware (MD + DOCX)
-│   │   ├── SlideChunker.py             Per-slide (PPTX)
-│   │   ├── PdfPageChunker.py           Per-page (PDF, adds PageNumber metadata)
-│   │   └── SentenceSplitter.py         Shared sentence boundary detection
-│   ├── DocumentIngestionStrategy.py
-│   ├── ClassifyHelper.py
-│   ├── ClassifyStrategy.py
-│   ├── HomeBrewChunkSelector.py
-│   ├── ProcessingStrategy.py
-│   └── StrategyType.py
 │
 ├── Retrievers/                     Retrieval engines + web filters
 │   ├── BM25Retriever.py
 │   ├── GraphRetriever.py
 │   ├── RegexRetriever.py
+│   ├── RetrieverBase.py
 │   ├── RetrieverProtocol.py
-│   ├── WebRetriever.py
 │   ├── WebPreFilter.py
+│   ├── WebRetriever.py
 │   └── WebSearchFilter.py
 │
-└── VisualMarkers/                  In-memory document highlighters + answer grounder
-    ├── AnswerGrounder.py
+├── Scripts/                        Standalone maintenance scripts
+│   ├── ArgosTranslatePackages.py
+│   ├── ArgosTranslatePackagesImpl.py
+│   ├── BM25IndexInspector.py
+│   ├── check_path_guard.py
+│   ├── check_path_guard_driveroot.py
+│   ├── CopyExampleConfigs.py
+│   ├── DiagnoseChunks.py
+│   ├── GraphIndexInspector.py
+│   ├── NLTK_Stopwords_WordNet.py
+│   ├── PipInstall.py
+│   ├── RecalcConfigHashes.py
+│   ├── Setup.py
+│   ├── SpacyLanguageModels.py
+│   ├── SpacyLanguageModelsImpl.py
+│   ├── UpdateConfigValues.py
+│   └── VerifySignatures.py
+│
+├── Strategies/                     Processing strategies + helpers
+│   ├── Chunkers/                       Chunking strategies
+│   │   ├── ChunkerStrategy.py              Abstract base (chunk_size + chunk())
+│   │   ├── DocumentMetadataExtractor.py    Document-level metadata (PDF / Office)
+│   │   ├── HeadingChunker.py               Heading-aware (MD + DOCX)
+│   │   ├── PageBasedChunker.py             Abstract base for page/slide chunkers
+│   │   ├── PdfPageChunker.py               Per-page (PDF, adds PageNumber metadata)
+│   │   ├── RecursiveChunker.py             RecursiveCharacterTextSplitter wrapper
+│   │   ├── SemanticChunker.py              Cosine-similarity breakpoint detection
+│   │   ├── SentenceSplitter.py             Shared sentence boundary detection
+│   │   ├── SentenceWindowChunker.py        Sentence packing (no overlap)
+│   │   ├── SlideChunker.py                 Per-slide (PPTX)
+│   │   ├── SlidingWindowChunker.py         Sentence packing with overlap
+│   │   └── TableChunker.py                 Ordered Word/PDF extraction, table-aware chunks
+│   ├── ClassifyHelper.py
+│   ├── ClassifyStrategy.py
+│   ├── DocumentIngestionStrategy.py
+│   ├── HomeBrewChunkSelector.py
+│   ├── ProcessingStrategy.py
+│   └── StrategyType.py
+│
+└── VisualMarkers/                  In-memory document highlighters
     ├── DocxVisualMarker.py
+    ├── MarkWorker.py                   Subprocess entry for parallel PDF marking
     ├── PdfVisualMarker.py
     ├── PlainTextVisualMarker.py
     ├── PptxVisualMarker.py
-    ├── VisualMarker.py             Abstract base
-    └── VisualMarkerFactory.py      Format-dispatch factory
+    ├── VisualMarker.py                 Abstract base
+    └── VisualMarkerFactory.py          Format-dispatch factory
 ```
 
 ## ⚠️ Error Handling
@@ -2186,7 +2578,10 @@ RAG-LCC does not log raw user queries or LLM responses **unless** `DEBUG_LEVEL` 
 - Conversation history reference
 - `mark_text: bool` — whether visual marking is active for this session
 - `marked_documents: list[tuple[str, bytes]]` — in-memory `(source_path, highlighted_bytes)` pairs produced by `_mark_sources()`
-- `chunk_texts_for_grounding: list[str]` — raw chunk texts used by `ground_answer_cli()` to highlight grounded answer sentences
+- `chunk_texts_for_grounding: list[str]` — raw chunk texts used by `Grounder.ground_answer_cli()` to highlight grounded answer sentences
+- `grounding_proxy_text` / `grounding_proxy_sentences` — translated answer proxy used for grounding when answer and evidence languages differ
+- `summary_statements` — structured summary statements with `context_chunk_ids` for summary grounding
+- `answer_confidence_result` — the turn's `AnswerConfidenceResult` (retrieval confidence plus quality review); cleared on turn reset
 
 ## ⚡ Performance Considerations
 
@@ -2217,27 +2612,32 @@ These caching strategies are intended to reduce redundant computation and may im
 
 ## 🔌 Extension Points
 
-**New Detection Algorithms**: Take one of the existing algos as reference
-You must implement `return_algo_results` and return a `ComplianceAlgoResult`
+**New Detection Algorithms**: Take one of the existing algos as reference.
+Subclass `ScorerBase`, implement `_verify_impl()` (called through the timing wrapper `verify()`) and `return_algo_result()`, and return a list of `ComplianceAlgoResult`
 
 ```Python
 @dataclass
 class ComplianceAlgoResult:
-    algo: Optional[str]
+    algo: str | None
     phrase: str
-    score: Optional[float]
-    threshold: Optional[float]
-    detail: Optional[str] = None
-    meta: Optional[Dict[str, Any]] = None
+    score: float | None
+    threshold: float | None
+    detail: str | None = None
+    meta: Dict[str, Any] | None = None
 
 class ScorerBase(ABC):
     @abstractmethod
     def return_algo_result(self) -> List[ComplianceAlgoResult]:
         """Return detection results as a list of ComplianceAlgoResult."""
         raise NotImplementedError
+
+    @abstractmethod
+    def _verify_impl(self, *args: Any, **kwargs: Any) -> List[ComplianceAlgoResult]:
+        """Scorer logic — implement in each subclass."""
+        raise NotImplementedError
 ```
 
-- Add new algorithm to `AIHelpers` `_run_ensemble_checks()`
+- Add new algorithm to `AIHelpers.run_ensemble_checks()`
 - Add new algorithm to `Config_Banned_Detection.py`
 
 **New Configuration**: Add to appropriate `Config_*.py`

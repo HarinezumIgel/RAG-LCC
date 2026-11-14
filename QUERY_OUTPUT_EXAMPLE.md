@@ -1,13 +1,17 @@
 # Query Output Example
 
-``` Text
+## Current confidence display
+
+Please note that the actual output includes more color; copying and pasting from the VS Code terminal may reduce it.
+
+```text
 (.venv) PS D:\RAG-LCC> python .\src\Apps\RAGChat.py
 🔵 Config path                    Checking configured filesystem path slots (root guard + presence check).
 🔵 Config path                    For file-like slots, present means the containing directory exists.
 🔵 Config path                    DOC_DIR -> D:\RAG-LCC\TestDocs present: YES
 🔵 Config path                    LOG_FILE -> D:\RAG-LCC\compliance.log present (containing dir): YES
 🔵 Config path                    _ABSOLUTE_PATH -> D:\RAG-LCC present: YES
-🔵 Config path                    _CACHE_PATH -> D:\RAG-LCC\.caches present: YES
+🔵 Config path                    _CACHE_PATH_ABSOLUTE -> D:\RAG-LCC\.caches present: YES
 🔵 Config path                    _EXCLUSIONS_DIR -> D:\RAG-LCC\Exclusions present: YES
 🔵 Config path                    _HF_HOME -> C:\Users\pfm\.cache present: YES
 🔵 Config path                    _HF_HUB_CACHE -> C:\Users\pfm\.cache\.hf-cache present: YES
@@ -25,7 +29,7 @@
 🦔                 HarinezumIgel RAGChat                                🦔
 🦔          An **experimental** lab environment                         🦔
 🦔           to test settings and filter chains                         🦔
-🦔            Version v0.5.2.0/1533 2026-10-05                          🦔
+🦔            Version v0.5.2.1/1645 2026-11-14                          🦔
 🦔                                                                      🦔
 🦔🦔🦔🦔🦔🦔🦔🦔🦔🦔🦔🦔🦔🦔🦔🦔🦔🦔🦔🦔🦔🦔🦔🦔🦔🦔🦔🦔🦔🦔
 
@@ -45,14 +49,13 @@
 ↳                                 and SECURITY.md before deploying.
 
 
-🔵 OLLAMA                         Access to Ollama Local LLM Provider is enabled. http://localhost:11434/api/generate streaming: False
-🔵 OLLAMA                         Probing http://localhost:11434/api/tags → OK
+🔵 VLLM                           Access to vLLM OpenAI-compatible Provider is enabled. http://192.168.100.50:4000/v1/chat/completions streaming: False
+🔵 VLLM                           Probing http://192.168.100.50:4000/v1/models → OK
 🟢 HF cache                       HF home: C:\Users\pfm\.cache HF hub cache: C:\Users\pfm\.cache\.hf-cache
 
                                   Running RAGChat. Good luck!
 ↳
    ⚪ Argos Translate                Lang: Installed English                  (en   )
-   ⚪ Argos Translate                Lang: Installed Dutch                    (nl   )
    ⚪ Argos Translate                Lang: Installed French                   (fr   )
    ⚪ Argos Translate                Lang: Installed German                   (de   )
    ⚪ Argos Translate                Lang: Installed Italian                  (it   )
@@ -72,31 +75,34 @@
 🟢 Configuration.Config_WebSearch        No change detected in config file D:\RAG-LCC\src\Configuration\Config_WebSearch.py
 🟢 Configuration.Config_Internet_Env     No change detected in config file D:\RAG-LCC\src\Configuration\Config_Internet_Env.py
 
+🔵 License                        Checking license consent for active models: llama_guard._LLM_CHK, qwen2_5_7b_instruct._LLM, qwen2_5_7b_instruct._LLM_REWRITE_PROMPT, qwen2_5_14b_instruct._LLM_JUDGE,
+↳                                 bge_m3._EMBED, bge_reranker._CROSS, vllm._VLLM
 🟢 License                        All LICENSE.txt files for active models in Config_Models.py (see _MODELS) are consented
 🟢 Argos License                  Consent valid for 8 configured language pair(s)
-🔵 Tokenizer Resources            Default tokenizer resources directory: C:\Users\pfm\.local\share\resources (directory not present yet)
 🟢 spaCy License                  Consent valid for 5 configured model(s)
-🟢 HF Download                    _MODELS._EMBED: model already downloaded with matching revision and config hash. Skipping download.
-🟢 HF Download                    _MODELS._CROSS: model already downloaded with matching revision and config hash. Skipping download.
-   ⚪ WordNet Synonyms               Expanded 81 phrases → 139 (+60 synonyms, depth=1, max/phrase=1)
-🟢 BM25Scorer                     Initialized BM25 Scorer (algo=BM25) with 139 base phrase(s)
-🔵 HF                             Try to load snowflake/snowflake-arctic-embed-l-v2.0 revision 'None' key: snowflake/snowflake-arctic-embed-l-v2.0_none_cuda:0_torch.float32 from cache.
-Loading weights: 100%|█████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 391/391 [00:00<00:00, 5927.97it/s]
-🔵 HF                             Reusing cached embeddings for snowflake/snowflake-arctic-embed-l-v2.0 rev='None' device=cuda:0 dtype=torch.float32
-🔵 TokenBudget                    Detected context_length=32768 for mistral:7b via ollama adapter
-🔵 TokenBudget                    Model 'mistral:7b': context_limit=32768 (below cap 32768 — using detected value)
-🔵 HF                             Try to load cross-encoder 'cross-encoder/mmarco-mMiniLMv2-L12-H384-v1' revision 'None' device=cuda:0 from cache.
-🟢 HF Download                    _MODELS._CROSS: model already downloaded with matching revision and config hash. Skipping download.
-Loading weights: 100%|█████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 201/201 [00:00<00:00, 6865.83it/s]
-🔵 HF                             Reusing cached embeddings for snowflake/snowflake-arctic-embed-l-v2.0 rev='None' device=cuda:0 dtype=torch.float32
+🔵 HF Download                    _MODELS._EMBED: using remote vLLM model; skipping local weight download. Model licence verification remains required by Compliance.
+🔵 HF Download                    _MODELS._CROSS: using remote vLLM model; skipping local weight download. Model licence verification remains required by Compliance.
+🟢 BM25Scorer                     Initialized BM25 Scorer (algo=BM25) with 80 base phrase(s)
+🔵 vLLM                           Using vLLM embeddings 'bge-m3-embedder' at http://192.168.100.50:4000/v1
+🔵 vLLM                           Using vLLM embeddings 'bge-m3-embedder' at http://192.168.100.50:4000/v1
+🔵 TokenBudget                    /v1/models did not yield max_model_len for 'openai/qwen2_5_7b_instruct'; retrying via LiteLLM /model/info endpoint
+🔵 TokenBudget                    Detected context_length=32768 for openai/qwen2_5_7b_instruct via vllm adapter
+🔵 TokenBudget                    Model 'openai/qwen2_5_7b_instruct': context_limit=32768 (below cap 32768 — using detected value)
+🔵 vLLM                           Using vLLM cross-encoder 'bge-reranker' at http://192.168.100.50:4000/v1
+🔵 vLLM                           Using vLLM embeddings 'bge-m3-embedder' at http://192.168.100.50:4000/v1
 🟢 Regex                          Aux-lemma cache built for 5 active language(s)
 → Loaded defaults for 'DEFAULT':
+
   ▶ Chat settings
     ▶ Debug                 : debug_level=30  debug_mode='ge'
     ▶ Chat Context          : use_chat_context=True  history_keep=10  history_prune=5  rewrite_context=3  topic_summary='last'
-    ▶ Talk with             : collection='Test'  chat_name='MyFirstChat'
+    ▶ Talk with             : collection='Test_embedder_bge_m3'  chat_name='MyFirstChat'
     ▶ File Input            : file=None  path=None  metadata=None  file_cap=15
     ▶ Visual                : mark_text=True
+    ▶ Response              : preferred_response_language=None
+
+  ▶ Summarize settings
+    ▶ Summary               : summary_length='medium'  summary_temperature=0.3  chunk_overlap=5
 
   ▶ Retrieval settings
     ▶ Retrieval strategy    : retrieval strategy='DEFAULT'
@@ -107,15 +113,16 @@ Loading weights: 100%|███████████████████�
     ▶ Context/session       : file_cap=15  use_chat_context=True  history_keep=10  history_prune=5  rewrite_context=3  topic_summary='last'
     ▶ Output                : max_output_tokens='14366'  context_size='32768'  terminal_line_size=200
     ▶ API passthrough       : extraOllamaOptions=None  ollamaTopLevelParams=None
-   ▶ Web                   : web_search='local_only'  fetch_page_content='snippets only'  web_fetch_k=10  bm25_pre_filter=0.1  cosine_pre_filter=0.3  web_rerank_threshold=0.5
+    ▶ Web                   : web_search='local_only'  fetch_page_content='snippets only'  web_fetch_k=10  bm25_pre_filter=0.1  cosine_pre_filter=0.3  web_rerank_threshold=0.5
 
   ▶ Orchestration settings
-    ▶ Orchestration strategy: orchestrator_flow='THOROUGH_QUERY_REWRITE'
+    ▶ Orchestration strategy: orchestrator_flow='NATIVE_ALL'
     ▶ Orchestrator overrides:
-    ▶ Flow selectors        : force_retrieve_mode=None  main_query_source=None  secondary_query_source=None  rerank=None
-    ▶ Flow stages           : secondary_query=None  per_language_indexed_query=None  indexed_translate=None  indexed_synonyms=None  orig_lang_vector=None  vector_alternates=None
+    ▶ Confidence            : confidence_evaluation='both'
+    ▶ Flow selectors        : force_retrieve_mode=None  main_query_source=None  secondary_query_source=None  rerank_query_source=None  retrieval_language=None  rerank=None
+    ▶ Flow stages           : secondary_query=None  per_language_indexed_query=None  indexed_translate=None  indexed_wordnet=None  orig_lang_vector=None  vector_alternates=None
     ▶ Flow retrievers       : vector=None  bm25=None  graph=None  regex=None
-    ▶ Flow runtime          : query_rewrite=None  pronoun_subst=None  rerank_stage=None  low_score_fallback=None  low_recall_rescue=None  grounding=None
+    ▶ Flow runtime          : query_rewrite=None  keyword_action_splitter=None  pronoun_subst=None  rerank_stage=None  low_score_fallback=None  low_recall_rescue=None  grounding=None
 
 🔵 Masker                         Loaded _MASKING_REGEXES from configuration
 🟢 Banned Word Check              *** Banned word check status by stage and algorithm:
@@ -123,27 +130,32 @@ Loading weights: 100%|███████████████████�
 🟢 Banned Word Check              - PIPELINE_CHECK: Jaccard: ✅  BM25: ✅  Regex+Levenshtein: ✅  Keybert: ✅  Pipeline Check: ✅
 🟢 Banned Word Check              - MASKING       : ✅ applied on final result
 
-🟢 Banned Words                   ✅ Current banned words: 81
+🟢 Banned Words                   ✅ Current banned words: 80
 🟢 Masking regexes                ✅ Current masking regexes: 23
 Sleeping for 1 seconds .
-🔵 OLLAMA                         Probing http://localhost:11434/api/tags → OK
-🟢 OLLAMA                         OLLAMA is reachable on: http://localhost:11434/api/tags streaming: False
+🔵 VLLM                           Probing http://192.168.100.50:4000/v1/models → OK
+🟢 VLLM                           VLLM is reachable on: http://192.168.100.50:4000/v1/models streaming: False
 🟢 GPU                            GPU is available
 🔵 GPU                            Number of GPUs: 1
 🔵 GPU                            GPU Name: Tesla T4
    -                              ----------------------
-🔵 LLM for prompt compliance      llama-guard3:8b (Built with Meta Llama 3.)
+🔵 LLM for prompt compliance      llama_guard3_8b (Built with Meta Llama 3.)
 🔵 LLM for prompt compliance      Llama Guard 3 is licensed under the Llama 3.1 Community License Agreement, Copyright © Meta Platforms, Inc. All Rights Reserved.
-🔵 LLM for user chat              LLM: Mistral 7B is a 7.3B parameter model
-🔵 LLM for user chat              mistral:7b (LLM: Mistral 7B is a 7.3B parameter model)
+🔵 LLM for user chat              LLM: Qwen2.5-7B-Instruct is licensed under the Apache License, Version 2.0.
+🔵 LLM for user chat              openai/qwen2_5_7b_instruct (LLM: Qwen2.5 7B Instruct)
 Chat with your documents
+
 
   ▶ Chat settings
     ▶ Debug                 : debug_level=30  debug_mode='ge'
     ▶ Chat Context          : use_chat_context=True  history_keep=10  history_prune=5  rewrite_context=3  topic_summary='last'
-    ▶ Talk with             : collection='Test'  chat_name='MyFirstChat'
+    ▶ Talk with             : collection='Test_embedder_bge_m3'  chat_name='MyFirstChat'
     ▶ File Input            : file=None  path=None  metadata=None  file_cap=15
     ▶ Visual                : mark_text=True
+    ▶ Response              : preferred_response_language=None
+
+  ▶ Summarize settings
+    ▶ Summary               : summary_length='medium'  summary_temperature=0.3  chunk_overlap=5
 
   ▶ Retrieval settings
     ▶ Retrieval strategy    : retrieval strategy='DEFAULT'
@@ -154,579 +166,793 @@ Chat with your documents
     ▶ Context/session       : file_cap=15  use_chat_context=True  history_keep=10  history_prune=5  rewrite_context=3  topic_summary='last'
     ▶ Output                : max_output_tokens='14366'  context_size='32768'  terminal_line_size=200
     ▶ API passthrough       : extraOllamaOptions=None  ollamaTopLevelParams=None
-   ▶ Web                   : web_search='local_only'  fetch_page_content='snippets only'  web_fetch_k=10  bm25_pre_filter=0.1  cosine_pre_filter=0.3  web_rerank_threshold=0.5
+    ▶ Web                   : web_search='local_only'  fetch_page_content='snippets only'  web_fetch_k=10  bm25_pre_filter=0.1  cosine_pre_filter=0.3  web_rerank_threshold=0.5
 
   ▶ Orchestration settings
-    ▶ Orchestration strategy: orchestrator_flow='THOROUGH_QUERY_REWRITE'
+    ▶ Orchestration strategy: orchestrator_flow='NATIVE_ALL'
     ▶ Orchestrator overrides:
-    ▶ Flow selectors        : force_retrieve_mode=None  main_query_source='FINAL_QUERY'  secondary_query_source='TRANSLATED_QUERY'  rerank=True
-    ▶ Flow stages           : secondary_query=True  per_language_indexed_query=True  indexed_translate=True  indexed_synonyms=True  orig_lang_vector=True  vector_alternates=True
+    ▶ Confidence            : confidence_evaluation='both'
+    ▶ Flow selectors        : force_retrieve_mode=None  main_query_source='REWRITTEN_QUERY'  secondary_query_source='TRANSLATED_QUERY'  rerank_query_source='REWRITTEN_QUERY'  retrieval_language='NATIVE'  rerank=True
+    ▶ Flow stages           : secondary_query=False  per_language_indexed_query=True  indexed_translate=True  indexed_wordnet=False  orig_lang_vector=False  vector_alternates=True
     ▶ Flow retrievers       : vector=True  bm25=True  graph=True  regex=True
-    ▶ Flow runtime          : query_rewrite=True  pronoun_subst=True  rerank_stage=True  low_score_fallback=True  low_recall_rescue=True  grounding=True
+    ▶ Flow runtime          : query_rewrite=True  keyword_action_splitter=True  pronoun_subst=True  rerank_stage=True  low_score_fallback=True  low_recall_rescue=True  grounding=True
 
 help? for help   show? for current values
 key=value to set (e.g. strategy=default)   key! to pick (e.g. strategy! / orchestrator_flow!)   key- to unset (e.g. file-)   strategy*preset for quick defaults (e.g. strategy*narrow)
 Press ↵ on an empty line to proceed to your query prompt
  🛠️  >
-b: back to settings / ↵ to enter query / ↵↵ to quit RAGChat  · type new: your question to start a new topic
-💬 Your actual query>  what do hedgehogs eat and where do they live?
+type new: your question to start a new topic  · type summarize: [file name or path] (alias: summary:) to summarize a file (no argument: pinned document; no pin: open the path picker)  · b: back to settings / ↵ to enter query / ↵↵ to quit RAGChat
+💬 Your actual query>  create a table with the important properties of the blazingfast workstation
 
-🔵 LangDetect                     Detected language: English (en) — confidence: 42% below threshold 64% — falling back to English
-🔵 LangDetect                     Confidence level (default): LOW (confidence: 42%, threshold: 64%)
-🟢 Cache build Regex Banned       Built compiled Regex cache with 139 entries for language english stage: PROMPT_CHECK
-🟢 Cache build Jaccard Banned     Built Jaccard n-gram cache with 139 entries for language english
-🟢 BM25 Scorer Cache              Built BM25 banlist cache with 139 entries for language english
-🔵 HF                             Reusing cached embeddings for snowflake/snowflake-arctic-embed-l-v2.0 rev='None' device=cuda:0 dtype=torch.float32
-Loading weights: 100%|█████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 391/391 [00:00<00:00, 1533.63it/s]
-🟢 Cache build Keybert Scorer     Built KeyBert embeddings cache with 81 entries
-🟢 KeyWrdChk Depth                0 algos passed threshold vs. required 2
+🔵 LangDetect                     Detected language: English (en) — confidence: 87% (threshold: 60%)
+🔵 LangDetect                     Confidence level (default): HIGH (confidence: 87%, threshold: 60%)
+🔵 Call LLM                       Stage: Encode
+🔵 Call LLM                       Model: bge-m3-embedder prompt template: None purpose: Embedding 1 text(s) via http://192.168.100.50:4000/v1/embeddings
+🟢 Cache build Regex Banned       Built compiled Regex cache with 80 entries for language english stage: PROMPT_CHECK
+🟢 Cache build Jaccard Banned     Built Jaccard n-gram cache with 80 entries for language english
+🟢 BM25 Scorer Cache              Built BM25 banlist cache with 80 entries for language english
+🔵 vLLM                           Using vLLM embeddings 'bge-m3-embedder' at http://192.168.100.50:4000/v1
+🟢 Cache build Keybert Scorer     Built KeyBert embeddings cache with 80 entries
+🟢 KeyWrdChk Summary              Phrase                         dpt / brth     Regex+Levenshtein ➡️    Jaccard ➡️              BM25 ➡️                 Keybert
+🟡 KeyWrdChk Summary              buffer overflow                1/2    1/3      -/-                    -/-                    -/-                    0.4614/0.4500
+🟡 KeyWrdChk Summary              data processor                 1/2    1/3      -/-                    -/-                    -/-                    0.4545/0.4500
+🟢 KeyWrdChk Depth                1 algos passed threshold vs. required 2
 🟢 KeyWrdChk Breadth              1 algos had a score vs. required 3
-🔵 TokenBudget                    Detected context_length=131072 for llama-guard3:8b via ollama adapter
-🔵 TokenBudget                    Model 'llama-guard3:8b' reports 131072 tokens; capped to 32768 (TOKEN_BUDGET_CONTEXT_CAP)
-🔵 TokenBudget                    [llama-guard3:8b] context=32768 reserved_sys=64 prompt≈11 → max_output_tokens=64
+🔵 TokenBudget                    /v1/models did not yield max_model_len for 'llama_guard3_8b'; retrying via LiteLLM /model/info endpoint
+🔵 TokenBudget                    Detected context_length=1024 for llama_guard3_8b via vllm adapter
+🔵 TokenBudget                    Model 'llama_guard3_8b': context_limit=1024 (below cap 32768 — using detected value)
+🔵 TokenBudget                    [llama_guard3_8b] context=1024 reserved_sys=64 prompt≈14 → max_output_tokens=64
 🔵 LLM Plan                       Prompt validation: running the guard model to classify the user prompt as allow/block.
-🔵 TokenBudget                    [llama-guard3:8b] num_ctx=32768 prompt≈11 → num_predict=64
-🔵 Call LLM                       Model: llama-guard3:8b prompt template: _PROMPT_CHECK_CHAT_LLAMA_GUARD stage: Check provided prompt
-🔵 Call LLM                       options: {'temperature': 0.0, 'top_k': 1, 'top_p': 1.0, 'num_predict': 64, 'num_ctx': 32768} streaming: False
-🔵 Call LLM                       Elapsed time calling: llama-guard3:8b took 00:05
-🟢 CheckPrompt                    Provided prompt is considered compliant by: llama-guard3:8b. Reason: Prompt classified as safe
-🔵                                Chatter RAG Query LMM: mistral:7b
-🔵 Retrieval Orchestration        Chosen orchestration flow: THOROUGH_QUERY_REWRITE
+🔵 TokenBudget                    [llama_guard3_8b] num_ctx=1024 prompt≈14 → num_predict=64
+🔵 Call LLM                       Stage: Check provided prompt
+🔵 Call LLM                       Model: llama_guard3_8b prompt template: _PROMPT_CHECK_CHAT_LLAMA_GUARD purpose: Prompt check
+🔵 Call LLM                       options: {'temperature': 0.0, 'top_k': 1, 'top_p': 1.0, 'num_predict': 64, 'num_ctx': 1024} streaming: False
+🔵 Call LLM                       Elapsed time calling: llama_guard3_8b took 00:00
+🟢 CheckPrompt                    Provided prompt is considered compliant by: llama_guard3_8b. Reason: Detected safe keywords
+🔵                                Chatter RAG Query LMM: openai/qwen2_5_7b_instruct
+🔵 Retrieval Orchestration        Chosen orchestration flow: NATIVE_ALL
 🔵 Retrieval Orchestration        start retrieval turn
-🟢 Chroma Collection              Using Chroma DB collection Test
-🔵 VectorStore                    Set Chroma vector store. Name: Test Path: D:\RAG-LCC\chromadb\docs\Test
+🟢 Chroma Collection              Using Chroma DB collection Test_embedder_bge_m3
+🔵 VectorStore                    Set Chroma vector store. Name: Test_embedder_bge_m3 Path: D:\RAG-LCC\chromadb\docs\Test_embedder_bge_m3
 🔵 Retrieval Orchestration        prepare session context
 🔵 Retrieval Orchestration        normalize user query
-🔵 UserQuery                      Original user query: 'what do hedgehogs eat and where do they live?'
-🔵 LangDetect                     Detected language: English (en) — confidence: 42% below threshold 64% — falling back to English
-🔵 LangDetect                     Confidence level (raw_user_query): LOW (confidence: 42%, threshold: 64%)
+🔵 UserQuery                      Original user query: 'create a table with the important properties of the blazingfast workstation'
+🔵 LangDetect                     Detected language: English (en) — confidence: 87% (threshold: 60%)
+🔵 LangDetect                     Confidence level (raw_user_query): HIGH (confidence: 87%, threshold: 60%)
+   ⚪ QueryPlan                      Step 1: detected query language=english; query='create a table with the important properties of the blazingfast workstation'
 🔵 QueryRewrite                   No conversation history — skipping rewrite
-🔵 LangDetect                     Detected language: English (en) — confidence: 42% below threshold 64% — falling back to English
-🔵 LangDetect                     Confidence level (rewrite_query): LOW (confidence: 42%, threshold: 64%)
-🔵 LangDrift                      raw_query_language=english  orig_translated_query_en='what do hedgehogs eat and where do they live?'
-🔵 LangDrift                      rewrite_language=english  rewritten_query='what do hedgehogs eat and where do they live?'
-🔵 LangDrift                      post_rewrite_query_en='what do hedgehogs eat and where do they live?'
-🔵 FinalQuery                     Final query for retrieval: 'what do hedgehogs eat and where do they live?' (unchanged)
-🔵 LLM Plan                       Alternate queries: generating up to 3 retrieval variants from the normalized query.
-🔵 TokenBudget                    Authoritative budget=2048 vs caller estimate=256; using authoritative value
-🔵 TokenBudget                    [mistral:7b] num_ctx=32768 prompt≈219 → num_predict=2048
-🔵 Call LLM                       Model: mistral:7b prompt template: _PROMPT_QUERY_EXPAND stage: Multi-query expansion
-🔵 Call LLM                       options: {'temperature': 0.5, 'top_k': 40, 'top_p': 0.95, 'num_predict': 2048, 'num_ctx': 32768} streaming: False
-🔵 Call LLM                       Elapsed time calling: mistral:7b took 00:08
-   ⚪ MultiQuery                     Alternate queries (3)
-   ↳                                 1: 'Dietary habits of hedgehogs'
-   ↳                                 2: 'Habitat and food sources of hedgehogs'
-   ↳                                 3: 'Where do hedgehogs reside and what do they consume?'
+🔵 LangDetect                     Detected language: English (en) — confidence: 87% (threshold: 60%)
+🔵 LangDetect                     Confidence level (rewrite_query): HIGH (confidence: 87%, threshold: 60%)
+   ⚪ QueryPlan                      Step 2: rewrite completed; language=english; query='create a table with the important properties of the blazingfast workstation'
+🔵 LangDrift                      raw_query_language=english  orig_translated_query_en='create a table with the important properties of the blazingfast workstation'
+🔵 LangDrift                      rewrite_language=english  rewritten_query='create a table with the important properties of the blazingfast workstation'
+🔵 LangDrift                      post_rewrite_query_en='create a table with the important properties of the blazingfast workstation'
+🔵 FinalQuery                     Final query for retrieval: 'create a table with the important properties of the blazingfast workstation' (unchanged)
+   ⚪ QueryPlan                      Step 3: generated 0 alternatives after rewrite: []
 🔵 Retrieval Orchestration        query rewrite flow:
-↳                                 seed_en='what do hedgehogs eat and where do they live?'
-↳                                 rewritten='what do hedgehogs eat and where do they live?'
-↳                                 final_en='what do hedgehogs eat and where do they live?'
-🔵 Retrieval Orchestration        language: en      normalized query final='what do hedgehogs eat and where do they live?' alternate_count=3
+↳                                 seed_en='create a table with the important properties of the blazingfast workstation'
+↳                                 rewritten='create a table with the important properties of the blazingfast workstation'
+↳                                 final_en='create a table with the important properties of the blazingfast workstation'
+🔵 Retrieval Orchestration        language: en      normalized query final='create a table with the important properties of the blazingfast workstation' alternate_count=0
 🔵 Retrieval Orchestration        language: en      apply retrieval gates
+🔵 KeywordActionSplitter          model='openai/qwen2_5_7b_instruct' language='english' inputs={'original_request': 'create a table with the important properties of the blazingfast workstation',
+↳                                 'translated_request': 'create a table with the important properties of the blazingfast workstation', 'accepted_rewrite': 'create a table with the important properties
+↳                                 of the blazingfast workstation'}
+🔵 TokenBudget                    Authoritative budget=2048 vs caller estimate=1024; using authoritative value
+🔵 TokenBudget                    [openai/qwen2_5_7b_instruct] num_ctx=32768 prompt≈1346 → num_predict=2048
+🔵 Call LLM                       Stage: Keyword/action splitting
+🔵 Call LLM                       Model: openai/qwen2_5_7b_instruct prompt template: _PROMPT_KEYWORD_ACTION_SPLITTER purpose: Local retrieval decomposition
+🔵 Call LLM                       options: {'temperature': 0.05, 'top_k': 10, 'top_p': 0.9, 'num_predict': 2048, 'num_ctx': 32768} streaming: False
+🔵 Call LLM                       Elapsed time calling: openai/qwen2_5_7b_instruct took 00:06
+🔵 KeywordActionSplitter          LLM call + validation: 6.792 s
+🟢 KeywordActionSplitter          Validated decomposition:
+↳                                 Retrieval queries (1):
+↳                                 [query_id=0] What are the important properties of the blazingfast workstation?
+↳                                 Action: Create a table of the important properties of the blazingfast workstation.
+↳                                 Answer instruction: Using only the retrieved context, create a table listing the important properties of the blazingfast workstation.
+↳                                 Entities: blazingfast workstation
+↳                                 Keywords: important properties, workstation, specifications
 🔵 Retrieval Orchestration        Query rewrite stage                Activated                              knob=use_query_rewrite            value=on
 🔵 Retrieval Orchestration        Pronoun substitution stage         Activated                              knob=use_pronoun_substitution     value=on
-🔵 Retrieval Orchestration        Secondary query stage              Activated                              knob=use_secondary_query          value=on
-🔵 Retrieval Orchestration        Original-language vector stage     Activated                              knob=use_original_language_vector value=on
+🔵 Retrieval Orchestration        Secondary query stage              Not activated                          knob=use_secondary_query          value=off
+🔵 Retrieval Orchestration        Original-language vector stage     Not activated                          knob=use_original_language_vector value=off
 🔵 Retrieval Orchestration        Indexed query shaping stage        Activated                              knob=shape_indexed_queries        value=on
 🔵 Retrieval Orchestration        Indexed query translation stage    Activated                              knob=translate_indexed_queries    value=on
-🔵 Retrieval Orchestration        Indexed synonym expansion stage    Activated                              knob=expand_indexed_queries       value=on
+🔵 Retrieval Orchestration        Indexed WordNet expansion stage    Not activated                          knob=expand_indexed_queries_with_wordnet value=off
 🔵 Retrieval Orchestration        Vector alternates stage            Activated                              knob=use_vector_alternates        value=on
 🔵 Retrieval Orchestration        Grounding stage                    Activated                              knob=run_grounding                value=on
 🔵 Retrieval Orchestration        Rerank stage                       Activated                              knob=run_rerank                   value=on
 🔵 Retrieval Orchestration        Low-score fallback action          Activated                              knob=run_low_score_fallback       value=on
 🔵 Retrieval Orchestration        Low-recall rescue action           Activated                              knob=run_low_recall_rescue        value=on
+🔵 Retrieval Orchestration        Confidence evaluation              Activated                              knob=confidence_evaluation        value=both
 🔵 Retrieval Orchestration        Local stage                        Activated                              knob=web_search                   value=local only
 🔵 Retrieval Orchestration        Web stage                          Not activated                          knob=web_search                   value=local only
 🔵 Retrieval Orchestration        Vector retriever stage             Activated                              knob=run_vector                   value=on
 🔵 Retrieval Orchestration        BM25 retriever stage               Activated                              knob=run_bm25                     value=on
 🔵 Retrieval Orchestration        Graph retriever stage              Activated                              knob=run_graph                    value=on
 🔵 Retrieval Orchestration        Regex retriever stage              Activated                              knob=run_regex                    value=on
-🔵 Retrieval Orchestration        original-language vector leg: off lang=en query='what do hedgehogs eat and where do they live?' reason=user query already in English
-🔵 Retrieval Orchestration        language: en      stage plan flow=THOROUGH_QUERY_REWRITE mode=ALL guardrail=off original_leg=off rewrite=on pronouns=on rerank=on low_score_fallback=on
-↳                                 low_recall_rescue=on grounding=on indexed_shape=on indexed_translate=on indexed_synonyms=on alt_queries=3 retrievers=v=on,b=on,g=on,r=on
-🔵 Retrieval Orchestration        effective stage gates: flow=THOROUGH_QUERY_REWRITE mode=ALL web_mode=local_only local_stage=on web_stage=off
+🔵 Retrieval Orchestration        original-language vector leg: off lang=en query='create a table with the important properties of the blazingfast workstation' reason=disabled by orchestration flow
+🔵 Retrieval Orchestration        language: en      stage plan flow=NATIVE_ALL mode=ALL guardrail=off original_leg=off rewrite=on pronouns=on rerank=on low_score_fallback=on low_recall_rescue=on
+↳                                 grounding=on indexed_shape=on indexed_translate=on indexed_wordnet=off alt_queries=0 retrievers=v=on,b=on,g=on,r=on
+🔵 Retrieval Orchestration        effective stage gates: flow=NATIVE_ALL mode=ALL web_mode=local_only local_stage=on web_stage=off
 🔵 Retrieval Orchestration        language: en      retrieve local candidates mode=ALL
+   ⚪ KeywordActionSplitter          Local query_id=0: 'What are the important properties of the blazingfast workstation?'
+🔵 Retrieval Orchestration        discovered corpus language buckets: [de, en] active config buckets: [de, en, es, fr, it]
+   ⚪ QueryPlan                      Step 4: document languages=['de', 'en']; active/present=['de', 'en']; metadata limit=whole collection
 🔵 Retrieval Orchestration        query language flow: user=en current=en rewrite=en retrieval=en
-🔵 Retrieval Orchestration        retriever: Vector     query: 'what do hedgehogs eat and where do they live?' dispatch query
-🔵 Chroma                         Querying Chroma DB on vector store D:\RAG-LCC\chromadb\docs\Test for language en
+🔵 Retrieval Orchestration        retriever: Vector     query: 'What are the important properties of the blazingfast workstation?' dispatch query
+🔵 Chroma                         Querying Chroma DB on vector store D:\RAG-LCC\chromadb\docs\Test_embedder_bge_m3 for language en
    ⚪ Chroma                            Pos   ChromaScore  ChromaSim  Distance                Retrievers   File
    ⚪ Chroma                         ------------------------------------------------------------------------------------------
-   ⚪ Chroma                              1        0.6164     0.3836    0.3836  Vector                     Hedgehogs.pdf
-   ⚪ Chroma                              2        0.5597     0.4403    0.4403  Vector                     Hedgehogs.pdf
-   ⚪ Chroma                              3        0.4366     0.5634    0.5634  Vector                     Hedgehogs.pdf
-   ⚪ Chroma                              4        0.4149     0.5851    0.5851  Vector                     Hedgehogs.pdf
-   ⚪ Chroma                              5        0.3867     0.6133    0.6133  Vector                     Hedgehogs.pdf
-   ⚪ Chroma                              6        0.3511     0.6489    0.6489  Vector                     Cats.md
-   ⚪ Chroma                              7        0.3006     0.6994    0.6994  Vector                     Cats.md
-   ⚪ Chroma                              8        0.2996     0.7004    0.7004  Vector                     Apes.docx
-   ⚪ Chroma                              9        0.2988     0.7012    0.7012  Vector                     Fish.txt
-   ⚪ Chroma                             10        0.2840     0.7160    0.7160  Vector                     Kamele.txt
-   ⚪ Chroma                             11        0.2748     0.7252    0.7252  Vector                     Lions.pptx
-   ⚪ Chroma                             12        0.2684     0.7316    0.7316  Vector                     Cats.md
-   ⚪ Chroma                             13        0.2615     0.7385    0.7385  Vector                     Cats.md
-   ⚪ Chroma                             14        0.2542     0.7458    0.7458  Vector                     Cats.md
-   ⚪ Chroma                             15        0.2541     0.7459    0.7459  Vector                     Cats.md
-   ⚪ Chroma                             16        0.2530     0.7470    0.7470  Vector                     Lions.pptx
-   ⚪ Chroma                             17        0.2512     0.7488    0.7488  Vector                     Hedgehogs.pdf
-   ⚪ Chroma                             18        0.2476     0.7524    0.7524  Vector                     Cats.md
-   ⚪ Chroma                             19        0.2471     0.7529    0.7529  Vector                     Cats.md
-   ⚪ Chroma                             20        0.2439     0.7561    0.7561  Vector                     Cats.md
-   ⚪ Chroma                             21        0.2388     0.7612    0.7612  Vector                     Cats.md
-   ⚪ Chroma                             22        0.2380     0.7620    0.7620  Vector                     Cats.md
-   ⚪ Chroma                             23        0.2359     0.7641    0.7641  Vector                     Cats.md
-   ⚪ Chroma                             24        0.2356     0.7644    0.7644  Vector                     Cats.md
-   ⚪ Chroma                             25        0.2318     0.7682    0.7682  Vector                     Cats.md
-   ⚪ Chroma                             26        0.2264     0.7736    0.7736  Vector                     Cats.md
-   ⚪ Chroma                             27        0.2261     0.7739    0.7739  Vector                     Cats.md
-   ⚪ Chroma                             28        0.2249     0.7751    0.7751  Vector                     Cats.md
-   ⚪ Chroma                             29        0.2229     0.7771    0.7771  Vector                     Elephants.jpg
-   ⚪ Chroma                             30        0.2225     0.7775    0.7775  Vector                     Cats.md
-   ⚪ Chroma                             31        0.2218     0.7782    0.7782  Vector                     Cats.md
-   ⚪ Chroma                             32        0.2160     0.7840    0.7840  Vector                     Cats.md
-   ⚪ Chroma                             33        0.2158     0.7842    0.7842  Vector                     Cats.md
-   ⚪ Chroma                             34        0.2150     0.7850    0.7850  Vector                     Cats.md
-   ⚪ Chroma                             35        0.2141     0.7859    0.7859  Vector                     Fish.txt
-   ⚪ Chroma                             36        0.2093     0.7907    0.7907  Vector                     Apes.docx
-   ⚪ Chroma                             37        0.2076     0.7924    0.7924  Vector                     Kamele.txt
-   ⚪ Chroma                             38        0.2028     0.7972    0.7972  Vector                     Cats.md
-   ⚪ Chroma                             39        0.1965     0.8035    0.8035  Vector                     Cats.md
-   ⚪ Chroma                             40        0.1912     0.8088    0.8088  Vector                     Dogs.png
-   ⚪ Chroma                             41        0.1911     0.8089    0.8089  Vector                     Dogs.png
-   ⚪ Chroma                             42        0.1825     0.8175    0.8175  Vector                     Cats.md
-   ⚪ Chroma                             43        0.1768     0.8232    0.8232  Vector                     Dogs.png
-   ⚪ Chroma                             44        0.1765     0.8235    0.8235  Vector                     Cats.md
-   ⚪ Chroma                             45        0.1704     0.8296    0.8296  Vector                     Cats.md
-   ⚪ Chroma                             46        0.1666     0.8334    0.8334  Vector                     Kamele.txt
-   ⚪ Chroma                             47        0.1552     0.8448    0.8448  Vector                     Fish.txt
-   ⚪ Chroma                             48        0.1521     0.8479    0.8479  Vector                     Apes.docx
-   ⚪ Chroma                             49        0.1500     0.8500    0.8500  Vector                     Cats.md
-   ⚪ Chroma                             50        0.1483     0.8517    0.8517  Vector                     Kamele.txt
-   ⚪ Chroma                             51        0.1434     0.8566    0.8566  Vector                     Cats.md
-   ⚪ Chroma                             52        0.1426     0.8574    0.8574  Vector                     Cats.md
-   ⚪ Chroma                             53        0.1423     0.8577    0.8577  Vector                     Apes.docx
-   ⚪ Chroma                             54        0.1361     0.8639    0.8639  Vector                     Fish.txt
-   ⚪ Chroma                             55        0.1344     0.8656    0.8656  Vector                     Cats.md
-   ⚪ Chroma                             56        0.1301     0.8699    0.8699  Vector                     Cats.md
-   ⚪ Chroma                             57        0.1267     0.8733    0.8733  Vector                     Kamele.txt
-   ⚪ Chroma                             58        0.1262     0.8738    0.8738  Vector                     Pferde.pdf
-   ⚪ Chroma                             59        0.1138     0.8862    0.8862  Vector                     Fish.txt
-   ⚪ Chroma                             60        0.1136     0.8864    0.8864  Vector                     Pferde.pdf
-   ⚪ Chroma                             61        0.1112     0.8888    0.8888  Vector                     Apes.docx
-   ⚪ Chroma                             62        0.1112     0.8888    0.8888  Vector                     Cats.md
-   ⚪ Chroma                             63        0.0991     0.9009    0.9009  Vector                     Pferde.pdf
-   ⚪ Chroma                             64        0.0980     0.9020    0.9020  Vector                     Lions.pptx
-   ⚪ Chroma                             65        0.0953     0.9047    0.9047  Vector                     Cats.md
-   ⚪ Chroma                             66        0.0951     0.9049    0.9049  Vector                     Kamele.txt
-   ⚪ Chroma                             67        0.0900     0.9100    0.9100  Vector                     Lions.pptx
-   ⚪ Chroma                             68        0.0815     0.9185    0.9185  Vector                     Cats.md
-   ⚪ Chroma                             69        0.0663     0.9337    0.9337  Vector                     Apes.docx
-   ⚪ Chroma                             70        0.0638     0.9362    0.9362  Vector                     Fish.txt
-   ⚪ Chroma                             71        0.0499     0.9501    0.9501  Vector                     BlazingFast_Workstation.md
-   ⚪ Chroma                             72        0.0441     0.9559    0.9559  Vector                     Pferde.pdf
-   ⚪ Chroma                             73        0.0436     0.9564    0.9564  Vector                     LionsAndApes.xlsx
-   ⚪ Chroma                             74        0.0217     0.9783    0.9783  Vector                     Lions.pptx
-   ⚪ Chroma                             75        0.0058     0.9942    0.9942  Vector                     BlazingFast_Workstation.md
-   ⚪ Chroma                             76        0.0012     0.9988    0.9988  Vector                     BlazingFast_Workstation.md
-   ⚪ Chroma                             77        0.0009     0.9991    0.9991  Vector                     BlazingFast_Workstation.md
-   ⚪ Chroma                             78       -0.0188     1.0188    1.0188  Vector                     BlazingFast_Workstation.md
-   ⚪ Chroma                             79       -0.0221     1.0221    1.0221  Vector                     BlazingFast_Workstation.md
-🟢 Chroma                         Querying Chroma DB query returned 79 chunks
-🔵 MultiQuery                     3 Alternate queries for vector retrieval:
-↳                                 1: 'Dietary habits of hedgehogs'
-↳                                 2: 'Habitat and food sources of hedgehogs'
-↳                                 3: 'Where do hedgehogs reside and what do they consume?'
-🔵 Retrieval Orchestration        discovered corpus language buckets: [de, en] active config buckets: [de, en, es, fr, it]
-   ⚪ WordNet Synonyms               Expanded 9 phrases → 13 (+5 synonyms, depth=1, max/phrase=1)
-🔵 Retrieval Orchestration        idx_stage l='en' r='BM25/Graph/Regex' tr=1
-↳                                 primary_query='what do hedgehogs eat and where do they live?'
-↳                                 stage_primary_query='what do hedgehogs eat and where do they live? act erinaceus europaeus consume answer be'
-↳                                 guardrail_query='what do hedgehogs eat and where do they live?'
-↳                                 stage_guardrail_query='what do hedgehogs eat and where do they live? act erinaceus europaeus consume answer be'
-🔵 Retrieval Orchestration        idx_stage l='de' r='BM25/Graph/Regex' tr=1
-↳                                 primary_query='what do hedgehogs eat and where do they live?'
-↳                                 stage_primary_query='Was essen Igel und wo leben sie? handeln erinaceus europaeus konsumieren Antwort sein'
-↳                                 guardrail_query='what do hedgehogs eat and where do they live?'
-↳                                 stage_guardrail_query='Was essen Igel und wo leben sie? handeln erinaceus europaeus konsumieren Antwort sein'
-🔵 Retrieval Orchestration        retrievers='BM25/Graph/Regex' language: en      query: 'what do hedgehogs eat and where do they live? act erinaceus europaeus consume answer be'
-🔵 Retrieval Orchestration        retrievers='BM25/Graph/Regex' language: de      query: 'Was essen Igel und wo leben sie? handeln erinaceus europaeus konsumieren Antwort sein'
-🔵 BM25                           Querying bm25 index on collection Test for language en
-🟢 BM25                           Loaded persisted BM25 index (79 chunks, 1907 terms)
-🟢 BM25                           BM25 retrieval returned 59 chunks
+   ⚪ Chroma                              1        0.6921     0.3079    0.3079  Vector                     BlazingFast_Workstation.md
+   ⚪ Chroma                              2        0.6551     0.3449    0.3449  Vector                     BlazingFast_Workstation.md
+   ⚪ Chroma                              3        0.6526     0.3474    0.3474  Vector                     BlazingFast_Workstation.md
+   ⚪ Chroma                              4        0.6484     0.3516    0.3516  Vector                     BlazingFast_Workstation.md
+   ⚪ Chroma                              5        0.6314     0.3686    0.3686  Vector                     BlazingFast_Workstation.md
+   ⚪ Chroma                              6        0.6158     0.3842    0.3842  Vector                     BlazingFast_Workstation.md
+   ⚪ Chroma                              7        0.3345     0.6655    0.6655  Vector                     Cats.md
+   ⚪ Chroma                              8        0.3315     0.6685    0.6685  Vector                     Lions.pptx
+   ⚪ Chroma                              9        0.3297     0.6703    0.6703  Vector                     Lions.pptx
+   ⚪ Chroma                             10        0.3292     0.6708    0.6708  Vector                     Apes.docx
+   ⚪ Chroma                             11        0.3274     0.6726    0.6726  Vector                     Cats.md
+   ⚪ Chroma                             12        0.3262     0.6738    0.6738  Vector                     Cats.md
+   ⚪ Chroma                             13        0.3246     0.6754    0.6754  Vector                     Apes.docx
+   ⚪ Chroma                             14        0.3244     0.6756    0.6756  Vector                     Cats.md
+   ⚪ Chroma                             15        0.3146     0.6854    0.6854  Vector                     Cats.md
+   ⚪ Chroma                             16        0.3075     0.6925    0.6925  Vector                     Elephants.jpg
+   ⚪ Chroma                             17        0.3075     0.6925    0.6925  Vector                     Cats.md
+   ⚪ Chroma                             18        0.3074     0.6926    0.6926  Vector                     Kamele.txt
+   ⚪ Chroma                             19        0.3049     0.6951    0.6951  Vector                     Hedgehogs.pdf
+   ⚪ Chroma                             20        0.3022     0.6978    0.6978  Vector                     Dogs.png
+   ⚪ Chroma                             21        0.3015     0.6985    0.6985  Vector                     Cats.md
+   ⚪ Chroma                             22        0.3011     0.6989    0.6989  Vector                     Dogs.png
+   ⚪ Chroma                             23        0.2991     0.7009    0.7009  Vector                     Apes.docx
+   ⚪ Chroma                             24        0.2981     0.7019    0.7019  Vector                     Hedgehogs.pdf
+   ⚪ Chroma                             25        0.2980     0.7020    0.7020  Vector                     Pferde.pdf
+   ⚪ Chroma                             26        0.2955     0.7045    0.7045  Vector                     Cats.md
+   ⚪ Chroma                             27        0.2955     0.7045    0.7045  Vector                     Pferde.pdf
+   ⚪ Chroma                             28        0.2926     0.7074    0.7074  Vector                     Kamele.txt
+   ⚪ Chroma                             29        0.2890     0.7110    0.7110  Vector                     Cats.md
+   ⚪ Chroma                             30        0.2869     0.7131    0.7131  Vector                     Hedgehogs.pdf
+   ⚪ Chroma                             31        0.2839     0.7161    0.7161  Vector                     LionsAndApes.xlsx
+   ⚪ Chroma                             32        0.2832     0.7168    0.7168  Vector                     Cats.md
+   ⚪ Chroma                             33        0.2812     0.7188    0.7188  Vector                     Cats.md
+   ⚪ Chroma                             34        0.2749     0.7251    0.7251  Vector                     Apes.docx
+   ⚪ Chroma                             35        0.2749     0.7251    0.7251  Vector                     Kamele.txt
+   ⚪ Chroma                             36        0.2747     0.7253    0.7253  Vector                     Kamele.txt
+   ⚪ Chroma                             37        0.2745     0.7255    0.7255  Vector                     Pferde.pdf
+   ⚪ Chroma                             38        0.2743     0.7257    0.7257  Vector                     Cats.md
+   ⚪ Chroma                             39        0.2738     0.7262    0.7262  Vector                     Cats.md
+   ⚪ Chroma                             40        0.2724     0.7276    0.7276  Vector                     Apes.docx
+   ⚪ Chroma                             41        0.2712     0.7288    0.7288  Vector                     Cats.md
+   ⚪ Chroma                             42        0.2707     0.7293    0.7293  Vector                     Cats.md
+   ⚪ Chroma                             43        0.2704     0.7296    0.7296  Vector                     Cats.md
+   ⚪ Chroma                             44        0.2683     0.7317    0.7317  Vector                     Lions.pptx
+   ⚪ Chroma                             45        0.2676     0.7324    0.7324  Vector                     Fish.txt
+   ⚪ Chroma                             46        0.2644     0.7356    0.7356  Vector                     Cats.md
+   ⚪ Chroma                             47        0.2638     0.7362    0.7362  Vector                     Cats.md
+   ⚪ Chroma                             48        0.2636     0.7364    0.7364  Vector                     Cats.md
+   ⚪ Chroma                             49        0.2620     0.7380    0.7380  Vector                     Hedgehogs.pdf
+   ⚪ Chroma                             50        0.2603     0.7397    0.7397  Vector                     Fish.txt
+   ⚪ Chroma                             51        0.2602     0.7398    0.7398  Vector                     Dogs.png
+   ⚪ Chroma                             52        0.2599     0.7401    0.7401  Vector                     Lions.pptx
+   ⚪ Chroma                             53        0.2598     0.7402    0.7402  Vector                     Hedgehogs.pdf
+   ⚪ Chroma                             54        0.2598     0.7402    0.7402  Vector                     Cats.md
+   ⚪ Chroma                             55        0.2559     0.7441    0.7441  Vector                     Cats.md
+   ⚪ Chroma                             56        0.2540     0.7460    0.7460  Vector                     Cats.md
+   ⚪ Chroma                             57        0.2505     0.7495    0.7495  Vector                     Cats.md
+   ⚪ Chroma                             58        0.2502     0.7498    0.7498  Vector                     Apes.docx
+   ⚪ Chroma                             59        0.2490     0.7510    0.7510  Vector                     Kamele.txt
+   ⚪ Chroma                             60        0.2487     0.7513    0.7513  Vector                     Cats.md
+   ⚪ Chroma                             61        0.2478     0.7522    0.7522  Vector                     Cats.md
+   ⚪ Chroma                             62        0.2473     0.7527    0.7527  Vector                     Hedgehogs.pdf
+   ⚪ Chroma                             63        0.2452     0.7548    0.7548  Vector                     Fish.txt
+   ⚪ Chroma                             64        0.2445     0.7555    0.7555  Vector                     Pferde.pdf
+   ⚪ Chroma                             65        0.2422     0.7578    0.7578  Vector                     Fish.txt
+   ⚪ Chroma                             66        0.2387     0.7613    0.7613  Vector                     Cats.md
+   ⚪ Chroma                             67        0.2379     0.7621    0.7621  Vector                     Kamele.txt
+   ⚪ Chroma                             68        0.2369     0.7631    0.7631  Vector                     Cats.md
+   ⚪ Chroma                             69        0.2341     0.7659    0.7659  Vector                     Fish.txt
+   ⚪ Chroma                             70        0.2236     0.7764    0.7764  Vector                     Fish.txt
+   ⚪ Chroma                             71        0.2233     0.7767    0.7767  Vector                     Cats.md
+   ⚪ Chroma                             72        0.2202     0.7798    0.7798  Vector                     Cats.md
+   ⚪ Chroma                             73        0.2181     0.7819    0.7819  Vector                     Lions.pptx
+   ⚪ Chroma                             74        0.2144     0.7856    0.7856  Vector                     Cats.md
+   ⚪ Chroma                             75        0.2088     0.7912    0.7912  Vector                     Cats.md
+   ⚪ Chroma                             76        0.1854     0.8146    0.8146  Vector                     Cats.md
+🟢 Chroma                         Querying Chroma DB query returned 76 chunks
+🔵 Retrieval Orchestration        idx_stage flow=NATIVE_ALL language=en retrievers=BM25/Graph/Regex shaping=on changed=0
+↳                                 primary_query source=REWRITTEN_QUERY lang=en->en
+↳                                   original='What are the important properties of the blazingfast workstation?'
+↳                                   staged='What are the important properties of the blazingfast workstation?'
+↳                                 guardrail_query source=TRANSLATED_QUERY lang=en->en
+↳                                   value=N/A (disabled by flow NATIVE_ALL: guardrail leg is off)
+↳                                 alternatives source=REWRITTEN_QUERY lang=en->en count=0
+🔵 Retrieval Orchestration        idx_stage flow=NATIVE_ALL language=de retrievers=BM25/Graph/Regex shaping=on changed=1
+↳                                 primary_query source=REWRITTEN_QUERY lang=en->de
+↳                                   original='What are the important properties of the blazingfast workstation?'
+↳                                   staged='Was sind die wichtigen Eigenschaften der blazingfast Workstation?'
+↳                                 guardrail_query source=TRANSLATED_QUERY lang=en->de
+↳                                   value=N/A (disabled by flow NATIVE_ALL: guardrail leg is off)
+↳                                 alternatives source=REWRITTEN_QUERY lang=en->de count=0
+🔵 Retrieval Orchestration        retrievers='BM25/Graph/Regex' language: en      query: 'What are the important properties of the blazingfast workstation?'
+🔵 Retrieval Orchestration        retrievers='BM25/Graph/Regex' language: de      query: 'Was sind die wichtigen Eigenschaften der blazingfast Workstation?'
+🔵 BM25                           Querying bm25 index on collection Test_embedder_bge_m3 for language en
+🟢 BM25                           Loaded persisted BM25 index (76 chunks, 1876 terms)
+🟢 BM25                           BM25 retrieval returned 60 chunks
    ⚪ BM25                              Pos     BM25Score                Retrievers   File
    ⚪ BM25                           -----------------------------------------------------------------------
-   ⚪ BM25                                1       13.0137         BM25                Lions.pptx
-   ⚪ BM25                                2       10.8805         BM25                Fish.txt
-   ⚪ BM25                                3        8.6701         BM25                Hedgehogs.pdf
-   ⚪ BM25                                4        8.3204         BM25                Hedgehogs.pdf
-   ⚪ BM25                                5        6.4838         BM25                Fish.txt
-   ⚪ BM25                                6        6.4837         BM25                Cats.md
-   ⚪ BM25                                7        5.7188         BM25                Fish.txt
-   ⚪ BM25                                8        5.6459         BM25                Apes.docx
-   ⚪ BM25                                9        4.8889         BM25                Hedgehogs.pdf
-   ⚪ BM25                               10        4.7334         BM25                Apes.docx
-   ⚪ BM25                               11        4.4736         BM25                Cats.md
-   ⚪ BM25                               12        4.1869         BM25                Hedgehogs.pdf
-   ⚪ BM25                               13        4.1669         BM25                Cats.md
-   ⚪ BM25                               14        4.1464         BM25                Elephants.jpg
-   ⚪ BM25                               15        3.9108         BM25                Apes.docx
-   ⚪ BM25                               16        3.7140         BM25                Cats.md
-   ⚪ BM25                               17        3.6804         BM25                Lions.pptx
-   ⚪ BM25                               18        3.6416         BM25                Cats.md
-   ⚪ BM25                               19        3.5759         BM25                Hedgehogs.pdf
-   ⚪ BM25                               20        3.3728         BM25                Cats.md
-🔵 BM25                           Querying bm25 index on collection Test for language de
+   ⚪ BM25                                1        9.7139         BM25                BlazingFast_Workstation.md
+   ⚪ BM25                                2        6.9004         BM25                BlazingFast_Workstation.md
+   ⚪ BM25                                3        6.3437         BM25                BlazingFast_Workstation.md
+   ⚪ BM25                                4        6.3180         BM25                BlazingFast_Workstation.md
+   ⚪ BM25                                5        5.7467         BM25                BlazingFast_Workstation.md
+   ⚪ BM25                                6        5.3022         BM25                BlazingFast_Workstation.md
+   ⚪ BM25                                7        4.4309         BM25                Fish.txt
+   ⚪ BM25                                8        4.0033         BM25                Apes.docx
+   ⚪ BM25                                9        3.6318         BM25                Lions.pptx
+   ⚪ BM25                               10        3.5538         BM25                Apes.docx
+   ⚪ BM25                               11        3.4592         BM25                Hedgehogs.pdf
+   ⚪ BM25                               12        3.3426         BM25                Hedgehogs.pdf
+   ⚪ BM25                               13        3.3381         BM25                Cats.md
+   ⚪ BM25                               14        3.2830         BM25                Cats.md
+   ⚪ BM25                               15        3.2460         BM25                Apes.docx
+   ⚪ BM25                               16        3.1372         BM25                Cats.md
+   ⚪ BM25                               17        3.1165         BM25                Lions.pptx
+   ⚪ BM25                               18        3.0589         BM25                Fish.txt
+   ⚪ BM25                               19        3.0561         BM25                Cats.md
+   ⚪ BM25                               20        3.0410         BM25                Lions.pptx
+   ⚪ QueryPlan                      Step 6: retriever=BM25; language=en; query='What are the important properties of the blazingfast workstation?'; hits={'BM25': 60, 'Graph': 0, 'Regex': 0}
+🔵 BM25                           Querying bm25 index on collection Test_embedder_bge_m3 for language de
 🟢 BM25                           BM25 retrieval returned 10 chunks
    ⚪ BM25                              Pos     BM25Score                Retrievers   File
    ⚪ BM25                           -----------------------------------------------------------------------
-   ⚪ BM25                                1        9.8323         BM25                Kamele.txt
-   ⚪ BM25                                2        9.8321         BM25                Kamele.txt
-   ⚪ BM25                                3        8.9796         BM25                Kamele.txt
-   ⚪ BM25                                4        7.7276         BM25                Pferde.pdf
-   ⚪ BM25                                5        7.1057         BM25                Kamele.txt
-   ⚪ BM25                                6        6.1597         BM25                Kamele.txt
-   ⚪ BM25                                7        5.0208         BM25                Pferde.pdf
-   ⚪ BM25                                8        4.9228         BM25                Pferde.pdf
-   ⚪ BM25                                9        3.0296         BM25                Pferde.pdf
-   ⚪ BM25                               10        2.7825         BM25                Kamele.txt
-🔵 Graph                          Querying graph index on collection Test for language en
-🟢 Graph                          Loaded persisted graph index (79 chunks, 1132 entities)
-🟢 Graph                          Graph retrieval returned 50 chunks
+   ⚪ BM25                                1       12.7400         BM25                Kamele.txt
+   ⚪ BM25                                2       11.5524         BM25                Kamele.txt
+   ⚪ BM25                                3       11.0521         BM25                Kamele.txt
+   ⚪ BM25                                4       10.9409         BM25                Kamele.txt
+   ⚪ BM25                                5       10.1036         BM25                Pferde.pdf
+   ⚪ BM25                                6        9.8842         BM25                Kamele.txt
+   ⚪ BM25                                7        9.7692         BM25                Pferde.pdf
+   ⚪ BM25                                8        8.5805         BM25                Pferde.pdf
+   ⚪ BM25                                9        6.1966         BM25                Pferde.pdf
+   ⚪ BM25                               10        3.9042         BM25                Kamele.txt
+   ⚪ QueryPlan                      Step 6: retriever=BM25; language=de; query='Was sind die wichtigen Eigenschaften der blazingfast Workstation?'; hits={'BM25': 10, 'Graph': 0, 'Regex': 0}
+🔵 Graph                          Querying graph index on collection Test_embedder_bge_m3 for language en
+🟢 Graph                          Loaded persisted graph index (76 chunks, 1115 entities)
+🟢 Graph                          Graph retrieval returned 4 chunks
    ⚪ Graph                             Pos    GraphScore                Retrievers   File
    ⚪ Graph                          -----------------------------------------------------------------------
-   ⚪ Graph                               1     4043.0000              Graph          Fish.txt
-   ⚪ Graph                               2     3227.0000              Graph          Fish.txt
-   ⚪ Graph                               3     3122.0000              Graph          Fish.txt
-   ⚪ Graph                               4     2779.0000              Graph          Hedgehogs.pdf
-   ⚪ Graph                               5     2768.0000              Graph          Hedgehogs.pdf
-   ⚪ Graph                               6     2107.0000              Graph          Hedgehogs.pdf
-   ⚪ Graph                               7     1914.0000              Graph          Fish.txt
-   ⚪ Graph                               8     1661.0000              Graph          Hedgehogs.pdf
-   ⚪ Graph                               9     1569.0000              Graph          Fish.txt
-   ⚪ Graph                              10     1339.0000              Graph          Cats.md
-   ⚪ Graph                              11     1016.0000              Graph          Cats.md
-   ⚪ Graph                              12      987.0000              Graph          Apes.docx
-   ⚪ Graph                              13      968.0000              Graph          Apes.docx
-   ⚪ Graph                              14      941.0000              Graph          Cats.md
-   ⚪ Graph                              15      884.0000              Graph          Apes.docx
-   ⚪ Graph                              16      796.0000              Graph          Lions.pptx
-   ⚪ Graph                              17      776.0000              Graph          Cats.md
-   ⚪ Graph                              18      665.0000              Graph          Lions.pptx
-   ⚪ Graph                              19      648.0000              Graph          Cats.md
-   ⚪ Graph                              20      528.0000              Graph          Fish.txt
-🔵 Regex                          Querying regex index on collection Test for language en
-🟢 Regex                          Loaded persisted regex index (79 chunks, 296 verbs, 935 nouns)
-🟢 Regex                          Regex retrieval returned 2 chunks
+   ⚪ Graph                               1       56.0000              Graph          BlazingFast_Workstation.md
+   ⚪ Graph                               2       31.0000              Graph          BlazingFast_Workstation.md
+   ⚪ Graph                               3       27.0000              Graph          BlazingFast_Workstation.md
+   ⚪ Graph                               4       26.0000              Graph          BlazingFast_Workstation.md
+   ⚪ QueryPlan                      Step 6: retriever=Graph; language=en; query='What are the important properties of the blazingfast workstation?'; hits={'BM25': 0, 'Graph': 4, 'Regex': 0}
+🔵 Regex                          Querying regex index on collection Test_embedder_bge_m3 for language en
+🟢 Regex                          Loaded persisted regex index (76 chunks, 293 verbs, 925 nouns)
+🟢 Regex                          Regex retrieval returned 6 chunks
    ⚪ Regex                             Pos    RegexScore   VerbHit   NounHit                Retrievers   File
    ⚪ Regex                          ----------------------------------------------------------------------------------------------
-   ⚪ Regex                               1        1.1167         1         1                    Regex    Hedgehogs.pdf
-   ⚪ Regex                               2        1.1167         1         1                    Regex    Hedgehogs.pdf
-🔵 Graph                          Querying graph index on collection Test for language de
+   ⚪ Regex                               1        0.6667         0         2                    Regex    BlazingFast_Workstation.md
+   ⚪ Regex                               2        0.3333         0         1                    Regex    BlazingFast_Workstation.md
+   ⚪ Regex                               3        0.3333         0         1                    Regex    BlazingFast_Workstation.md
+   ⚪ Regex                               4        0.3333         0         1                    Regex    BlazingFast_Workstation.md
+   ⚪ Regex                               5        0.3333         0         1                    Regex    BlazingFast_Workstation.md
+   ⚪ Regex                               6        0.3333         0         1                    Regex    BlazingFast_Workstation.md
+   ⚪ QueryPlan                      Step 6: retriever=Regex; language=en; query='What are the important properties of the blazingfast workstation?'; hits={'BM25': 0, 'Graph': 0, 'Regex': 6}
+🔵 Graph                          Querying graph index on collection Test_embedder_bge_m3 for language de
 🟢 Graph                          Graph retrieval returned 10 chunks
    ⚪ Graph                             Pos    GraphScore                Retrievers   File
    ⚪ Graph                          -----------------------------------------------------------------------
-   ⚪ Graph                               1     1885.0000              Graph          Kamele.txt
-   ⚪ Graph                               2     1851.0000              Graph          Pferde.pdf
-   ⚪ Graph                               3     1158.0000              Graph          Kamele.txt
-   ⚪ Graph                               4      753.0000              Graph          Kamele.txt
-   ⚪ Graph                               5      716.0000              Graph          Kamele.txt
-   ⚪ Graph                               6      300.0000              Graph          Kamele.txt
-   ⚪ Graph                               7      254.0000              Graph          Pferde.pdf
-   ⚪ Graph                               8      230.0000              Graph          Pferde.pdf
-   ⚪ Graph                               9      135.0000              Graph          Kamele.txt
-   ⚪ Graph                              10      110.0000              Graph          Pferde.pdf
-🔵 Regex                          Querying regex index on collection Test for language de
+   ⚪ Graph                               1     1792.0000              Graph          Pferde.pdf
+   ⚪ Graph                               2     1771.0000              Graph          Kamele.txt
+   ⚪ Graph                               3      326.0000              Graph          Kamele.txt
+   ⚪ Graph                               4      311.0000              Graph          Pferde.pdf
+   ⚪ Graph                               5      261.0000              Graph          Pferde.pdf
+   ⚪ Graph                               6      207.0000              Graph          Kamele.txt
+   ⚪ Graph                               7      202.0000              Graph          Kamele.txt
+   ⚪ Graph                               8      140.0000              Graph          Pferde.pdf
+   ⚪ Graph                               9       89.0000              Graph          Kamele.txt
+   ⚪ Graph                              10       76.0000              Graph          Kamele.txt
+   ⚪ QueryPlan                      Step 6: retriever=Graph; language=de; query='Was sind die wichtigen Eigenschaften der blazingfast Workstation?'; hits={'BM25': 0, 'Graph': 10, 'Regex': 0}
+🔵 Regex                          Querying regex index on collection Test_embedder_bge_m3 for language de
 🟢 Regex                          Regex retrieval returned 0 chunks
    ⚪ Regex                             Pos    RegexScore   VerbHit   NounHit                Retrievers   File
    ⚪ Regex                          ----------------------------------------------------------------------------------------------
-🔵 Retrieval Orchestration        language: en      local docs fetched vector=79 bm25=69 graph=60 regex=2
+   ⚪ QueryPlan                      Step 6: retriever=Regex; language=de; query='Was sind die wichtigen Eigenschaften der blazingfast Workstation?'; hits={'BM25': 0, 'Graph': 0, 'Regex': 0}
+   ⚪ KeywordActionSplitter          query_id=0 hits: {'vector': 76, 'bm25': 70, 'graph': 14, 'regex': 6}
+   ⚪ KeywordActionSplitter          BM25 keyword query: 'important properties workstation specifications'
+   ⚪ QueryPlan                      Step 4: document languages=['de', 'en']; active/present=['de', 'en']; metadata limit=whole collection
+🔵 Retrieval Orchestration        idx_stage flow=NATIVE_ALL language=en retrievers=BM25/Graph/Regex shaping=on changed=0
+↳                                 primary_query source=REWRITTEN_QUERY lang=en->en
+↳                                   original='important properties workstation specifications'
+↳                                   staged='important properties workstation specifications'
+↳                                 guardrail_query source=TRANSLATED_QUERY lang=en->en
+↳                                   value=N/A (disabled by flow NATIVE_ALL: guardrail leg is off)
+↳                                 alternatives source=REWRITTEN_QUERY lang=en->en count=0
+🔵 Retrieval Orchestration        idx_stage flow=NATIVE_ALL language=de retrievers=BM25/Graph/Regex shaping=on changed=1
+↳                                 primary_query source=REWRITTEN_QUERY lang=en->de
+↳                                   original='important properties workstation specifications'
+↳                                   staged='Wichtige Eigenschaften Workstation Spezifikationen'
+↳                                 guardrail_query source=TRANSLATED_QUERY lang=en->de
+↳                                   value=N/A (disabled by flow NATIVE_ALL: guardrail leg is off)
+↳                                 alternatives source=REWRITTEN_QUERY lang=en->de count=0
+🔵 Retrieval Orchestration        retrievers='BM25' language: en      query: 'important properties workstation specifications'
+🔵 Retrieval Orchestration        retrievers='BM25' language: de      query: 'Wichtige Eigenschaften Workstation Spezifikationen'
+🔵 BM25                           Querying bm25 index on collection Test_embedder_bge_m3 for language en
+🟢 BM25                           BM25 retrieval returned 7 chunks
+   ⚪ BM25                              Pos     BM25Score                Retrievers   File
+   ⚪ BM25                           -----------------------------------------------------------------------
+   ⚪ BM25                                1        7.0391         BM25                BlazingFast_Workstation.md
+   ⚪ BM25                                2        6.3437         BM25                BlazingFast_Workstation.md
+   ⚪ BM25                                3        5.0746         BM25                BlazingFast_Workstation.md
+   ⚪ BM25                                4        4.7873         BM25                BlazingFast_Workstation.md
+   ⚪ BM25                                5        4.4512         BM25                BlazingFast_Workstation.md
+   ⚪ BM25                                6        4.0059         BM25                BlazingFast_Workstation.md
+   ⚪ BM25                                7        2.8734         BM25                Hedgehogs.pdf
+   ⚪ QueryPlan                      Step 6: retriever=BM25; language=en; query='important properties workstation specifications'; hits={'BM25': 7, 'Graph': 0, 'Regex': 0}
+🔵 BM25                           Querying bm25 index on collection Test_embedder_bge_m3 for language de
+🟢 BM25                           BM25 retrieval returned 0 chunks
+   ⚪ BM25                              Pos     BM25Score                Retrievers   File
+   ⚪ BM25                           -----------------------------------------------------------------------
+   ⚪ QueryPlan                      Step 6: retriever=BM25; language=de; query='Wichtige Eigenschaften Workstation Spezifikationen'; hits={'BM25': 0, 'Graph': 0, 'Regex': 0}
+🔵 Retrieval Orchestration        language: en      local docs fetched vector=76 bm25=70 graph=14 regex=6
 🔵 Retrieval Orchestration        language: en      web stage skipped (web_mode=local_only)
 🔵 Retrieval Orchestration        language: en      merge candidates and build context
-🟢 Merge                          Reciprocal Rank Fusion (RRF) produced 79 local chunks
+🔵 Merge                          Language-scoped RRF candidate pool languages=2 per_language={'en': 66, 'de': 10} interleaved=76/100
    ⚪ Merge                             Pos    RRFScore                            Retrievers  File
    ⚪ Merge                          ----------------------------------------------------------------------------------
-   ⚪ Merge                               1      0.0640              Vector BM25 Graph Regex   Hedgehogs.pdf
-   ⚪ Merge                               2      0.0635              Vector BM25 Graph Regex   Hedgehogs.pdf
-   ⚪ Merge                               3      0.0458              Vector BM25 Graph         Fish.txt
-   ⚪ Merge                               4      0.0453              Vector BM25 Graph         Hedgehogs.pdf
-   ⚪ Merge                               5      0.0436              Vector BM25 Graph         Lions.pptx
-   ⚪ Merge                               6      0.0431              Vector BM25 Graph         Cats.md
-   ⚪ Merge                               7      0.0429              Vector BM25 Graph         Apes.docx
-   ⚪ Merge                               8      0.0427              Vector BM25 Graph         Hedgehogs.pdf
-   ⚪ Merge                               9      0.0418              Vector BM25 Graph         Fish.txt
-   ⚪ Merge                              10      0.0417              Vector BM25 Graph         Hedgehogs.pdf
-   ⚪ Merge                              11      0.0416              Vector BM25 Graph         Fish.txt
-   ⚪ Merge                              12      0.0415              Vector BM25 Graph         Cats.md
-   ⚪ Merge                              13      0.0388              Vector BM25 Graph         Apes.docx
-   ⚪ Merge                              14      0.0377              Vector BM25 Graph         Cats.md
-   ⚪ Merge                              15      0.0376              Vector BM25 Graph         Cats.md
-   ⚪ Merge                              16      0.0363              Vector BM25 Graph         Cats.md
-   ⚪ Merge                              17      0.0362              Vector BM25 Graph         Cats.md
-   ⚪ Merge                              18      0.0361              Vector BM25 Graph         Elephants.jpg
-   ⚪ Merge                              19      0.0348              Vector BM25 Graph         Cats.md
-   ⚪ Merge                              20      0.0346              Vector BM25 Graph         Cats.md
-   ⚪ Merge                              21      0.0345              Vector BM25 Graph         Cats.md
-   ⚪ Merge                              22      0.0338              Vector BM25 Graph         Cats.md
-   ⚪ Merge                              23      0.0336              Vector BM25 Graph         Apes.docx
-   ⚪ Merge                              24      0.0335              Vector BM25 Graph         Cats.md
-   ⚪ Merge                              25      0.0333              Vector BM25 Graph         Apes.docx
-   ⚪ Merge                              26      0.0330              Vector BM25 Graph         Cats.md
-   ⚪ Merge                              27      0.0329              Vector BM25 Graph         Cats.md
-   ⚪ Merge                              28      0.0327              Vector BM25 Graph         Cats.md
-   ⚪ Merge                              29      0.0326              Vector BM25 Graph         Apes.docx
-   ⚪ Merge                              30      0.0325              Vector BM25 Graph         Lions.pptx
-   ⚪ Merge                              31      0.0319              Vector BM25 Graph         Cats.md
-   ⚪ Merge                              32      0.0318              Vector BM25 Graph         Fish.txt
-   ⚪ Merge                              33      0.0317              Vector BM25 Graph         Fish.txt
-   ⚪ Merge                              34      0.0317              Vector BM25 Graph         Cats.md
-   ⚪ Merge                              35      0.0316              Vector BM25 Graph         Cats.md
-   ⚪ Merge                              36      0.0315              Vector BM25 Graph         Kamele.txt
-   ⚪ Merge                              37      0.0314              Vector BM25 Graph         Cats.md
-   ⚪ Merge                              38      0.0305              Vector BM25 Graph         Cats.md
-   ⚪ Merge                              39      0.0294              Vector BM25 Graph         Cats.md
-   ⚪ Merge                              40      0.0288              Vector BM25 Graph         Cats.md
-   ⚪ Merge                              41      0.0284              Vector BM25 Graph         Lions.pptx
-   ⚪ Merge                              42      0.0280              Vector BM25 Graph         Cats.md
-   ⚪ Merge                              43      0.0279              Vector BM25 Graph         Cats.md
-   ⚪ Merge                              44      0.0277              Vector BM25 Graph         Cats.md
-   ⚪ Merge                              45      0.0274              Vector BM25 Graph         Cats.md
-   ⚪ Merge                              46      0.0273              Vector BM25 Graph         Kamele.txt
-   ⚪ Merge                              47      0.0264              Vector BM25 Graph         Cats.md
-   ⚪ Merge                              48      0.0263              Vector BM25 Graph         Kamele.txt
-   ⚪ Merge                              49      0.0261              Vector BM25               Lions.pptx
-   ⚪ Merge                              50      0.0255              Vector BM25 Graph         Kamele.txt
-   ⚪ Merge                              51      0.0250              Vector BM25 Graph         Kamele.txt
-   ⚪ Merge                              52      0.0249              Vector BM25 Graph         Kamele.txt
-   ⚪ Merge                              53      0.0249              Vector BM25 Graph         Pferde.pdf
-   ⚪ Merge                              54      0.0248              Vector BM25 Graph         Pferde.pdf
-   ⚪ Merge                              55      0.0246              Vector BM25 Graph         Pferde.pdf
-   ⚪ Merge                              56      0.0243              Vector BM25 Graph         Pferde.pdf
-   ⚪ Merge                              57      0.0229              Vector BM25               Cats.md
-   ⚪ Merge                              58      0.0226              Vector BM25               Hedgehogs.pdf
-   ⚪ Merge                              59      0.0216              Vector BM25               Cats.md
-   ⚪ Merge                              60      0.0212              Vector      Graph         Cats.md
-   ⚪ Merge                              61      0.0211              Vector      Graph         Dogs.png
-   ⚪ Merge                              62      0.0207              Vector      Graph         Dogs.png
-   ⚪ Merge                              63      0.0205              Vector      Graph         Dogs.png
-   ⚪ Merge                              64      0.0202              Vector      Graph         Fish.txt
-   ⚪ Merge                              65      0.0194              Vector BM25               Lions.pptx
-   ⚪ Merge                              66      0.0193              Vector BM25               Cats.md
-   ⚪ Merge                              67      0.0190              Vector BM25               Cats.md
-   ⚪ Merge                              68      0.0182              Vector BM25               BlazingFast_Workstation.md
-   ⚪ Merge                              69      0.0180              Vector BM25               Apes.docx
-   ⚪ Merge                              70      0.0179              Vector BM25               BlazingFast_Workstation.md
-   ⚪ Merge                              71      0.0168              Vector BM25               BlazingFast_Workstation.md
-   ⚪ Merge                              72      0.0166              Vector BM25               BlazingFast_Workstation.md
-   ⚪ Merge                              73      0.0165              Vector BM25               BlazingFast_Workstation.md
-   ⚪ Merge                              74      0.0159              Vector BM25               BlazingFast_Workstation.md
-   ⚪ Merge                              75      0.0133              Vector                    Cats.md
-   ⚪ Merge                              76      0.0128              Vector                    Cats.md
-   ⚪ Merge                              77      0.0120              Vector                    Cats.md
-   ⚪ Merge                              78      0.0119              Vector                    Cats.md
-   ⚪ Merge                              79      0.0075              Vector                    LionsAndApes.xlsx
-🔵 ChunkDedup                     Removed 1 near-duplicate chunk(s) (threshold=0.85, include_web=on, kept 78)
-🔵 Rerank                         Pre-rerank pool local=78 web=0 total=78 original_leg=off lang=en added[V/B/G/R]=0/0/0/0
+   ⚪ Merge                               1      0.0656              Vector BM25 Graph Regex   BlazingFast_Workstation.md
+   ⚪ Merge                               2      0.0477              Vector BM25 Graph         Kamele.txt
+   ⚪ Merge                               3      0.0638              Vector BM25 Graph Regex   BlazingFast_Workstation.md
+   ⚪ Merge                               4      0.0472              Vector BM25 Graph         Pferde.pdf
+   ⚪ Merge                               5      0.0633              Vector BM25 Graph Regex   BlazingFast_Workstation.md
+   ⚪ Merge                               6      0.0470              Vector BM25 Graph         Kamele.txt
+   ⚪ Merge                               7      0.0625              Vector BM25 Graph Regex   BlazingFast_Workstation.md
+   ⚪ Merge                               8      0.0465              Vector BM25 Graph         Pferde.pdf
+   ⚪ Merge                               9      0.0464              Vector BM25       Regex   BlazingFast_Workstation.md
+   ⚪ Merge                              10      0.0464              Vector BM25 Graph         Kamele.txt
+   ⚪ Merge                              11      0.0462              Vector BM25       Regex   BlazingFast_Workstation.md
+   ⚪ Merge                              12      0.0462              Vector BM25 Graph         Kamele.txt
+   ⚪ Merge                              13      0.0272              Vector BM25               Lions.pptx
+   ⚪ Merge                              14      0.0457              Vector BM25 Graph         Kamele.txt
+   ⚪ Merge                              15      0.0267              Vector BM25               Cats.md
+   ⚪ Merge                              16      0.0457              Vector BM25 Graph         Pferde.pdf
+   ⚪ Merge                              17      0.0265              Vector BM25               Lions.pptx
+   ⚪ Merge                              18      0.0437              Vector BM25 Graph         Pferde.pdf
+   ⚪ Merge                              19      0.0259              Vector BM25               Hedgehogs.pdf
+   ⚪ Merge                              20      0.0429              Vector BM25 Graph         Kamele.txt
+   ⚪ Merge                              21      0.0259              Vector BM25               Apes.docx
+   ⚪ Merge                              22      0.0256              Vector BM25               Apes.docx
+   ⚪ Merge                              23      0.0255              Vector BM25               Apes.docx
+   ⚪ Merge                              24      0.0253              Vector BM25               Cats.md
+   ⚪ Merge                              25      0.0252              Vector BM25               Apes.docx
+   ⚪ Merge                              26      0.0252              Vector BM25               Hedgehogs.pdf
+   ⚪ Merge                              27      0.0244              Vector BM25               Cats.md
+   ⚪ Merge                              28      0.0241              Vector BM25               Hedgehogs.pdf
+   ⚪ Merge                              29      0.0240              Vector BM25               Cats.md
+   ⚪ Merge                              30      0.0238              Vector BM25               Lions.pptx
+   ⚪ Merge                              31      0.0235              Vector BM25               Apes.docx
+   ⚪ Merge                              32      0.0234              Vector BM25               Cats.md
+   ⚪ Merge                              33      0.0233              Vector BM25               Lions.pptx
+   ⚪ Merge                              34      0.0233              Vector BM25               Fish.txt
+   ⚪ Merge                              35      0.0231              Vector BM25               Cats.md
+   ⚪ Merge                              36      0.0231              Vector BM25               Cats.md
+   ⚪ Merge                              37      0.0230              Vector BM25               Cats.md
+   ⚪ Merge                              38      0.0230              Vector BM25               Cats.md
+   ⚪ Merge                              39      0.0229              Vector BM25               Cats.md
+   ⚪ Merge                              40      0.0229              Vector BM25               Cats.md
+   ⚪ Merge                              41      0.0227              Vector BM25               Cats.md
+   ⚪ Merge                              42      0.0225              Vector BM25               Fish.txt
+   ⚪ Merge                              43      0.0225              Vector BM25               Apes.docx
+   ⚪ Merge                              44      0.0217              Vector BM25               Hedgehogs.pdf
+   ⚪ Merge                              45      0.0209              Vector BM25               Cats.md
+   ⚪ Merge                              46      0.0205              Vector BM25               Cats.md
+   ⚪ Merge                              47      0.0203              Vector BM25               Cats.md
+   ⚪ Merge                              48      0.0201              Vector BM25               Cats.md
+   ⚪ Merge                              49      0.0200              Vector BM25               Cats.md
+   ⚪ Merge                              50      0.0200              Vector BM25               Fish.txt
+   ⚪ Merge                              51      0.0200              Vector BM25               Hedgehogs.pdf
+   ⚪ Merge                              52      0.0199              Vector BM25               Cats.md
+   ⚪ Merge                              53      0.0197              Vector BM25               Cats.md
+   ⚪ Merge                              54      0.0197              Vector BM25               Cats.md
+   ⚪ Merge                              55      0.0194              Vector BM25               Cats.md
+   ⚪ Merge                              56      0.0193              Vector BM25               Cats.md
+   ⚪ Merge                              57      0.0193              Vector BM25               Cats.md
+   ⚪ Merge                              58      0.0190              Vector BM25               Cats.md
+   ⚪ Merge                              59      0.0188              Vector BM25               Cats.md
+   ⚪ Merge                              60      0.0188              Vector BM25               Hedgehogs.pdf
+   ⚪ Merge                              61      0.0187              Vector BM25               Lions.pptx
+   ⚪ Merge                              62      0.0185              Vector BM25               Cats.md
+   ⚪ Merge                              63      0.0183              Vector BM25               Cats.md
+   ⚪ Merge                              64      0.0181              Vector BM25               Cats.md
+   ⚪ Merge                              65      0.0177              Vector BM25               Cats.md
+   ⚪ Merge                              66      0.0177              Vector BM25               Fish.txt
+   ⚪ Merge                              67      0.0173              Vector BM25               Cats.md
+   ⚪ Merge                              68      0.0171              Vector BM25               Cats.md
+   ⚪ Merge                              69      0.0170              Vector BM25               Cats.md
+   ⚪ Merge                              70      0.0168              Vector BM25               Fish.txt
+   ⚪ Merge                              71      0.0132              Vector                    Elephants.jpg
+   ⚪ Merge                              72      0.0127              Vector                    Dogs.png
+   ⚪ Merge                              73      0.0123              Vector                    Dogs.png
+   ⚪ Merge                              74      0.0115              Vector                    LionsAndApes.xlsx
+   ⚪ Merge                              75      0.0096              Vector                    Dogs.png
+   ⚪ Merge                              76      0.0087              Vector                    Fish.txt
+🔵 ChunkDedup                     Removed 1 near-duplicate chunk(s) (threshold=0.85, include_web=on, kept 75)
+🔵 Rerank                         Pre-rerank pool local=75 web=0 total=75 original_leg=off lang=en added[V/B/G/R]=0/0/0/0
+🔵 Rerank                         Rerank query: 'create a table with the important properties of the blazingfast workstation'
+🔵 Rerank                         Passing language=en chunks=66 to reranker; query='What are the important properties of the blazingfast workstation?'
+🔵 Call LLM                       Stage: Cross-encode
+🔵 Call LLM                       Model: bge-reranker prompt template: None purpose: Scoring 66 (query, passage) pair(s) via http://192.168.100.50:4000/v1/rerank
+🔵 Rerank                         language=en top5=[1:BlazingFast_Workstation.md (raw=0.9609), 2:BlazingFast_Workstation.md (raw=0.7682), 3:BlazingFast_Workstation.md (raw=0.7367),
+↳                                 4:BlazingFast_Workstation.md (raw=0.6828), 5:BlazingFast_Workstation.md (raw=0.6590)]
+🔵 Rerank                         Passing language=de chunks=9 to reranker; query='Was sind die wichtigen Eigenschaften der blazingfast Workstation?'
+🔵 Call LLM                       Stage: Cross-encode
+🔵 Call LLM                       Model: bge-reranker prompt template: None purpose: Scoring 9 (query, passage) pair(s) via http://192.168.100.50:4000/v1/rerank
+🔵 Rerank                         language=de top5=[1:Kamele.txt (raw=0.0001), 2:Pferde.pdf (raw=0.0000), 3:Pferde.pdf (raw=0.0000), 4:Pferde.pdf (raw=0.0000), 5:Kamele.txt (raw=0.0000)]
+🔵 Rerank summary                 Language           Chunks    Top raw  Mean top3   Mean raw
+🔵 Rerank summary                 en                     66     0.9609     0.8219     0.0618
+🔵 Rerank summary                 de                      9     0.0001     0.0000     0.0000
+🔵 Rerank                         Selected language=en by highest top raw reranker score=0.9609; top chunk='BlazingFast_Workstation.md'; passing 66 matching-language local candidates + 0 web
+↳                                 candidates to chunk selection.
    ⚪ Rerank                            Pos    RawScore    AdjScore                Retrievers  File                                      Text
    ⚪ Rerank                         --------------------------------------------------------------------------------------------------------------
-   ⚪ Rerank                              1      2.6867      1.0000  Vector BM25 Graph Regex   Hedgehogs.pdf                             Page 1 Hedgehog Overview Hedgehogs are s
-   ⚪ Rerank                              2      2.2072      0.9616  Vector BM25 Graph Regex   Hedgehogs.pdf                             Page 1 suburban gardens and agricultural
-   ⚪ Rerank                              3      0.9809      0.8633  Vector BM25 Graph         Kamele.txt                                ernährung kamele sind pflanzenfresser (h
-   ⚪ Rerank                              4     -0.6821      0.7300  Vector BM25 Graph         Kamele.txt                                sie liefern milch, fleisch, wolle und le
-   ⚪ Rerank                              5     -0.7112      0.7277  Vector BM25 Graph         Hedgehogs.pdf                             Page 2 detect prey and a rapid, decisive
-   ⚪ Rerank                              6     -1.0439      0.7011  Vector BM25 Graph         Hedgehogs.pdf                             Page 1 tissues. Sensory adaptations incl
-   ⚪ Rerank                              7     -1.1815      0.6900  Vector BM25 Graph         Kamele.txt                                weitere körperliche anpassungen: - dicht
-   ⚪ Rerank                              8     -1.2745      0.6826  Vector BM25 Graph         Apes.docx                                 Gorillas are the largest living primates
-   ⚪ Rerank                              9     -2.0536      0.6202  Vector BM25 Graph         Kamele.txt                                kamele – überlebenskünstler der wüste ka
-   ⚪ Rerank                             10     -2.0723      0.6187  Vector BM25 Graph         Elephants.jpg                             elephants large, long-lived mammals fami
-   ⚪ Rerank                             11     -2.7214      0.5666  Vector BM25 Graph         Lions.pptx                                Slide 3: Hunting and Diet Lions are coop
-   ⚪ Rerank                             12     -3.0999      0.5363  Vector BM25 Graph         Apes.docx                                 Orangutans are the only great apes found
-   ⚪ Rerank                             13     -3.3741      0.5143  Vector BM25 Graph         Apes.docx                                 Chimpanzees (Pan troglodytes) are found
-   ⚪ Rerank                             14     -3.4587      0.5076  Vector BM25 Graph         Pferde.pdf                                Page 1 Erweiterter deutscher Testtext üb
-   ⚪ Rerank                             15     -3.5276      0.5020  Vector BM25 Graph         Hedgehogs.pdf                             Page 2 areas, and garden hazards—such as
-   ⚪ Rerank                             16     -4.4383      0.4291  Vector BM25               Apes.docx                                 All great apes demonstrate remarkable co
-   ⚪ Rerank                             17     -4.4580      0.4275  Vector BM25 Graph         Kamele.txt                                in einigen kulturen spielen kamele auch
-   ⚪ Rerank                             18     -4.4847      0.4253  Vector BM25 Graph         Cats.md                                   cats have lived alongside humans for tho
-   ⚪ Rerank                             19     -4.4933      0.4247  Vector      Graph         Dogs.png                                  tasks. understanding breed-specific ende
-   ⚪ Rerank                             20     -4.6624      0.4111  Vector BM25 Graph         Cats.md                                   as placental mammals, cats give live bir
-   ⚪ Rerank                             21     -4.7071      0.4075  Vector BM25 Graph         Cats.md                                   cats are crepuscular hunters with: - a h
-   ⚪ Rerank                             22     -4.7236      0.4062  Vector BM25 Graph         Fish.txt                                   what fish are fish are a diverse group
-   ⚪ Rerank                             23     -4.7514      0.4040  Vector      Graph         Dogs.png                                  impact dogs human well-being. despite ma
-   ⚪ Rerank                             24     -4.9828      0.3854  Vector BM25 Graph         Fish.txt                                  ecological roles and importance fish are
-   ⚪ Rerank                             25     -5.0429      0.3806  Vector      Graph         Dogs.png                                  , comprehensive text dogs dogs accompani
-   ⚪ Rerank                             26     -5.0521      0.3799  Vector BM25 Graph         Pferde.pdf                                Page 1 Stimmungen zu vermitteln. Für Men
-   ⚪ Rerank                             27     -5.0812      0.3775  Vector BM25               Lions.pptx                                Slide 2: Physical Characteristics Male l
-   ⚪ Rerank                             28     -5.4115      0.3511  Vector BM25 Graph         Cats.md                                   cats require: - taurine - arachidonic ac
-   ⚪ Rerank                             29     -5.4966      0.3443  Vector BM25 Graph         Cats.md                                   whiskers are deeply rooted sensory hairs
-   ⚪ Rerank                             30     -5.6439      0.3324  Vector BM25 Graph         Cats.md                                   cats can detect frequencies up to ~64 kh
-   ⚪ Rerank                             31     -5.7690      0.3224  Vector BM25               Lions.pptx                                Slide 1: Lions: The King of the Savanna
-   ⚪ Rerank                             32     -5.9925      0.3045  Vector BM25 Graph         Lions.pptx                                Slide 4: Conservation Status Lions are c
-   ⚪ Rerank                             33     -6.0600      0.2991  Vector BM25 Graph         Lions.pptx                                Slide 5: Lion Cubs and Reproduction Gest
-   ⚪ Rerank                             34     -6.1389      0.2928  Vector BM25 Graph         Cats.md                                   cats communicate through: - vocalization
-   ⚪ Rerank                             35     -6.1555      0.2915  Vector BM25 Graph         Pferde.pdf                                Page 1 Schließlich lohnt sich ein Blick
-   ⚪ Rerank                             36     -6.3237      0.2780  Vector BM25 Graph         Apes.docx                                 All great ape species are either endange
-   ⚪ Rerank                             37     -6.4097      0.2711  Vector BM25 Graph         Fish.txt                                  diversity: fish include jawless fishes (
-   ⚪ Rerank                             38     -6.5755      0.2578  Vector BM25 Graph         Cats.md                                   cats suffered during periods of supersti
-   ⚪ Rerank                             39     -6.6354      0.2530  Vector BM25 Graph         Cats.md                                   cats were not bred for specific tasks ea
-   ⚪ Rerank                             40     -6.6393      0.2527  Vector BM25 Graph         Cats.md                                   modern domestic cats descend from the ne
-   ⚪ Rerank                             41     -6.7141      0.2467  Vector BM25 Graph         Cats.md                                   kittens engage in: - stalking. - pouncin
-   ⚪ Rerank                             42     -6.7945      0.2402  Vector BM25 Graph         Apes.docx                                 Great apes (Hominidae) are the closest l
-   ⚪ Rerank                             43     -6.8205      0.2382  Vector BM25 Graph         Cats.md                                   cats were revered, often associated with
-   ⚪ Rerank                             44     -7.1052      0.2154  Vector BM25 Graph         Cats.md                                   free-roaming cats are estimated to kill
-   ⚪ Rerank                             45     -7.2450      0.2042  Vector BM25 Graph         Cats.md                                   cats are complex, adaptable, and endless
-   ⚪ Rerank                             46     -7.2801      0.2013  Vector BM25 Graph         Cats.md                                   some breeds have known predispositions:
-   ⚪ Rerank                             47     -7.3145      0.1986  Vector BM25 Graph         Cats.md                                   cats are often described as solitary, bu
-   ⚪ Rerank                             48     -7.3363      0.1968  Vector BM25 Graph         Cats.md                                   these breeds emerged without heavy human
-   ⚪ Rerank                             49     -7.3889      0.1926  Vector BM25 Graph         Cats.md                                   even well-fed cats hunt. the sequence: 1
-   ⚪ Rerank                             50     -7.4232      0.1899  Vector BM25               Cats.md                                   spaying/neutering is essential to reduce
-🔵 Rerank                         Reranking with cross-encoder/mmarco-mMiniLMv2-L12-H384-v1 returned 78 chunks
+   ⚪ Rerank                              1      0.9609      1.0000  Vector BM25 Graph Regex   BlazingFast_Workstation.md                the blazingfast workstation is an enterp
+   ⚪ Rerank                              2      0.7682      0.7994  Vector BM25 Graph Regex   BlazingFast_Workstation.md                - **graphics**: accommodates up to quad-
+   ⚪ Rerank                              3      0.7367      0.7666  Vector BM25 Graph Regex   BlazingFast_Workstation.md                - **storage subsystem**: 8x 4tb nvme u.2
+   ⚪ Rerank                              4      0.6828      0.7106  Vector BM25 Graph Regex   BlazingFast_Workstation.md                - **processors**: dual enterprise platin
+   ⚪ Rerank                              5      0.6590      0.6858  Vector BM25       Regex   BlazingFast_Workstation.md                - **power delivery**: dual 2000w redunda
+   ⚪ Rerank                              6      0.2692      0.2801  Vector BM25       Regex   BlazingFast_Workstation.md                - **os support**: certified for ubuntu 2
+   ⚪ Rerank                              7      0.0000      0.0000  Vector                    Dogs.png                                  tasks. understanding breed-specific ende
+   ⚪ Rerank                              8      0.0000      0.0000  Vector                    LionsAndApes.xlsx                         category detail value taxonomy scientifi
+   ⚪ Rerank                              9      0.0000      0.0000  Vector BM25               Hedgehogs.pdf                             PDF page 1 Hedgehog Overview Hedgehogs a
+   ⚪ Rerank                             10      0.0000      0.0000  Vector                    Dogs.png                                  , comprehensive text dogs dogs accompani
+   ⚪ Rerank                             11      0.0000      0.0000  Vector                    Elephants.jpg                             elephants large, long-lived mammals fami
+   ⚪ Rerank                             12      0.0000      0.0000  Vector BM25               Cats.md                                   - climbing structures - scratching posts
+   ⚪ Rerank                             13      0.0000      0.0000  Vector BM25               Cats.md                                   - puzzle toys - training sessions - nove
+   ⚪ Rerank                             14      0.0000      0.0000  Vector BM25               Hedgehogs.pdf                             PDF page 1 tissues. Sensory adaptations
+   ⚪ Rerank                             15      0.0000      0.0000  Vector BM25               Fish.txt                                  ecological roles and importance fish are
+   ⚪ Rerank                             16      0.0000      0.0000  Vector                    Dogs.png                                  impact dogs human well-being. despite ma
+   ⚪ Rerank                             17      0.0000      0.0000  Vector BM25               Hedgehogs.pdf                             PDF page 2 areas, and garden hazards—suc
+   ⚪ Rerank                             18      0.0000      0.0000  Vector BM25               Cats.md                                   as placental mammals, cats give live bir
+   ⚪ Rerank                             19      0.0000      0.0000  Vector BM25               Cats.md                                   cats are complex, adaptable, and endless
+   ⚪ Rerank                             20      0.0000      0.0000  Vector BM25               Fish.txt                                   what fish are fish are a diverse group
+   ⚪ Rerank                             21      0.0000      0.0000  Vector BM25               Lions.pptx                                Slide 2: Physical Characteristics Male l
+   ⚪ Rerank                             22      0.0000      0.0000  Vector BM25               Hedgehogs.pdf                             PDF page 2 detect prey and a rapid, deci
+   ⚪ Rerank                             23      0.0000      0.0000  Vector BM25               Cats.md                                   cats are crepuscular hunters with: - a h
+   ⚪ Rerank                             24      0.0000      0.0000  Vector BM25               Fish.txt                                  diversity: fish include jawless fishes (
+   ⚪ Rerank                             25      0.0000      0.0000  Vector BM25               Hedgehogs.pdf                             PDF page 1 suburban gardens and agricult
+   ⚪ Rerank                             26      0.0000      0.0000  Vector BM25               Cats.md                                   - kingdom: animalia - phylum: chordata -
+   ⚪ Rerank                             27      0.0000      0.0000  Vector BM25               Cats.md                                   they have a righting reflex, but falls f
+   ⚪ Rerank                             28      0.0000      0.0000  Vector BM25               Cats.md                                   - free feeding can lead to obesity. - pu
+   ⚪ Rerank                             29      0.0000      0.0000  Vector BM25               Cats.md                                   outdoor access: - pros: exercise, stimul
+   ⚪ Rerank                             30      0.0000      0.0000  Vector BM25               Fish.txt                                  terminology explained cold-blooded: a co
+   ⚪ Rerank                             31      0.0000      0.0000  Vector BM25               Cats.md                                   cats are often described as solitary, bu
+   ⚪ Rerank                             32      0.0000      0.0000  Vector BM25               Lions.pptx                                Slide 3: Hunting and Diet Lions are coop
+   ⚪ Rerank                             33      0.0000      0.0000  Vector BM25               Cats.md                                   whiskers are deeply rooted sensory hairs
+   ⚪ Rerank                             34      0.0000      0.0000  Vector BM25               Cats.md                                   cats have lived alongside humans for tho
+   ⚪ Rerank                             35      0.0000      0.0000  Vector BM25               Lions.pptx                                Slide 1: Lions: The King of the Savanna
+   ⚪ Rerank                             36      0.0000      0.0000  Vector BM25               Fish.txt                                  ectotherm: the preferred scientific term
+   ⚪ Rerank                             37      0.0000      0.0000  Vector BM25               Cats.md                                   most adult cats are lactose intolerant.
+   ⚪ Rerank                             38      0.0000      0.0000  Vector BM25               Cats.md                                   cats were revered, often associated with
+   ⚪ Rerank                             39      0.0000      0.0000  Vector BM25               Apes.docx                                 Great apes (Hominidae) are the closest l
+   ⚪ Rerank                             40      0.0000      0.0000  Vector                    Fish.txt                                  poikilotherm: a term describing organism
+   ⚪ Rerank                             41      0.0000      0.0000  Vector BM25               Hedgehogs.pdf                             PDF page 2 behavioral ecology, hibernati
+   ⚪ Rerank                             42      0.0000      0.0000  Vector BM25               Cats.md                                   cats dominate digital culture: - memes (
+   ⚪ Rerank                             43      0.0000      0.0000  Vector BM25               Cats.md                                   cats require: - taurine - arachidonic ac
+   ⚪ Rerank                             44      0.0000      0.0000  Vector BM25               Apes.docx                                 Orangutans are the only great apes found
+   ⚪ Rerank                             45      0.0000      0.0000  Vector BM25               Cats.md                                   - human interaction - multi-cat househol
+   ⚪ Rerank                             46      0.0000      0.0000  Vector BM25               Apes.docx                                 Gorillas are the largest living primates
+   ⚪ Rerank                             47      0.0000      0.0000  Vector BM25               Apes.docx                                 Chimpanzees (Pan troglodytes) are found
+   ⚪ Rerank                             48      0.0000      0.0000  Vector BM25               Lions.pptx                                Slide 5: Lion Cubs and Reproduction Gest
+   ⚪ Rerank                             49      0.0000      0.0000  Vector BM25               Lions.pptx                                Slide 4: Conservation Status Lions are c
+   ⚪ Rerank                             50      0.0000      0.0000  Vector BM25               Cats.md                                   even well-fed cats hunt. the sequence: 1
+🔵 Rerank                         Reranking with bge-reranker returned 66 chunks
 🔵 Chunk selection                Strategy 'DEFAULT' → ScoreRankedSelector
 🔵 Score select                   logit+ = effective logit after single-chunk boost (raw in raw_rerank_score)
 🟣 Score select                         Logit [Sigmoid]       Thr      ΔProb  Retrievers                File                                      Text
 🟣 Score select                   --------------------------------------------------------------------------------------------------------------------
-🟣 Score select                    ❌   -9.7927 [0.000]  (0.5000)    -0.4999  Vector BM25               BlazingFast_Workstation.md                - **os support**: certified for ubuntu 2
-🟣 Score select                    ❌   -9.7750 [0.000]  (0.5000)    -0.4999  Vector BM25               BlazingFast_Workstation.md                - **graphics**: accommodates up to quad-
-🟣 Score select                    ❌   -9.7328 [0.000]  (0.5000)    -0.4999  Vector      Graph         Fish.txt                                  poikilotherm: a term describing organism
-🟣 Score select                    ❌   -9.6343 [0.000]  (0.5000)    -0.4999  Vector BM25 Graph         Pferde.pdf                                Page 2 KI-Modelle, die semantische Feinh
-🟣 Score select                    ❌   -9.4530 [0.000]  (0.5000)    -0.4999  Vector BM25               BlazingFast_Workstation.md                - **storage subsystem**: 8x 4tb nvme u.2
-🟣 Score select                    ❌   -9.3623 [0.000]  (0.5000)    -0.4999  Vector BM25 Graph         Fish.txt                                  terminology explained cold-blooded: a co
-🟣 Score select                    ❌   -9.2503 [0.000]  (0.5000)    -0.4999  Vector BM25               BlazingFast_Workstation.md                the blazingfast workstation is an enterp
-🟣 Score select                    ❌   -9.1838 [0.000]  (0.5000)    -0.4999  Vector BM25 Graph         Cats.md                                   indoor cats often live 12–18 years; some
-🟣 Score select                    ❌   -9.1820 [0.000]  (0.5000)    -0.4999  Vector BM25 Graph         Cats.md                                   outdoor access: - pros: exercise, stimul
-🟣 Score select                    ❌   -9.0268 [0.000]  (0.5000)    -0.4999  Vector BM25               BlazingFast_Workstation.md                - **processors**: dual enterprise platin
-🟣 Score select                    ❌   -8.7668 [0.000]  (0.5000)    -0.4998  Vector                    Cats.md                                   a deep, structured exploration of domest
-🟣 Score select                    ❌   -8.7263 [0.000]  (0.5000)    -0.4998  Vector BM25               Cats.md                                   - dental disease - kidney disease - hype
-🟣 Score select                    ❌   -8.6091+[0.000]  (0.5000)    -0.4998  Vector                    LionsAndApes.xlsx                         category detail value taxonomy scientifi
-🟣 Score select                    ❌   -8.5323 [0.000]  (0.5000)    -0.4998  Vector BM25 Graph         Cats.md                                   - free feeding can lead to obesity. - pu
-🟣 Score select                    ❌   -8.4253 [0.000]  (0.5000)    -0.4998  Vector BM25               BlazingFast_Workstation.md                - **power delivery**: dual 2000w redunda
-🟣 Score select                    ❌   -8.1204 [0.000]  (0.5000)    -0.4997  Vector                    Cats.md                                   - puzzle toys - training sessions - nove
-🟣 Score select                    ❌   -8.0141 [0.000]  (0.5000)    -0.4997  Vector                    Cats.md                                   - human interaction - multi-cat househol
-🟣 Score select                    ❌   -7.9860 [0.000]  (0.5000)    -0.4997  Vector BM25 Graph         Cats.md                                   the mechanism of purring is still debate
-🟣 Score select                    ❌   -7.8690 [0.000]  (0.5000)    -0.4996  Vector BM25 Graph         Cats.md                                   cats form strong bonds but express affec
-🟣 Score select                    ❌   -7.7939 [0.000]  (0.5000)    -0.4996  Vector BM25               Cats.md                                   selective breeding intensified in the 19
-🟣 Score select                    ❌   -7.7532 [0.000]  (0.5000)    -0.4996  Vector BM25               Hedgehogs.pdf                             Page 2 behavioral ecology, hibernation p
-🟣 Score select                    ❌   -7.7205 [0.000]  (0.5000)    -0.4996  Vector BM25 Graph         Fish.txt                                  ectotherm: the preferred scientific term
-🟣 Score select                    ❌   -7.7091 [0.000]  (0.5000)    -0.4996  Vector BM25 Graph         Cats.md                                   - kingdom: animalia - phylum: chordata -
-🟣 Score select                    ❌   -7.6973 [0.000]  (0.5000)    -0.4995  Vector BM25 Graph         Cats.md                                   most adult cats are lactose intolerant.
-🟣 Score select                    ❌   -7.6487 [0.000]  (0.5000)    -0.4995  Vector      Graph         Cats.md                                   cats dominate digital culture: - memes (
-🟣 Score select                    ❌   -7.6145 [0.000]  (0.5000)    -0.4995  Vector BM25 Graph         Cats.md                                   they have a righting reflex, but falls f
-🟣 Score select                    ❌   -7.5107 [0.001]  (0.5000)    -0.4995  Vector                    Cats.md                                   - climbing structures - scratching posts
-🟣 Score select                    ❌   -7.4619 [0.001]  (0.5000)    -0.4994  Vector BM25               Cats.md                                   - regular veterinary checkups - vaccinat
-🟣 Score select                    ❌   -7.4232 [0.001]  (0.5000)    -0.4994  Vector BM25               Cats.md                                   spaying/neutering is essential to reduce
-🟣 Score select                    ❌   -7.3889 [0.001]  (0.5000)    -0.4994  Vector BM25 Graph         Cats.md                                   even well-fed cats hunt. the sequence: 1
-🟣 Score select                    ❌   -7.3363 [0.001]  (0.5000)    -0.4993  Vector BM25 Graph         Cats.md                                   these breeds emerged without heavy human
-🟣 Score select                    ❌   -7.3145 [0.001]  (0.5000)    -0.4993  Vector BM25 Graph         Cats.md                                   cats are often described as solitary, bu
-🟣 Score select                    ❌   -7.2801 [0.001]  (0.5000)    -0.4993  Vector BM25 Graph         Cats.md                                   some breeds have known predispositions:
-🟣 Score select                    ❌   -7.2450 [0.001]  (0.5000)    -0.4993  Vector BM25 Graph         Cats.md                                   cats are complex, adaptable, and endless
-🟣 Score select                    ❌   -7.1052 [0.001]  (0.5000)    -0.4992  Vector BM25 Graph         Cats.md                                   free-roaming cats are estimated to kill
-🟣 Score select                    ❌   -6.8205 [0.001]  (0.5000)    -0.4989  Vector BM25 Graph         Cats.md                                   cats were revered, often associated with
-🟣 Score select                    ❌   -6.7945 [0.001]  (0.5000)    -0.4989  Vector BM25 Graph         Apes.docx                                 Great apes (Hominidae) are the closest l
-🟣 Score select                    ❌   -6.7141 [0.001]  (0.5000)    -0.4988  Vector BM25 Graph         Cats.md                                   kittens engage in: - stalking. - pouncin
-🟣 Score select                    ❌   -6.6393 [0.001]  (0.5000)    -0.4987  Vector BM25 Graph         Cats.md                                   modern domestic cats descend from the ne
-🟣 Score select                    ❌   -6.6354 [0.001]  (0.5000)    -0.4987  Vector BM25 Graph         Cats.md                                   cats were not bred for specific tasks ea
-🟣 Score select                    ❌   -6.5755 [0.001]  (0.5000)    -0.4986  Vector BM25 Graph         Cats.md                                   cats suffered during periods of supersti
-🟣 Score select                    ❌   -6.4097 [0.002]  (0.5000)    -0.4984  Vector BM25 Graph         Fish.txt                                  diversity: fish include jawless fishes (
-🟣 Score select                    ❌   -6.3237 [0.002]  (0.5000)    -0.4982  Vector BM25 Graph         Apes.docx                                 All great ape species are either endange
-🟣 Score select                    ❌   -6.1555 [0.002]  (0.5000)    -0.4979  Vector BM25 Graph         Pferde.pdf                                Page 1 Schließlich lohnt sich ein Blick
-🟣 Score select                    ❌   -6.1389 [0.002]  (0.5000)    -0.4978  Vector BM25 Graph         Cats.md                                   cats communicate through: - vocalization
-🟣 Score select                    ❌   -6.0600 [0.002]  (0.5000)    -0.4977  Vector BM25 Graph         Lions.pptx                                Slide 5: Lion Cubs and Reproduction Gest
-🟣 Score select                    ❌   -5.9925 [0.002]  (0.5000)    -0.4975  Vector BM25 Graph         Lions.pptx                                Slide 4: Conservation Status Lions are c
-🟣 Score select                    ❌   -5.7690 [0.003]  (0.5000)    -0.4969  Vector BM25               Lions.pptx                                Slide 1: Lions: The King of the Savanna
-🟣 Score select                    ❌   -5.6439 [0.004]  (0.5000)    -0.4965  Vector BM25 Graph         Cats.md                                   cats can detect frequencies up to ~64 kh
-🟣 Score select                    ❌   -5.4966 [0.004]  (0.5000)    -0.4959  Vector BM25 Graph         Cats.md                                   whiskers are deeply rooted sensory hairs
-🟣 Score select                    ❌   -5.4115 [0.004]  (0.5000)    -0.4956  Vector BM25 Graph         Cats.md                                   cats require: - taurine - arachidonic ac
-🟣 Score select                    ❌   -5.0812 [0.006]  (0.5000)    -0.4938  Vector BM25               Lions.pptx                                Slide 2: Physical Characteristics Male l
-🟣 Score select                    ❌   -5.0521 [0.006]  (0.5000)    -0.4936  Vector BM25 Graph         Pferde.pdf                                Page 1 Stimmungen zu vermitteln. Für Men
-🟣 Score select                    ❌   -5.0429 [0.006]  (0.5000)    -0.4936  Vector      Graph         Dogs.png                                  , comprehensive text dogs dogs accompani
-🟣 Score select                    ❌   -4.9828 [0.007]  (0.5000)    -0.4932  Vector BM25 Graph         Fish.txt                                  ecological roles and importance fish are
-🟣 Score select                    ❌   -4.7514 [0.009]  (0.5000)    -0.4914  Vector      Graph         Dogs.png                                  impact dogs human well-being. despite ma
-🟣 Score select                    ❌   -4.7236 [0.009]  (0.5000)    -0.4912  Vector BM25 Graph         Fish.txt                                   what fish are fish are a diverse group
-🟣 Score select                    ❌   -4.7071 [0.009]  (0.5000)    -0.4910  Vector BM25 Graph         Cats.md                                   cats are crepuscular hunters with: - a h
-🟣 Score select                    ❌   -4.6624 [0.009]  (0.5000)    -0.4906  Vector BM25 Graph         Cats.md                                   as placental mammals, cats give live bir
-🟣 Score select                    ❌   -4.4933 [0.011]  (0.5000)    -0.4889  Vector      Graph         Dogs.png                                  tasks. understanding breed-specific ende
-🟣 Score select                    ❌   -4.4847 [0.011]  (0.5000)    -0.4888  Vector BM25 Graph         Cats.md                                   cats have lived alongside humans for tho
-🟣 Score select                    ❌   -4.4580 [0.011]  (0.5000)    -0.4885  Vector BM25 Graph         Kamele.txt                                in einigen kulturen spielen kamele auch
-🟣 Score select                    ❌   -4.4383 [0.012]  (0.5000)    -0.4883  Vector BM25               Apes.docx                                 All great apes demonstrate remarkable co
-🟣 Score select                    ❌   -3.5276 [0.029]  (0.5000)    -0.4715  Vector BM25 Graph         Hedgehogs.pdf                             Page 2 areas, and garden hazards—such as
-🟣 Score select                    ❌   -3.4587 [0.031]  (0.5000)    -0.4695  Vector BM25 Graph         Pferde.pdf                                Page 1 Erweiterter deutscher Testtext üb
-🟣 Score select                    ❌   -3.3741 [0.033]  (0.5000)    -0.4669  Vector BM25 Graph         Apes.docx                                 Chimpanzees (Pan troglodytes) are found
-🟣 Score select                    ❌   -3.0999 [0.043]  (0.5000)    -0.4569  Vector BM25 Graph         Apes.docx                                 Orangutans are the only great apes found
-🟣 Score select                    ❌   -2.7214 [0.062]  (0.5000)    -0.4383  Vector BM25 Graph         Lions.pptx                                Slide 3: Hunting and Diet Lions are coop
-🟣 Score select                    ❌   -2.0536 [0.114]  (0.5000)    -0.3863  Vector BM25 Graph         Kamele.txt                                kamele – überlebenskünstler der wüste ka
-🟣 Score select                    ❌   -1.8491+[0.136]  (0.5000)    -0.3640  Vector BM25 Graph         Elephants.jpg                             elephants large, long-lived mammals fami
-🟣 Score select                    ❌   -1.2745 [0.218]  (0.5000)    -0.2815  Vector BM25 Graph         Apes.docx                                 Gorillas are the largest living primates
-🟣 Score select                    ❌   -1.1815 [0.235]  (0.5000)    -0.2652  Vector BM25 Graph         Kamele.txt                                weitere körperliche anpassungen: - dicht
-🟣 Score select                    ❌   -1.0439 [0.260]  (0.5000)    -0.2396  Vector BM25 Graph         Hedgehogs.pdf                             Page 1 tissues. Sensory adaptations incl
-🟣 Score select                    ❌   -0.7112 [0.329]  (0.5000)    -0.1707  Vector BM25 Graph         Hedgehogs.pdf                             Page 2 detect prey and a rapid, decisive
-🟣 Score select                    ❌   -0.6821 [0.336]  (0.5000)    -0.1642  Vector BM25 Graph         Kamele.txt                                sie liefern milch, fleisch, wolle und le
-🟣 Score select                    ✅    2.6867 [0.936]  (0.5000)    +0.4362  Vector BM25 Graph Regex   Hedgehogs.pdf                             Page 1 Hedgehog Overview Hedgehogs are s
-🟣 Score select                    ✅    2.2072 [0.901]  (0.5000)    +0.4009  Vector BM25 Graph Regex   Hedgehogs.pdf                             Page 1 suburban gardens and agricultural
-🟣 Score select                    ✅    0.9809 [0.727]  (0.5000)    +0.2273  Vector BM25 Graph         Kamele.txt                                ernährung kamele sind pflanzenfresser (h
-🔵 LangDetect                     Detected language: English (en) — confidence: 42% below threshold 64% — falling back to English
-🔵 LangDetect                     Confidence level (default): LOW (confidence: 42%, threshold: 64%)
-🔵 Rerank fallback                Low-recall rescue action: Added 3 query-overlap local chunk(s) from retrieval order (input_fetch_k=100 input_context_chunks=50 fixed_k=100 min_local_pool=40
-↳                                 target_min_local_hits=24 max_additional=24; local hits 3->6, pool=78).
-🔵 Strategy: default              6 chunks selected after thresholding  0.5000  single-chunk boost ×1.25  low-recall rescue +3
-🔵 Chunk selector: Score          Ranked     Selected 6 chunks.
-🔵 Selected                       6 chunks selected
+🟣 Score select                    ✅    0.9609 [0.723]  (0.5000)    +0.2233  Vector BM25 Graph Regex   BlazingFast_Workstation.md                the blazingfast workstation is an enterp
+🟣 Score select                    ✅    0.7682 [0.683]  (0.5000)    +0.1831  Vector BM25 Graph Regex   BlazingFast_Workstation.md                - **graphics**: accommodates up to quad-
+🟣 Score select                    ✅    0.7367 [0.676]  (0.5000)    +0.1763  Vector BM25 Graph Regex   BlazingFast_Workstation.md                - **storage subsystem**: 8x 4tb nvme u.2
+🟣 Score select                    ✅    0.6828 [0.664]  (0.5000)    +0.1644  Vector BM25 Graph Regex   BlazingFast_Workstation.md                - **processors**: dual enterprise platin
+🟣 Score select                    ✅    0.6590 [0.659]  (0.5000)    +0.1590  Vector BM25       Regex   BlazingFast_Workstation.md                - **power delivery**: dual 2000w redunda
+🟣 Score select                    ✅    0.2692 [0.567]  (0.5000)    +0.0669  Vector BM25       Regex   BlazingFast_Workstation.md                - **os support**: certified for ubuntu 2
+🟣 Score select                   ⬆✅    0.2232+[0.556]  (0.5000)    +0.0556  Vector                    LionsAndApes.xlsx                         category detail value taxonomy scientifi
+🟣 Score select                   ⬆✅    0.2232+[0.556]  (0.5000)    +0.0556  Vector                    Elephants.jpg                             elephants large, long-lived mammals fami
+🟣 Score select                    ✅    0.0000 [0.500]  (0.5000)    +0.0000  Vector                    Dogs.png                                  tasks. understanding breed-specific ende
+🟣 Score select                    ✅    0.0000 [0.500]  (0.5000)    +0.0000  Vector BM25               Hedgehogs.pdf                             PDF page 1 Hedgehog Overview Hedgehogs a
+🟣 Score select                    ✅    0.0000 [0.500]  (0.5000)    +0.0000  Vector                    Dogs.png                                  , comprehensive text dogs dogs accompani
+🟣 Score select                    ✅    0.0000 [0.500]  (0.5000)    +0.0000  Vector BM25               Cats.md                                   - climbing structures - scratching posts
+🟣 Score select                    ✅    0.0000 [0.500]  (0.5000)    +0.0000  Vector BM25               Cats.md                                   - puzzle toys - training sessions - nove
+🟣 Score select                    ✅    0.0000 [0.500]  (0.5000)    +0.0000  Vector BM25               Hedgehogs.pdf                             PDF page 1 tissues. Sensory adaptations
+🟣 Score select                    ✅    0.0000 [0.500]  (0.5000)    +0.0000  Vector BM25               Fish.txt                                  ecological roles and importance fish are
+🟣 Score select                    ✅    0.0000 [0.500]  (0.5000)    +0.0000  Vector                    Dogs.png                                  impact dogs human well-being. despite ma
+🟣 Score select                    ✅    0.0000 [0.500]  (0.5000)    +0.0000  Vector BM25               Hedgehogs.pdf                             PDF page 2 areas, and garden hazards—suc
+🟣 Score select                    ✅    0.0000 [0.500]  (0.5000)    +0.0000  Vector BM25               Cats.md                                   as placental mammals, cats give live bir
+🟣 Score select                    ✅    0.0000 [0.500]  (0.5000)    +0.0000  Vector BM25               Cats.md                                   cats are complex, adaptable, and endless
+🟣 Score select                    ✅    0.0000 [0.500]  (0.5000)    +0.0000  Vector BM25               Fish.txt                                   what fish are fish are a diverse group
+🟣 Score select                    ✅    0.0000 [0.500]  (0.5000)    +0.0000  Vector BM25               Lions.pptx                                Slide 2: Physical Characteristics Male l
+🟣 Score select                    ✅    0.0000 [0.500]  (0.5000)    +0.0000  Vector BM25               Hedgehogs.pdf                             PDF page 2 detect prey and a rapid, deci
+🟣 Score select                    ✅    0.0000 [0.500]  (0.5000)    +0.0000  Vector BM25               Cats.md                                   cats are crepuscular hunters with: - a h
+🟣 Score select                    ✅    0.0000 [0.500]  (0.5000)    +0.0000  Vector BM25               Fish.txt                                  diversity: fish include jawless fishes (
+🟣 Score select                    ✅    0.0000 [0.500]  (0.5000)    +0.0000  Vector BM25               Hedgehogs.pdf                             PDF page 1 suburban gardens and agricult
+🟣 Score select                    ✅    0.0000 [0.500]  (0.5000)    +0.0000  Vector BM25               Cats.md                                   - kingdom: animalia - phylum: chordata -
+🟣 Score select                    ✅    0.0000 [0.500]  (0.5000)    +0.0000  Vector BM25               Cats.md                                   they have a righting reflex, but falls f
+🟣 Score select                    ✅    0.0000 [0.500]  (0.5000)    +0.0000  Vector BM25               Cats.md                                   - free feeding can lead to obesity. - pu
+🟣 Score select                    ✅    0.0000 [0.500]  (0.5000)    +0.0000  Vector BM25               Cats.md                                   outdoor access: - pros: exercise, stimul
+🟣 Score select                    ✅    0.0000 [0.500]  (0.5000)    +0.0000  Vector BM25               Fish.txt                                  terminology explained cold-blooded: a co
+🟣 Score select                    ✅    0.0000 [0.500]  (0.5000)    +0.0000  Vector BM25               Cats.md                                   cats are often described as solitary, bu
+🟣 Score select                    ✅    0.0000 [0.500]  (0.5000)    +0.0000  Vector BM25               Lions.pptx                                Slide 3: Hunting and Diet Lions are coop
+🟣 Score select                    ✅    0.0000 [0.500]  (0.5000)    +0.0000  Vector BM25               Cats.md                                   whiskers are deeply rooted sensory hairs
+🟣 Score select                    ✅    0.0000 [0.500]  (0.5000)    +0.0000  Vector BM25               Cats.md                                   cats have lived alongside humans for tho
+🟣 Score select                    ✅    0.0000 [0.500]  (0.5000)    +0.0000  Vector BM25               Lions.pptx                                Slide 1: Lions: The King of the Savanna
+🟣 Score select                    ✅    0.0000 [0.500]  (0.5000)    +0.0000  Vector BM25               Fish.txt                                  ectotherm: the preferred scientific term
+🟣 Score select                    ✅    0.0000 [0.500]  (0.5000)    +0.0000  Vector BM25               Cats.md                                   most adult cats are lactose intolerant.
+🟣 Score select                    ✅    0.0000 [0.500]  (0.5000)    +0.0000  Vector BM25               Cats.md                                   cats were revered, often associated with
+🟣 Score select                    ✅    0.0000 [0.500]  (0.5000)    +0.0000  Vector BM25               Apes.docx                                 Great apes (Hominidae) are the closest l
+🟣 Score select                    ✅    0.0000 [0.500]  (0.5000)    +0.0000  Vector                    Fish.txt                                  poikilotherm: a term describing organism
+🟣 Score select                    ✅    0.0000 [0.500]  (0.5000)    +0.0000  Vector BM25               Hedgehogs.pdf                             PDF page 2 behavioral ecology, hibernati
+🟣 Score select                    ✅    0.0000 [0.500]  (0.5000)    +0.0000  Vector BM25               Cats.md                                   cats dominate digital culture: - memes (
+🟣 Score select                    ✅    0.0000 [0.500]  (0.5000)    +0.0000  Vector BM25               Cats.md                                   cats require: - taurine - arachidonic ac
+🟣 Score select                    ✅    0.0000 [0.500]  (0.5000)    +0.0000  Vector BM25               Apes.docx                                 Orangutans are the only great apes found
+🟣 Score select                    ✅    0.0000 [0.500]  (0.5000)    +0.0000  Vector BM25               Cats.md                                   - human interaction - multi-cat househol
+🟣 Score select                    ✅    0.0000 [0.500]  (0.5000)    +0.0000  Vector BM25               Apes.docx                                 Gorillas are the largest living primates
+🟣 Score select                    ✅    0.0000 [0.500]  (0.5000)    +0.0000  Vector BM25               Apes.docx                                 Chimpanzees (Pan troglodytes) are found
+🟣 Score select                    ✅    0.0000 [0.500]  (0.5000)    +0.0000  Vector BM25               Lions.pptx                                Slide 5: Lion Cubs and Reproduction Gest
+🟣 Score select                    ✅    0.0000 [0.500]  (0.5000)    +0.0000  Vector BM25               Lions.pptx                                Slide 4: Conservation Status Lions are c
+🟣 Score select                    ✅    0.0000 [0.500]  (0.5000)    +0.0000  Vector BM25               Cats.md                                   even well-fed cats hunt. the sequence: 1
+🟣 Score select                    ✅    0.0000 [0.500]  (0.5000)    +0.0000  Vector BM25               Cats.md                                   these breeds emerged without heavy human
+🟣 Score select                    ✅    0.0000 [0.500]  (0.5000)    +0.0000  Vector BM25               Cats.md                                   cats can detect frequencies up to ~64 kh
+🟣 Score select                    ✅    0.0000 [0.500]  (0.5000)    +0.0000  Vector BM25               Cats.md                                   the mechanism of purring is still debate
+🟣 Score select                    ✅    0.0000 [0.500]  (0.5000)    +0.0000  Vector BM25               Cats.md                                   cats communicate through: - vocalization
+🟣 Score select                    ✅    0.0000 [0.500]  (0.5000)    +0.0000  Vector BM25               Apes.docx                                 All great ape species are either endange
+🟣 Score select                    ✅    0.0000 [0.500]  (0.5000)    +0.0000  Vector BM25               Cats.md                                   cats suffered during periods of supersti
+🟣 Score select                    ✅    0.0000 [0.500]  (0.5000)    +0.0000  Vector BM25               Cats.md                                   spaying/neutering is essential to reduce
+🟣 Score select                    ✅    0.0000 [0.500]  (0.5000)    +0.0000  Vector BM25               Cats.md                                   - regular veterinary checkups - vaccinat
+🟣 Score select                    ✅    0.0000 [0.500]  (0.5000)    +0.0000  Vector BM25               Cats.md                                   cats were not bred for specific tasks ea
+🟣 Score select                    ✅    0.0000 [0.500]  (0.5000)    +0.0000  Vector BM25               Cats.md                                   cats form strong bonds but express affec
+🟣 Score select                    ✅    0.0000 [0.500]  (0.5000)    +0.0000  Vector BM25               Apes.docx                                 All great apes demonstrate remarkable co
+🟣 Score select                    ✅    0.0000 [0.500]  (0.5000)    +0.0000  Vector BM25               Cats.md                                   a deep, structured exploration of domest
+🟣 Score select                    ✅    0.0000 [0.500]  (0.5000)    +0.0000  Vector BM25               Cats.md                                   indoor cats often live 12–18 years; some
+🟣 Score select                    ✅    0.0000 [0.500]  (0.5000)    +0.0000  Vector BM25               Cats.md                                   free-roaming cats are estimated to kill
+🟣 Score select                    ✅    0.0000 [0.500]  (0.5000)    +0.0000  Vector BM25               Cats.md                                   - dental disease - kidney disease - hype
+🟣 Score select                    ✅    0.0000 [0.500]  (0.5000)    +0.0000  Vector BM25               Cats.md                                   kittens engage in: - stalking. - pouncin
+🔵 Strategy: default              66 chunks selected after thresholding  0.5000  single-chunk boost ×1.25
+🔵 Chunk selector: Score          Ranked     Selected 50 chunks.
+🔵 Selected                       50 chunks selected
    ⚪ Selected                        #   Score [Sigmoid]  File                                      Text
    ⚪ Selected                       --------------------------------------------------------------------------------------------------------------------------------------------
-   ⚪ Selected                        1    1.0000 [0.936]  Hedgehogs.pdf                             Page 1 Hedgehog Overview Hedgehogs are small, nocturnal mammals known
-   ⚪ Selected                        2    0.9616 [0.901]  Hedgehogs.pdf                             Page 1 suburban gardens and agricultural edges. They are native to muc
-   ⚪ Selected                        3    0.8633 [0.727]  Kamele.txt                                ernährung kamele sind pflanzenfresser (herbivoren) und fressen auch tr
-   ⚪ Selected                        4    0.7277 [0.329]  Hedgehogs.pdf                             Page 2 detect prey and a rapid, decisive bite to subdue it. Seasonal s
-   ⚪ Selected                        5    0.7011 [0.260]  Hedgehogs.pdf                             Page 1 tissues. Sensory adaptations include a keen sense of smell and
-   ⚪ Selected                        6    0.5020 [0.029]  Hedgehogs.pdf                             Page 2 areas, and garden hazards—such as netting, open drains, and bon
-   ⚪ ChunkSelect                    After chunk selection: 6/78 kept
-🔵 Selection Confidence           🟢 HIGH C_final=0.79 evidence_chunks=6 rerank_fallback=off
-🔵 Retrieval Orchestration        language: en      retrieval completed chosen=6 context_chars=7491
-🔵 TokenBudget                    [mistral:7b] context=32768 reserved_sys=1024 prompt≈2661 → max_output_tokens=2048
+   ⚪ Selected                        1    1.0000 [0.723]  BlazingFast_Workstation.md                the blazingfast workstation is an enterprise-grade computing system en
+   ⚪ Selected                        2    0.7994 [0.683]  BlazingFast_Workstation.md                - **graphics**: accommodates up to quad-datacenter rtx 6000 ada genera
+   ⚪ Selected                        3    0.7666 [0.676]  BlazingFast_Workstation.md                - **storage subsystem**: 8x 4tb nvme u.2 pcie gen 5 ssds, configured b
+   ⚪ Selected                        4    0.7106 [0.664]  BlazingFast_Workstation.md                - **processors**: dual enterprise platinum 8500-series processors. pro
+   ⚪ Selected                        5    0.6858 [0.659]  BlazingFast_Workstation.md                - **power delivery**: dual 2000w redundant titanium-rated power suppli
+   ⚪ Selected                        6    0.2801 [0.567]  BlazingFast_Workstation.md                - **os support**: certified for ubuntu 22.04 lts and windows 11 pro fo
+   ⚪ Selected                        7    0.0000 [0.500]  Dogs.png                                  tasks. understanding breed-specific endencies essential training, welf
+   ⚪ Selected                        8    0.0000 [0.500]  LionsAndApes.xlsx                         category detail value taxonomy scientific name panthera leo taxonomy f
+   ⚪ Selected                        9    0.0000 [0.500]  Hedgehogs.pdf                             PDF page 1 Hedgehog Overview Hedgehogs are small, nocturnal mammals kn
+   ⚪ Selected                       10    0.0000 [0.500]  Dogs.png                                  , comprehensive text dogs dogs accompanied humans tens thousands years
+   ⚪ Selected                       11    0.0000 [0.500]  Elephants.jpg                             elephants large, long-lived mammals family elephantidae, represented t
+   ⚪ Selected                       12    0.0000 [0.500]  Cats.md                                   - climbing structures - scratching posts - window perches [section: th
+   ⚪ Selected                       13    0.0000 [0.500]  Cats.md                                   - puzzle toys - training sessions - novel objects [section: the compre
+   ⚪ Selected                       14    0.0000 [0.500]  Hedgehogs.pdf                             PDF page 1 tissues. Sensory adaptations include a keen sense of smell
+   ⚪ Selected                       15    0.0000 [0.500]  Fish.txt                                  ecological roles and importance fish are central to aquatic food webs:
+   ⚪ Selected                       16    0.0000 [0.500]  Dogs.png                                  impact dogs human well-being. despite many strengths, dogs also face c
+   ⚪ Selected                       17    0.0000 [0.500]  Hedgehogs.pdf                             PDF page 2 areas, and garden hazards—such as netting, open drains, and
+   ⚪ Selected                       18    0.0000 [0.500]  Cats.md                                   as placental mammals, cats give live birth and nurse their young with
+   ⚪ Selected                       19    0.0000 [0.500]  Cats.md                                   cats are complex, adaptable, and endlessly fascinating creatures. thei
+   ⚪ Selected                       20    0.0000 [0.500]  Fish.txt                                   what fish are fish are a diverse group of aquatic vertebrates that li
+   ⚪ Selected                       21    0.0000 [0.500]  Lions.pptx                                Slide 2: Physical Characteristics Male lions weigh between 150-250 kg
+   ⚪ Selected                       22    0.0000 [0.500]  Hedgehogs.pdf                             PDF page 2 detect prey and a rapid, decisive bite to subdue it. Season
+   ⚪ Selected                       23    0.0000 [0.500]  Cats.md                                   cats are crepuscular hunters with: - a high density of rod photorecept
+   ⚪ Selected                       24    0.0000 [0.500]  Fish.txt                                  diversity: fish include jawless fishes (lampreys, hagfish), cartilagin
+   ⚪ Selected                       25    0.0000 [0.500]  Hedgehogs.pdf                             PDF page 1 suburban gardens and agricultural edges. They are native to
+   ⚪ Selected                       26    0.0000 [0.500]  Cats.md                                   - kingdom: animalia - phylum: chordata - class: mammalia (mammals) - o
+   ⚪ Selected                       27    0.0000 [0.500]  Cats.md                                   they have a righting reflex, but falls from low heights can be dangero
+   ⚪ Selected                       28    0.0000 [0.500]  Cats.md                                   - free feeding can lead to obesity. - puzzle feeders encourage natural
+   ⚪ Selected                       29    0.0000 [0.500]  Cats.md                                   outdoor access: - pros: exercise, stimulation - cons: predation, traff
+   ⚪ Selected                       30    0.0000 [0.500]  Fish.txt                                  terminology explained cold-blooded: a common everyday phrase meaning a
+   ⚪ Selected                       31    0.0000 [0.500]  Cats.md                                   cats are often described as solitary, but this is an oversimplificatio
+   ⚪ Selected                       32    0.0000 [0.500]  Lions.pptx                                Slide 3: Hunting and Diet Lions are cooperative hunters, working toget
+   ⚪ Selected                       33    0.0000 [0.500]  Cats.md                                   whiskers are deeply rooted sensory hairs that detect: - airflow change
+   ⚪ Selected                       34    0.0000 [0.500]  Cats.md                                   cats have lived alongside humans for thousands of years, yet they rema
+   ⚪ Selected                       35    0.0000 [0.500]  Lions.pptx                                Slide 1: Lions: The King of the Savanna Lions (Panthera leo) are the o
+   ⚪ Selected                       36    0.0000 [0.500]  Fish.txt                                  ectotherm: the preferred scientific term for animals that rely mainly
+   ⚪ Selected                       37    0.0000 [0.500]  Cats.md                                   most adult cats are lactose intolerant. [section: the comprehensive fe
+   ⚪ Selected                       38    0.0000 [0.500]  Cats.md                                   cats were revered, often associated with: - bastet (goddess of protect
+   ⚪ Selected                       39    0.0000 [0.500]  Apes.docx                                 Great apes (Hominidae) are the closest living relatives to humans, sha
+   ⚪ Selected                       40    0.0000 [0.500]  Fish.txt                                  poikilotherm: a term describing organisms whose internal temperature v
+   ⚪ Selected                       41    0.0000 [0.500]  Hedgehogs.pdf                             PDF page 2 behavioral ecology, hibernation physiology, and the impacts
+   ⚪ Selected                       42    0.0000 [0.500]  Cats.md                                   cats dominate digital culture: - memes (“i can has cheezburger?”) - vi
+   ⚪ Selected                       43    0.0000 [0.500]  Cats.md                                   cats require: - taurine - arachidonic acid - preformed vitamin a - hig
+   ⚪ Selected                       44    0.0000 [0.500]  Apes.docx                                 Orangutans are the only great apes found in Asia, inhabiting the rainf
+   ⚪ Selected                       45    0.0000 [0.500]  Cats.md                                   - human interaction - multi-cat households (when compatible) [section:
+   ⚪ Selected                       46    0.0000 [0.500]  Apes.docx                                 Gorillas are the largest living primates, with males weighing up to 20
+   ⚪ Selected                       47    0.0000 [0.500]  Apes.docx                                 Chimpanzees (Pan troglodytes) are found across equatorial Africa. They
+   ⚪ Selected                       48    0.0000 [0.500]  Lions.pptx                                Slide 5: Lion Cubs and Reproduction Gestation lasts about 110 days, pr
+   ⚪ Selected                       49    0.0000 [0.500]  Lions.pptx                                Slide 4: Conservation Status Lions are classified as Vulnerable by the
+   ⚪ Selected                       50    0.0000 [0.500]  Cats.md                                   even well-fed cats hunt. the sequence: 1. detect 2. stalk 3. chase 4.
+   ⚪ KeywordActionSplitter          Final context query_id=0: 50 associated chunks for 'What are the important properties of the blazingfast workstation?' (association is not proof of answer support)
+   ⚪ ChunkSelect                    After chunk selection: 50/66 kept
+🔵 Selection Confidence           🟡 MEDIUM C_final=0.77 evidence_chunks=50 rerank_fallback=off
+🔵 Retrieval Orchestration        language: en      retrieval completed chosen=50 context_chars=43202
+🔵 KeywordActionSplitter          Final answer instruction: Complete user request:
+↳                                 create a table with the important properties of the blazingfast workstation
+↳
+↳                                 Self-contained answer instruction:
+↳                                 Using only the retrieved context, create a table listing the important properties of the blazingfast workstation.
+↳
+↳                                 Requested operation to execute on the retrieved evidence:
+↳                                 Create a table of the important properties of the blazingfast workstation.
+↳                                 Perform the operation, not a description of how to perform it. For a requested list, use Markdown bullets; for a requested table, use a Markdown table, unless the
+↳                                 user explicitly specifies another format.
+🔵 TokenBudget                    [openai/qwen2_5_7b_instruct] context=32768 reserved_sys=1024 prompt≈8470 → max_output_tokens=2048
 🔵 Resolved token params          max_output_tokens(api: max_tokens)=2048  num_ctx=32768  (override: max_tokens=None  num_ctx=None)
 🔵 LLM Plan                       Answer generation: producing the final grounded response from retrieved context chunks.
-🔵 TokenBudget                    [mistral:7b] num_ctx=32768 prompt≈2661 → num_predict=2048
-🔵 Call LLM                       Model: mistral:7b prompt template: _PROMPT_CHAT stage: Run user prompt
+🔵 TokenBudget                    [openai/qwen2_5_7b_instruct] num_ctx=32768 prompt≈8470 → num_predict=2048
+🔵 Call LLM                       Stage: Run user prompt
+🔵 Call LLM                       Model: openai/qwen2_5_7b_instruct prompt template: _PROMPT_CHAT purpose: Inference
 🔵 Call LLM                       options: {'temperature': 0.1, 'top_k': 40, 'top_p': 0.92, 'num_predict': 2048, 'num_ctx': 32768} streaming: False
-🔵 Call LLM                       Elapsed time calling: mistral:7b took 00:09
+🔵 Call LLM                       Elapsed time calling: openai/qwen2_5_7b_instruct took 00:50
 🔵 LangDetect                     Detected language: English (en) — confidence: 100% (threshold: 60%)
 🔵 LangDetect                     Confidence level (answer_compliance_language): HIGH (confidence: 100%, threshold: 60%)
-🔵 HF                             Reusing cached embeddings for snowflake/snowflake-arctic-embed-l-v2.0 rev='None' device=cuda:0 dtype=torch.float32
-🟢 Cache build Regex Banned       Built compiled Regex cache with 139 entries for language english stage: PIPELINE_CHECK
-🟢 KeyWrdChk Depth                0 algos passed threshold vs. required 4
+🔵 vLLM                           Using vLLM embeddings 'bge-m3-embedder' at http://192.168.100.50:4000/v1
+🟢 Cache build Regex Banned       Built compiled Regex cache with 80 entries for language english stage: PIPELINE_CHECK
+🟢 KeyWrdChk Summary              Phrase                         dpt / brth     Regex+Levenshtein ➡️    Jaccard ➡️              BM25 ➡️                 Keybert
+🟡 KeyWrdChk Summary              account balance                1/4    1/4      -/-                    -/-                    -/-                    0.4264/0.4000
+🟡 KeyWrdChk Summary              account number                 1/4    1/4      -/-                    -/-                    -/-                    0.4193/0.4000
+🟡 KeyWrdChk Summary              auth token                     ******    1/4      -/-                    -/-                    -/-                    0.4205/0.4000
+🟡 KeyWrdChk Summary              backdoor                       1/4    1/4      -/-                    -/-                    -/-                    0.4117/0.4000
+🟡 KeyWrdChk Summary              bank account                   1/4    1/4      -/-                    -/-                    -/-                    0.4148/0.4000
+🟡 KeyWrdChk Summary              buffer overflow                1/4    1/4      -/-                    -/-                    -/-                    0.4769/0.4000
+🟡 KeyWrdChk Summary              credit card number             1/4    1/4      -/-                    -/-                    -/-                    0.4322/0.4000
+🟡 KeyWrdChk Summary              credit score                   1/4    1/4      -/-                    -/-                    -/-                    0.4291/0.4000
+🟡 KeyWrdChk Summary              data controller                1/4    1/4      -/-                    -/-                    -/-                    0.4508/0.4000
+🟡 KeyWrdChk Summary              data processor                 1/4    1/4      -/-                    -/-                    -/-                    0.5379/0.4000
+🟡 KeyWrdChk Summary              data subject                   1/4    1/4      -/-                    -/-                    -/-                    0.4200/0.4000
+🟡 KeyWrdChk Summary              diagnosis                      1/4    1/4      -/-                    -/-                    -/-                    0.4233/0.4000
+🟡 KeyWrdChk Summary              explosive                      1/4    1/4      -/-                    -/-                    -/-                    0.4485/0.4000
+🟡 KeyWrdChk Summary              id card number                 1/4    1/4      -/-                    -/-                    -/-                    0.4555/0.4000
+🟡 KeyWrdChk Summary              id number                      1/4    1/4      -/-                    -/-                    -/-                    0.4380/0.4000
+🟡 KeyWrdChk Summary              loan decision                  1/4    1/4      -/-                    -/-                    -/-                    0.4134/0.4000
+🟡 KeyWrdChk Summary              malware                        1/4    1/4      -/-                    -/-                    -/-                    0.4308/0.4000
+🟡 KeyWrdChk Summary              routing number                 1/4    1/4      -/-                    -/-                    -/-                    0.4432/0.4000
+🟡 KeyWrdChk Summary              salary amount                  1/4    1/4      -/-                    -/-                    -/-                    0.4342/0.4000
+🟡 KeyWrdChk Summary              security question              1/4    1/4      -/-                    -/-                    -/-                    0.4526/0.4000
+🟢 KeyWrdChk Depth                1 algos passed threshold vs. required 4
 🟢 KeyWrdChk Breadth              1 algos had a score vs. required 4
-🔵 Deleted chat context           Deleted chat context for MyFirstChat in Test_ChatContext
-🔵 Add chat context               Upserted turn 1 for chat_name=MyFirstChat file_tag='' lang='english' to Test_ChatContext
-   ⚪ Retrieval Orchestration        Stored query history forms orig='what do hedgehogs eat and where do they live?' t1='what do hedgehogs eat and where do they live?' t2='what do hedgehogs eat and
-   ↳                                 where do they live?' effective_reason=''
-🔵 Masker                         0 of 15 rules produced matches and were replaced
-💬 >   Hedgehogs eat invertebrates, such as beetles, caterpillars, earthworms, snails, and slugs, as well as amphibians, small rodents, eggs, carrion, and fallen fruit when available. They live in
-💬 >  various environments, including suburban gardens, agricultural edges, hedgerows, compost heaps, and mixed vegetation. They are native to much of Europe, parts of Asia, and Africa.
+   ⚪ Grounding                      Inference answer before grounding validation:
+   ↳                                 | Property                          | Description                                                                 |
+   ↳                                 |-----------------------------------|------------------------------------------------------------------------------|
+   ↳                                 | **Graphics**                      | Accommodates up to quad-datacenter RTX 6000 Ada generation GPUs with 48GB VRAM per GPU (192GB total). Supports distributed
+   ↳                                 inference, fine-tuning of 70B+ parameter language models, and hardware-accelerated document classification. |
+   ↳                                 | **Tensor Cores**                  | Embedded fourth-generation tensor cores drastically reduce processing times for matrix multiplication, a core requirement for
+   ↳                                 embedding generation.                                               |
+   ↳                                 | **Storage Subsystem**             | 8x 4TB NVMe U.2 PCIe Gen 5 SSDs configured in RAID 10 for 16TB of redundant, ultra-fast local storage. Delivers sequential
+   ↳                                 read speeds up to 28,000 MB/s and extremely low latency for database lookups. |
+   ↳                                 | **Networking**                    | Integrated dual 100Gbe SFP28 network interfaces for high-throughput cluster environments, alongside an independent
+   ↳                                 out-of-band management interface (IPMI).                                      |
+   ↳                                 | **Expansion**                     | 6x PCIe Gen 5 x16 slots, providing sufficient lanes for multiple accelerator cards, dedicated hardware RAID controllers, or
+   ↳                                 additional network interface cards (NICs).                       |
+   ↳                                 | **Processors**                    | Dual enterprise platinum 8500-series processors providing up to 120 physical cores (240 threads) per system. Base clock speed
+   ↳                                 is 2.8 GHz, with single-core turbo frequencies up to 4.6 GHz.           |
+   ↳                                 | **Memory**                        | Supports up to 2TB of ECC DDR5 RAM running at 4800 MHz across 16 DIMM slots. Optimized for loading large vector databases and
+   ↳                                 LLM context windows entirely into RAM.                           |
+   ↳                                 | **Power Delivery**                | Dual 2000W redundant titanium-rated power supplies (N+1 configuration). Requires a 200V-240V circuit due to the massive power
+   ↳                                 draw at full compute load.                                 |
+   ↳                                 | **Thermals**                      | A specialized closed-loop liquid cooling system ensures both GPUs and CPUs remain below 70°C even under sustained 24/7
+   ↳                                 workloads, preventing thermal throttling.                             |
+   ↳                                 | **OS Support**                    | Certified for Ubuntu 22.04 LTS and Windows 11 Pro for Workstations.                                                      |
+   ↳                                 | **Pre-installed Stack**           | Ships optionally with a fully configured AI stack, including CUDA 12, PyTorch, Docker, and pre-configured Python environments
+   ↳                                 tuned for RAG (retrieval-augmented generation) pipeline development. |
+   ↳
+   ↳                                 ### Sources
+   ↳                                 - BlazingFast_Workstation.md
+   ↳                                   - FilePath: D:/RAG-LCC/TestDocs/BlazingFast_Workstation.md
+   ↳                                   - FileModified: 2026-06-23 14:17:15.094329
+   ↳                                   - FileName: BlazingFast_Workstation.md
+🔵 LangDetect                     Detected language: English (en) — confidence: 100% (threshold: 60%)
+🔵 LangDetect                     Confidence level (answer_grounding_language): HIGH (confidence: 100%, threshold: 60%)
+🔵 Deleted chat context           Deleted chat context for MyFirstChat in Test_embedder_bge_m3_ChatContext
+🔵 Add chat context               Upserted turn 1 for chat_name=MyFirstChat file_tag='' lang='english' to Test_embedder_bge_m3_ChatContext
+   ⚪ Retrieval Orchestration        Stored query history forms orig='create a table with the important properties of the blazingfast workstation' t1='create a table with the important properties of
+   ↳                                 the blazingfast workstation' t2='create a table with the important properties of the blazingfast workstation' effective_reason=''
+🔵 TokenBudget                    /v1/models did not yield max_model_len for 'openai/qwen2_5_14b_instruct'; retrying via LiteLLM /model/info endpoint
+🔵 TokenBudget                    Detected context_length=8192 for openai/qwen2_5_14b_instruct via vllm adapter
+🔵 TokenBudget                    Model 'openai/qwen2_5_14b_instruct': context_limit=8192 (below cap 32768 — using detected value)
+🔵 TokenBudget                    Caller did not supply context_size; resolved num_ctx=8192 for openai/qwen2_5_14b_instruct
+🔵 TokenBudget                    Authoritative budget=256 vs caller estimate=0; using authoritative value
+🔵 TokenBudget                    [openai/qwen2_5_14b_instruct] num_ctx=8192 prompt≈640 → num_predict=256
+🔵 Call LLM                       Stage: Answer-text LLM review
+🔵 Call LLM                       Model: openai/qwen2_5_14b_instruct prompt template: None purpose: Judge
+🔵 Call LLM                       options: {'temperature': 0.0, 'num_predict': 256, 'num_ctx': 8192} streaming: False
+🔵 Call LLM                       Elapsed time calling: openai/qwen2_5_14b_instruct took 00:01
+🟡 VisualMarker                   _mark_sources called: 50 chunk(s)
+🔵 VisualMarker                   Prepared 1 highlighted document(s) (in memory)
+🔵 Marked sources                 1 highlighted document(s) (click a link to open; use 'Save As' in the viewer to keep a copy):
+   📎 BlazingFast_Workstation.md (highlighted): file:///D:/RAG-LCC/tmp/rag_marked_k32dzhns/BlazingFast_Workstation_marked.md
+Original query: create a table with the important properties of the blazingfast workstation
+💬 >  | Property                          | Description                                                                 |
+💬 >  |-----------------------------------|------------------------------------------------------------------------------|
+💬 >  | **Graphics**                      | Accommodates up to quad-datacenter RTX 6000 Ada generation GPUs with 48GB VRAM per GPU (192GB total). Supports distributed inference, fine-tuning of 70B+
+💬 >  parameter language models, and hardware-accelerated document classification. |
+💬 >  | **Tensor Cores**                  | Embedded fourth-generation tensor cores drastically reduce processing times for matrix multiplication, a core requirement for embedding generation. |
+💬 >  | **Storage Subsystem**             | 8x 4TB NVMe U.2 PCIe Gen 5 SSDs configured in RAID 10 for 16TB of redundant, ultra-fast local storage. Delivers sequential read speeds up to 28,000 MB/s and
+💬 >  extremely low latency for database lookups. |
+💬 >  | **Networking**                    | Integrated dual 100Gbe SFP28 network interfaces for high-throughput cluster environments, alongside an independent out-of-band management interface (IPMI).
+💬 >  |
+💬 >  | **Expansion**                     | 6x PCIe Gen 5 x16 slots, providing sufficient lanes for multiple accelerator cards, dedicated hardware RAID controllers, or additional network interface
+💬 >  cards (NICs). |
+💬 >  | **Processors**                    | Dual enterprise platinum 8500-series processors providing up to 120 physical cores (240 threads) per system. Base clock speed is 2.8 GHz, with single-core
+💬 >  turbo frequencies up to 4.6 GHz. |
+💬 >  | **Memory**                        | Supports up to 2TB of ECC DDR5 RAM running at 4800 MHz across 16 DIMM slots. Optimized for loading large vector databases and LLM context windows entirely
+💬 >  into RAM. |
+💬 >  | **Power Delivery**                | Dual 2000W redundant titanium-rated power supplies (N+1 configuration). Requires a 200V-240V circuit due to the massive power draw at full compute load. |
+💬 >  | **Thermals**                      | A specialized closed-loop liquid cooling system ensures both GPUs and CPUs remain below 70°C even under sustained 24/7 workloads, preventing thermal
+💬 >  throttling. |
+💬 >  | **OS Support**                    | Certified for Ubuntu 22.04 LTS and Windows 11 Pro for Workstations. |
+💬 >  | **Pre-installed Stack**           | Ships optionally with a fully configured AI stack, including CUDA 12, PyTorch, Docker, and pre-configured Python environments tuned for RAG
+💬 >  (retrieval-augmented generation) pipeline development. |
 💬 >
 💬 >  ### Sources
-💬 >  - FileName: Hedgehogs.pdf
-💬 >    - FilePath: D:/RAG-LCC/TestDocs/Hedgehogs.pdf ([open](file:///D:/RAG-LCC/TestDocs/Hedgehogs.pdf))
-💬 >    - Page: 1, 2
+💬 >  • BlazingFast_Workstation.md
+💬 >    • FilePath: D:/RAG-LCC/TestDocs/BlazingFast_Workstation.md ([open](file:///D:/RAG-LCC/TestDocs/BlazingFast_Workstation.md))
+💬 >    • FileModified: 2026-06-23 14:17:15.094329
+💬 >    • FileName: BlazingFast_Workstation.md
 💬 >
 💬 >  ---
 💬 >
 💬 >  **Answer confidence:**
-💬 >  🟢 HIGH
-💬 >  - C_final=0.79            : final confidence in [0,1] after penalties.
-💬 >  - C_top=0.47              : weighted best-chunk signal (0.50 x top_score).
-💬 >  - C_mean_top3=0.26        : weighted top-3 stability (0.30 x mean_top3).
-💬 >  - C_coverage=0.02         : weighted evidence coverage (0.15 x coverage).
-💬 >  - C_local=0.05            : weighted local-source share (0.05 x local_share).
-💬 >  - C_fallback_penalty=0.00 : subtraction when low-confidence rerank fallback was used.
-💬 >  - top_score=0.94          : strongest selected chunk confidence.
-💬 >  - mean_top3=0.85          : average confidence of the top 3 selected chunks.
-💬 >  - coverage=0.12           : selected_chunks / final_chunks_to_llm, capped at 1.00.
-💬 >  - local_share=1.00        : fraction of selected chunks from local files.
-💬 >  - evidence_chunks=6       : number of selected evidence chunks.
-💬 >  - rerank_fallback=off     : whether fallback rerank logic was triggered.
-🟡 VisualMarker                   _mark_sources called: 6 chunk(s)
-🔵 VisualMarker                   Prepared 1 highlighted document(s) (in memory)
+💬 >  🟡 MEDIUM
+💬 >
+💬 >  Heuristic Confidence:
+💬 >  • C_final=0.77            : final confidence in [0,1] after penalties.
+💬 >  • C_top=0.36              : weighted best-chunk signal (0.50 x top_score).
+💬 >  • C_mean_top3=0.21        : weighted top-3 stability (0.30 x mean_top3).
+💬 >  • C_coverage=0.15         : weighted evidence coverage (0.15 x coverage).
+💬 >  • C_local=0.05            : weighted local-source share (0.05 x local_share).
+💬 >  • C_fallback_penalty=0.00 : subtraction when low-confidence rerank fallback was used.
+💬 >  • top_score=0.72          : strongest selected chunk confidence.
+💬 >  • mean_top3=0.69          : average confidence of the top 3 selected chunks.
+💬 >  • coverage=1.00           : selected_chunks / final_chunks_to_llm, capped at 1.00.
+💬 >  • local_share=1.00        : fraction of selected chunks from local files.
+💬 >  • evidence_chunks=50      : number of selected evidence chunks.
+💬 >  • rerank_fallback=off     : whether fallback rerank logic was triggered.
+💬 >
+💬 >  Static retrieval diagnostics (not answer-quality verification):
+💬 >  • Evidence relevance   : heuristic=0.74
+💬 >    Top retrieval scores and fallback status; does not verify answer accuracy.
+💬 >  • Retrieval coverage   : heuristic=1.00
+💬 >    Selected chunk count relative to the target, plus evidence quantity; does not measure answer completeness.
+💬 >  • Evidence availability: heuristic=0.80
+💬 >    Retrieval relevance and chunk availability; does not verify citations or claim-to-source support.
+💬 >
+💬 >  LLM review - answer text only (judge model: openai/qwen2_5_14b_instruct):
+💬 >  • Internal consistency: llm=1.00
+💬 >    Judge rating of contradictions within the answer; does not verify factual correctness.
+💬 >  • Explanation clarity : not assessed
+💬 >    Judge rating of how understandable the explanation is; does not verify reasoning validity.
+💬 >  Subjective ratings, not probabilities. The judge sees neither the question nor source evidence and may share the generator's blind spots.
+💬 >  Accuracy, answer completeness, reasoning validity, and citation support: not assessed.
 
 
 ---
 ### Document metadata
 
+- **BlazingFast_Workstation.md**
+    - FilePath: D:/RAG-LCC/TestDocs/BlazingFast_Workstation.md
+    - FileSizeBytes: 2610
+    - FileModified: 2026-06-23 14:17:15.094329
+- **Dogs.png**
+    - FilePath: D:/RAG-LCC/TestDocs/Dogs.png
+    - FileSizeBytes: 634064
+    - FileModified: 2026-06-23 14:17:15.110956
+- **LionsAndApes.xlsx**
+    - FilePath: D:/RAG-LCC/TestDocs/LionsAndApes.xlsx
+    - Author: openpyxl
+    - DocCreated: 2026-04-15 12:24:52
+    - DocModified: 2026-04-15 12:24:52
 - **Hedgehogs.pdf**
     - FilePath: D:/RAG-LCC/TestDocs/Hedgehogs.pdf
     - Creator: Microsoft® Word for Microsoft 365
@@ -734,14 +960,32 @@ Loading weights: 100%|███████████████████�
     - DocCreated: 2026-02-17 12:32:04+01:00
     - DocModified: 2026-02-17 12:32:04+01:00
     - Pages: 1, 2
-- **Kamele.txt**
-    - FilePath: D:/RAG-LCC/TestDocs/Kamele.txt
-    - FileSizeBytes: 3487
+- **Elephants.jpg**
+    - FilePath: D:/RAG-LCC/TestDocs/Elephants.jpg
+    - FileSizeBytes: 282341
+    - FileModified: 2026-06-23 14:17:15.110956
+- **Cats.md**
+    - FilePath: D:/RAG-LCC/TestDocs/Cats.md
+    - FileSizeBytes: 7323
     - FileModified: 2026-06-23 14:17:15.094329
-🔵 Marked sources                 1 highlighted document(s) (click a link to open; use 'Save As' in the viewer to keep a copy):
-   📎 Hedgehogs.pdf (highlighted): file:///D:/RAG-LCC/tmp/rag_marked_ws8xf_yq/Hedgehogs_marked.pdf
+- **Fish.txt**
+    - FilePath: D:/RAG-LCC/TestDocs/Fish.txt
+    - FileSizeBytes: 3474
+    - FileModified: 2026-06-23 14:17:15.094329
+- **Lions.pptx**
+    - FilePath: D:/RAG-LCC/TestDocs/Lions.pptx
+    - DocCreated: 2013-01-27 09:14:16
+    - DocModified: 2013-01-27 09:15:58
+    - LastModifiedBy: Steve Canny
+- **Apes.docx**
+    - FilePath: D:/RAG-LCC/TestDocs/Apes.docx
+    - Author: python-docx
+    - DocCreated: 2013-12-23 23:15:00+00:00
+    - DocModified: 2013-12-23 23:15:00+00:00
 help? for help   show? for current values
 key=value to set (e.g. strategy=default)   key! to pick (e.g. strategy! / orchestrator_flow!)   key- to unset (e.g. file-)   strategy*preset for quick defaults (e.g. strategy*narrow)
 Press ↵ on an empty line to proceed to your query prompt
  🛠️  >
- ```
+type new: your question to start a new topic  · type summarize: [file name or path] (alias: summary:) to summarize a file (no argument: pinned document; no pin: open the path picker)  · b: back to settings / ↵ to enter query / ↵↵ to quit RAGChat
+💬 Your actual query>
+```

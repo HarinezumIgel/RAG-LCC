@@ -296,6 +296,7 @@ class RegexRetriever(SingletonMixin, RetrieverBase):
         self.remove_by_filepath(file_path)
         if ids:
             self.add_chunks(ids, texts, metas)
+        self._data.doc_count_at_build = collection.count()
         self.persist(regex_dir)
 
     # ------------------------------------------------------------------
@@ -486,11 +487,10 @@ class RegexRetriever(SingletonMixin, RetrieverBase):
         return self._spacy_models_by_language.get(language_code, self._spacy_model)
 
     def _load_spacy_model(self, model_name: str, *, language: str | None = None) -> Any:
-        loader = getattr(self, "_spacy_loader", None)
-        if not callable(loader):
+        if self._spacy_loader is None:
             return self._nlp
         try:
-            return loader(model_name)
+            return self._spacy_loader(model_name)
         except OSError as exc:
             language_code = self._normalize_lang_code(language)
             raise ModelLoadError(
@@ -714,6 +714,11 @@ class RegexRetriever(SingletonMixin, RetrieverBase):
         return os.path.join(regex_directory, self.INDEX_FILENAME)
 
     def _persist(self, path: str) -> None:
+        self.pretty.write(
+            "I",
+            "Regex",
+            f"Persisting regex index to {path} ({len(self._data.chunk_texts)} chunks)",
+        )
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with gzip.open(path, "wb") as f:
             pickle.dump(self._data, f, protocol=pickle.HIGHEST_PROTOCOL)

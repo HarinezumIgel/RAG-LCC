@@ -8,11 +8,68 @@ POS filtering, stoplist, depth, and graceful fallback when NLTK is absent.
 import sys
 import os
 import types
+import ast
+from collections import defaultdict
+from pathlib import Path
+from typing import Any, DefaultDict, Dict
 import pytest
 from typing import List, Set
 from unittest.mock import MagicMock
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
+
+
+@pytest.mark.parametrize("scorer", ["RegexScorer", "JaccardScorer", "BM25Scorer"])
+@pytest.mark.parametrize("enabled", [None, False, True])
+def test_scorer_expansion_is_explicit_opt_in(monkeypatch, scorer, enabled):
+    """Execute real constructors with lightweight dependencies, without loading models."""
+    source = Path(__file__).parent.parent / "src" / "Algos" / f"{scorer}.py"
+    tree = ast.parse(source.read_text(encoding="utf-8-sig"))
+    cls = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.ClassDef) and node.name == scorer
+    )
+    init = next(
+        node
+        for node in cls.body
+        if isinstance(node, ast.FunctionDef) and node.name == "__init__"
+    )
+    cfg = MagicMock()
+    cfg.get_bool.side_effect = lambda key, default=False: (
+        enabled
+        if key == "_WORDNET.SCORERS_ENABLED" and enabled is not None
+        else default
+    )
+    helpers = MagicMock()
+    phrases = ["card number", "weapon"]
+    helpers.get_banned_phrases_config_slot.return_value = phrases
+    synonyms = MagicMock()
+    synonyms.expand.return_value = phrases + ["arm"]
+    ai_module = types.ModuleType("AI.AIHelpers")
+    ai_module.AIHelpers = MagicMock()
+    monkeypatch.setitem(sys.modules, "AI.AIHelpers", ai_module)
+    namespace = {
+        "Any": Any,
+        "List": List,
+        "Dict": Dict,
+        "DefaultDict": DefaultDict,
+        "defaultdict": defaultdict,
+        "SharedHelpers": MagicMock(),
+        "PerfLogger": MagicMock(),
+        "Synonyms": MagicMock(return_value=synonyms),
+    }
+    exec(
+        compile(ast.Module(body=[init], type_ignores=[]), str(source), "exec"),
+        namespace,
+    )
+    shell = types.SimpleNamespace(_initialized=False)
+    namespace["__init__"](shell, cfg=cfg, helpers=helpers, pretty=MagicMock())
+    assert shell.banlist_en == (phrases + ["arm"] if enabled else phrases)
+    if enabled:
+        synonyms.expand.assert_called_once_with(phrases)
+    else:
+        namespace["Synonyms"].assert_not_called()
 
 
 # ---------------------------------------------------------------------------

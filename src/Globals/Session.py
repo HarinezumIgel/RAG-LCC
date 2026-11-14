@@ -1,8 +1,16 @@
+from __future__ import annotations
+
 # Local module imports
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from Config.Config import Config
+from Grounding.SourceReferences import SummaryStatement
 from Gui.PrettyWriter import PrettyWriter
+from Orchestrator import FlowConfig
+
+if TYPE_CHECKING:
+    from Chat.ConfidenceEvaluator import AnswerConfidenceResult
+    from Chat.KeywordActionSplitter import KeywordActionSplit
 
 
 class Session:
@@ -17,6 +25,7 @@ class Session:
     def __init__(self) -> None:
         self.cfg: Config = Config()
         self.pretty: PrettyWriter = PrettyWriter()
+        self.is_service: bool = False
 
         self.file_name: Optional[str | None] = None
         self.file_path: Optional[str | None] = None
@@ -28,21 +37,21 @@ class Session:
         # metadata- in-chat commands).
         self.metadata_filters: dict[str, str] = {}
         self.query: str | None = None
+        # API input before command removal and operator-system-prompt composition.
+        self.user_query_input: str | None = None
+        self.indexed_query_notices: list[str] = []
+        self.indexed_query_error: str | None = None
+        self.indexed_query_warning_keys: set[tuple[str, str | None]] = set()
         self.strategy: str | None = None
-        default_orchestration_flow = (
-            str(
-                self.cfg.get_str(
-                    "_DEFAULT_ORCHESTRATION_FLOW", "THOROUGH_QUERY_REWRITE"
-                )
-                or "THOROUGH_QUERY_REWRITE"
-            )
-            .strip()
-            .upper()
-            or "THOROUGH_QUERY_REWRITE"
-        )
+        default_orchestration_flow = FlowConfig.default_flow_name(self.cfg)
         self.orchestrator_flow: str = default_orchestration_flow
         # Alias used by orchestration pipeline diagnostics.
         self.flow_name: str = default_orchestration_flow
+        # None inherits the selected flow; baseline answer confidence is independent.
+        self.confidence_evaluation: str | None = None
+        self.summary_length: str | None = None
+        self.summary_temperature: float | None = None
+        self.chunk_overlap: int | None = None
         self.retriever_k: int | None = None
         self.rerank: bool | None = None
         self.final_chunks_to_llm: int | None = None
@@ -90,6 +99,24 @@ class Session:
         # Per-turn controls populated by Orchestrator flow selection.
         # None means "use global PromptRewrite defaults".
         self.enable_query_rewrite: bool | None = None
+        self.enable_keyword_action_splitter: bool | None = None
+        self.keyword_action_split: KeywordActionSplit | None = None
+        # Query IDs are zero-based positions in split.retrieval_queries.
+        # For ["Where do hedgehogs live?", "What do hedgehogs eat?"],
+        # query ID 0 is the habitat query; query ID 1 is the diet query.
+        # Keys are stable chunk identities from OrchestratorHelper.doc_identity.
+        # Example: {"id:chunk-A": [0, 1]} means the chunk was found for both needs.
+        self.keyword_action_query_ids: dict[str, list[int]] = {}
+        # Raw cross-encoder scores per chunk AND need, rather than one score
+        # against the entire compound request: {"id:chunk-A": {0: 4.2, 1: 0.3}}.
+        # These associations do not reserve context slots or change selection.
+        self.keyword_action_scores: dict[str, dict[int, float]] = {}
+        # Each need's indexed query variants by document-language bucket.
+        # Example: {0: {"de": "Lebensraum Igel", "en": "hedgehog habitat"}}.
+        self.keyword_action_language_queries: dict[int, dict[str, str]] = {}
+        self.keyword_action_status: str = "not_run"
+        self.keyword_action_local_needs: int = 0
+        self.keyword_action_keyword_leg: bool = False
         self.enable_pronoun_substitution: bool | None = None
         self.enable_guardrail_leg: bool | None = None
         self.enable_vector_alternate_queries: bool | None = None
@@ -99,7 +126,7 @@ class Session:
         self.enable_grounding: bool | None = None
         self.enable_indexed_query_shaping: bool | None = None
         self.enable_indexed_query_translation: bool | None = None
-        self.enable_indexed_query_synonym_expansion: bool | None = None
+        self.enable_indexed_query_wordnet_expansion: bool | None = None
         self.enable_original_language_vector_leg: bool | None = None
         self.enable_vector_retriever: bool | None = None
         self.enable_bm25_retriever: bool | None = None
@@ -108,15 +135,16 @@ class Session:
         self.force_retrieve_mode: str | None = None
         self.main_query_source: str | None = None
         self.secondary_query_source: str | None = None
+        self.rerank_query_source: str | None = None
+        # Session override of the flow's retrieval_language (ENGLISH | NATIVE).
+        # Separate from retrieval_language_mode, which holds the effective value.
+        self.retrieval_language_override: str | None = None
         # Per-step confidence labels emitted by Orchestrator.
         self.orchestration_step_confidence: dict[str, str] = {}
         self.confidence_step_events: list[dict[str, Any]] = []
         self.lang_detection_events: list[dict[str, Any]] = []
         # Final answer confidence derived from selected retrieval evidence.
-        self.answer_confidence_level: str | None = None
-        self.answer_confidence_score: float | None = None
-        self.answer_confidence_summary: str | None = None
-        self.answer_confidence_components: dict[str, float] = {}
+        self.answer_confidence_result: AnswerConfidenceResult | None = None
         self.rerank_low_confidence_fallback_triggered: bool = False
         self.rerank_partial_recall_rescue_triggered: bool = False
         # Preferred language for LLM responses, set interactively via /settings.
@@ -141,12 +169,16 @@ class Session:
         # post_rewrite_query_en: final retrieval query after post-rewrite enforcement
         self.user_language: str | None = None
         self.retrieval_language: str | None = None
+        # ENGLISH (legacy) | NATIVE; set per turn from the orchestration flow.
+        self.retrieval_language_mode: str = "ENGLISH"
         self.orig_translated_query_en: str | None = None
         self.post_rewrite_query_en: str | None = None
 
         # Compatibility aliases.
         self.seed_retrieval_query: str | None = None
         self.final_retrieval_query: str | None = None
+        # Query the cross-encoder scores against; None => use self.query.
+        self.rerank_query: str | None = None
         self.t1_query: str | None = None
         self.rewritten_query: str | None = None
         self.rewrite_language: str | None = None
@@ -207,13 +239,22 @@ class Session:
         # by RAGChatImpl when mark_text is True; consumed by Chatter.
         self.marked_documents: list[tuple[str, bytes]] = []
         # Raw text of every chunk sent to the LLM for this query.  Populated
-        # by RAGChatImpl after chunk selection so that AnswerGrounder can
+        # by RAGChatImpl after chunk selection so that Grounder can
         # match answer sentences back to source content.
         self.chunk_texts_for_grounding: list[str] = []
         # Last generated answer content for this query. Stored so that
         # grounded sentences can be extracted and marked in PDFs after
         # answer generation completes.
         self.last_answer_content: str | None = None
+        # Translated grounding proxy, set when the answer language differs
+        # from the evidence language and the translation was grounded.
+        # Maps displayed answer sentences to their translations so CLI and
+        # PDF highlights match what the evidence check accepted. The
+        # displayed answer is never replaced.
+        self.grounding_proxy_text: str = ""
+        self.grounding_proxy_sentences: dict[str, str] = {}
+        self.summary_grounding: bool = False
+        self.summary_statements: list[SummaryStatement] = []
         # Last chosen chunks for this query. Stored so that orange grounding
         # can map grounded sentences back to their source documents.
         self.last_chosen_chunks: list[Any] = []
@@ -221,13 +262,22 @@ class Session:
     def reset_turn_state(self) -> None:
         """Reset per-turn retrieval/rewrite telemetry and language contract fields."""
         self.force_skip_rewrite = False
+        self.keyword_action_split = None
+        self.keyword_action_query_ids = {}
+        self.keyword_action_scores = {}
+        self.keyword_action_language_queries = {}
+        self.keyword_action_status = "not_run"
+        self.keyword_action_local_needs = 0
+        self.keyword_action_keyword_leg = False
+        self.summary_grounding = False
+        self.summary_statements = []
         self.effective_query = None
         self.effective_query_reason = None
+        self.indexed_query_notices = []
+        self.indexed_query_error = None
+        self.indexed_query_warning_keys = set()
         self.orchestration_step_confidence = {}
-        self.answer_confidence_level = None
-        self.answer_confidence_score = None
-        self.answer_confidence_summary = None
-        self.answer_confidence_components = {}
+        self.answer_confidence_result = None
         self.rerank_low_confidence_fallback_triggered = False
         self.user_language = None
         self.retrieval_language = "english"
@@ -238,6 +288,7 @@ class Session:
         self.rewrite_language = None
         self.post_rewrite_query_en = None
         self.final_retrieval_query = None
+        self.rerank_query = None
         self.t2_query = None
         self.retrieval_top_k_orig_query_en = None
         self.retrieval_top_k_post_rewrite_query_en = None
@@ -274,6 +325,9 @@ class Session:
         # Collect only the attributes you explicitly defined
         keys = [
             "file_name",
+            "summary_length",
+            "summary_temperature",
+            "chunk_overlap",
             "file_path",
             "view_doc",
             "query",

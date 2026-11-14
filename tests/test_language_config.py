@@ -5,6 +5,8 @@ import os
 import sys
 from typing import Any
 
+import pytest
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from Helpers.LanguageConfig import get_active_argos_pairs, get_active_language_codes
@@ -42,6 +44,9 @@ class StubCfg:
             return dict(self._map)
         return default if default is not None else {}
 
+    indirect_list = get_list
+    indirect_dict = get_dict
+
 
 class TestActiveLanguageCodes:
     def test_normalizes_codes_and_names(self) -> None:
@@ -57,6 +62,18 @@ class TestActiveLanguageCodes:
         result = get_active_language_codes(cfg)
 
         assert result == {"en"}
+
+    @pytest.mark.parametrize("accessor", ["indirect_dict", "indirect_list"])
+    def test_config_read_errors_propagate(self, monkeypatch, accessor: str) -> None:
+        cfg = StubCfg()
+
+        def fail(*args: Any, **kwargs: Any) -> Any:
+            raise ValueError("invalid language configuration")
+
+        monkeypatch.setattr(cfg, accessor, fail)
+
+        with pytest.raises(ValueError, match="invalid language configuration"):
+            get_active_language_codes(cfg)
 
 
 class TestActiveArgosPairs:

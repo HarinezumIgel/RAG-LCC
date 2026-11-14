@@ -50,6 +50,8 @@ from Globals.Globals import Globals
 from Gui.Colors import BRIGHT_RED, ORANGE, RED, RESET, VIOLET
 from Gui.PrettyWriter import PrettyWriter
 from Helpers.FileUtils import resolve_cache_root_absolute
+from Helpers.ModelSelection import (apply_provider_slot, provider_overrides,
+                                    resolve_model_entry)
 
 
 def truncate_for_print(content: str, width: int) -> str:
@@ -93,6 +95,33 @@ def align_retriever_sources_for_print(sources: str, width: int = 24) -> str:
         return aligned.ljust(width)
 
     return truncate_for_print(",".join(labels), width).ljust(width)
+
+
+def _page_label_sort_key(page: str) -> tuple[int, int, str]:
+    """Sort Roman page labels first, then Arabic numbers, then other labels."""
+    label = page.strip()
+    upper_label = label.upper()
+    roman_pattern = r"M{0,3}(?:CM|CD|D?C{0,3})(?:XC|XL|L?X{0,3})(?:IX|IV|V?I{0,3})"
+    if upper_label and re.fullmatch(roman_pattern, upper_label):
+        roman_values = {
+            "I": 1,
+            "V": 5,
+            "X": 10,
+            "L": 50,
+            "C": 100,
+            "D": 500,
+            "M": 1000,
+        }
+        value = 0
+        previous = 0
+        for character in reversed(upper_label):
+            current = roman_values[character]
+            value += -current if current < previous else current
+            previous = max(previous, current)
+        return 0, value, label
+    if label.isdecimal():
+        return 1, int(label), label
+    return 2, 0, label.casefold()
 
 
 def _current_uid() -> str:
@@ -307,19 +336,20 @@ class Helpers:
         page_num: Any = md.get("PageNumber")
         url: str = str(md.get("FilePath", "")).strip()
 
-        # Prefer the printed page label (e.g. "iii") over the physical index.
-        label_field: str = self.cfg.get_str(
-            "_METADATA_EXTRACTION.PDF_PAGE_LABEL_FIELD", "", silent=True
-        )
-        page_display: Any = (
-            md.get(label_field) if label_field and md.get(label_field) else page_num
+        from Strategies.Chunkers.ChunkerStrategy import \
+            format_pdf_page_reference
+
+        page_display = (
+            format_pdf_page_reference(int(page_num), str(md.get("PageLabel", "")))
+            if page_num is not None and str(md.get("FileType", "")).lower() == "pdf"
+            else f"Page {page_num}" if page_num is not None else ""
         )
 
         # Build a concise source label placed BEFORE the content.
         if file_name:
             label = (
                 f"(Source: {file_name}"
-                + (f" | Page {page_display}" if page_display is not None else "")
+                + (f" | {page_display}" if page_display else "")
                 + ")"
             )
         elif url:
@@ -329,6 +359,8 @@ class Helpers:
 
         formatted_doc: str = f"{label}\nContent:\n{doc.page_content}\nMetadata:\n"
         for key, value in md.items():
+            if key == "PageNumber" and md.get("PageLabel"):
+                continue
             if key not in self._INTERNAL_METADATA_KEYS:
                 formatted_doc += f"  {key}: {value}\n"
         return formatted_doc
@@ -360,10 +392,6 @@ class Helpers:
         doc_fields: list[str] = [str(k) for k in doc_info_map.keys()] + [
             str(k) for k in generic_map.keys()
         ]
-        label_field: str = self.cfg.get_str(
-            "_METADATA_EXTRACTION.PDF_PAGE_LABEL_FIELD", "", silent=True
-        )
-
         order: list[str] = []
         meta_by_file: dict[str, dict[str, Any]] = {}
         pages_by_file: dict[str, list[str]] = {}
@@ -379,12 +407,12 @@ class Helpers:
                 pages_by_file[file_name] = []
                 order.append(file_name)
             page: Any = (
-                meta.get(label_field)
-                if label_field and meta.get(label_field) not in (None, "")
+                meta.get("PageLabel")
+                if meta.get("PageLabel") not in (None, "")
                 else meta.get("PageNumber")
             )
             if page is not None:
-                page_str = str(page)
+                page_str = str(page).strip()
                 if page_str not in pages_by_file[file_name]:
                     pages_by_file[file_name].append(page_str)
 
@@ -402,7 +430,9 @@ class Helpers:
                     emitted.append(f"    - {field}: {value}")
             pages = pages_by_file.get(file_name, [])
             if pages:
-                emitted.append(f"    - Pages: {', '.join(pages)}")
+                emitted.append(
+                    f"    - Pages: {', '.join(sorted(pages, key=_page_label_sort_key))}"
+                )
 
         if not emitted:
             return ""
@@ -416,10 +446,6 @@ class Helpers:
         """
         if not chosen:
             return ""
-
-        label_field: str = self.cfg.get_str(
-            "_METADATA_EXTRACTION.PDF_PAGE_LABEL_FIELD", "", silent=True
-        )
 
         local_order: list[tuple[str, str]] = []
         local_pages_by_source: dict[tuple[str, str], list[str]] = {}
@@ -443,8 +469,8 @@ class Helpers:
                 local_pages_by_source[source_key] = []
 
             page = (
-                meta.get(label_field)
-                if label_field and meta.get(label_field) not in (None, "")
+                meta.get("PageLabel")
+                if meta.get("PageLabel") not in (None, "")
                 else meta.get("PageNumber")
             )
             if page is None:
@@ -463,7 +489,9 @@ class Helpers:
                     lines.append(f"        - FilePath: {file_path}")
                 pages = local_pages_by_source.get(source_key, [])
                 if pages:
-                    lines.append(f"        - Pages: {', '.join(pages)}")
+                    lines.append(
+                        f"        - Pages: {', '.join(sorted(pages, key=_page_label_sort_key))}"
+                    )
 
         if web_order:
             lines.append(f"- Web sources ({len(web_order)}):")
@@ -831,38 +859,15 @@ class Helpers:
         the HF_HUB_OFFLINE environment variable and normalised
         convenience aliases (model_name, friendly_name, source).
         """
-        if selector.startswith("_ACTIVE"):
-            impl = self.cfg.get_str(selector)
-            role = role or selector[len("_ACTIVE") :]
-        else:
-            impl = selector
-            if role is None:
-                raise ValueError(
-                    "get_model_args expects an _ACTIVE_* selector or an explicit lookup key"
-                )
-        models: dict[str, Any] = self.cfg.get_dict("_MODELS")
-        if impl not in models:
-            raise ValueError(f"Unknown impl: {impl!r} (from {selector!r})")
-        impl_set = models[impl]
-        if role not in impl_set:
-            raise ValueError(f"Role {role!r} not found in impl {impl!r}")
-        entry: dict[str, Any] = dict(impl_set[role])  # shallow copy
-
-        # Normalise common keys for backward compat with callers.
-        # Some LLM roles keep endpoint-specific model names under MODEL_OLLAMA
-        # / MODEL_VLLM, so expose the active endpoint's value as MODEL/model_name.
+        _impl, _role, raw_entry = resolve_model_entry(self.cfg, selector, role)
         endpoint = str(self.cfg.get_str("_ACTIVE_ENDPOINT", "ollama")).lower()
-        if "MODEL_OLLAMA" in entry and "MODEL_VLLM" in entry:
-            selected_model = (
-                entry.get("MODEL_OLLAMA")
-                if endpoint == "ollama"
-                else entry.get("MODEL_VLLM")
-            )
-            entry.setdefault("MODEL", selected_model or entry.get("MODEL", ""))
-            entry.setdefault("model_name", selected_model or entry.get("MODEL", ""))
-        else:
-            entry.setdefault("model_name", entry.get("MODEL", ""))
-
+        # Per-provider values ("OLLAMA": {"MODEL": ...}, "VLLM": {...}) of the
+        # active endpoint override the role-level keys.
+        entry: dict[str, Any] = apply_provider_slot(raw_entry, endpoint)
+        entry.setdefault("model_name", entry.get("MODEL", ""))
+        # Role-level MODEL = Hugging Face id (tokenizer / local weights), even
+        # when the provider slot renames MODEL to a served alias.
+        entry["hf_model_name"] = str(raw_entry.get("MODEL", "") or "")
         entry.setdefault("friendly_name", entry.get("FRIENDLY_NAME", ""))
         entry.setdefault("source", entry.get("SOURCE", ""))
         scoped_hf_api_key = str(entry.get("HF_API_KEY") or "").strip()
@@ -880,10 +885,73 @@ class Helpers:
             entry["revision"] = None
         return entry
 
-    def get_active_endpoint_args(self) -> dict[str, Any]:
-        """Return the active LLM endpoint config for the current runtime selector."""
+    def get_active_endpoint_args(self, model_role: str | None = None) -> dict[str, Any]:
+        """Return the active endpoint config, specialised for one model.
+
+        Starts from the generic provider entry (``_OLLAMA`` / ``_VLLM``). When
+        *model_role* (an ``_ACTIVE_*`` selector) is given, that model's
+        provider slot (``"VLLM": {...}`` / ``"OLLAMA": {...}``) supersedes the
+        generic values, so e.g. a per-model REQUEST_TIMEOUT or BASE_URL wins.
+        MODEL is not copied: it names the model, not the endpoint.
+        """
         endpoint = str(self.cfg.get_str("_ACTIVE_ENDPOINT", "ollama")).lower()
-        return self.get_model_args(endpoint, role=f"_{endpoint.upper()}")
+        args = self.get_model_args(endpoint, role=f"_{endpoint.upper()}")
+        if model_role:
+            _impl, _role, raw_entry = resolve_model_entry(self.cfg, model_role)
+            overrides = provider_overrides(raw_entry, endpoint)
+            overrides.pop("MODEL", None)
+            args.update(overrides)
+        return args
+
+    def embedder_collection_name(self, name: str | None = None) -> str:
+        """Return the collection name with the active embedder appended.
+
+        *name* defaults to COLLECTION (config default or ``--collection``):
+        ``"Test"`` -> ``"Test_embedder_snowflake"`` with ``_ACTIVE_EMBED = "snowflake"``.
+        A collection only works with the embedder it was loaded with, so the
+        suffix keeps collections of different embedders apart. Names that
+        already end with ``_embedder_<impl>`` of any _EMBED model are returned
+        unchanged; an empty name stays empty.
+        """
+        base = str(self.cfg.get_str("COLLECTION", "") if name is None else name).strip()
+        if not base:
+            return ""
+        if self.base_collection_name(base) != base:
+            return base
+        active = str(self.cfg.get_str("_ACTIVE_EMBED", "") or "").strip()
+        return f"{base}_embedder_{active}" if active else base
+
+    def base_collection_name(self, name: str) -> str:
+        """Strip a trailing ``_embedder_<impl>`` of any _EMBED model from *name*.
+
+        Inverse of embedder_collection_name: ``"Test_embedder_snowflake"`` -> ``"Test"``.
+        Used for data shared across embedders, e.g. chat history.
+        """
+        models: dict[str, Any] = self.cfg.get_dict("_MODELS") or {}
+        for impl, roles in models.items():
+            suffix = f"_embedder_{impl}"
+            if isinstance(roles, dict) and "_EMBED" in roles and name.endswith(suffix):
+                return name[: -len(suffix)]
+        return name
+
+    def active_embedder_collections(self, base_dir: str | None = None) -> list[str]:
+        """Sorted collections in _CHROMA_DB_DIR built with the active embedder.
+
+        Only names ending with ``_embedder_<_ACTIVE_EMBED>`` are listed (see
+        embedder_collection_name); hidden dirs and ``*_ChatContext`` stores
+        are skipped.
+        """
+        base_dir = base_dir or self.cfg.get_str("_CHROMA_DB_DIR")
+        active = str(self.cfg.get_str("_ACTIVE_EMBED", "") or "").strip()
+        if not base_dir or not active or not os.path.isdir(base_dir):
+            return []
+        return sorted(
+            name
+            for name in os.listdir(base_dir)
+            if os.path.isdir(os.path.join(base_dir, name))
+            and not name.startswith(".")
+            and name.endswith(f"_embedder_{active}")
+        )
 
     def get_keybert_config(self) -> dict[str, Any]:
         """Return the active _KEY_BERT config dict.

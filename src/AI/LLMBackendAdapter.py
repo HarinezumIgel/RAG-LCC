@@ -20,6 +20,9 @@ class LLMBackendAdapter(ABC):
     """
 
     name: str = "base"
+    # _ACTIVE_* selector of the model being called; its provider slot
+    # overrides the generic endpoint settings.
+    model_role: str | None = None
 
     def __init__(
         self,
@@ -40,6 +43,11 @@ class LLMBackendAdapter(ABC):
         only expose get_model_args().
         """
         if hasattr(self.helpers, "get_active_endpoint_args"):
+            if self.model_role:
+                try:
+                    return self.helpers.get_active_endpoint_args(self.model_role)
+                except (TypeError, ValueError):
+                    pass  # no per-model slot available: use the generic entry
             try:
                 return self.helpers.get_active_endpoint_args()
             except (AttributeError, NotImplementedError, TypeError, ValueError):

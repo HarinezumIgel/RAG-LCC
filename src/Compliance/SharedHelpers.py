@@ -17,6 +17,7 @@ prepare_argos_runtime_for_patch()
 
 from argostranslate import package, translate  # type: ignore[import-untyped]
 
+from Commons.Exceptions import QueryTranslationError
 from Commons.SingletonMixin import SingletonMixin
 from Config.Config import Config
 from Gui.Colors import ORANGE, RED, RESET, YELLOW
@@ -96,8 +97,9 @@ class SharedHelpers(SingletonMixin):
         }
         # compiled regex cache keyed by (pattern_text, flags)
         self.regex_compile_cache: Dict[Tuple[str, int], re.Pattern[str]] = {}
-        # translation cache keyed by (text, target_lang, source_lang)
+        # Translation cache includes the fallback-warning policy.
         self.translation_cache: Dict[Tuple[str, str, str, bool], str] = {}
+        self.query_translation_cache: Dict[Tuple[str, str, str], str] = {}
         # translated wordlist cache keyed by (tuple(wordlist_en), lang)
         self.translated_list_cache: Dict[Tuple[Tuple[str, ...], str], List[str]] = {}
         # Warning dedupe buckets keyed by category.
@@ -432,6 +434,36 @@ class SharedHelpers(SingletonMixin):
     # -------------------------
     # Translation / banlist helpers (cached)
     # -------------------------
+    def translate_query_text(
+        self, text: str, target_lang: str, source_lang: str
+    ) -> str:
+        """Translate an indexed query without the compliance API's text fallback."""
+        source = self.lang_name_to_code.get(source_lang.lower(), source_lang.lower())
+        target = self.lang_name_to_code.get(target_lang.lower(), target_lang.lower())
+        if source == target:
+            return text
+        key = (text, target, source)
+        cached = self.query_translation_cache.get(key)
+        if cached is not None:
+            return cached
+        translator = self._get_translation(source, target, emit_warning=False)
+        if translator is None or source not in self.installed_langs:
+            raise QueryTranslationError(
+                f"No Argos translation pair {source}->{target} installed"
+            )
+        try:
+            translated = translator.translate(text)
+        except Exception as exc:
+            raise QueryTranslationError(
+                f"Argos translation {source}->{target} failed: {exc}"
+            ) from exc
+        if not isinstance(translated, str) or not translated.strip():
+            raise QueryTranslationError(
+                f"Argos translation {source}->{target} returned empty text"
+            )
+        self.query_translation_cache[key] = translated.strip()
+        return translated.strip()
+
     def translate_text(
         self,
         text: str,

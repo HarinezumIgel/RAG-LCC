@@ -20,6 +20,7 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from Compliance.Compliance import Compliance
+from Helpers.ModelSelection import model_selectors
 from Commons.Exceptions import (
     ArgosConsentMissingError,
     ComplianceViolationError,
@@ -97,6 +98,10 @@ class StubConfig:
             return self._overrides[key]
         mapping: dict[str, Any] = {
             "_MODELS": SAMPLE_MODELS,
+            "_ACTIVE_EMBED": "snowflake",
+            "_ACTIVE_LLM": "mistral",
+            "_ACTIVE_LLM_CHK": "mistral",
+            "_ACTIVE_ENDPOINT": "ollama",
             "_FRIENDLY_NAME": "TestApp",
             "_CRITICAL_CONFIG_HASHES": {
                 "Config_Models": "fakehash",
@@ -136,14 +141,20 @@ class StubConfig:
         val = self.get(key, default)
         return bool(val) if val is not None else default
 
-    def get_dict(self, key, default=None):
+    def get_dict(self, key, default=None, *, silent=False):
         return self.get(key, default if default is not None else {})
 
-    def get_list(self, key, default=None):
+    def get_list(self, key, default=None, *, silent=False):
         val = self.get(key, default if default is not None else [])
         return (
             val if isinstance(val, list) else (default if default is not None else [])
         )
+
+    indirect_list = get_list
+    indirect_dict = get_dict
+
+    def indirect_get(self, key, default=None):
+        return self.get(key, default), key
 
     def set(self, key, value, force=False):
         self._overrides[key] = value
@@ -225,13 +236,21 @@ def _build_compliance(
     cfg_overrides: dict[str, Any] | None = None,
     connection_mode: str = "0",
     models_override: dict[str, Any] | None = None,
+    friendly_name: str = "TestApp",
+    active_models: dict[str, str] | None = None,
 ) -> Compliance:
-    """Build a Compliance instance with all deps stubbed, bypassing __init__."""
+    """Build a Compliance instance with all deps stubbed, bypassing __init__.
+
+    ``active_models`` replaces every _ACTIVE_* selector (missing ones = "").
+    """
     c = object.__new__(Compliance)
 
     cfg = StubConfig(cfg_overrides)
     if models_override is not None:
         cfg.set("_MODELS", models_override)
+    if active_models is not None:
+        for selector in model_selectors():
+            cfg.set(selector, active_models.get(selector, ""))
 
     c.cfg = cfg
     c.globalsInstance = StubGlobals()
@@ -240,23 +259,13 @@ def _build_compliance(
     c.fileUtils = StubFileUtils()
     c.logger = StubLogger()
     c.pretty = StubPrettyWriter()
-    c.friendly_name = "TestApp"
+    c.friendly_name = friendly_name
     c.base_dir = "ModelGovernance/licenses"
     c.license_download = connection_mode
     c.acceptance_identity = None
 
-    # Flatten _MODELS exactly as __init__ does (with USED_BY filtering)
-    raw = cfg.get_dict("_MODELS", {})
-    c.models = {}
-    if raw is not None:
-        for impl, roles in raw.items():
-            if isinstance(roles, dict):
-                for role, config in roles.items():
-                    if isinstance(config, dict):
-                        used_by = config.get("USED_BY")
-                        if isinstance(used_by, list) and c.friendly_name not in used_by:
-                            continue
-                        c.models[f"{impl}.{role}"] = config
+    # Select the active models exactly as __init__ does
+    c.models = c._select_active_models()
 
     return c
 
@@ -445,17 +454,17 @@ class TestLicenseSubdirFor:
 # ===================================================================
 
 
-class TestModelFlattening:
-    def test_flattens_to_impl_dot_role(self):
+class TestActiveModelSelection:
+    def test_selects_active_models_as_impl_dot_role(self):
         c = _build_compliance()
         assert "snowflake._EMBED" in c.models
         assert "mistral._LLM" in c.models
         assert "mistral._LLM_CHK" in c.models
         assert "ollama._OLLAMA" in c.models
 
-    def test_flat_keys_count(self):
+    def test_selected_keys_count(self):
         c = _build_compliance()
-        # SAMPLE_MODELS has snowflake._EMBED, mistral._LLM, mistral._LLM_CHK, ollama._OLLAMA
+        # Stub selectors: EMBED=snowflake, LLM=mistral, LLM_CHK=mistral, ENDPOINT=ollama
         assert len(c.models) == 4
 
     def test_config_values_preserved(self):
@@ -464,23 +473,117 @@ class TestModelFlattening:
         assert embed["MODEL"] == "snowflake/snowflake-arctic-embed-l-v2.0"
         assert embed["LICENSE"] == "Apache-2.0"
 
-    def test_empty_models(self):
-        c = _build_compliance(models_override={})
+    def test_no_selectors_selects_nothing(self):
+        c = _build_compliance(active_models={})
         assert c.models == {}
 
-    def test_non_dict_roles_skipped(self):
-        c = _build_compliance(
-            models_override={"impl1": "not_a_dict", "impl2": {"ROLE": {"MODEL": "x"}}}
-        )
-        assert "impl2.ROLE" in c.models
-        assert len(c.models) == 1
+    def test_inactive_roles_of_active_impl_are_ignored(self):
+        c = _build_compliance(active_models={"_ACTIVE_LLM": "mistral"})
+        assert set(c.models) == {"mistral._LLM"}
 
-    def test_non_dict_config_skipped(self):
+    def test_inactive_impls_are_ignored(self):
+        models = {
+            "a": {"_EMBED": {"MODEL": "a"}},
+            "b": {"_EMBED": {"MODEL": "b"}},
+        }
         c = _build_compliance(
-            models_override={"impl": {"ROLE1": "not_a_dict", "ROLE2": {"MODEL": "x"}}}
+            models_override=models, active_models={"_ACTIVE_EMBED": "b"}
         )
-        assert "impl.ROLE2" in c.models
-        assert "impl.ROLE1" not in c.models
+        assert set(c.models) == {"b._EMBED"}
+
+    def test_switching_selector_switches_checked_model(self):
+        models = {
+            "a": {"_EMBED": {"MODEL": "a"}},
+            "b": {"_EMBED": {"MODEL": "b"}},
+        }
+        c1 = _build_compliance(
+            models_override=models, active_models={"_ACTIVE_EMBED": "a"}
+        )
+        c2 = _build_compliance(
+            models_override=models, active_models={"_ACTIVE_EMBED": "b"}
+        )
+        assert set(c1.models) == {"a._EMBED"}
+        assert set(c2.models) == {"b._EMBED"}
+
+    def test_endpoint_selects_provider_role_of_endpoint_impl(self):
+        models = {
+            "vllm": {"_VLLM": {"PROVIDER": "vllm"}, "_OTHER": {"PROVIDER": "x"}},
+            "ollama": {"_OLLAMA": {"PROVIDER": "ollama"}},
+        }
+        c = _build_compliance(
+            models_override=models, active_models={"_ACTIVE_ENDPOINT": "vllm"}
+        )
+        assert set(c.models) == {"vllm._VLLM"}
+
+    def test_used_by_excludes_other_apps(self):
+        models = {"m": {"_LLM": {"MODEL": "m", "USED_BY": ["OtherApp"]}}}
+        c = _build_compliance(
+            models_override=models, active_models={"_ACTIVE_LLM": "m"}
+        )
+        assert c.models == {}
+
+    def test_unknown_active_impl_raises(self):
+        with pytest.raises(
+            ComplianceViolationError, match="_ACTIVE_LLM = 'nope': Unknown impl"
+        ):
+            _build_compliance(active_models={"_ACTIVE_LLM": "nope"})
+
+    def test_missing_role_in_active_impl_raises(self):
+        with pytest.raises(
+            ComplianceViolationError, match="Role '_CROSS' not found in impl 'mistral'"
+        ):
+            _build_compliance(active_models={"_ACTIVE_CROSS": "mistral"})
+
+    def test_real_config_selects_only_active_models(self):
+        import Configuration.Config_Models as cm
+
+        active = {sel: getattr(cm, sel) for sel in model_selectors()}
+        c = _build_compliance(
+            models_override=cm._MODELS, active_models=active, friendly_name="RAGChat"
+        )
+        impls = {key.split(".")[0] for key in c.models}
+        expected = {
+            active[sel]
+            for sel in (
+                "_ACTIVE_LLM",
+                "_ACTIVE_LLM_CHK",
+                "_ACTIVE_LLM_REWRITE_PROMPT",
+                "_ACTIVE_LLM_JUDGE",
+                "_ACTIVE_EMBED",
+                "_ACTIVE_CROSS",
+                "_ACTIVE_ENDPOINT",
+            )
+        }
+        assert impls == expected
+        all_keys = {f"{i}.{r}" for i, roles in cm._MODELS.items() for r in roles}
+        assert set(c.models) < all_keys
+
+    @pytest.mark.parametrize(
+        ("app", "expected"),
+        [
+            ("RAGChat", True),
+            ("RAGChatService", True),
+            ("RAGLoad", False),
+            ("DocClassify", False),
+        ],
+    )
+    def test_judge_license_consent_scoped_to_chat_apps(self, app, expected):
+        from Configuration.Config_Models import _ACTIVE_LLM_JUDGE, _MODELS
+
+        c = _build_compliance(
+            models_override=_MODELS,
+            friendly_name=app,
+            active_models={"_ACTIVE_LLM_JUDGE": _ACTIVE_LLM_JUDGE},
+        )
+        key = f"{_ACTIVE_LLM_JUDGE}._LLM_JUDGE"
+        assert (key in c.models) is expected
+        if expected:
+            judge = c.models[key]
+            assert judge["LICENSE"] == "Apache-2.0"
+            assert judge["LICENSE_URL"] == (
+                "https://huggingface.co/Qwen/Qwen2.5-14B-Instruct/resolve/main/LICENSE"
+            )
+            assert judge["SOURCE"] == "https://huggingface.co/Qwen/Qwen2.5-14B-Instruct"
 
 
 # ===================================================================
@@ -691,28 +794,67 @@ class TestProcessOneAlreadyConsented:
             "license_hash": license_hash,
             "config_hash": "stale_hash_that_no_longer_matches",
             "consent": True,
+            "source": "fetched",
+            "config": {**chk, "REVISION": "old-rev", "API_KEY": "secret-old"},
         }
         meta_path = os.path.join(lic_dir, "license_meta.json")
         c._save_meta(meta_path, meta)
 
-        # Will enter live-fetch path → mock fetch + accept
+        # Offline mode: re-consent uses the stored license, no fetch
         import requests as _req
 
-        class FakeResponse:
-            text = "Apache License Version 2.0"
-            status_code = 200
+        def _no_fetch(*args, **kwargs):
+            raise AssertionError("offline config re-consent must not fetch")
 
-            def raise_for_status(self):
-                pass
-
-        monkeypatch.setattr(_req, "get", lambda *args, **kwargs: FakeResponse())  # type: ignore[reportUnknownParameterType]
+        monkeypatch.setattr(_req, "get", _no_fetch)  # type: ignore[reportUnknownParameterType]
         monkeypatch.setattr("builtins.input", lambda _: "y")  # type: ignore[reportUnknownParameterType]
-        monkeypatch.setattr(
-            "Compliance.Compliance.Compliance._get_tls_fingerprint",
-            lambda self, url: "ab" * 32,  # type: ignore[reportUnknownParameterType]
-        )
+        monkeypatch.setattr(c, "_show_pager", lambda text: None)
 
         c._process_one(c.models, section)
+
+        saved = c._load_meta(meta_path)
+        assert saved["config_hash"] == c.fileUtils.compute_hash(
+            json.dumps(chk, sort_keys=True)
+        )
+        assert saved["config"] == chk
+        assert saved["license_hash"] == license_hash
+        assert saved["source"] == "fetched"
+        assert saved["accepted_by"] == "test-user"
+
+    def test_config_change_declined_raises(self, tmp_path, monkeypatch):
+        c = _build_compliance()
+        c.base_dir = str(tmp_path)
+
+        section = "snowflake._EMBED"
+        chk = c.models[section]
+        lic_dir = os.path.join(str(tmp_path), c._license_subdir_for(chk, section))
+        os.makedirs(lic_dir, exist_ok=True)
+        with open(os.path.join(lic_dir, "LICENSE.txt"), "w") as f:
+            f.write("Apache License Version 2.0")
+        meta = {
+            "license_hash": c._compute_text_hash("Apache License Version 2.0"),
+            "config_hash": "stale",
+            "consent": True,
+            "config": {},
+        }
+        meta_path = os.path.join(lic_dir, "license_meta.json")
+        c._save_meta(meta_path, meta)
+
+        answers = iter(["", "n"])
+        monkeypatch.setattr("builtins.input", lambda _: next(answers))  # type: ignore[reportUnknownParameterType]
+        monkeypatch.setattr(c, "_show_pager", lambda text: None)
+
+        with pytest.raises(ComplianceViolationError):
+            c._process_one(c.models, section)
+        assert c._load_meta(meta_path)["config_hash"] == "stale"
+
+    def test_changed_config_keys_lists_names_only(self):
+        changed = Compliance._changed_config_keys(
+            {"A": 1, "API_KEY": "old", "GONE": True},
+            {"A": 1, "API_KEY": "new", "NEW": 2},
+        )
+        assert changed == ["API_KEY", "GONE", "NEW"]
+        assert Compliance._changed_config_keys(None, {"A": 1}) == []
 
 
 # ===================================================================
@@ -794,12 +936,13 @@ class TestProcessOneLiveFetch:
 class TestProcessOneMissingUrl:
     def test_missing_license_url_raises(self, tmp_path):
         c = _build_compliance(
-            models_override={"stub": {"ROLE": {"MODEL": "x", "FRIENDLY_NAME": "X"}}}
+            models_override={"stub": {"_LLM": {"MODEL": "x", "FRIENDLY_NAME": "X"}}},
+            active_models={"_ACTIVE_LLM": "stub"},
         )
         c.base_dir = str(tmp_path)
 
         with pytest.raises(ComplianceViolationError):
-            c._process_one(c.models, "stub.ROLE")
+            c._process_one(c.models, "stub._LLM")
 
 
 # ===================================================================
@@ -844,6 +987,85 @@ class TestVerify:
         self._setup_consented(c, tmp_path)
         # Should not raise
         c.verify()
+
+    def test_switch_to_previously_consented_model_needs_no_prompt(
+        self, tmp_path, monkeypatch
+    ):
+        models = {
+            "a": {"_EMBED": {"MODEL": "org/a", "LICENSE_URL": "https://x/a"}},
+            "b": {"_EMBED": {"MODEL": "org/b", "LICENSE_URL": "https://x/b"}},
+        }
+        both = _build_compliance(models_override=models, active_models={})
+        both.models = {
+            "a._EMBED": models["a"]["_EMBED"],
+            "b._EMBED": models["b"]["_EMBED"],
+        }
+        self._setup_consented(both, tmp_path)
+
+        c = _build_compliance(
+            models_override=models, active_models={"_ACTIVE_EMBED": "b"}
+        )
+        c.base_dir = str(tmp_path)
+        monkeypatch.setattr(c, "_check_models_config_hash", lambda: None)
+        monkeypatch.setattr(c, "_verify_argos_consent", lambda: None)
+        monkeypatch.setattr(c, "_verify_spacy_consent", lambda: None)
+        monkeypatch.setattr(c, "_update_licenses", lambda: pytest.fail("prompted"))
+        c.verify()
+
+    def test_switch_to_unconsented_model_requires_consent(self, tmp_path, monkeypatch):
+        models = {
+            "a": {"_EMBED": {"MODEL": "org/a", "LICENSE_URL": "https://x/a"}},
+            "b": {"_EMBED": {"MODEL": "org/b", "LICENSE_URL": "https://x/b"}},
+        }
+        only_a = _build_compliance(
+            models_override=models, active_models={"_ACTIVE_EMBED": "a"}
+        )
+        self._setup_consented(only_a, tmp_path)
+
+        c = _build_compliance(
+            models_override=models, active_models={"_ACTIVE_EMBED": "b"}
+        )
+        c.base_dir = str(tmp_path)
+        monkeypatch.setattr(c, "_check_models_config_hash", lambda: None)
+        monkeypatch.setattr(c, "_verify_argos_consent", lambda: None)
+        monkeypatch.setattr(c, "_verify_spacy_consent", lambda: None)
+        update_called: list[bool] = []
+        monkeypatch.setattr(c, "_update_licenses", lambda: update_called.append(True))
+        c.verify()
+        assert update_called == [True]
+
+    def test_inactive_model_config_change_needs_no_prompt(self, tmp_path, monkeypatch):
+        models = {
+            "a": {"_EMBED": {"MODEL": "org/a", "LICENSE_URL": "https://x/a"}},
+            "b": {"_EMBED": {"MODEL": "org/b", "LICENSE_URL": "https://x/b"}},
+        }
+        c = _build_compliance(
+            models_override=models, active_models={"_ACTIVE_EMBED": "a"}
+        )
+        self._setup_consented(c, tmp_path)
+        models["b"]["_EMBED"]["REVISION"] = "changed"
+        c.base_dir = str(tmp_path)
+        monkeypatch.setattr(c, "_check_models_config_hash", lambda: None)
+        monkeypatch.setattr(c, "_verify_argos_consent", lambda: None)
+        monkeypatch.setattr(c, "_verify_spacy_consent", lambda: None)
+        monkeypatch.setattr(c, "_update_licenses", lambda: pytest.fail("prompted"))
+        c.verify()
+
+    def test_active_model_config_change_requires_consent(self, tmp_path, monkeypatch):
+        models = {"a": {"_EMBED": {"MODEL": "org/a", "LICENSE_URL": "https://x/a"}}}
+        c = _build_compliance(
+            models_override=models, active_models={"_ACTIVE_EMBED": "a"}
+        )
+        self._setup_consented(c, tmp_path)
+        models["a"]["_EMBED"]["REVISION"] = "changed"
+        c.base_dir = str(tmp_path)
+        monkeypatch.setattr(c, "_check_models_config_hash", lambda: None)
+        monkeypatch.setattr(c, "_verify_argos_consent", lambda: None)
+        monkeypatch.setattr(c, "_verify_spacy_consent", lambda: None)
+        update_called: list[bool] = []
+        monkeypatch.setattr(c, "_update_licenses", lambda: update_called.append(True))
+        c.verify()
+        assert update_called == [True]
 
     def test_missing_license_triggers_update(self, tmp_path, monkeypatch):
         c = _build_compliance()

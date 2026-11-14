@@ -56,7 +56,8 @@ class CommandProcessor:
         # 1) SETTINGS loop
         # ——————————————
         self.hist.load(
-            f"{self.session.collection_name}_{self.session.chat_name}", "Settings"
+            HistoryManager.key(self.session.collection_name, self.session.chat_name),
+            "Settings",
         )
         while True:
             raw = self.hist.prompt(" 🛠️  >").strip()
@@ -66,27 +67,34 @@ class CommandProcessor:
             cmds = self.queryParts.handle(raw)
             if not cmds:
                 print(
-                    f"{ORANGE}    That was not a valid command. help? or ↵ to enter query.\n{RESET}"
+                    f"{ORANGE}    That was not a valid command. help? or show? or ↵ to enter query.\n{RESET}"
                 )
             else:
                 for c in cmds:
                     self.queryParts._apply(c)  # type: ignore[reportPrivateUsage]
             self.hist.save(
-                f"{self.session.collection_name}_{self.session.chat_name}", "Settings"
+                HistoryManager.key(
+                    self.session.collection_name, self.session.chat_name
+                ),
+                "Settings",
             )
         # ——————————————
         # 2) FINAL QUERY
         # ——————————————
         self.hist.load(
-            f"{self.session.collection_name}_{self.session.chat_name}", "Query"
+            HistoryManager.key(self.session.collection_name, self.session.chat_name),
+            "Query",
         )
         rewrite_hint = (
-            f"  · type {BOLD}new: your question{RESET}{ORANGE} to start a new topic"
+            f"type {BOLD}new: your question{RESET}{ORANGE} to start a new topic  · "
             if self.session.use_chat_context
             else ""
         )
         print(
-            f"{ORANGE}b: back to settings / ↵ to enter query / ↵↵ to quit RAGChat{rewrite_hint}{RESET}"
+            f"{ORANGE}{rewrite_hint}type {BOLD}summarize: [file name or path]{RESET}{ORANGE} "
+            f"(alias: summary:) to summarize a file (no argument: pinned document; "
+            f"no pin: open the path picker)"
+            f"  · b: back to settings / ↵ to enter query / ↵↵ to quit RAGChat{RESET}"
         )
         web_mode = str(os.environ.get("WEB_SEARCH_MODE", "0")).strip().lower()
         web_active = self.session.web_search and web_mode == "1"
@@ -103,16 +111,11 @@ class CommandProcessor:
         # File/path filter and metadata filter are independent notices.
         file_prefix = ""
         if self.session.file_name or self.session.file_path:
-            if self.session.file_path_select == "path":
-                file_prefix = (
-                    f"{TURQUOISE}{BOLD}🔍 Path filter ON: "
-                    f"{self.session.file_path}{RESET}  "
-                )
-            else:
-                file_prefix = (
-                    f"{TURQUOISE}{BOLD}🔍 File filter ON: "
-                    f"{self.session.file_name}{RESET}  "
-                )
+            pinned = self.session.file_path or self.session.file_name
+            file_prefix = (
+                f"{TURQUOISE}{BOLD}🔍 Pinned document (chat and summarize): "
+                f"{pinned}{RESET}  "
+            )
         meta_prefix = ""
         if self.session.metadata_filters:
             pairs = "  ".join(
@@ -127,10 +130,11 @@ class CommandProcessor:
         ).strip()
         print()
         self.hist.save(
-            f"{self.session.collection_name}_{self.session.chat_name}", "Query"
+            HistoryManager.key(self.session.collection_name, self.session.chat_name),
+            "Query",
         )
 
-        if query.lower() == "b":
+        if query.lower() in ("b", "b:"):
             return self.configure_and_query()
 
         self.session.query = query

@@ -39,7 +39,7 @@ If the context is entirely empty or absolutely irrelevant to the query, you MUST
 EXACTLY these two lines and NOTHING else — no metadata, no explanation, no rephrasing:
 
 I couldn't find relevant information to answer your query.
-Try increasing retriever_k*, drag top_k slider to the right and lower threshold* (* These are additional parameters in Controls side bar).
+Try starting a new topic with `new:`, switching to a different collection, or adjusting your session parameters.
 
 Do NOT alter, summarize, or add to those two lines.
 
@@ -52,11 +52,13 @@ IMPORTANT: If the context above is entirely empty or absolutely irrelevant to th
 
 When the context does contain a direct answer:
   • Cite direct evidence from the context.
-  • At the end, list only the metadata fields you used:
+  • Return the answer as Markdown, not HTML or a fenced block containing Markdown.
+  • When the query requests a table, use a Markdown table with a header and separator row.
+  • At the end, put source metadata in a separate section headed exactly "### Sources".
+    List only the metadata fields you used:
      - FileName
      - FilePath
      - PageNumber (if available)
-  • Pretty-format your output using Markdown.
 
 Query:
 {input}
@@ -92,9 +94,11 @@ OPENWEBUI_THREAD_POOL_WORKERS = 2  # ThreadPoolExecutor max_workers for chatter.
 # -----------------------------------------------------------------------------
 SHOW_CLI_LIKE_ALGO_RESULTS = True
 
-# Keep service behavior aligned with pre-refactor retrieval orchestration.
-_ACTIVE_ORCHESTRATION_FLOW = "THOROUGH_QUERY_REWRITE"
-_DEFAULT_ORCHESTRATION_FLOW = _ACTIVE_ORCHESTRATION_FLOW
+# Default orchestration flow is inherited from
+# Config_Orchestrator._DEFAULT_ORCHESTRATION_FLOW (single source of truth for
+# CLI and service). Uncomment to use a different default for the service only;
+# per-request "orchestrator_flow" still overrides either value.
+# _DEFAULT_ORCHESTRATION_FLOW = "ENGLISH_ALL_MULTILEG"
 
 # -----------------------------------------------------------------------------
 # Document-serving service (in-memory token store)

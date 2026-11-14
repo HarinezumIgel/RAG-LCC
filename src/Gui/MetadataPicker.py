@@ -16,6 +16,7 @@ inquirer: Any = _inquirer
 
 from Commons.SingletonMixin import SingletonMixin
 from Config.Config import Config
+from Gui.Picker import RETURN_LABEL, PickerCancelled, pick_value
 from Gui.PrettyWriter import PrettyWriter
 from Helpers.ChromaDBHelper import ChromaDBHelper
 
@@ -85,7 +86,8 @@ class MetadataPicker(SingletonMixin):
             Choice(key, name=f"{key}  ({len(values)} value(s))")
             for key, values in sorted(fields.items())
         ]
-        selected_keys: list[str] = (
+        key_choices.append(Choice(None, name=RETURN_LABEL))
+        selected_keys: list[str | None] = (
             inquirer.checkbox(
                 message="Select metadata fields to filter on:",
                 choices=key_choices,
@@ -93,14 +95,19 @@ class MetadataPicker(SingletonMixin):
             ).execute()
             or []
         )
-        if not selected_keys:
+        if not selected_keys or None in selected_keys:
             return current
 
         result: dict[str, str] = dict(current)
-        for key in selected_keys:
-            value = self._pick_value(key, sorted(fields[key]), current.get(key))
-            if value:
-                result[key] = value
+        try:
+            for key in selected_keys:
+                if key is None:
+                    continue
+                value = self._pick_value(key, sorted(fields[key]), current.get(key))
+                if value:
+                    result[key] = value
+        except PickerCancelled:
+            return current
         return result
 
     def _pick_value(
@@ -108,11 +115,12 @@ class MetadataPicker(SingletonMixin):
     ) -> "str | None":
         choices = [Choice(v, name=v) for v in values]
         choices.append(Choice(_CUSTOM, name="⌨  type a custom value"))
-        picked: str = inquirer.select(
+        picked: str = pick_value(
+            inquirer,
             message=f"Value for '{key}':",
             choices=choices,
             default=default if default in values else None,
-        ).execute()
+        )
         if picked == _CUSTOM:
             picked = inquirer.text(message=f"Enter value for '{key}':").execute()
         picked = (picked or "").strip()

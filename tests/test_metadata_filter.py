@@ -80,6 +80,75 @@ class TestMetadataBlock:
         assert "Author: Jane" in md
         assert "Pages: i" in md  # printed label preferred over physical number
 
+    def test_sorts_roman_and_arabic_page_labels(self, helpers):
+        labels = [
+            "4",
+            "8",
+            "74",
+            "60",
+            "72",
+            "52",
+            "58",
+            "10",
+            "24",
+            "56",
+            "107",
+            "iv",
+            "70",
+            "76",
+            "80",
+            "18",
+            "22",
+            "66",
+            "1",
+            "78",
+            "ii",
+            "6",
+            "105",
+            "38",
+            "20",
+            "40",
+            "108",
+            "110",
+            "99",
+            "102",
+            "100",
+            "62",
+            "28",
+            "57",
+            "109",
+            "61",
+            "59",
+            "14",
+            "63",
+            "23",
+            "86",
+            "i",
+            "77",
+            "13",
+            "101",
+            "103",
+        ]
+        docs = [
+            _make_doc(
+                {
+                    "FileName": "a.pdf",
+                    "PageNumber": index,
+                    "PageLabel": label,
+                }
+            )
+            for index, label in enumerate(labels, start=1)
+        ]
+
+        md = helpers.build_document_metadata_md(docs)
+
+        assert (
+            "Pages: i, ii, iv, 1, 4, 6, 8, 10, 13, 14, 18, 20, 22, 23, 24, "
+            "28, 38, 40, 52, 56, 57, 58, 59, 60, 61, 62, 63, 66, 70, 72, "
+            "74, 76, 77, 78, 80, 86, 99, 100, 101, 102, 103, 105, 107, "
+            "108, 109, 110"
+        ) in md
+
     def test_empty_attributes_skipped(self, helpers):
         docs = [
             _make_doc(

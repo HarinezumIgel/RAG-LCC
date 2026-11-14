@@ -20,7 +20,7 @@ import os
 
 from Compliance.path_validation import validate_absolute_path
 
-_VERSION = "v0.5.2.1/1547 2026-10-12"
+_VERSION = "v0.5.2.1/1645 2026-11-14"
 
 # -----------------------------------------------------------------------------
 # Adjust these hashes when you changed any of these files:
@@ -142,13 +142,14 @@ _ALLOWED_DEBUG_LEVELS = {
     "Prompt Check Input": 31,
     # Full retrieved chunk text + metadata (file, chunk_id, hash, scores).
     "Chunk Content": 32,
-    # Answer grounding: per-chunk sentence matches, snippet counts, marker type.
+    # Answer grounding: translated answer text (or no-translation-needed status),
+    # per-chunk sentence matches, snippet counts, marker type.
     "Grounding": 33,
     "Algos": 40,  # Scorer internals, masker, accumulator, keyword extraction
     "Components": 55,  # Synonyms detail, argostranslate, transformers, URL logging
     "Chat Prompt": 60,  # Full prompt text sent to LLM
     "Extracted Content": 70,  # Raw document content from classification
-    "Ollama Response": 80,  # Raw Ollama request/response detail
+    "LLM Response": 80,  # Raw LLM request/response detail
     "Streaming": 100,  # Per-chunk raw streaming output
 }
 
@@ -175,16 +176,6 @@ LOG_FILE = r"compliance.log"
 # Performance event log — set False to suppress all perf_event output.
 # When True, start/stop timestamps are written to logs/Performance/perf.log.
 PERFORMANCE_LOGGING = True
-
-# Confidence signal for retrieval/answer pipeline tuning.
-# - enabled: master switch for confidence step/event logging.
-# - emit_pretty: print confidence lines to terminal/service logs.
-# - csv_enabled: persist one CSV row per turn for offline analysis.
-_CONFIDENCE_LOGGING: dict[str, bool] = {
-    "enabled": True,
-    "emit_pretty": True,
-    "csv_enabled": True,
-}
 
 _LOG_DIRECTORY = os.path.join(_ABSOLUTE_PATH, "logs")
 
@@ -247,15 +238,10 @@ ANSWER_DISPLAY = {
 # DO NOT EDIT: Shared absolute-path guard wrappers used by other config modules.
 # Keep these wrappers stable to preserve import/call contracts.
 # -----------------------------------------------------------------------------
-def _validate_absolute_path(path_value: str, caller_name: str) -> str:
-    """Validate absolute path values for Config_Global wrappers."""
+def require_absolute_path(caller_name: str) -> str:
+    """Return validated `_ABSOLUTE_PATH` for dependent config modules."""
     return validate_absolute_path(
-        path_value,
+        _ABSOLUTE_PATH,
         "Config_Global._ABSOLUTE_PATH",
         caller_name,
     )
-
-
-def require_absolute_path(caller_name: str) -> str:
-    """Return validated `_ABSOLUTE_PATH` for dependent config modules."""
-    return _validate_absolute_path(_ABSOLUTE_PATH, caller_name)

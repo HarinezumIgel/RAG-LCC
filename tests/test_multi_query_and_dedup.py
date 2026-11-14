@@ -7,7 +7,7 @@
 Tests for RAGChatImpl._generate_alternate_queries and _remove_similar_chunks.
 
 Heavy transitive imports (torch, sentence-transformers, chromadb) are avoided
-via source-extraction: only the two methods are compiled from RAGChatImpl.py
+via source-extraction: only the two methods are compiled from their responsibility classes
 source and bound to lightweight shell objects.
 """
 
@@ -158,7 +158,13 @@ def _configure_llm(response: str = "", raise_exc: Exception | None = None) -> No
 
 
 def _extract_method(method_name: str) -> str:
-    with open(_RAG_IMPL_SRC, encoding="utf-8") as fh:
+    filename = (
+        "QueryNormalizer.py"
+        if method_name == "_generate_alternate_queries"
+        else "RetrievalContextBuilder.py"
+    )
+    path = os.path.join(os.path.dirname(_RAG_IMPL_SRC), filename)
+    with open(path, encoding="utf-8") as fh:
         source = fh.read()
     # The signature may be single-line `def foo(self, ...)` or multi-line
     # `def foo(\n    self, ...)`.  Match from `def name(` to the next method /
@@ -168,7 +174,7 @@ def _extract_method(method_name: str) -> str:
         source,
         re.DOTALL,
     )
-    assert match, f"Could not find {method_name}() in RAGChatImpl.py"
+    assert match, f"Could not find {method_name}() in {filename}"
     return textwrap.dedent(match.group(1))
 
 
@@ -362,6 +368,19 @@ class TestGenerateAlternateQueries:
             "name the mammals",
             "list of mammals",
         ]
+
+    def test_duplicate_and_original_variants_are_omitted(self):
+        _configure_llm(json.dumps(["query", "alternative", " ALTERNATIVE ", "other"]))
+        shell = _GenShell()
+        assert shell._generate_alternate_queries("query", StubSession()) == [
+            "alternative",
+            "other",
+        ]
+
+    def test_non_string_variant_is_not_coerced_to_a_query(self):
+        _configure_llm(json.dumps(["alternative", {"query": "bad"}]))
+        shell = _GenShell()
+        assert shell._generate_alternate_queries("query", StubSession()) == []
 
     def test_capped_to_num_variants(self):
         _configure_llm('["v1","v2","v3","v4","v5"]')

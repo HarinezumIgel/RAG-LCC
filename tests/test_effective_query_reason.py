@@ -17,6 +17,7 @@ Covers:
 import os
 import sys
 from typing import Any
+from unittest.mock import Mock
 
 import pytest
 
@@ -30,6 +31,16 @@ from Globals.Session import Session
 
 
 class TestSessionDefaults:
+    def test_indexed_query_feedback_resets_between_turns(self):
+        session = Session()
+        session.indexed_query_notices = ["French skipped"]
+        session.indexed_query_error = "Translation failed"
+        session.indexed_query_warning_keys = {("alternative", "fr")}
+        session.reset_turn_state()
+        assert session.indexed_query_notices == []
+        assert session.indexed_query_error is None
+        assert session.indexed_query_warning_keys == set()
+
     def test_effective_query_reason_defaults_to_none(self):
         s = Session()
         assert s.effective_query_reason is None
@@ -157,6 +168,7 @@ class _StubSession:
         self.web_search = False
         self.debug_level = 0
         self.debug_mode = "ge"
+        self.is_service = False
         self.ollamaTopLevelParams: dict | None = None
 
 
@@ -172,6 +184,12 @@ class _RagStub:
         self._effective_q = effective_q
         self._reason = reason
         self._clarification = clarification
+
+    @staticmethod
+    def parse_chat_command(query: str) -> tuple[str, str]:
+        from Chat.RAGChatImpl import RAGChatImpl
+
+        return RAGChatImpl.parse_chat_command(query)
 
     def retrieve(self, session: _StubSession) -> tuple[str, int]:
         session.effective_query = self._effective_q
@@ -192,6 +210,7 @@ def _make_chatter(rag_stub: _RagStub) -> Any:
     chatter.rag = rag_stub
     chatter.cfg = _StubConfig()
     chatter.pretty = _StubPretty()
+    chatter.pretty_always = chatter.pretty
     chatter.confidence_logger = _StubConfidenceLogger()
     # terminal_line_size is a @property — it reads from self.cfg (returns 160 when None)
     return chatter
@@ -203,6 +222,47 @@ def _make_chatter(rag_stub: _RagStub) -> Any:
 
 
 class TestChatterClarificationNotice:
+    def test_clarification_does_not_emit_splitter_turn_summary(self):
+        chatter = _make_chatter(_RagStub(None, None, "Please clarify."))
+        chatter.pretty_always = Mock()
+        session = _StubSession("question")
+
+        success, _ = chatter.run(session)
+
+        assert success is True
+        chatter.pretty_always.write.assert_not_called()
+
+    def test_incomplete_coverage_notice_is_returned_and_streamed_without_rewrite(self):
+        session = _StubSession("question")
+        session.indexed_query_notices = [
+            "French indexed searches skipped; coverage is incomplete."
+        ]
+        success, message, chunks = self._call(session, _RagStub(None, None, "Clarify?"))
+        assert success is True
+        assert "Retrieval coverage notice" in message
+        assert "French indexed searches skipped" in message
+        assert "French indexed searches skipped" in chunks[0]
+
+    def test_translation_error_stops_before_generation_and_reports_language(self):
+        from Commons.Exceptions import QueryTranslationError
+
+        class _FailingRag:
+            parse_chat_command = staticmethod(_RagStub.parse_chat_command)
+
+            def retrieve(self, session):
+                raise QueryTranslationError(
+                    "Cannot translate the query for document language 'fr'."
+                )
+
+        chatter = _make_chatter(_FailingRag())
+        session = _StubSession("question")
+        chunks = []
+        success, message = chatter.run(session, apiChunkHandler=chunks.append)
+        assert success is False
+        assert message == session.indexed_query_error
+        assert "Retrieval stopped" in message and "'fr'" in message
+        assert chunks == [message]
+
     def _call(
         self, session: _StubSession, rag_stub: _RagStub
     ) -> tuple[bool, str | None, list[str]]:
@@ -310,3 +370,47 @@ class TestChatterClarificationNotice:
         assert "\U0001f50d *Translated query:" in msg
         assert "Is it igel?" in msg
         assert "Please clarify" in msg
+
+
+@pytest.mark.parametrize("clarification", ["Please clarify.", None])
+def test_cli_repeats_original_query_before_no_results_answer_at_debug_zero(
+    capsys: pytest.CaptureFixture[str],
+    clarification: str | None,
+):
+    from Gui.Colors import RESET, YELLOW
+
+    class RewritingRag(_RagStub):
+        def retrieve(self, session: _StubSession) -> tuple[str, int]:
+            session.query = "rewritten query"
+            return super().retrieve(session)
+
+    chatter = _make_chatter(RewritingRag("rewritten query", "rewritten", clarification))
+    chatter.cfg.get_dict = lambda _key: {}
+    session = _StubSession("What do they eat?")
+    for query in ("What do they eat?", "Where do they live?"):
+        session.query = query
+        success, answer = chatter.run(session)
+        output = capsys.readouterr().out
+        assert success and answer
+        assert output.startswith(f"{YELLOW}Original query: {query}{RESET}\n")
+        assert "rewritten query" not in output.splitlines()[0]
+        assert "💬" in output.splitlines()[1]
+
+
+@pytest.mark.parametrize("service", [False, True])
+def test_service_answer_does_not_repeat_cli_query(
+    capsys: pytest.CaptureFixture[str],
+    service: bool,
+):
+    chatter = _make_chatter(_RagStub(None, None, "Please clarify."))
+    session = _StubSession("private original query")
+    session.is_service = service
+    chunks: list[str] = []
+    callback = None if service else chunks.append
+
+    success, answer = chatter.run(session, apiChunkHandler=callback)
+
+    assert success and answer == "❔  Please clarify."
+    assert "Original query:" not in capsys.readouterr().out
+    if callback:
+        assert chunks == [answer]

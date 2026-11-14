@@ -337,6 +337,17 @@ class HFDownloader:
         )
         model_args = self.helpers.get_model_args(selector)
         model_name = model_args["model_name"]
+        if (
+            model_type in ("_EMBED", "_CROSS")
+            and self.cfg.get_str("_ACTIVE_ENDPOINT", "ollama").strip().lower() == "vllm"
+        ):
+            message = (
+                f"{key}: using remote vLLM model; skipping local weight download. "
+                "Model licence verification remains required by Compliance."
+            )
+            self.logger.info(message)
+            self.pretty.write("I", "HF Download", message)
+            return {"execution": "remote", "model_id": model_name}
         revision = model_args.get("revision")
         friendly = model_args.get("friendly_name")
         source = model_args.get("source")

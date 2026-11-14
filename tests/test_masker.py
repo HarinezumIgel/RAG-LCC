@@ -4,6 +4,8 @@ Tests for Masker.mask() — pure regex-based text masking with pre-set _specs.
 """
 
 import re
+from unittest.mock import Mock
+
 import pytest
 import sys, os
 
@@ -17,9 +19,12 @@ from Algos.Masker import Masker
 
 
 class StubConfig:
+    def __init__(self, debug_level=0):
+        self.debug_level = debug_level
+
     def get(self, key, default=None):
         mapping = {
-            "DEBUG_LEVEL": 0,
+            "DEBUG_LEVEL": self.debug_level,
             "_LEET_MAP": {},
             "_CONFUSABLES": {},
         }
@@ -56,11 +61,11 @@ def reset_masker():
     Masker._reset()
 
 
-def _make_masker(specs, apply_masking=True):
+def _make_masker(specs, apply_masking=True, debug_level=0):
     """Build a Masker singleton with injected _specs, bypassing config-driven init."""
     m = Masker.__new__(Masker)
     m._initialized = True
-    m.cfg = StubConfig()
+    m.cfg = StubConfig(debug_level)
     m.pretty = StubPrettyWriter()
     m.apply_masking = apply_masking
     # _specs is a list of (compiled_pattern, replacement_string, rule_name)
@@ -74,6 +79,50 @@ def _make_masker(specs, apply_masking=True):
 
 
 class TestMask:
+    @pytest.mark.parametrize(
+        ("debug_level", "visible"),
+        [
+            (0, False),
+            (30, False),
+            (39, False),
+            (40, True),
+            (41, True),
+            ("is 30", False),
+            ("is 40", True),
+            ("is 41", False),
+        ],
+    )
+    @pytest.mark.parametrize(
+        ("text", "expected", "matches"),
+        [("hello world", "hello world", 0), ("secret", "***", 1)],
+    )
+    def test_match_summary_respects_debug_level(
+        self, debug_level, visible, text, expected, matches, monkeypatch
+    ):
+        specs = [(re.compile(r"secret"), "***", "secret")]
+        m = _make_masker(specs, debug_level=debug_level)
+        write = Mock()
+        monkeypatch.setattr(m.pretty, "write", write)
+
+        assert m.mask(text) == expected
+
+        summaries = [
+            call.args
+            for call in write.call_args_list
+            if "rules produced matches and were replaced" in call.args[2]
+        ]
+        assert summaries == (
+            [
+                (
+                    "I",
+                    "Masker",
+                    f"{matches} of 1 rules produced matches and were replaced",
+                )
+            ]
+            if visible
+            else []
+        )
+
     def test_no_specs_returns_unchanged(self):
         m = _make_masker([])
         assert m.mask("hello world") == "hello world"

@@ -76,8 +76,9 @@ Rules:
 - Use different wording, synonyms, and sentence structure across variants.
 - Each variant must be a complete, self-contained retrieval query.
 - Do NOT add new facts, entities, or assumptions not present in the original query.
+- Preserve negation, constraints, quantities, units, dates, names, and literal identifiers.
 - Do NOT produce meta-descriptor queries (e.g. "What are the characteristics of X?").
-- Keep all variants in English retrieval language.
+- Keep all variants in the retrieval language: {output_language}.
 
 Output ONLY a JSON array of strings. No commentary, no markdown, no preamble.
 Example for num_variants=3: ["variant one", "variant two", "variant three"]

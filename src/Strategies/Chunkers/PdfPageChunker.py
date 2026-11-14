@@ -2,11 +2,15 @@ import os
 import re
 from typing import Any
 
+from tqdm import tqdm
+
 from Config.Config import Config
 from Gui.Colors import ORANGE
 from Helpers.FileUtils import FileUtils
 from Helpers.Helpers import Helpers
 from Helpers.PerfLogger import PerfLogger
+from Strategies.Chunkers.ChunkerStrategy import (ChunkResult,
+                                                 format_pdf_page_reference)
 from Strategies.Chunkers.PageBasedChunker import PageBasedChunker, PageData
 
 # Strict roman-numeral validator (non-empty), case-insensitive.
@@ -28,12 +32,13 @@ class PdfPageChunker(PageBasedChunker):
 
     Re-reads the PDF via *pypdf* to recover hard page boundaries that are
     lost during the flat text extraction in the loading pipeline.  Each
-    PDF page becomes one chunk (prefixed ``"Page N"``).  Pages whose word
+    PDF page becomes one chunk with its printed label and physical index.
+    Pages whose word
     count exceeds ``MAX_CHUNK_SIZE`` are split with
     ``RecursiveCharacterTextSplitter`` and each sub-chunk keeps the prefix.
 
-    An integer ``PageNumber`` field is added to every chunk's metadata so
-    callers can trace a chunk back to its source page.
+    ``PageNumber`` always stores the physical index for grounding; ``PageLabel``
+    stores the printed label, or an empty string when it is unknown.
 
     For non-PDF file types (or when the file is inaccessible / password-
     protected) the chunker logs a warning and falls back to treating the
@@ -55,18 +60,6 @@ class PdfPageChunker(PageBasedChunker):
             chunker_name=chunker_name,
         )
         self.perf_logger: PerfLogger = PerfLogger()
-        # Field name under which the printed page label (e.g. "iii", "1") is
-        # stored. Empty string disables label capture (legacy "Page N" only).
-        enabled: bool = self._cfg.get_bool(
-            "_METADATA_EXTRACTION.ENABLED", False, silent=True
-        )
-        self._page_label_field: str = (
-            self._cfg.get_str(
-                "_METADATA_EXTRACTION.PDF_PAGE_LABEL_FIELD", "", silent=True
-            )
-            if enabled
-            else ""
-        )
         # Best-effort: recover the *printed* page number (e.g. roman front
         # matter) from the page's footer/header text when the PDF's own
         # /PageLabels metadata does not declare it.
@@ -84,7 +77,15 @@ class PdfPageChunker(PageBasedChunker):
     ) -> list[PageData]:
         if file_type == "pdf" and file_path and os.path.isfile(file_path):
             try:
-                return self._parse_pdf(file_path)
+                pages = self._parse_pdf(file_path)
+                if pages or not content.strip():
+                    return pages
+                self._pretty.write(
+                    "W",
+                    "PdfPageChunker",
+                    f"No PDF text layer — using extracted/OCR content. File: {file_path}",
+                    color=ORANGE,
+                )
             except Exception as exc:
                 self._pretty.write(
                     "W",
@@ -114,15 +115,18 @@ class PdfPageChunker(PageBasedChunker):
         return [(1, "", text)] if text else []
 
     def _format_prefix(self, num: int, title: str) -> str:
-        # ``title`` carries the printed page label when capture is enabled.
-        label: str = title if (self._page_label_field and title) else str(num)
-        return f"Page {label}"
+        return format_pdf_page_reference(num, title)
 
     def _extra_meta_for_page(self, num: int, title: str) -> dict[str, Any]:
-        meta: dict[str, Any] = {"PageNumber": num}
-        if self._page_label_field and title:
-            meta[self._page_label_field] = title
-        return meta
+        return {"PageNumber": num, "PageLabel": title}
+
+    def chunk_prose(self, content: str, metadata: dict[str, Any]) -> ChunkResult:
+        number = int(metadata.get("PageNumber", 1))
+        title = str(metadata.get("PageLabel", ""))
+        return (
+            self._to_docs(self._pages_to_texts([(number, title, content)]), metadata),
+            None,
+        )
 
     # -- PDF parser ---------------------------------------------------------
 
@@ -146,12 +150,25 @@ class PdfPageChunker(PageBasedChunker):
         labels: list[str] = self._page_labels(reader)
         pages: list[PageData] = []
 
-        for i, page in enumerate(reader.pages, start=1):
+        for i, page in enumerate(
+            tqdm(
+                reader.pages,
+                desc="PDF page extraction",
+                unit="page",
+                dynamic_ncols=True,
+                bar_format="{desc}: {n_fmt} {unit} [{elapsed}, {rate_fmt}]",
+            ),
+            start=1,
+        ):
             text = (page.extract_text() or "").strip()
             if text:
                 raw_label: str = labels[i - 1] if i - 1 < len(labels) else ""
                 printed: str = (
-                    self._detect_printed_label(text) if self._detect_labels else ""
+                    self._detect_printed_label(
+                        text, self._page_token_re, self._page_of_re
+                    )
+                    if self._detect_labels
+                    else ""
                 )
                 # Prefer the printed page number recovered from the page text;
                 # otherwise use the PDF's declared label only when it differs
@@ -166,8 +183,15 @@ class PdfPageChunker(PageBasedChunker):
 
         return pages
 
-    def _detect_printed_label(self, text: str) -> str:
+    @staticmethod
+    def _detect_printed_label(
+        text: str,
+        page_token_re: re.Pattern[str] | None = None,
+        page_of_re: re.Pattern[str] | None = None,
+    ) -> str:
         """Recover a printed page number from a page's footer/header lines."""
+        if page_token_re is None or page_of_re is None:
+            page_token_re, page_of_re = PdfPageChunker._build_page_patterns("")
         lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
         if not lines:
             return ""
@@ -177,29 +201,22 @@ class PdfPageChunker(PageBasedChunker):
         if len(lines) > 1:
             candidates += [lines[-2], lines[1]]
         for line in candidates:
-            label = self._match_page_token(line)
-            if label:
-                return label
+            match = (
+                page_of_re.search(line)
+                or page_token_re.match(line)
+                or _PAGE_TRAILING_RE.search(line)
+                or _PAGE_LEADING_RE.match(line)
+            )
+            if match:
+                token = match.group(1)
+                if token.isdigit():
+                    return token
+                if _ROMAN_RE.match(token):
+                    return token.lower()
         return ""
 
-    def _match_page_token(self, line: str) -> str:
-        """Return the page label if *line* is (essentially) a page number."""
-        m = (
-            self._page_of_re.search(line)
-            or self._page_token_re.match(line)
-            or _PAGE_TRAILING_RE.search(line)
-            or _PAGE_LEADING_RE.match(line)
-        )
-        if not m:
-            return ""
-        token = m.group(1)
-        if token.isdigit():
-            return token
-        return token.lower() if _ROMAN_RE.match(token) else ""
-
-    def _build_page_patterns(
-        self, lang: str
-    ) -> "tuple[re.Pattern[str], re.Pattern[str]]":
+    @staticmethod
+    def _build_page_patterns(lang: str) -> "tuple[re.Pattern[str], re.Pattern[str]]":
         """Build the "page N" / "page N of M" matchers for the document language.
 
         The English keywords are always included; for non-English documents the
@@ -238,7 +255,8 @@ class PdfPageChunker(PageBasedChunker):
         )
         return page_token_re, page_of_re
 
-    def _page_labels(self, reader: Any) -> list[str]:
+    @staticmethod
+    def _page_labels(reader: Any) -> list[str]:
         """Return the PDF's printed page labels as strings, or ``[]`` if absent."""
         try:
             raw = list(getattr(reader, "page_labels", []) or [])

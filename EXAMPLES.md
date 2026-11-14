@@ -61,6 +61,34 @@ Since only 2 algorithms scored above their threshold (depth check) and only 2 di
 
 ## 💬 RAGChat
 
+### One request containing retrieval and an action
+
+After selecting your flow, set `keyword_action_splitter=true` and `debug=30`.
+Then enter:
+
+```text
+Where do hedgehogs live and what do they eat? Create a list of things they eat.
+```
+
+Local searches cover habitat and diet separately, plus a BM25 keyword search.
+The final instruction preserves both the habitat answer and the food list.
+Web search, if enabled, still receives the existing normalized full request.
+The final Standard-30 debug line reports executed local legs, selected context
+count and the answer outcome; it is not part of the answer or history.
+
+For comparisons, use a multi-document strategy, for example `DEFAULT`, and ask:
+
+```text
+Compare the RAM capacity and expansion slots of the Lenovo P620 and product X.
+Use a table and identify any information missing from the retrieved evidence.
+```
+
+Replace `product X` with an actual product represented in your collection.
+Evidence is searched per subject/dimension and selected using existing ranking
+and context limits, without per-query quotas. This is bounded RAG decomposition,
+not an autonomous agent. The existing
+`summarize:` command still uses the selected indexed document's full-summary path.
+
 `RAGChat` maintains a session with customizable retrieval parameters and per-collection chat context.
 This is an example with standard debug output at `debug=30` (Standard level). It allows to identify problems and adjust the session parameters for better query results.
 
@@ -500,13 +528,11 @@ The bottom of the image shows the files matched the SQLite query.
 
 ## 🌐 RAGChatService
 
-`RAGChatService` serves the same RAG pipeline as `RAGChat` over an OpenAI-compatible REST API (`POST /v1/chat/completions`), allowing [OpenWebUI](https://github.com/open-webui/open-webui) (or any OpenAI-compatible client) to chat with your local document collections. Chroma DB collections loaded by `RAGLoad` appear as selectable models in the OpenWebUI model dropdown.
+`RAGChatService` exposes the RAG pipeline through a limited OpenAI-compatible REST API (`POST /v1/chat/completions`), allowing [OpenWebUI](https://github.com/open-webui/open-webui) and other clients that support the implemented subset to chat with document collections. Chroma DB collections loaded by `RAGLoad` appear as selectable models in the OpenWebUI model dropdown. See [API limitations](LEGAL.md#-no-openai--openwebui-feature-parity).
 
 ![OpenWebUI chatting with AnimalDocs via RAGChatService](Documentation/Pics/OpenWebUIAnimalDocsFromRAG-LCC.jpg)
 
 Additional parameters such as the retrieval strategy can be passed to RAG‑LCC through the OpenWebUI **Controls** sidebar as custom parameters (e.g. `_ACTIVE_CHUNK_SELECT_STRATEGY`, `retriever_k`, `chroma_threshold`). This lets you tune retrieval behaviour per query without restarting the service.
-
-![Custom parameters in OpenWebUI Controls sidebar](Documentation/Pics/CustomParameter.jpg)
 
 > **Tip — switching collections in OpenWebUI:**
 > OpenWebUI routes every message to whichever model (= collection) is selected in the dropdown. It does **not** parse previous answers to determine the target collection.

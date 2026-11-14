@@ -27,9 +27,11 @@ from typing import Any, Sequence
 
 from VisualMarkers.VisualMarker import ChunkSnippet, VisualMarker
 
-# Strip a leading "Page N" header inserted by PdfPageChunker before
-# searching the actual page text. The label may be numeric or roman ("iii").
-_PAGE_PREFIX_RX = re.compile(r"^\s*Page\s+\S+\s*\n+", re.IGNORECASE)
+# Ingestion prefixes are context, not source text to highlight.
+_PAGE_PREFIX_RX = re.compile(
+    r"^\s*(?:Page\s+\S+|PDF page \d+)\s*\n+",
+    re.IGNORECASE,
+)
 # Minimum length of a fallback line/sentence to bother searching for.
 _MIN_FRAGMENT_LEN = 12
 # Used to normalise text before token comparison.
@@ -114,6 +116,9 @@ class PdfVisualMarker(VisualMarker):
         finally:
             _pypdf_logger.setLevel(_prior_level)
         hex_color = _parse_color(highlight_color)
+        highlights = 0
+        highlighted_pages: set[int] = set()
+        unmatched = 0
 
         with pdfplumber.open(io.BytesIO(pdf_bytes)) as plumber_doc:
             num_pages = len(plumber_doc.pages)
@@ -145,7 +150,18 @@ class PdfVisualMarker(VisualMarker):
                     page_cache[idx] = data
                 return data
 
-            for snippet in snippets:
+            def _has_page(snippet: ChunkSnippet) -> bool:
+                return (
+                    snippet.page_number is not None
+                    and 1 <= snippet.page_number <= num_pages
+                )
+
+            # Known-page snippets first: they fill page_cache, so page-less
+            # snippets can probe already-extracted pages before scanning the rest.
+            ordered = [s for s in snippets if _has_page(s)] + [
+                s for s in snippets if not _has_page(s)
+            ]
+            for snippet in ordered:
                 text = _PAGE_PREFIX_RX.sub("", snippet.text or "").strip()
                 if not text:
                     continue
@@ -155,13 +171,14 @@ class PdfVisualMarker(VisualMarker):
                     _parse_color(snippet.color) if snippet.color else hex_color
                 )
 
-                if (
-                    snippet.page_number is not None
-                    and 1 <= snippet.page_number <= num_pages
-                ):
+                if snippet.page_number is not None and _has_page(snippet):
                     page_indices = [snippet.page_number - 1]
                 else:
-                    page_indices = list(range(num_pages))
+                    cached = sorted(page_cache)
+                    cached_set = set(cached)
+                    page_indices = cached + [
+                        i for i in range(num_pages) if i not in cached_set
+                    ]
 
                 for page_idx in page_indices:
                     page_height, words, flat, first_index = _page_data(page_idx)
@@ -189,13 +206,40 @@ class PdfVisualMarker(VisualMarker):
                                     highlight_color=snippet_color,
                                 ),
                             )
+                            highlights += 1
+                            highlighted_pages.add(page_idx + 1)
                         break  # found on this page; stop scanning
                 else:
+                    unmatched += 1
                     # Exhausted all pages without a match — log so grounding debug can diagnose it.
                     logging.getLogger(__name__).debug(
                         "PDF text not found in %s: %r", source_path.name, text[:120]
                     )
 
+        logger = logging.getLogger(__name__)
+        if highlights:
+            logger.info(
+                "PDF marking %s: %d new highlights on physical pages %s; %d unmatched snippets",
+                source_path.name,
+                highlights,
+                ", ".join(str(page) for page in sorted(highlighted_pages)),
+                unmatched,
+            )
+        else:
+            logger.warning(
+                "PDF marking %s: zero new highlights; %d unmatched snippets",
+                source_path.name,
+                unmatched,
+            )
+        # Preserve diagnostics across the subprocess boundary without re-reading page trees.
+        writer.add_metadata(
+            {
+                "/RAGHighlightCount": str(highlights),
+                "/RAGHighlightPages": ", ".join(
+                    str(page) for page in sorted(highlighted_pages)
+                ),
+            }
+        )
         buf = io.BytesIO()
         writer.write(buf)
         return buf.getvalue()
@@ -317,12 +361,40 @@ def _match_word_sequence(
         if [t for t, _ in flat[start : start + n]] == target:
             involved = sorted({wi for _, wi in flat[start : start + n]})
             ws = [words[wi] for wi in involved]
-            x0 = min(w["x0"] for w in ws)
-            x1 = max(w["x1"] for w in ws)
-            # Convert pdfplumber top-left origin → PDF bottom-left origin.
-            y0 = page_height - max(w["bottom"] for w in ws)
-            y1 = page_height - min(w["top"] for w in ws)
-            rects.append((x0, y0, x1, y1))
+            # Keep each line (and separated column) in its own rectangle.
+            lines: list[list[dict[str, Any]]] = []
+            for word in sorted(ws, key=lambda w: (w["top"], w["x0"])):
+                for line in lines:
+                    anchor = line[0]
+                    tolerance = (
+                        min(
+                            word["bottom"] - word["top"],
+                            anchor["bottom"] - anchor["top"],
+                        )
+                        * 0.4
+                    )
+                    if abs(word["top"] - anchor["top"]) <= tolerance:
+                        line.append(word)
+                        break
+                else:
+                    lines.append([word])
+            for line in lines:
+                segments: list[list[dict[str, Any]]] = []
+                for word in sorted(line, key=lambda w: w["x0"]):
+                    if not segments or word["x0"] - segments[-1][-1]["x1"] > 2 * (
+                        word["bottom"] - word["top"]
+                    ):
+                        segments.append([])
+                    segments[-1].append(word)
+                for segment in segments:
+                    rects.append(
+                        (
+                            min(w["x0"] for w in segment),
+                            page_height - max(w["bottom"] for w in segment),
+                            max(w["x1"] for w in segment),
+                            page_height - min(w["top"] for w in segment),
+                        )
+                    )
             last_end = start + n
     return rects
 

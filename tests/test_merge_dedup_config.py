@@ -5,7 +5,7 @@
 """Tests for configurable dedup scope in RAGChatImpl._merge_and_select.
 
 Heavy transitive imports are avoided via source extraction. Only
-_merge_and_select is compiled from RAGChatImpl source and bound to a shell
+_merge_and_select is compiled from RetrievalContextBuilder source and bound to a shell
 object with lightweight stubs.
 """
 
@@ -19,7 +19,7 @@ from typing import Any, cast
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 _RAG_IMPL_SRC = os.path.join(
-    os.path.dirname(__file__), "..", "src", "Chat", "RAGChatImpl.py"
+    os.path.dirname(__file__), "..", "src", "Chat", "RetrievalContextBuilder.py"
 )
 
 
@@ -31,7 +31,7 @@ def _extract_method(method_name: str) -> str:
         source,
         re.DOTALL,
     )
-    assert match, f"Could not find {method_name}() in RAGChatImpl.py"
+    assert match, f"Could not find {method_name}() in RetrievalContextBuilder.py"
     return textwrap.dedent(match.group(1))
 
 

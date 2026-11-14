@@ -160,20 +160,12 @@ class BM25Retriever(SingletonMixin, RetrieverBase):
         return [token.lower() for token in re.findall(r"[A-Za-z0-9]+", text) if token]
 
     def _fallback_tokenize(self, text: str) -> List[str]:
-        """Tokenize with shared helper when available, otherwise local fallback."""
-        shared_tokenize = getattr(self._shared, "tokenize", None)
-        if callable(shared_tokenize):
-            try:
-                token_values = shared_tokenize(text)
-                if isinstance(token_values, list):
-                    return [
-                        str(token).strip().lower()
-                        for token in token_values
-                        if str(token).strip()
-                    ]
-            except Exception:
-                pass
-        return self._basic_tokenize(text)
+        """Tokenize through the shared helper when spaCy is not used."""
+        return [
+            token.strip().lower()
+            for token in self._shared.tokenize(text)
+            if token.strip()
+        ]
 
     def _normalize_language_code(self, language: str | None) -> str:
         text = str(language or "").strip().lower()
@@ -263,8 +255,7 @@ class BM25Retriever(SingletonMixin, RetrieverBase):
         )
 
     def _load_spacy_model(self, model_name: str, *, language: str | None = None) -> Any:
-        loader = getattr(self, "_spacy_loader", None)
-        if not callable(loader):
+        if self._spacy_loader is None:
             self._warn_spacy_model_unavailable(
                 model_name,
                 language=language,
@@ -272,7 +263,7 @@ class BM25Retriever(SingletonMixin, RetrieverBase):
             )
             return None
         try:
-            return loader(model_name)
+            return self._spacy_loader(model_name)
         except OSError:
             self._warn_spacy_model_unavailable(
                 model_name,
@@ -531,6 +522,7 @@ class BM25Retriever(SingletonMixin, RetrieverBase):
         self.remove_by_filepath(file_path)
         if ids:
             self.add_chunks(ids, texts, metas)
+        self._data.doc_count_at_build = collection.count()
         self.persist(bm25_dir)
 
     # ------------------------------------------------------------------
@@ -819,6 +811,9 @@ class BM25Retriever(SingletonMixin, RetrieverBase):
         return os.path.join(bm25_directory, self.INDEX_FILENAME)
 
     def _persist(self, path: str) -> None:
+        self.pretty.write(
+            "I", "BM25", f"Persisting BM25 index to {path} ({self._data.N} chunks)"
+        )
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with gzip.open(path, "wb") as f:
             pickle.dump(self._data, f, protocol=pickle.HIGHEST_PROTOCOL)

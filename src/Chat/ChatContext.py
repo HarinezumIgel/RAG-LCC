@@ -76,7 +76,7 @@ class ChatContext(SingletonMixin):
         # get client and collection
         self.client, self.collection = (
             self.chromaDBHelper.get_chroma_client_and_collection(
-                persist_dir, self.collection_name
+                persist_dir, self.collection_name, stamp=True
             )
         )
 

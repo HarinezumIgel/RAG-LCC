@@ -14,6 +14,7 @@ InquirerPy
 json5
 keybert
 langchain-chroma
+langchain_chroma
 langchain_core
 langchain_huggingface
 langchain_text_splitters
@@ -43,6 +44,8 @@ sentencepiece>=0.2.1
 spacy
 starlette
 torch
+tqdm
+transformers
 uvicorn
 wcwidth
 xlsxwriter

@@ -1,75 +1,43 @@
-# RAGChat.py Pipeline Flow
+# RAGChat Pipeline Flow
+
+The interactive entry point is [`RAGChat.py`](../../src/Apps/RAGChat.py).
+Retrieval is orchestrated by [`Orchestrator.py`](../../src/Orchestrator/Orchestrator.py);
+answer generation and post-processing are handled by
+[`Chatter.py`](../../src/Chat/Chatter.py). Steps vary by session and flow.
 
 ```mermaid
 flowchart TD
-    A["**1. Startup & Init**\nStartupCommons.common_start()\nHFDownloader.download()\nembedding + cross-encoder models"]
-    B["**2. Core Components**\nGlobals, Logger, Informer\nAIHelpers, LLMCaller\nModelOutputAdapter, Masker"]
-    C["**3. Chat Components**\nSession, Chatter, TokenBudget\nCommandProcessor, QueryParts\nRAGChatImpl"]
-    D["**4. Strategy Defaults**\nQueryParts.applyStrategyDefaults()\nNARROW / MEDIUM / WIDE"]
-    E["**5. Intro Display**\nInformer.inform()\nPrettyWriter.write()"]
-
-    F["**6. Settings Loop**\nCommandProcessor.configure_and_query()\nQueryParts.handle() + _apply()\nSet strategy, threshold, k_value, etc."]
-    G["**7. User Query Input**\nUser enters query\nHistoryManager.save()"]
-
-    H["**8. Prompt Filter Chain**\nAIHelpers.check_user_prompt_with_filter_chain()\nStage = PROMPT_CHECK"]
-    I["**9. Ensemble Checks on Query**\n• RegexDetector\n• JaccardScorer\n• CosineScorer\n• LevenshteinScorer\n• BM25Scorer\n• KeyBertWordDetect"]
-    J{"**10. Passed Filter Chain?**\nAccumulator.add_results()"}
-    K["**11. LLM Guard**\naiHelpers.check_prompt_with_llm_guard()\nLLM_CHK model evaluation"]
-    L{"**12. Guard Passed?**\nis_not_compliant_prompt()"}
-
-    M["**13. Retrieval Mode & Store Init**\nRAGChatImpl._set_vector_store()\nsearch_mode: VECTOR / BM25 / GRAPH / ALL\nChromaDBHelper · BM25Retriever · GraphRetriever"]
-    N["**14. Multi-Store Retrieval**\n• Vector: Chroma.similarity_search_with_score()\n• BM25: BM25Retriever.query()\n• Graph: GraphRetriever.query()\n• Web: WebRetriever.query() (if web_search!='local_only')\n  + WebPreFilter.bm25_prefilter() (if bm25_pre_filter &gt; 0)\n  + WebPreFilter.cosine_prefilter() (if cosine_pre_filter &gt; 0)\nRRF fusion (multi-store modes)"]
-    O["**15. Annotate Chunks**\nChatContext.annotate_chunks()\nAdd position metadata"]
-    P["**16. Chat Context Merge**\n(optional)\nChatContext.merge_with_chunks()"]
-    Q["**17. Reranking**\n(optional)\nCrossEncoder.predict()\nmin-max + web_weight scaling\nweb docs scored on metadata[snippet]"]
-    R["**18. Chunk Selection**\nChunkSelectionService.select_chunks()\nNarrow/Medium/Wide selector\nApply threshold + window cap"]
-    MMARK["**18a. Visual Marking** *(mark_text=True)*\n_mark_sources()\nHighlight chunks in source docs — in memory\nStores session.marked_documents\n+ chunk_texts_for_grounding"]
-    S["**19. Format Context**\nHelpers.format_document()\nJoin chunks with \\n\\n"]
-
-    T["**20. Prompt Assembly**\nPromptTemplate.from_template()\nprompt.format(context, input)"]
-    U["**21. Token Budgeting**\nTokenBudget.get_context_limit()\ncompute_dynamic_max_tokens()\nBuild ollama_options dict"]
-    V["**22. LLM Invocation**\nLLMCaller.call_llm()\nOllama streaming request\nModelOutputAdapter.interpret()"]
-    W["**23. Display Answer**\nground_answer_cli() *(mark_text)*\nChatter.print_llm_answer()\nWord-wrapped with ANSI grounding highlights"]
-
-    X["**24. Answer Filter Chain**\nAIHelpers.run_ensemble_checks()\nStage = PIPELINE_CHECK\nEmbed answer → ensemble"]
-    Y{"**25. Answer Passed Filter Chain?**"}
-
-    Z["**26. Post-Processing**\nChatContext.add_chat_turn()\nMasker.mask(answer)\nReturn (True, content)"]
-    MVIEW["**27. Marked Docs Viewer** *(mark_text=True)*\n_open_marked_documents()\nOSC 8 hyperlinks or numbered picker\nLazy write: only selected file touches disk"]
-    AA["**28. Loop Back**\nReturn to Settings Loop\nfor next query"]
-
-    BLOCK1(["Blocked\nLog HUMAN_REVIEW CSV"])
-    BLOCK2(["Blocked\nLog Guard rejection"])
-    BLOCK3(["Blocked\nLog PIPELINE_CHECK CSV"])
-
-    A --> B --> C --> D --> E --> F --> G
-    G --> H --> I --> J
-    J -- "Fail" --> BLOCK1
-    J -- "Pass" --> K --> L
-    L -- "Fail" --> BLOCK2
-    L -- "Pass" --> M --> N --> O --> P --> Q --> R --> S
-    R --> MMARK --> S --> T --> U --> V --> W --> X --> Y
-    Y -- "Fail" --> BLOCK3
-    Y -- "Pass" --> Z --> MVIEW --> AA
-    AA -.-> F
-    BLOCK1 -.-> F
-    BLOCK2 -.-> F
-    BLOCK3 -.-> F
-
-    style A fill:#4a86c8,color:#fff
-    style H fill:#e74c3c,color:#fff
-    style I fill:#e74c3c,color:#fff
-    style K fill:#e74c3c,color:#fff
-    style N fill:#e8a838,color:#fff
-    style Q fill:#e8a838,color:#fff
-    style R fill:#e8a838,color:#fff
-    style T fill:#7b68ee,color:#fff
-    style V fill:#d4ac0d,color:#fff
-    style X fill:#e74c3c,color:#fff
-    style Z fill:#27ae60,color:#fff
-    style BLOCK1 fill:#c0392b,color:#fff
-    style BLOCK2 fill:#c0392b,color:#fff
-    style BLOCK3 fill:#c0392b,color:#fff
-    style MMARK fill:#16a085,color:#fff
-    style MVIEW fill:#16a085,color:#fff
+    A["Initialize models, session, strategy and flow"] --> B["Settings and query input"]
+    B --> C{"Summarize command?"}
+    C -- Yes --> SUM["Select document and run summary path<br/>answer checks still apply"]
+    C -- No --> D["Apply file and metadata filters"]
+    D --> E{"Prompt compliance and LLM guard pass?"}
+    E -- No --> REJECT["Log rejection and return to prompt"]
+    E -- Yes --> F["Chatter invokes retrieval orchestrator"]
+    F --> G["Resolve flow, vector store and session context"]
+    G --> H["Normalize query: language, optional translation,<br/>history rewrite and alternate queries"]
+    H --> I{"Retrieval and intent gates pass?"}
+    I -- No --> NORESULT["Clarification or no-result response"]
+    I -- Yes --> J["Retrieve enabled local candidates:<br/>vector, BM25, graph and regex"]
+    I -- Yes --> K["Optionally retrieve web candidates"]
+    J --> L["Merge candidates, remove duplicates<br/>and optionally rerank"]
+    K --> L
+    L --> M["Select chunks; apply configured<br/>low-score fallback and low-recall rescue"]
+    M --> N{"Context available?"}
+    N -- No --> NORESULT
+    N -- Yes --> O["Build prompt and token budget; call LLM"]
+    O --> P{"Answer compliance passes?"}
+    P -- No --> BLOCK["Block answer"]
+    P -- Yes --> Q["Optional grounding and marked sources;<br/>confidence, masking, history and display"]
+    SUM --> B
+    REJECT --> B
+    NORESULT --> B
+    BLOCK --> B
+    Q --> B
+    classDef check fill:#fff3cd,stroke:#8a6d3b,color:#111
+    classDef process fill:#e6f1ff,stroke:#2870a8,color:#111
+    classDef result fill:#e2f5e6,stroke:#33834a,color:#111
+    class C,E,I,N,P check
+    class A,B,D,F,G,H,J,K,L,M,O process
+    class SUM,REJECT,NORESULT,BLOCK,Q result
 ```

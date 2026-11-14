@@ -166,7 +166,7 @@ class ClassifyStrategy(SingletonMixin, ProcessingStrategy):
         self.fileType: str
         self.doc: Dict[str, Any]
         self.converted_obj: Any
-        self.embedder: HuggingFaceEmbeddings = self.models_cache.get_hf_embeddings()
+        self.embedder = self.models_cache.get_hf_embeddings()
         self.tokenBudget: TokenBudget = TokenBudget()
         self.use_exclusions: bool = self.cfg.get_bool("USE_EXCLUSIONS")
 
@@ -358,9 +358,9 @@ class ClassifyStrategy(SingletonMixin, ProcessingStrategy):
         cleaned_text: str,
         language: str,
         embeddings: list[float],
-    ) -> tuple[bool, list[dict[str, Any]]]:
+    ) -> tuple[bool, list[Any]]:
         human_review: bool
-        phrase_table: list[dict[str, Any]]
+        phrase_table: list[Any]
         human_review, _, phrase_table = self.aiHelpers.run_ensemble_checks(
             cleaned_text,
             language,
@@ -401,6 +401,7 @@ class ClassifyStrategy(SingletonMixin, ProcessingStrategy):
             on_chunk=handler,
             streaming=self.is_streaming,
             stage="Run classification prompt",
+            purpose="Classification",
         )
 
         if isinstance(llm_result, dict) and "error" in llm_result:  # type: ignore[reportUnnecessaryIsInstance]
@@ -422,7 +423,14 @@ class ClassifyStrategy(SingletonMixin, ProcessingStrategy):
         )
 
     def _persist_not_ok_result(self) -> None:
-        self.doc["meta"].update({"Temperature": f"{self.temperature_ext}"})
+        self.doc["meta"].update(
+            {
+                "Status": "NOT_OK",
+                "Stage": "Classification",
+                "Time": datetime.now().isoformat(),
+                "Temperature": f"{self.temperature_ext}",
+            }
+        )
         self.globalsInstance.add_failed_doc(self.doc["meta"])
         meta = self.doc.get("meta", {})
         self.csvWriter.write_json2csv(meta, "NOT_OK")
@@ -485,6 +493,12 @@ class ClassifyStrategy(SingletonMixin, ProcessingStrategy):
 
         answer: ModelOutput = self._run_classification_llm(formatted_keywords)
         if answer.is_json is False:
+            self.pretty.write(
+                "E",
+                "Classification",
+                f"Response from {self.llm_model} was not a JSON object; "
+                "document marked NOT_OK. Enable DEBUG_LEVEL ge 80 to inspect the response.",
+            )
             self._persist_not_ok_result()
             return
 

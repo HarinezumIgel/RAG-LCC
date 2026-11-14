@@ -2,6 +2,13 @@
 Compliance module
 
 Manages per-model LICENSE.txt + license_meta.json storage under ModelGovernance/licenses/.
+Only the models selected by the _ACTIVE_* slots in Config_Models.py (and whose
+USED_BY includes the running app) are checked:
+- switching a selector to another model requires consent unless that model
+  was consented before (with the same config);
+- changing the _MODELS config of an active model requires consent again;
+- inactive models in _MODELS are ignored.
+
 Key operations:
 - _update_licenses(): fetch licenses from sources with consent tracking
 - verify(): ensure licenses exist and hashes match
@@ -62,6 +69,7 @@ from Gui.Colors import BRIGHT_BLUE, CYAN, GREEN, ORANGE, RED, RESET, YELLOW
 from Gui.PrettyWriter import PrettyWriter
 from Helpers.FileUtils import FileUtils
 from Helpers.LanguageConfig import get_active_argos_pairs
+from Helpers.ModelSelection import active_model_entries
 from Scripts.SpacyLanguageModelsImpl import configured_spacy_models
 
 _CONSENT_DISCLAIMER = (
@@ -92,21 +100,9 @@ class Compliance(SingletonMixin):
         self.logger: logging.Logger = self.helpers.setup_logger("Compliance")
         self.pretty: PrettyWriter = pretty or PrettyWriter(always_on=True)
         self.cfg: Config = cfg or Config()
-        # Flatten _MODELS to {"impl.role": config}, filtered by USED_BY
-        raw_models: dict[str, Any] = self.cfg.get_dict("_MODELS", {})
-        self.models: dict[str, dict[str, Any]] = {}
         self.friendly_name: str = self.cfg.get_str("_FRIENDLY_NAME")
-        for _impl, _roles in raw_models.items():
-            if isinstance(_roles, dict):
-                for _role, _config in cast(dict[str, Any], _roles).items():
-                    if isinstance(_config, dict):
-                        used_by: Any = cast(dict[str, Any], _config).get("USED_BY")
-                        if (
-                            isinstance(used_by, list)
-                            and self.friendly_name not in used_by
-                        ):
-                            continue
-                        self.models[f"{_impl}.{_role}"] = cast(dict[str, Any], _config)
+        # Only the models selected by the _ACTIVE_* slots need consent.
+        self.models: dict[str, dict[str, Any]] = self._select_active_models()
         self.license_download: str | None = os.environ.get("LICENSE_DOWNLOAD", "0")
 
         self.base_dir: str = "ModelGovernance/licenses"
@@ -122,6 +118,41 @@ class Compliance(SingletonMixin):
                 self.sharedHelpers.capture_acceptance_identity_once()
             )
         return self.acceptance_identity
+
+    def _select_active_models(self) -> dict[str, dict[str, Any]]:
+        """Return ``{"impl.role": config}`` for the models selected by _ACTIVE_*.
+
+        Uses the same selector lookup as the runtime (Helpers.ModelSelection),
+        so Config_Models.py stays the single source of truth.  Inactive
+        alternatives in _MODELS are ignored, and entries whose USED_BY list
+        excludes the running app are skipped.
+        """
+        try:
+            active = active_model_entries(self.cfg)
+        except ValueError as exc:
+            msg = f"Invalid active model selection in Config_Models.py: {exc}"
+            self.logger.error(msg)
+            self.pretty.write("E", "License", msg, color=RED)
+            raise ComplianceViolationError(msg) from exc
+        selected: dict[str, dict[str, Any]] = {}
+        for key, config in active.items():
+            used_by: Any = config.get("USED_BY")
+            if isinstance(used_by, list) and self.friendly_name not in used_by:
+                continue
+            selected[key] = config
+        return selected
+
+    @staticmethod
+    def _changed_config_keys(old_config: Any, new_config: dict[str, Any]) -> list[str]:
+        """Names of keys whose value differs (values are not shown: may be secrets)."""
+        if not isinstance(old_config, dict):
+            return []
+        old = cast(dict[str, Any], old_config)
+        return sorted(
+            key
+            for key in set(old) | set(new_config)
+            if old.get(key) != new_config.get(key)
+        )
 
     # Helper methods for IO, license fetching, and pager display
     # ---------------------------
@@ -371,6 +402,20 @@ class Compliance(SingletonMixin):
                 else:
                     return
 
+            # 2b) Offline mode, license text unchanged, consent given, but the
+            # model's config in Config_Models.py changed → re-consent with the
+            # stored license text (no internet needed).
+            if (
+                self.license_download != "1"
+                and disk_hash == meta.get("license_hash")
+                and meta.get("consent") is True
+                and config_hash != meta.get("config_hash")
+            ):
+                self._reconsent_config_change(
+                    section, label, chk, disk_text, meta, meta_path, identity, now
+                )
+                return
+
         # 3) otherwise → live-fetch
 
         msg = f"{label}: fetching LICENSE from {url}"
@@ -406,6 +451,10 @@ class Compliance(SingletonMixin):
             print(
                 f"  License text identical: {textHashIdentical}  |  Config identical: {config_hashIdentical}"
             )
+            if not config_hashIdentical:
+                changed = self._changed_config_keys(prev_meta.get("config"), chk)
+                if changed:
+                    print(f"  Changed config keys: {', '.join(changed)}")
             print(f"{'=' * 70}{RESET}\n")
             input("Press Enter to review the license ...")
             self._show_pager(new_text)
@@ -456,6 +505,70 @@ class Compliance(SingletonMixin):
         }
         self._save_meta(meta_path, meta)
         msg = f"{section}: Online license accepted and stored"
+        self.logger.info(msg)
+        self.pretty.write("O", "License", msg)
+        self.pretty.write(
+            "O",
+            "License",
+            f"License consent recorded in {meta_path}",
+            color=GREEN,
+        )
+
+    def _reconsent_config_change(
+        self,
+        section: str,
+        label: str,
+        chk: dict[str, Any],
+        license_text: str,
+        prev_meta: dict[str, Any],
+        meta_path: str,
+        identity: dict[str, object],
+        now: str,
+    ) -> None:
+        """Ask again for consent because an active model's config changed."""
+        changed = self._changed_config_keys(prev_meta.get("config"), chk)
+        msg = f"{section}: configuration changed in Config_Models.py; consent required"
+        self.logger.warning(msg)
+        self.pretty.write("W", "License", msg, color=YELLOW)
+        print(f"{BRIGHT_BLUE}\n{'=' * 70}")
+        print(f"  Model License Consent  (configuration changed)")
+        print(f"  Section: {section}  /  {label}")
+        print(f"  License text identical: True  |  Config identical: False")
+        if changed:
+            print(f"  Changed config keys: {', '.join(changed)}")
+        print(f"{'=' * 70}{RESET}\n")
+        input("Press Enter to review the license ...")
+        self._show_pager(license_text)
+        print(
+            f"\n{ORANGE}>>>> Do you accept this license for [{section}] [{label}]"
+            f" with the changed configuration?{RESET}"
+        )
+        ans = input("Accept? [y/N] ").strip().lower()
+        if ans != "y":
+            msg = f"Aborting. License for {section} not accepted"
+            self.logger.error(msg)
+            self.pretty.write("E", "License", msg, color=RED)
+            raise ComplianceViolationError(msg)
+
+        meta = dict(prev_meta)
+        meta.update(
+            {
+                "model_id": chk.get("MODEL") or chk.get("PROVIDER") or section,
+                "accepted_by": identity.get("accepted_by"),
+                "accepted_by_source": identity.get("accepted_by_source"),
+                "accepted_by_verified": identity.get("accepted_by_verified", False),
+                "accepted_at": now,
+                "host": identity.get("host"),
+                "pid": identity.get("pid"),
+                "config_hash": self.fileUtils.compute_hash(
+                    json.dumps(chk, sort_keys=True)
+                ),
+                "consent": True,
+                "config": chk,
+            }
+        )
+        self._save_meta(meta_path, meta)
+        msg = f"{section}: license accepted for changed configuration"
         self.logger.info(msg)
         self.pretty.write("O", "License", msg)
         self.pretty.write(
@@ -618,6 +731,12 @@ class Compliance(SingletonMixin):
         """
         need_update: bool = False
         self._check_models_config_hash()
+
+        msg = "Checking license consent for active models: " + (
+            ", ".join(self.models) or "none"
+        )
+        self.logger.info(msg)
+        self.pretty.write("I", "License", msg)
 
         for section in self.models:
             chk = self.models[section]

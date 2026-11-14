@@ -109,7 +109,10 @@ class ChromaDBHelper:
     ) -> Tuple[str, str]:
         """
         Determine the active Chroma collection name and directory.
-        Preference order: session parameter > config COLLECTION > error
+        Preference order: session parameter > config COLLECTION > error.
+        The config COLLECTION (also set by --collection) is a base name; the
+        active embedder is appended (Test -> Test_snowflake), see
+        Helpers.embedder_collection_name. Session names are used as given.
         """
         if collection_name is not None:
             # Use session-provided collection name
@@ -120,7 +123,7 @@ class ChromaDBHelper:
             and self.cfg.get_str("COLLECTION") != ""
         ):
             # Fall back to configured default
-            raw = str(self.cfg.get_str("COLLECTION"))
+            raw = self.helpers.embedder_collection_name()
             self._validate_collection_name(raw)
             self.collection_name = raw
             self.pretty.write(
@@ -177,13 +180,13 @@ class ChromaDBHelper:
         """
         Initialize Chroma client and get or create a collection with cosine similarity.
 
-        If the collection metadata already contains an ``embed_model`` or ``embed_bits``
-        key that differs from the current configuration, raises ``EmbedModelMismatch``
-        so that a collection built with one embedder is never queried with another.
+        Match ``embed_alias`` against ``_ACTIVE_EMBED`` and check ``embed_bits``.
+        The effective ``embed_model`` may differ between local and remote backends.
+        Nonempty collections must have both alias and bits metadata.
+        Missing identity or mismatches raise ``EmbedModelMismatch``.
 
-        When ``stamp=True`` (RAGLoad write path) the current model name and bits are
-        written into the collection metadata after a successful compatibility check,
-        so that future RAGChat runs can detect mismatches.
+        When ``stamp=True`` (RAGLoad write path), store the effective model name,
+        stable alias and bits after a successful compatibility check.
         """
         client: ClientAPI = self._persistent_chroma_client(persist_directory)
         collection: Collection = self.get_or_create_collection(client, collection_name)
@@ -191,38 +194,50 @@ class ChromaDBHelper:
         # --- embedding compatibility check -----------------------------------
         stored_meta: dict[str, Any] = dict(collection.metadata or {})
         stored_model: str | None = stored_meta.get("embed_model")
+        stored_alias: str | None = stored_meta.get("embed_alias")
         stored_bits: str | None = stored_meta.get("embed_bits")
 
         current_model: str = self.helpers.get_model_args("_ACTIVE_EMBED")["MODEL"]
+        current_alias: str = self.cfg.get_str("_ACTIVE_EMBED")
         current_bits: str = str(self.cfg.get_int("EMBEDDER_BITS", 32))
 
+        missing_identity = stored_alias is None or stored_bits is None
         mismatch: bool = (
-            stored_model is not None and stored_model != current_model
-        ) or (stored_bits is not None and stored_bits != current_bits)
+            (stored_alias is not None and stored_alias != current_alias)
+            or (stored_bits is not None and stored_bits != current_bits)
+            or (missing_identity and collection.count() > 0)
+        )
 
         if mismatch:
             self.pretty.write(
                 "E",
                 "Chroma embedding",
                 f"The collection '{collection_name}' was created with "
-                f"({stored_model}, {stored_bits} bits). "
-                f"Actual config is ({current_model}, {current_bits} bits).",
+                f"({stored_model}, alias={stored_alias}, {stored_bits} bits). "
+                f"Actual config is ({current_model}, alias={current_alias}, {current_bits} bits).",
                 color=RED,
             )
             raise EmbedModelMismatch(
-                f"Collection '{collection_name}': stored embed=({stored_model} / "
+                f"Collection '{collection_name}': stored embed=({stored_model} / alias={stored_alias} / "
                 f"{stored_bits} bits), current config=({current_model} / "
-                f"{current_bits} bits)"
+                f"alias={current_alias} / {current_bits} bits)"
             )
 
-        # --- stamp current model + bits into collection metadata -------------
-        # Only pass the two custom keys — never HNSW keys, which ChromaDB
+        # Only pass custom keys — never HNSW keys, which ChromaDB
         # refuses to modify after collection creation.
         if stamp:
+            metadata = {
+                key: value
+                for key, value in stored_meta.items()
+                if not key.startswith("hnsw:")
+            }
+            metadata.update(
+                embed_model=current_model,
+                embed_alias=current_alias,
+                embed_bits=current_bits,
+            )
             try:
-                collection.modify(
-                    metadata={"embed_model": current_model, "embed_bits": current_bits}
-                )
+                collection.modify(metadata=metadata)
             except ValueError as exc:
                 self.pretty.write(
                     "E",

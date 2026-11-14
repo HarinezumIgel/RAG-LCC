@@ -57,14 +57,17 @@ class StubConfig:
     def get_float(self, key: str, default: float = 0.0) -> float:
         return float(self._DEFAULTS.get(key, default))
 
-    def get_list(self, key: str, default=None) -> list:
+    def get_list(self, key: str, default=None, *, silent: bool = False) -> list:
         val = self._DEFAULTS.get(key)
         if val is not None:
             return list(val)
         return default if default is not None else []
 
-    def get_dict(self, key: str, default=None) -> dict:
+    def get_dict(self, key: str, default=None, *, silent: bool = False) -> dict:
         return default if default is not None else {}
+
+    indirect_list = get_list
+    indirect_dict = get_dict
 
 
 class StubPrettyWriter:

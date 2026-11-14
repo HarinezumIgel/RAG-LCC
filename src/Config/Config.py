@@ -10,8 +10,13 @@ import Configuration.Config_Banned_Content as Config_Banned_Content
 import Configuration.Config_Banned_Detection as Config_Banned_Detection
 import Configuration.Config_Banned_HumanReview_CSV as Config_Banned_HumanReview_CSV
 import Configuration.Config_Banned_Prompts as Config_Banned_Prompts
+import Configuration.Config_Confidence as Config_Confidence
+import Configuration.Config_ConfidenceEvaluator as Config_ConfidenceEvaluator
+import Configuration.Config_ContextSummarizer as Config_ContextSummarizer
 import Configuration.Config_DocClassify as Config_DocClassify
 import Configuration.Config_Global as Config_Global
+import Configuration.Config_Grounder as Config_Grounder
+import Configuration.Config_KeywordActionSplitter as Config_KeywordActionSplitter
 import Configuration.Config_Languages as Config_Languages
 import Configuration.Config_Load_Chunkers as Config_Load_Chunkers
 import Configuration.Config_Load_Retrievers as Config_Load_Retrievers
@@ -32,6 +37,7 @@ from Gui.Colors import RED
 from Gui.PrettyWriter import PrettyWriter
 
 config_modules = {
+    "Config_Confidence": Config_Confidence,
     "Config_Banned_Detection": Config_Banned_Detection,
     "Config_Banned_HumanReview_CSV": Config_Banned_HumanReview_CSV,
     "Config_Banned_Content": Config_Banned_Content,
@@ -125,6 +131,7 @@ class Config(SingletonMixin):
         )
         self.cfgPy: Any = _config_modules_lower.get(config_name.lower())
         self.globalConfigPy: Any = Config_Global
+        self.cfgConfidence: Any = Config_Confidence
         self.cfgLoadRetrievers: Any = Config_Load_Retrievers
         self.cfgLoadChunkers: Any = Config_Load_Chunkers
         self.cfgLanguages: Any = Config_Languages
@@ -184,8 +191,12 @@ class Config(SingletonMixin):
         # Priority order (lowest → highest; last update wins in the merge below).
         layers: list[tuple[str, Any]] = [
             ("Config_Global", self.globalConfigPy),
+            ("Config_Confidence", self.cfgConfidence),
             ("Config_Load_Retrievers", self.cfgLoadRetrievers),
             ("Config_Load_Chunkers", self.cfgLoadChunkers),
+            ("Config_ContextSummarizer", Config_ContextSummarizer),
+            ("Config_Grounder", Config_Grounder),
+            ("Config_ConfidenceEvaluator", Config_ConfidenceEvaluator),
             ("Config_Languages", self.cfgLanguages),
             ("Config_Models", self.cfgModels),
             ("Config_Banned_Detection", self.cfgBannedDetection),
@@ -204,6 +215,7 @@ class Config(SingletonMixin):
                     ("Config_RAGChat_Strategies", self.cfgRagchatStrategies),
                     ("Config_RAGChat_Prompts", self.cfgRagchatPrompts),
                     ("Config_RAGChat_Rewrite", self.cfgRagchatRewrite),
+                    ("Config_KeywordActionSplitter", Config_KeywordActionSplitter),
                     ("Config_RAGChat_Display", self.cfgRagchatDisplay),
                 ]
             )

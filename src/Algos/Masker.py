@@ -19,6 +19,7 @@ class Masker(SingletonMixin):
     - Rules are applied in ascending priority order, then by name.
     - If no config is provided, no rules are loaded (empty spec list).
     - Every debug pretty call is guarded by `if DebugHelper.check(self.cfg, 40):`.
+    - Per-call match summaries use the same level-40 guard.
     """
 
     def __init__(
@@ -84,11 +85,12 @@ class Masker(SingletonMixin):
                 matches += 1
                 if DebugHelper.check(self.cfg, 40):
                     self.pretty.write("I", "Masker", f"Applied '{name}' using {mask}")
-        self.pretty.write(
-            "I",
-            "Masker",
-            f"{matches} of {len(self.specs)} rules produced matches and were replaced",
-        )
+        if DebugHelper.check(self.cfg, 40):
+            self.pretty.write(
+                "I",
+                "Masker",
+                f"{matches} of {len(self.specs)} rules produced matches and were replaced",
+            )
         return out
 
     def _normalize_and_compile(self, raw: RawSpecDict) -> List[CompiledSpec]:

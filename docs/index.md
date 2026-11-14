@@ -12,9 +12,13 @@ description: Experimental RAG under constraints
 
 Experimental Retrieval-Augmented Generation under constraints.
 
-![RAG-LCC Overview Diagram](../Documentation/Presentations/RAG-LCC-Overview.png)
-
 RAG-LCC is a practical lab for understanding where RAG systems fail and how to fix them: retrieval misses, context poisoning, multilingual drift, and compliance edge cases.
+
+View or download the [PowerPoint presentation](https://github.com/HarinezumIgel/RAG-LCC/blob/main/Documentation/Presentations/RAG-LCC_Presentation.pptx), or watch it play below:
+
+![Animated RAG-LCC presentation](https://raw.githubusercontent.com/HarinezumIgel/RAG-LCC/main/Documentation/Presentations/RAG-LCC_Presentation.gif)
+
+The presentation also highlights tabular answers, document summarization, and the optional web-retrieval leg.
 
 ## Who this is for
 
@@ -29,16 +33,25 @@ Short: If you want to understand *why* your RAG fails, RAG-LCC gives you a playg
 
 ## What you get
 
-- Hybrid retrieval pipeline with Vector, BM25, Graph, and Regex retrieval
-- Multi-turn chat support with query rewriting and topic switching
-- Multi-query expansion for better recall
-- Cross-encoder reranking and strategy-based context assembly
-- Configurable orchestration flows for per-turn pipeline control
-- Confidence evaluation signals for evidence-quality tuning
-- Compliance filtering during ingestion, query, and answer phases
-- Grounding markers so answer text can be traced to evidence chunks
+- [Hybrid retrieval pipeline](../ORCHESTRATION_FLOWS.md#the-retrievers) with Vector, BM25, Graph, and Regex retrieval
+- [Multi-turn chat support](../ARCHITECTURE.md#-chat-context) with [query rewriting and topic switching](../ARCHITECTURE.md#query-rewrite-coreference-resolution)
+- [Document summarization](../HANDS_ON_TOUR.md#summarize-an-indexed-document) across all indexed chunks of a selected document
+- Optional web retrieval to augment local results with live web content
+- [Multi-query expansion](../ORCHESTRATION_FLOWS.md#alternates) for better recall
+- [Cross-encoder reranking and strategy-based context assembly](../ORCHESTRATION_FLOWS.md#after-retrieval)
+- Configurable [orchestration flows](../ORCHESTRATION_FLOWS.md) for per-turn pipeline control
+- [Confidence evaluation signals](../ARCHITECTURE.md#confidence-evaluation-and-signals) for evidence-quality tuning
+- Optional [answer-quality judge](../CONFIGURATION_REFERENCE.md#retrieval-diagnostics-and-answer-text-review) with named-model output and aligned scores;
+  flat CSV exports expose individual metrics and repeated pipeline steps
+- [Compliance filtering](../LEGAL.md) during ingestion, query, and answer phases
+- [Grounding markers](../ARCHITECTURE.md#-answer-grounding) to inspect matching evidence; overlap does not establish accuracy
 
 ## Application suite
+
+Confidence logging, quality-scoring switches, and the judge prompt are centralized
+in [Config_Confidence.py](../src/Configuration/Config_Confidence.py). See the
+[configuration reference](../CONFIGURATION_REFERENCE.md#answer-quality-confidence)
+for defaults, output sections, and the `CONFIDENCE_FLAT` CSV schema.
 
 | Application | Purpose | Typical output |
 | --- | --- | --- |
@@ -46,6 +59,11 @@ Short: If you want to understand *why* your RAG fails, RAG-LCC gives you a playg
 | RAGLoad | Ingest and index local documents into multiple retrievers | ChromaDB + BM25 + Graph + Regex indexes |
 | RAGChat | Interactive CLI RAG with grounding and safety checks | Grounded multi-turn answers |
 | RAGChatService | OpenAI-compatible API wrapper for RAGChat | API endpoint for OpenWebUI and clients |
+
+For the **vLLM backend**, the companion project
+[HarinezumIgel/harinezumigel-llm-stack](https://github.com/HarinezumIgel/harinezumigel-llm-stack)
+provides configuration-driven orchestration for self-hosted LiteLLM and vLLM
+deployments. Use it to serve the LLMs, embedder, and reranker required by RAG-LCC.
 
 ## Why this project is different
 
@@ -82,16 +100,32 @@ Most RAG stacks optimize only retrieval score. RAG-LCC also optimizes context qu
 
 ![Hedgehog grounded CLI output](../Documentation/Pics/HedgehogQueryGrounded.png)
 
-Shows sentence-level grounding markers in the CLI flow. This helps verify which
-answer parts are directly supported by retrieved evidence chunks.
+Shows sentence-level overlap markers in the CLI flow. These help inspect matching
+evidence but do not verify that an answer is factually correct.
 
-### OpenWebUI example
+### Tabular answer with source grounding
 
-![OpenWebUI grounded output](../Documentation/Pics/OpenWebUIGrounded.png)
+![Tabular answer with highlighted source documents](../Documentation/Pics/TabularRepresentation.png)
+
+A single query can retrieve information and request a table. This example shows an
+animal classification table alongside highlighted passages in the source documents.
+The highlights help inspect matching evidence; they do not establish answer accuracy.
+
+### OpenWebUI example (web)
+
+![OpenWebUI  output](../Documentation/Pics/OpenWebUIGrounded.png)
 
 Shows the same grounding concept through the OpenWebUI integration path
 (`RAGChatService`). Useful for validating that API/UI output preserves
-evidence traceability, not just CLI output.
+evidence links, not just CLI output; matching text is not proof of accuracy.
+
+### OpenWebUI grounded example (local results)
+
+![OpenWebUI grounded answer](../Documentation/Pics/OpenWebuiGrounded.jpg)
+
+This example shows an OpenWebUI answer with source attribution, including a web
+result. Source links help inspect retrieved evidence but do not prove answer
+accuracy.
 
 ## Documentation hub
 
@@ -114,4 +148,14 @@ evidence traceability, not just CLI output.
 
 [HarinezumIgel/RAG-LCC](https://github.com/HarinezumIgel/RAG-LCC)
 
-⭐ If you find this project useful, please consider giving it a star on GitHub. It helps others discover the project and motivates continued development.
+## ⭐ Support the Project
+
+RAG-LCC is developed in personal time and continues to evolve through community interest, feedback, and experimentation.
+
+If the project helped you, please consider:
+
+- Starring the repository
+- Sharing it with colleagues and friends
+- Reporting issues and ideas
+
+The RAG-LCC Experimental Lab runs on curiosity, feedback, and GPUs converting electricity into heat. Community interest is a major motivation for continued development.

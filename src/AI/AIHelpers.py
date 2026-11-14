@@ -11,6 +11,7 @@ from AI.LLMCaller import LLMCaller
 from AI.ModelOutputAdapter import ModelOutput, ModelOutputAdapter
 from AI.ModelsCache import ModelsCache
 from AI.TensorHelpers import TensorHelpers
+from AI.VllmClients import VllmCrossEncoder, VllmEmbeddings
 from Algos.BM25Scorer import BM25Scorer
 from Algos.ComplianceAlgoResult import ComplianceAlgoResult, ResultsForPrint
 from Algos.CosineScorer import CosineScorer
@@ -98,12 +99,16 @@ class AIHelpers(SingletonMixin):
         self.classifyHelper: ClassifyHelper = ClassifyHelper()
 
         # Main embedder instance (loaded via ModelsCache)
-        self.embedder: HuggingFaceEmbeddings = self.models_cache.get_hf_embeddings()
+        self.embedder: HuggingFaceEmbeddings | VllmEmbeddings = (
+            self.models_cache.get_hf_embeddings()
+        )
 
     # -----------------------------------------------------------------
     # Thin delegation helpers  (keep the old API surface for callers)
     # -----------------------------------------------------------------
-    def load_quantized_model(self, model_name: str) -> SentenceTransformer:
+    def load_quantized_model(
+        self, model_name: str
+    ) -> SentenceTransformer | VllmEmbeddings:
         """Delegate to :py:meth:`ModelsCache.load_quantized_model`."""
         return self.models_cache.load_quantized_model(model_name)
 
@@ -113,7 +118,7 @@ class AIHelpers(SingletonMixin):
         """Delegate to :py:meth:`ModelsCache.truncate_texts`."""
         return self.models_cache.truncate_texts(texts, model_name, max_length, padding)
 
-    def get_hf_embeddings(self) -> HuggingFaceEmbeddings:
+    def get_hf_embeddings(self) -> HuggingFaceEmbeddings | VllmEmbeddings:
         """Delegate to :py:meth:`ModelsCache.get_hf_embeddings`."""
         return self.models_cache.get_hf_embeddings()
 
@@ -123,7 +128,7 @@ class AIHelpers(SingletonMixin):
         """Delegate to :py:meth:`ModelsCache.invalidate_hf_embeddings`."""
         self.models_cache.invalidate_hf_embeddings(model_name, revision)
 
-    def get_cross_encoder(self) -> CrossEncoder:
+    def get_cross_encoder(self) -> CrossEncoder | VllmCrossEncoder:
         """Delegate to :py:meth:`ModelsCache.get_cross_encoder`."""
         return self.models_cache.get_cross_encoder()
 
@@ -253,6 +258,7 @@ class AIHelpers(SingletonMixin):
             on_chunk=handler,
             streaming=self.is_streaming,
             stage=stage,
+            purpose="Prompt check",
             model_role="_ACTIVE_LLM_CHK",
         )
 

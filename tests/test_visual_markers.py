@@ -1,4 +1,5 @@
 # pyright: reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownVariableType=false, reportUnknownMemberType=false
+# pyright: reportPrivateUsage=false
 """Tests for the VisualMarkers package."""
 
 import importlib
@@ -7,6 +8,9 @@ import os
 import sys
 import zipfile
 from pathlib import Path
+from types import MethodType
+from typing import Any
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -70,7 +74,7 @@ def test_factory_returns_plaintext_marker_for_md():
 
 
 @pytest.mark.parametrize("name", ["foo.html", "foo"])
-def test_factory_returns_none_for_unsupported(name):
+def test_factory_returns_none_for_unsupported(name: str):
     assert VisualMarkerFactory.for_path(name) is None
 
 
@@ -114,7 +118,7 @@ lions_pptx_required = pytest.mark.skipif(
 
 def _has_python_docx() -> bool:
     try:
-        import docx  # noqa: F401
+        importlib.import_module("docx")
 
         return True
     except ImportError:
@@ -123,7 +127,7 @@ def _has_python_docx() -> bool:
 
 def _has_python_pptx() -> bool:
     try:
-        from pptx import Presentation  # noqa: F401
+        importlib.import_module("pptx")
 
         return True
     except ImportError:
@@ -171,7 +175,7 @@ def test_mark_to_bytes_strips_page_prefix():
     with pdfplumber.open(str(_HEDGEHOGS_PDF)) as doc:
         page_text = doc.pages[0].extract_text() or ""
     real_line = page_text.strip().splitlines()[0].strip()
-    chunk_text = f"Page 1\n\n{real_line}"
+    chunk_text = f"Page iii\n\n{real_line}"
 
     out = PdfVisualMarker().mark_to_bytes(
         _HEDGEHOGS_PDF,
@@ -223,7 +227,7 @@ def test_mark_to_bytes_falls_back_when_page_number_missing():
 
 @pdf_backends_required
 @hedgehogs_required
-def test_mark_to_bytes_does_not_modify_source(tmp_path):
+def test_mark_to_bytes_does_not_modify_source(tmp_path: Path):
     """The source PDF on disk must be byte-identical after marking."""
     work = tmp_path / "Hedgehogs.pdf"
     work.write_bytes(_HEDGEHOGS_PDF.read_bytes())
@@ -247,52 +251,64 @@ def test_visual_marker_base_raises_not_implemented():
         VisualMarker().mark_to_bytes(Path("x.pdf"), [])
 
 
-def test_answer_grounder_uses_singleton_config(monkeypatch):
-    import Config.Config as cfg_mod
+def test_grounder_reads_config_grounder_values():
+    from Grounding.Grounder import Grounder
+
+    values = {
+        "min_sentence_tokens": 3,
+        "min_fragment_len": 7,
+        "min_overlap_window": 4,
+        "relaxed_min_sentence_tokens": 4,
+        "relaxed_min_shared_tokens": 3,
+        "relaxed_min_token_len": 3,
+        "relaxed_substantive_token_len": 5,
+        "relaxed_min_containment": 0.6,
+        "index_cache_max_tokens": 1000,
+    }
 
     class FakeConfig:
-        def __init__(self, *args, **kwargs):
-            self._initialized = True
+        def get_int(self, key: str, *args: Any, **kwargs: Any) -> int:
+            prefix, name = key.split(".", 1)
+            assert prefix == "_GROUNDING"
+            return int(values[name])
 
-        def get(self, key, default=None, allow_indirect=True, *, silent=False):
-            if key == "_MARKED_DOCS_GROUNDING":
-                return {
-                    "min_sentence_tokens": 3,
-                    "min_fragment_len": 7,
-                    "min_overlap_window": 4,
-                }
-            if key == "_MARKED_DOCS_GROUNDING.min_sentence_tokens":
-                return 3
-            if key == "_MARKED_DOCS_GROUNDING.min_fragment_len":
-                return 7
-            if key == "_MARKED_DOCS_GROUNDING.min_overlap_window":
-                return 4
-            return default
+        def get_float(self, key: str, *args: Any, **kwargs: Any) -> float:
+            return float(values[key.split(".", 1)[1]])
 
-        def get_int(self, key, default=0, *, silent=False):
-            if key == "_MARKED_DOCS_GROUNDING.min_sentence_tokens":
-                return 3
-            if key == "_MARKED_DOCS_GROUNDING.min_fragment_len":
-                return 7
-            if key == "_MARKED_DOCS_GROUNDING.min_overlap_window":
-                return 4
-            return int(default)
+    Grounder._reset()
+    try:
+        grounder = Grounder(cfg=FakeConfig())  # type: ignore[arg-type]
+        highlighted = grounder.ground_answer_cli(
+            "Hedgehogs eat beetles", ["Hedgehogs eat beetles at night"], ansi_codes="1"
+        )
+        assert highlighted == "\033[1mHedgehogs eat beetles\033[0m"
+        assert (
+            grounder.ground_answer_cli("A short answer", ["A matching chunk"])
+            == "A short answer"
+        )
+    finally:
+        Grounder._reset()
 
-    monkeypatch.setattr(cfg_mod, "Config", FakeConfig, raising=False)
 
-    module = importlib.import_module("VisualMarkers.AnswerGrounder")
-    module = importlib.reload(module)
-    module.AnswerGrounder._reset()
+def test_ground_answer_cli_highlights_original_sentence_via_translated_proxy():
+    from Grounding.Grounder import Grounder
 
-    grounded = module.AnswerGrounder()
-
-    assert grounded.min_sentence_tokens == 3
-    assert grounded.min_fragment_len == 7
-    assert grounded.min_overlap_window == 4
-    assert (
-        grounded.ground_answer_cli("A short answer", ["A matching chunk"])
-        == "A short answer"
+    grounder = Grounder()
+    chunk = "In wilderness areas, hedgehogs feed mainly on insects such as beetles and caterpillars."
+    german = (
+        "In Wildnisgebieten fressen Igel hauptsächlich Insekten wie Käfer und Raupen."
     )
+    other = "Das ist ein anderer Satz ohne Bezug zum Dokument hier."
+    answer = f"{german} {other}"
+    proxy = {
+        german: "In wilderness areas, hedgehogs feed mainly on insects such as beetles."
+    }
+
+    assert grounder.ground_answer_cli(answer, [chunk], ansi_codes="7") == answer
+    marked = grounder.ground_answer_cli(
+        answer, [chunk], ansi_codes="7", sentence_translations=proxy
+    )
+    assert marked == f"\033[7m{german}\033[0m {other}"
 
 
 # ---------------------------------------------------------------------------
@@ -306,7 +322,13 @@ def test_pdf_marker_raises_runtime_error_when_pdfplumber_missing(monkeypatch):
 
     real_import = builtins.__import__
 
-    def fake_import(name, globals=None, locals=None, fromlist=(), level=0):
+    def fake_import(
+        name: str,
+        globals: dict[str, Any] | None = None,
+        locals: dict[str, Any] | None = None,
+        fromlist: tuple[str, ...] = (),
+        level: int = 0,
+    ):
         if name == "pdfplumber":
             raise ImportError("simulated missing pdfplumber")
         return real_import(name, globals, locals, fromlist, level)
@@ -323,14 +345,14 @@ def test_pdf_marker_raises_runtime_error_when_pdfplumber_missing(monkeypatch):
 
 
 class _FakeDoc:
-    def __init__(self, page_content: str, metadata: dict):
+    def __init__(self, page_content: str, metadata: dict[str, Any]):
         self.page_content = page_content
         self.metadata = metadata
 
 
 class _FakeSession:
     def __init__(self):
-        self.marked_documents: list = []
+        self.marked_documents: list[tuple[str, bytes]] = []
 
 
 class _SilentPretty:
@@ -339,6 +361,9 @@ class _SilentPretty:
 
 
 class _StubCfg:
+    def __init__(self, summary_support_only=True):
+        self.summary_support_only = summary_support_only
+
     def get(self, key, default=None):
         return None
 
@@ -346,6 +371,8 @@ class _StubCfg:
         return default
 
     def get_bool(self, key, default=False):
+        if key == "_GROUNDING_MARKING.summary_support_only":
+            return self.summary_support_only
         return default
 
     def get_int(self, key, default=0):
@@ -355,32 +382,73 @@ class _StubCfg:
         return (default, key)
 
 
-def _call_mark_sources(chosen):
+def _call_mark_sources(chosen, *, summary=False, summary_support_only=True):
     """Invoke RAGChatImpl._mark_sources unbound, with a stub *self*."""
     from Chat.RAGChatImpl import RAGChatImpl
-    import os
 
-    stub = type("Stub", (), {})()
+    stub = MagicMock(spec=RAGChatImpl)
     stub.pretty = _SilentPretty()
-    stub.cfg = _StubCfg()
-    # Add required methods to stub (delegate to the real implementation)
-    stub._group_chunks_by_file = lambda chosen_docs: RAGChatImpl._group_chunks_by_file(
-        stub, chosen_docs
-    )
-    stub._resolve_mark_colors = lambda: RAGChatImpl._resolve_mark_colors(stub)
-    stub._build_grounded_snippets = (
-        lambda session, chunks, color: RAGChatImpl._build_grounded_snippets(
-            stub, session, chunks, color
-        )
-    )
-    stub._produce_marked_bytes = (
-        lambda grouped, grounded, color: RAGChatImpl._produce_marked_bytes(
-            stub, grouped, grounded, color
-        )
-    )
+    stub.cfg = _StubCfg(summary_support_only)
+    stub._group_chunks_by_file = MethodType(RAGChatImpl._group_chunks_by_file, stub)
+    stub._resolve_mark_colors = MethodType(RAGChatImpl._resolve_mark_colors, stub)
+    stub._mark_pdfs_in_parallel = MethodType(RAGChatImpl._mark_pdfs_in_parallel, stub)
+    stub._produce_marked_bytes = MethodType(RAGChatImpl._produce_marked_bytes, stub)
     session = _FakeSession()
-    RAGChatImpl._mark_sources(stub, session, chosen)  # type: ignore[arg-type]
+    RAGChatImpl._mark_sources(stub, session, chosen, summary=summary)  # type: ignore[arg-type]
     return session
+
+
+@pdf_backends_required
+@hedgehogs_required
+@pytest.mark.parametrize(
+    "summary,support_only,has_support,expected_colors",
+    [
+        (True, True, True, {(1.0, 0.65098039, 0.0)}),
+        (True, True, False, set[tuple[float, float, float]]()),
+        (True, False, True, {(1.0, 1.0, 0.0), (1.0, 0.65098039, 0.0)}),
+        (True, False, False, {(1.0, 1.0, 0.0)}),
+        (False, True, True, {(1.0, 1.0, 0.0), (1.0, 0.65098039, 0.0)}),
+        (False, True, False, {(1.0, 1.0, 0.0)}),
+    ],
+)
+def test_summary_highlight_policy(
+    monkeypatch: pytest.MonkeyPatch,
+    summary: bool,
+    support_only: bool,
+    has_support: bool,
+    expected_colors: set[tuple[float, float, float]],
+):
+    from Grounding.Grounder import Grounder
+    from pypdf import PdfReader
+
+    path = str(_HEDGEHOGS_PDF)
+    support = {path: [ChunkSnippet(text="Hedgehog", page_number=1, color="orange")]}
+
+    def build_snippets(*_args: Any) -> dict[str, list[ChunkSnippet]]:
+        return support if has_support else {}
+
+    monkeypatch.setattr(
+        Grounder,
+        "build_grounded_snippets",
+        build_snippets,
+    )
+    session = _call_mark_sources(
+        [_FakeDoc("Hedgehog", {"FilePath": path, "PageNumber": 1})],
+        summary=summary,
+        summary_support_only=support_only,
+    )
+    if not expected_colors:
+        assert session.marked_documents == []
+        return
+    assert len(session.marked_documents) == 1
+    reader = PdfReader(io.BytesIO(session.marked_documents[0][1]))
+    colors = {
+        tuple(annotation.get_object()["/C"])
+        for page in reader.pages
+        for annotation in page.get("/Annots", [])
+        if annotation.get_object().get("/Subtype") == "/Highlight"
+    }
+    assert colors == expected_colors
 
 
 @pdf_backends_required
@@ -415,7 +483,7 @@ def test_mark_sources_skips_missing_files():
 
 
 @hedgehogs_required
-def test_mark_sources_skips_unsupported_file_types(tmp_path):
+def test_mark_sources_skips_unsupported_file_types(tmp_path: Path):
     html = tmp_path / "notes.html"
     html.write_text("<p>hello</p>")
     chosen = [_FakeDoc("hello", {"FilePath": str(html)})]
@@ -487,7 +555,7 @@ def test_docx_marker_empty_snippets_returns_valid_docx():
 
 @docx_required
 @apes_docx_required
-def test_docx_marker_does_not_modify_source(tmp_path):
+def test_docx_marker_does_not_modify_source(tmp_path: Path):
     """The source DOCX on disk must be byte-identical after marking."""
     work = tmp_path / "Apes.docx"
     work.write_bytes(_APES_DOCX.read_bytes())
@@ -511,13 +579,14 @@ def test_docx_marker_does_not_modify_source(tmp_path):
 def test_pptx_marker_returns_valid_pptx_bytes():
     """Highlighting a known slide paragraph returns valid PPTX bytes with a:highlight."""
     from pptx import Presentation
+    from pptx.shapes.autoshape import Shape
 
     prs = Presentation(str(_LIONS_PPTX))
     slide = list(prs.slides)[0]
     snippet_text = next(
         "".join(r.text for r in para.runs)
         for shape in slide.shapes
-        if shape.has_text_frame
+        if isinstance(shape, Shape) and shape.has_text_frame
         for para in shape.text_frame.paragraphs
         if len("".join(r.text for r in para.runs).strip()) > 20
     )
@@ -561,7 +630,7 @@ def test_pptx_marker_empty_snippets_returns_valid_pptx():
 
 @pptx_required
 @lions_pptx_required
-def test_pptx_marker_does_not_modify_source(tmp_path):
+def test_pptx_marker_does_not_modify_source(tmp_path: Path):
     """The source PPTX on disk must be byte-identical after marking."""
     work = tmp_path / "Lions.pptx"
     work.write_bytes(_LIONS_PPTX.read_bytes())
@@ -629,7 +698,7 @@ def test_txt_marker_empty_snippets_returns_unchanged():
 
 
 @fish_txt_required
-def test_txt_marker_does_not_modify_source(tmp_path):
+def test_txt_marker_does_not_modify_source(tmp_path: Path):
     work = tmp_path / "Fish.txt"
     work.write_bytes(_FISH_TXT.read_bytes())
     before = work.read_bytes()
@@ -678,7 +747,7 @@ def test_md_marker_preserves_heading_prefix():
 
 
 @cats_md_required
-def test_md_marker_does_not_modify_source(tmp_path):
+def test_md_marker_does_not_modify_source(tmp_path: Path):
     work = tmp_path / "Cats.md"
     work.write_bytes(_CATS_MD.read_bytes())
     before = work.read_bytes()
@@ -691,7 +760,7 @@ def test_md_marker_does_not_modify_source(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def _word(text: str, x0: float) -> dict:
+def _word(text: str, x0: float) -> dict[str, Any]:
     """Synthetic pdfplumber word box on a single line."""
     return {"text": text, "x0": x0, "x1": x0 + 10.0, "top": 0.0, "bottom": 5.0}
 

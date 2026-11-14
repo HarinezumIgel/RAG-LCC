@@ -110,10 +110,12 @@ class StubConfig:
     def get_int(self, key: str, default: int = 0) -> int:
         return int(self._ld.get(key, default))
 
-    def get_dict(self, key: str, default: Any = None) -> dict:
+    def get_dict(self, key: str, default: Any = None, *, silent: bool = False) -> dict:
         if key == "_ARGOS_DEFINITIONS.LANG_CODE_TO_NAME":
             return LANG_CODE_TO_NAME
         return default or {}
+
+    indirect_dict = get_dict
 
     def get_str(self, key: str, default: str = "") -> str:
         return default

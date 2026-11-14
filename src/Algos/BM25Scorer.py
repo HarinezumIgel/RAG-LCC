@@ -36,10 +36,9 @@ class BM25Scorer(SingletonMixin, ScorerBase):
         self.aiHelpers: AIHelpers = AIHelpers()
         self.perf_logger: PerfLogger = PerfLogger()
 
-        # base banlist and algo name, expanded with WordNet synonyms
-        self.banlist_en: List[str] = Synonyms().expand(
-            self.helpers.get_banned_phrases_config_slot()
-        )
+        self.banlist_en: List[str] = self.helpers.get_banned_phrases_config_slot()
+        if self.cfg.get_bool("_WORDNET.SCORERS_ENABLED", False):
+            self.banlist_en = Synonyms().expand(self.banlist_en)
         self.algo: str = self.cfg.get_str("_BM25") or self.cfg.get_str("_M25") or "BM25"
 
         # caches per language

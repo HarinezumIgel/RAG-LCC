@@ -25,7 +25,7 @@ The script guides you through:
 - **Step 1:** Install system packages (tesseract-ocr) with license consent flow
 - **Preamble:** Show Python dependency licenses from 3rdPartyLicenses/Licenses.txt and require explicit consent
 - **Step 2:** Install Python dependencies from requirements/requirements_final.txt
-- **Step 3:** Copy Example_*.py files from Examples/ to src/Configuration/ (with interactive review)
+- **Step 3:** Review and optionally edit the installed files directly in src/Configuration/
 - **Step 4:** Download NLTK stopwords and WordNet with consent flow
 - **Step 5:** Optionally install Argos Translate language packages after explicit confirmation
 - **Step 6:** Optionally install spaCy model packages after explicit confirmation
@@ -668,26 +668,25 @@ If your machine has an NVIDIA GPU and you want to use it for inference:
 
 If `USE_CPU` is `False` but no functional GPU is detected (possible drivers/runtime not installed in the venv), the application will automatically fall back to CPU with 32-bit precision and display a warning.
 
-## 👀 Review the example config files
+## 👀 Review the installed config files
 
-Please read `Configuration/Config_Models.py` before enabling internet access or accepting model licenses.
+Please read `src/Configuration/Config_Models.py` before enabling internet access or accepting model licenses.
 
-## 📋 If ok, copy example configs into place
+## 📋 Configure the installed files
 
-Manually copy the example configuration files into the `Configuration/` folder.
+Configuration files are shipped directly in `src/Configuration/`, which is
+the configuration source rather than a copy of a separate template directory.
+Setup offers pager and editor review of these files before applying runtime
+settings. Editor changes are made in place and kept.
 
-```powershell
-copy ./Examples/Example_Config_Banned_Detection.py ./src/Configuration/Config_Banned_Detection.py
-copy ./Examples/Example_Config_Banned_Content.py   ./src/Configuration/Config_Banned_Content.py
-copy ./Examples/Example_Config_Banned_Prompts.py   ./src/Configuration/Config_Banned_Prompts.py
-copy ./Examples/Example_Config_Load_Retrievers.py  ./src/Configuration/Config_Load_Retrievers.py
-copy ./Examples/Example_Config_Load_Chunkers.py    ./src/Configuration/Config_Load_Chunkers.py
-copy ./Examples/Example_Config_Models.py           ./src/Configuration/Config_Models.py
-copy ./Examples/Example_Config_WebSearch.py ./src/Configuration/Config_WebSearch.py
-copy ./Examples/Example_Config_Internet_Env.py ./src/Configuration/Config_Internet_Env.py
-```
+Use `--no-config-review` to skip this review step. The legacy
+`--no-examples-copy` option is an alias for skipping review; it no longer
+controls a copy operation.
 
-Open `Configuration/Config_Banned_Detection.py`, `Configuration/Config_Banned_Content.py`, `Configuration/Config_Banned_Prompts.py`, `Configuration/Config_Load_Retrievers.py`, `Configuration/Config_Load_Chunkers.py`, `Configuration/Config_Models.py`, and `Configuration/Config_WebSearch.py` and configure the settings according to your needs.
+Review `Config_Banned_Detection.py`, `Config_Banned_Content.py`,
+`Config_Banned_Prompts.py`, `Config_Load_Retrievers.py`, `Config_Load_Chunkers.py`,
+`Config_Models.py`, `Config_WebSearch.py`, and `Config_Internet_Env.py` in that
+directory and configure the settings according to your needs.
 
 ## 🧪 11. Run the tests
 
@@ -907,7 +906,7 @@ to return only the LLM answer.
 
 4. **Select a collection** — after saving the connection, the Chroma DB
    collections loaded by `RAGLoad` appear as selectable models in the
-   OpenWebUI model dropdown (`GET /v1/models`). Pick a collection and
+   OpenWebUI model dropdown (`GET /v1/models`; only collections created with the active embedder, e.g. `Test_embedder_snowflake`). Pick a collection and
    start chatting.
 
 5. **Disable follow-up prompt generation** — by default OpenWebUI
@@ -988,7 +987,16 @@ If you see a `RequestsDependencyWarning` see [Troubleshooting](CONFIGURATION_REF
 
 You are asked to consent to the licenses for the models defined in `Config_Models.py`. With the default used in this repository  `LICENSE_DOWNLOAD = "0"`, RAG‑LCC prompts you with `[y/N]` on each individual license download. You can also set `LICENSE_DOWNLOAD` to `"1"` in `Config_Internet_Env.py` to skip the per-fetch prompt if this is acceptable for your environment and policies. In this case licenses will be fetched online on every run.
 
-This step is repeated for each model that the started application actually requires (for example, `RAGChat` needs the LLM, compliance-check LLM, embedder, cross-encoder, and Ollama provider — but not the OpenWebUI entry, which is only used by `RAGChatService`). Only the licenses relevant to the launched `.py` file are checked; models not used by that application are skipped. Once consented, license consent is only re-requested if a local license file is missing, the config hash changes, or — when `LICENSE_DOWNLOAD` is enabled — a changed remote license text or TLS certificate is detected.
+This step is repeated for each **active** model that the started application actually requires. Only the models selected by the `_ACTIVE_*` slots in `Config_Models.py` (`_ACTIVE_LLM`, `_ACTIVE_LLM_CHK`, `_ACTIVE_LLM_REWRITE_PROMPT`, `_ACTIVE_LLM_JUDGE`, `_ACTIVE_EMBED`, `_ACTIVE_CROSS`, `_ACTIVE_ENDPOINT`) plus the fixed service entries `_OPENWEBUI` and `_RAGCHATSERVICE` are checked. Alternative models defined in `_MODELS` but not selected are ignored. Models whose `USED_BY` list does not include the launched application are also skipped; for example, `RAGChat` does not need the OpenWebUI entry, which is used only by `RAGChatService`. `_ACTIVE_ENDPOINT` adds the provider entry `_OLLAMA` or `_VLLM`.
+
+Once consented, license consent is re-requested only when:
+
+- you switch an `_ACTIVE_*` slot to a model that has not been consented yet. Switching back to a model you consented to earlier (with an unchanged configuration) does not prompt again;
+- the `_MODELS` entry of an active model changes, for example its `REVISION`, `BASE_URL` or prompt keys. The prompt lists the names of the changed keys, not their values. With `LICENSE_DOWNLOAD = "0"` it uses the stored license text, so no internet access is needed. Changing an inactive model never prompts;
+- a local license file is missing;
+- when `LICENSE_DOWNLOAD` is enabled, the remote license text or TLS certificate has changed.
+
+Independently, any edit to `Config_Models.py` still has to be confirmed with `RecalcConfigHashes.py`, because the file is protected by `_CRITICAL_CONFIG_HASHES`.
 
 ```text
 🟡 License                        mistral._LLM: missing license or metadata
@@ -1016,16 +1024,17 @@ Press Enter to review the license ...
 
 Internet access is configured in `Configuration/Config_Internet_Env.py`.
 
-| Environment Variable | default used in this repository | Purpose |
+| Environment Variable | Configuration value | Purpose |
 | --- | --- | --- |
 | `LICENSE_DOWNLOAD` | `"0"` | Allow online fetch of model license files defined in `Config_Models.py`. When `"0"`, the Compliance module prompts for per-fetch consent. |
 | `RAG_LCC_NW_TRACE` | `"0"` | Socket-level network tracing (debug). |
-| `RAG_LCC_STACK_TRACE` | `"0"` | Stack traces on errors. |
-| `HF_HUB_OFFLINE` | `"0"` | Set to `"1"` to disable Hugging Face Hub downloads. Default `"0"` allows model downloads. |
+| `RAG_LCC_STACK_TRACE` | varies by deployment | Stack traces on errors. |
+| `WEB_SEARCH_MODE` | `"0"` in deployment | Master switch permitting web search; development settings may differ. |
+| `HF_HUB_OFFLINE` | varies by deployment | Set to `"1"` to disable Hugging Face Hub downloads; `"0"` allows model downloads. |
 | `TRANSFORMERS_OFFLINE` | `"1"` | Disable transformers library hub access when `"1"`. |
 | `HF_DATASETS_OFFLINE` | `"1"` | Disable HF datasets hub access when `"1"`. |
 | `ARGOS_MODEL_PROVIDER` | `"OPENNMT"` | Force Argos Translate to use local packages only. |
-| `SERVE_OPENWEBUI_CHAT` | `"1"` | Enable the `RAGChatService` HTTP listener. When `"1"`, `RAGChatService.py` starts a uvicorn server that accepts incoming connections on the configured host/port (`ragchatservice` slot in `Config_Models.py`). **This opens a network listener.** Change the default `API_KEY` in `_MODELS.ragchatservice._RAGCHATSERVICE` before exposing the service beyond localhost. |
+| `SERVE_OPENWEBUI_CHAT` | varies by deployment | Enable the `RAGChatService` HTTP listener. When `"1"`, `RAGChatService.py` starts a uvicorn server that accepts incoming connections on the configured host/port (`ragchatservice` slot in `Config_Models.py`). **This opens a network listener.** Set an `API_KEY` in `_MODELS.ragchatservice._RAGCHATSERVICE` before exposing the service beyond localhost. |
 
 For convenience, these values are displayed at startup.
 
@@ -1037,13 +1046,14 @@ For convenience, these values are displayed at startup.
 
 ## � Enable Internet (Web) Search (Optional)
 
-Web search is **disabled by default**. When enabled, `RAGChat` / `RAGChatService`
-may issue outbound HTTPS queries to a public search backend and merge the
-results into the retrieval context alongside local ChromaDB chunks. Read
+Deployment disables the web-search master switch; development settings may differ.
+When enabled, depending on application and session settings, `RAGChat` / `RAGChatService` may issue outbound HTTPS
+queries to a public search backend and merge the results into the retrieval
+context alongside local ChromaDB chunks. Read
 [LEGAL.md § Web / Internet Search](LEGAL.md#-web--internet-search--privacy-warning) and [SECURITY.md](SECURITY.md#-web--internet-search)
-before turning the master switch to "1".
+and review the settings before use.
 
-### 1. Flip the master switch
+### 1. Review the master switch
 
 Edit `src/Configuration/Config_Internet_Env.py`:
 
@@ -1054,7 +1064,7 @@ os.environ["WEB_SEARCH_MODE"] = "1"   # one of: "0", "1"
 | Value | Behaviour |
 | --- | --- |
 | `"0"` | No internet leg. Web queries are blocked. |
-| `"1"` | Full production path. Outbound HTTPS calls are issued. |
+| `"1"` | Permits the web leg; outbound HTTPS calls depend on application and session settings. |
 
 The master switch overrides every other web-search setting, including
 `_OPENWEB_UI_WEBSEARCH` (see step 4).
@@ -1097,9 +1107,9 @@ per API request with `web_fetch_k`.
 
 ### 4. (OpenWebUI only) Auto-enable per request
 
-By default, OpenWebUI requests must pass `web_search=True` explicitly as an
-Advanced Parameter. To enable web search automatically for **every** OpenWebUI
-request, set in `src/Configuration/Config_WebSearch.py`:
+Deployment disables automatic web search for OpenWebUI; development settings may differ.
+To enable it for requests that do not specify a `web_search` parameter, subject to the
+master switch and other checks, review `src/Configuration/Config_WebSearch.py`:
 
 ```python
 _OPENWEB_UI_WEBSEARCH = True

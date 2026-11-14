@@ -180,6 +180,26 @@ def _build_hfdownloader(cfg_overrides=None, helpers=None, base_dir=None):
 # ===================================================================
 
 
+@pytest.mark.parametrize("role", ["_EMBED", "_CROSS"])
+def test_vllm_skips_weight_download_and_local_cache(monkeypatch, tmp_path, role):
+    dl = _build_hfdownloader(
+        {"_ACTIVE_ENDPOINT": "vllm"}, base_dir=tmp_path / "consents"
+    )
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("Remote models must not inspect/download local weights")
+
+    monkeypatch.setattr(hf_mod, "snapshot_download", forbidden)
+    monkeypatch.setattr(dl, "_find_cached_snapshot", forbidden)
+    monkeypatch.setattr(dl, "_load_meta", forbidden)
+    result = dl.download(f"_MODELS.{role}")
+    assert result["execution"] == "remote"
+    assert not dl.base_dir.exists()
+    assert any(
+        "licence verification remains required" in str(m) for m in dl.pretty.messages
+    )
+
+
 class TestHashText:
     def test_deterministic(self):
         dl = _build_hfdownloader()

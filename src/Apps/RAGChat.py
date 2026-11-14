@@ -40,6 +40,7 @@ from AI.ModelOutputAdapter import ModelOutputAdapter
 from AI.TokenBudget import TokenBudget
 from Chat.Chatter import Chatter
 from Chat.CommandProcessor import CommandProcessor
+from Chat.FileSelector import CliFileSelector
 from Chat.QueryParts import QueryParts
 from Compliance.BannedPhraseCollector import BannedPhraseCollector
 from Compliance.HFDownloader import HFDownloader
@@ -53,6 +54,7 @@ from Helpers.CSVWriter import CSVWriter
 from Helpers.DebugHelper import DebugHelper
 from Helpers.FileUtils import FileUtils
 from Helpers.Helpers import Helpers
+from Orchestrator import FlowConfig
 
 colorama.init()
 
@@ -88,6 +90,7 @@ class RAGChat:
 
         # load parameters once
         self.cp: CommandProcessor = CommandProcessor()
+        self.fileSelector: CliFileSelector = CliFileSelector(self.queryParts.pick_path)
 
         # Share the same per-session state across CLI components
         self.queryParts.session = self.session
@@ -103,14 +106,8 @@ class RAGChat:
         self.session.collection_name = self.queryParts.applyStrategyDefaults(
             default_strategy, session=self.session
         )
-        default_orchestration_flow: str = (
-            self.cfg.get_str("_DEFAULT_ORCHESTRATION_FLOW", "THOROUGH_QUERY_REWRITE")
-            .strip()
-            .upper()
-            or "THOROUGH_QUERY_REWRITE"
-        )
         self.queryParts.applyOrchestrationFlowDefaults(
-            default_orchestration_flow,
+            FlowConfig.default_flow_name(self.cfg),
             session=self.session,
         )
 
@@ -150,6 +147,19 @@ class RAGChat:
 
         if not self.session.query.strip():
             return False
+
+        original_query = self.session.query
+        command, target = self.chatter.rag.parse_chat_command(self.session.query)
+        if command == "summarize":
+            selection = self.fileSelector.select(self.session, target)
+            if selection.stops_summary:
+                self.pretty.write("I", "Summarize", selection.message, color=CYAN)
+                return True
+            self.session.query = selection.summary_query(self.session.query)
+            # Commands are not user prompts; summary output still goes through
+            # answer compliance, grounding, and confidence evaluation.
+            self.chatter.run(self.session, original_query=original_query)
+            return True
 
         # build base kwargs
         base_kwargs: Dict[str, Any] = {"k": self.session.retriever_k}
@@ -262,7 +272,7 @@ class RAGChat:
         )
         if human_review is False:
             # Will issue user query and check
-            self.chatter.run(self.session)
+            self.chatter.run(self.session, original_query=original_query)
         return True
 
     def _run_query(self):

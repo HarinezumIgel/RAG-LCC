@@ -172,38 +172,9 @@ def report_spacy_model_license_hints(models: Sequence[str]) -> None:
 
 
 def _read_indirect_str(cfg: Any, key: str) -> str:
-    indirect_get = getattr(cfg, "indirect_get", None)
-    if callable(indirect_get):
-        try:
-            raw_value = indirect_get(key, "")
-            value_obj: object
-            if isinstance(raw_value, tuple) and raw_value:
-                value_obj = cast(object, raw_value[0])
-            else:
-                value_obj = cast(object, raw_value)
-            return str("" if value_obj is None else value_obj).strip()
-        except Exception:
-            pass
-
-    direct_get = getattr(cfg, "get", None)
-    if callable(direct_get):
-        return str(direct_get(key, "") or "").strip()
-    return ""
+    value, _ = cfg.indirect_get(key, "")
+    return str(value or "").strip()
 
 
 def _read_indirect_dict(cfg: Any, key: str) -> Dict[str, Any]:
-    indirect_dict = getattr(cfg, "indirect_dict", None)
-    if callable(indirect_dict):
-        try:
-            mapping = indirect_dict(key, {})
-            if isinstance(mapping, dict):
-                return cast(Dict[str, Any], mapping)
-        except Exception:
-            pass
-
-    direct_get = getattr(cfg, "get", None)
-    if callable(direct_get):
-        mapping = direct_get(key, {})
-        if isinstance(mapping, dict):
-            return cast(Dict[str, Any], mapping)
-    return {}
+    return cfg.indirect_dict(key, {})

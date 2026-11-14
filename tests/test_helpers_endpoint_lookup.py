@@ -9,6 +9,7 @@ import requests as requests_lib
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from Helpers.Helpers import Helpers
+from Configuration import Config_Models
 
 # ---------------------------------------------------------------------------
 # Shared stubs
@@ -76,6 +77,153 @@ def test_get_active_endpoint_args_uses_active_endpoint_impl(
     assert args["model_name"] == ""
     assert args["friendly_name"] == ""
     assert args["local_files_only"] is True
+
+
+@pytest.mark.parametrize(
+    ("endpoint", "expected"),
+    [
+        ("ollama", "qwen2.5:14b"),
+        ("vllm", "openai/qwen2_5_14b_instruct"),
+    ],
+)
+def test_judge_model_resolves_for_active_endpoint(endpoint: str, expected: str) -> None:
+    helpers = _make_helpers()
+    with (
+        patch.object(
+            helpers.cfg,
+            "get_str",
+            side_effect=lambda key, default="", **kw: {
+                "_ACTIVE_ENDPOINT": endpoint,
+                "_ACTIVE_LLM_JUDGE": Config_Models._ACTIVE_LLM_JUDGE,
+            }.get(key, default),
+        ),
+        patch.object(helpers.cfg, "get_dict", return_value=Config_Models._MODELS),
+    ):
+        args = helpers.get_model_args("_ACTIVE_LLM_JUDGE")
+
+    assert args["MODEL"] == expected
+    assert args["model_name"] == expected
+    assert args["LICENSE"] == "Apache-2.0"
+    assert args["LICENSE_URL"] == (
+        "https://huggingface.co/Qwen/Qwen2.5-14B-Instruct/resolve/main/LICENSE"
+    )
+    assert args["USED_BY"] == ["RAGChat", "RAGChatService"]
+    assert args["TOKEN_BUDGET_RESERVED_OUTPUT"] == 256
+
+
+@pytest.mark.parametrize(
+    ("endpoint", "expected"),
+    [
+        ("ollama", "qwen2.5:1.5b"),
+        ("vllm", "openai/qwen2_5_1_5b_instruct"),
+    ],
+)
+def test_small_judge_model_spec_resolves_through_judge_selector(
+    endpoint: str, expected: str
+) -> None:
+    helpers = _make_helpers()
+    with (
+        patch.object(
+            helpers.cfg,
+            "get_str",
+            side_effect=lambda key, default="", **kw: {
+                "_ACTIVE_ENDPOINT": endpoint,
+                "_ACTIVE_LLM_JUDGE": "qwen2_5_1_5b_instruct",
+            }.get(key, default),
+        ),
+        patch.object(helpers.cfg, "get_dict", return_value=Config_Models._MODELS),
+    ):
+        args = helpers.get_model_args("_ACTIVE_LLM_JUDGE")
+
+    assert args["MODEL"] == expected
+    assert args["FRIENDLY_NAME"] == "Qwen2.5 1.5B Instruct (Small Judge)"
+    assert args["LICENSE"] == "Apache-2.0"
+    assert args["USED_BY"] == ["RAGChat", "RAGChatService"]
+
+
+@pytest.mark.parametrize(
+    ("endpoint", "model"),
+    [
+        ("ollama", "snowflake/snowflake-arctic-embed-l-v2.0"),
+        ("vllm", "snowflake-embedder"),
+    ],
+)
+def test_embedder_model_follows_endpoint_and_keeps_hf_id(
+    endpoint: str, model: str
+) -> None:
+    helpers = _make_helpers()
+    with (
+        patch.object(
+            helpers.cfg,
+            "get_str",
+            side_effect=lambda key, default="", **kw: {
+                "_ACTIVE_ENDPOINT": endpoint,
+                "_ACTIVE_EMBED": "snowflake",
+            }.get(key, default),
+        ),
+        patch.object(helpers.cfg, "get_dict", return_value=Config_Models._MODELS),
+    ):
+        args = helpers.get_model_args("_ACTIVE_EMBED")
+
+    assert args["MODEL"] == model
+    assert args["model_name"] == model
+    assert args["hf_model_name"] == "snowflake/snowflake-arctic-embed-l-v2.0"
+    assert "VLLM" not in args and "OLLAMA" not in args
+
+
+def _models_with_slot_overrides() -> dict[str, Any]:
+    return {
+        "vllm": {
+            "_VLLM": {
+                "BASE_URL": "http://generic/v1",
+                "REQUEST_TIMEOUT": 120.0,
+                "API_KEY": "g",
+            },
+        },
+        "m": {
+            "_LLM": {"VLLM": {"MODEL": "m_vllm", "REQUEST_TIMEOUT": 300.0}},
+            "_EMBED": {
+                "MODEL": "hf/m",
+                "VLLM": {
+                    "MODEL": "m-embed",
+                    "BATCH_SIZE": 8,
+                    "BASE_URL": "http://embed/v1",
+                },
+            },
+        },
+    }
+
+
+def _patched(helpers: Helpers):
+    return (
+        patch.object(
+            helpers.cfg,
+            "get_str",
+            side_effect=lambda key, default="", **kw: {
+                "_ACTIVE_ENDPOINT": "vllm",
+                "_ACTIVE_LLM": "m",
+                "_ACTIVE_EMBED": "m",
+            }.get(key, default),
+        ),
+        patch.object(
+            helpers.cfg, "get_dict", return_value=_models_with_slot_overrides()
+        ),
+    )
+
+
+def test_model_slot_overrides_generic_endpoint_values() -> None:
+    helpers = _make_helpers()
+    p1, p2 = _patched(helpers)
+    with p1, p2:
+        generic = helpers.get_active_endpoint_args()
+        llm = helpers.get_active_endpoint_args("_ACTIVE_LLM")
+        embed = helpers.get_active_endpoint_args("_ACTIVE_EMBED")
+
+    assert generic["REQUEST_TIMEOUT"] == 120.0
+    assert llm["REQUEST_TIMEOUT"] == 300.0
+    assert llm["BASE_URL"] == "http://generic/v1" and llm["API_KEY"] == "g"
+    assert "MODEL" not in llm
+    assert embed["BASE_URL"] == "http://embed/v1" and embed["BATCH_SIZE"] == 8
 
 
 # ---------------------------------------------------------------------------
@@ -310,3 +458,130 @@ class TestFindProviderUrl:
         # Candidates: otherhost:11434, localhost:11434, 127.0.0.1:11434, host.docker.internal:11434
         # No extra candidates for default_port (same as configured)
         assert len(tried) == 4
+
+
+@pytest.mark.parametrize(
+    ("endpoint", "expected"),
+    [
+        ("ollama", "hf_slot"),
+        ("vllm", "hf_role"),
+    ],
+)
+def test_model_hf_api_key_supersedes_global(endpoint: str, expected: str) -> None:
+    helpers = _make_helpers()
+    models = {
+        "m": {
+            "_LLM_REWRITE_PROMPT": {
+                "HF_API_KEY": "hf_role",
+                "OLLAMA": {"MODEL": "m", "HF_API_KEY": "hf_slot"},
+            }
+        }
+    }
+    with (
+        patch.object(
+            helpers.cfg,
+            "get_str",
+            side_effect=lambda key, default="", **kw: {
+                "_ACTIVE_ENDPOINT": endpoint,
+                "_ACTIVE_LLM_REWRITE_PROMPT": "m",
+                "_HF_API_KEY": "hf_global",
+            }.get(key, default),
+        ),
+        patch.object(helpers.cfg, "get_dict", return_value=models),
+    ):
+        assert (
+            helpers.get_model_args("_ACTIVE_LLM_REWRITE_PROMPT")["hf_api_key"]
+            == expected
+        )
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [
+        (None, "Test_embedder_snowflake"),  # config COLLECTION / --collection
+        ("MyDocs", "MyDocs_embedder_snowflake"),
+        ("Test_embedder_snowflake", "Test_embedder_snowflake"),
+        ("Test_embedder_bge_m3", "Test_embedder_bge_m3"),  # other embedder: left as is
+        (
+            "Test_snowflake",
+            "Test_snowflake_embedder_snowflake",
+        ),  # plain impl suffix is no embedder suffix
+        ("", ""),
+    ],
+)
+def test_embedder_collection_name(name, expected) -> None:
+    helpers = _make_helpers()
+    models = {
+        "snowflake": {"_EMBED": {}},
+        "bge_m3": {"_EMBED": {}},
+        "mistral": {"_LLM": {}},
+    }
+    with (
+        patch.object(
+            helpers.cfg,
+            "get_str",
+            side_effect=lambda key, default="", **kw: {
+                "COLLECTION": "Test",
+                "_ACTIVE_EMBED": "snowflake",
+            }.get(key, default),
+        ),
+        patch.object(helpers.cfg, "get_dict", return_value=models),
+    ):
+        assert helpers.embedder_collection_name(name) == expected
+
+
+def test_active_embedder_collections(tmp_path) -> None:
+    for d in (
+        "Test_embedder_snowflake",
+        "Docs_embedder_snowflake",
+        "Test_embedder_bge_m3",
+        "Test_embedder_snowflake_ChatContext",
+        ".hidden_embedder_snowflake",
+        "Legacy_snowflake",
+        "Legacy",
+    ):
+        (tmp_path / d).mkdir()
+    (tmp_path / "file_embedder_snowflake").write_text("x")
+    helpers = _make_helpers()
+    with patch.object(
+        helpers.cfg,
+        "get_str",
+        side_effect=lambda key, default="", **kw: {
+            "_ACTIVE_EMBED": "snowflake",
+            "_CHROMA_DB_DIR": str(tmp_path),
+        }.get(key, default),
+    ):
+        assert helpers.active_embedder_collections() == [
+            "Docs_embedder_snowflake",
+            "Test_embedder_snowflake",
+        ]
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [
+        ("Test_embedder_snowflake", "Test"),
+        ("Test_embedder_bge_m3", "Test"),
+        ("Test", "Test"),
+        ("Test_Second_embedder_snowflake", "Test_Second"),
+        ("Test_snowflake", "Test_snowflake"),
+        ("Test_embedder_mistral", "Test_embedder_mistral"),
+    ],
+)
+def test_base_collection_name(name, expected) -> None:
+    helpers = _make_helpers()
+    models = {
+        "snowflake": {"_EMBED": {}},
+        "bge_m3": {"_EMBED": {}},
+        "mistral": {"_LLM": {}},
+    }
+    with patch.object(helpers.cfg, "get_dict", return_value=models):
+        assert helpers.base_collection_name(name) == expected
+
+
+def test_history_key_is_shared_across_embedders() -> None:
+    from Gui.HistoryManager import HistoryManager
+
+    assert HistoryManager.key("Test_embedder_snowflake", "MyChat") == "Test_MyChat"
+    assert HistoryManager.key("Test_embedder_bge_m3", "MyChat") == "Test_MyChat"
+    assert HistoryManager.key("Test", "MyChat") == "Test_MyChat"

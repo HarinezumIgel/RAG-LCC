@@ -77,26 +77,20 @@ class TestTracedBind:
         assert "::1" in out
         assert "loopback" in out.lower()
 
-    def test_bind_specific_port_no_harmless_label(self, capsys):
-        """Binding to a specific port should NOT carry the 'likely harmless' annotation."""
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        try:
-            sock.bind(("127.0.0.1", 0))
-            # Get the actual assigned port — re-bind won't work, so we just
-            # verify the ephemeral case above carried the label and look at
-            # a non-zero port scenario textually.
-        finally:
-            sock.close()
+    def test_bind_all_interfaces_no_harmless_label(
+        self, capsys, monkeypatch: pytest.MonkeyPatch
+    ):
+        """Classify an all-interface address without opening a network socket."""
+        bound: list[tuple[object, object]] = []
+        monkeypatch.setattr(
+            NetworkTracer,
+            "_original_bind",
+            lambda sock, address: bound.append((sock, address)),
+        )
 
-        # For a non-loopback address the label must be absent.
-        sock2 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        _ = capsys.readouterr()  # clear buffer
-        try:
-            sock2.bind(("0.0.0.0", 0))
-        finally:
-            sock2.close()
-
+        NetworkTracer._traced_bind(None, ("0.0.0.0", 0))  # type: ignore[arg-type]
         out = capsys.readouterr().out
+        assert bound == [(None, ("0.0.0.0", 0))]
         assert "Socket BIND detected" in out
         assert "likely harmless" not in out
 

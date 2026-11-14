@@ -8,9 +8,12 @@ import os
 import sys
 from typing import Any, cast
 
+import pytest
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from Compliance.SharedHelpers import SharedHelpers
+from Commons.Exceptions import QueryTranslationError
 
 
 class _StubPretty:
@@ -71,6 +74,20 @@ def _make_shared(
         "spacy.model-unavailable"
     )
     shared.translation_cache = {}
+    shared.query_translation_cache = {}
+    shared.translated_list_cache = {}
+    shared.confusables = {}
+    shared.leet_map = {}
+    shared.cfg = cast(
+        Any,
+        type(
+            "_Config",
+            (),
+            {
+                "get_str": lambda self, key, default="": default,
+            },
+        )(),
+    )
     shared.pretty = cast(Any, pretty or _StubPretty())
     shared.lang_name_to_code = lang_name_to_code or {}
     return shared
@@ -145,3 +162,122 @@ def test_translate_text_can_suppress_fallback_warning() -> None:
         if len(args) >= 3 and args[1] == "Translate"
     ]
     assert warning_messages == []
+
+
+def test_strict_translation_does_not_reuse_cached_fallback() -> None:
+    shared = _make_shared({"en": _Lang("en", {})})
+    assert shared.translate_text("hello", "de", "en") == "hello"
+    with pytest.raises(QueryTranslationError, match="en->de"):
+        shared.translate_query_text("hello", "de", "en")
+
+
+def test_strict_translation_runtime_failure_is_not_cached() -> None:
+    shared = _make_shared(
+        {
+            "en": _Lang("en", {"de": _FailingTranslator()}),
+            "de": _Lang("de", {}),
+        }
+    )
+    with pytest.raises(QueryTranslationError, match="missing model files"):
+        shared.translate_query_text("hello", "de", "en")
+    assert shared.translation_cache == {}
+    assert shared.query_translation_cache == {}
+
+
+def test_strict_translation_accepts_unchanged_success_and_caches_it() -> None:
+    class _IdentityTranslator:
+        calls = 0
+
+        def translate(self, text: str) -> str:
+            self.calls += 1
+            return text
+
+    translator = _IdentityTranslator()
+    shared = _make_shared(
+        {
+            "en": _Lang("en", {"de": translator}),
+            "de": _Lang("de", {}),
+        }
+    )
+    assert shared.translate_query_text("Azure", "de", "en") == "Azure"
+    assert shared.translate_query_text("Azure", "de", "en") == "Azure"
+    assert translator.calls == 1
+
+
+def test_strict_translation_rejects_empty_response() -> None:
+    class _EmptyTranslator:
+        def translate(self, text: str) -> str:
+            return " "
+
+    shared = _make_shared(
+        {
+            "en": _Lang("en", {"de": _EmptyTranslator()}),
+            "de": _Lang("de", {}),
+        }
+    )
+    with pytest.raises(QueryTranslationError, match="empty text"):
+        shared.translate_query_text("hello", "de", "en")
+
+
+@pytest.mark.parametrize("failure", ["missing", "runtime"])
+def test_query_failure_preserves_banned_wordlist_fallback_and_cache(failure) -> None:
+    pretty = _CollectingPretty()
+    shared = _make_shared(
+        {
+            "en": _Lang(
+                "en", {"de": _FailingTranslator()} if failure == "runtime" else {}
+            ),
+            "de": _Lang("de", {}),
+        },
+        pretty=pretty,
+    )
+    with pytest.raises(QueryTranslationError):
+        shared.translate_query_text("Restricted Phrase", "de", "en")
+    words = shared.get_translated_wordlist(["Restricted Phrase"], "de", "REGEX")
+    assert words == ["restricted phrase"]
+    assert shared.get_translated_wordlist(["Restricted Phrase"], "de", "BM25") is words
+    assert shared.translation_cache == {
+        ("Restricted Phrase", "de", "en", False): "Restricted Phrase",
+    }
+    assert shared.query_translation_cache == {}
+    assert pretty.calls == []
+
+
+def test_query_success_does_not_change_compliance_cache_or_merge_semantics() -> None:
+    shared = _make_shared(
+        {
+            "en": _Lang("en", {"de": _Translator("DE")}),
+            "de": _Lang("de", {}),
+        }
+    )
+    assert (
+        shared.translate_query_text("Restricted Phrase", "de", "en")
+        == "DE:Restricted Phrase"
+    )
+    assert shared.translation_cache == {}
+    assert shared.translated_list_cache == {}
+    words = shared.get_translated_wordlist(["Restricted Phrase"], "de", "JACCARD")
+    assert words == ["restricted phrase", "de:restricted phrase"]
+    assert shared.translation_cache == {
+        ("Restricted Phrase", "de", "en", False): "DE:Restricted Phrase",
+    }
+    assert shared.get_translated_wordlist(["Restricted Phrase"], "en", "REGEX") == [
+        "restricted phrase",
+    ]
+
+
+def test_query_failure_does_not_suppress_legacy_translation_warning() -> None:
+    pretty = _CollectingPretty()
+    shared = _make_shared(
+        {
+            "en": _Lang("en", {"de": _FailingTranslator()}),
+            "de": _Lang("de", {}),
+        },
+        pretty=pretty,
+    )
+    with pytest.raises(QueryTranslationError):
+        shared.translate_query_text("phrase", "de", "en")
+    assert shared.warned_runtime_pairs == set()
+    assert shared.translate_text("phrase", "de", "en") == "phrase"
+    assert "en->de" in shared.warned_runtime_pairs
+    assert sum("Argos translation failed" in str(args) for args, _ in pretty.calls) == 1

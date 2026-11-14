@@ -84,6 +84,8 @@ class ChunkSelector(ABC):
         cross-encoder rerank is skipped.  Prefers the fused RRF score, then the
         individual retriever scores, and finally the rerank/chroma score."""
         if hasattr(c, "metadata"):
+            # These are fallbacks, not scores to combine: RRF already fuses
+            # retriever ranks, while raw scores have different scales/meanings.
             for key in (
                 "rrf_score",
                 "chroma_score",
@@ -119,6 +121,21 @@ class ChunkSelector(ABC):
             c.metadata.get("retriever_sources", "") if hasattr(c, "metadata") else ""
         )
         return "web" in sources.lower()
+
+    @staticmethod
+    def _is_table_chunk(c: Any) -> bool:
+        metadata = getattr(c, "metadata", {}) or {}
+        if any(
+            key in metadata for key in ("TableIndex", "TableHeader", "TableContext")
+        ):
+            return True
+        return bool(
+            re.match(
+                r"\s*Table\s+\d+\b",
+                str(getattr(c, "page_content", "") or ""),
+                re.IGNORECASE,
+            )
+        )
 
     def _query_terms(self) -> set[str]:
         query_text = str(
@@ -240,14 +257,22 @@ class ChunkSelector(ABC):
         list[tuple[Any, float, float, float]],
         int,
     ]:
-        """Re-add query-overlap local misses when strict thresholding is sparse.
+        """Recover likely-relevant local chunks rejected by the score threshold.
 
         Cross-encoder logits can under-rank tabular hardware specs. When a large
-        local pool survives thresholding with very few hits, re-introduce a small
-        set of retrieval-ranked local misses that share lexical overlap with the
-        active query so table rows are still available to the final answer model.
+        local pool yields very few hits after thresholding, re-introduce a small
+        set of local misses ranked by lexical overlap and retrieval score.
+        When no table survived, reserve one slot for the best retrieval-ranked
+        table fragment from the represented files, even without lexical overlap.
+
+        Each input item is ``(chunk, raw_score, threshold, effective_score)``.
+        The rescue is deliberately limited to local chunks; web results and
+        non-table chunks without query overlap keep their strict threshold path.
+        Returns updated hit/miss lists and the number of rescued chunks.
         """
 
+        # Keep web results on their normal threshold path; this fallback is for
+        # local document content such as tables that cross-encoders may underrank.
         local_hits = [item for item in hits if not self._is_web_chunk(item[0])]
         local_misses = [item for item in misses if not self._is_web_chunk(item[0])]
 
@@ -275,6 +300,8 @@ class ChunkSelector(ABC):
         hit_paths = {
             self._get_path(item[0]) for item in local_hits if self._get_path(item[0])
         }
+        # Prefer misses from files already represented among the hits, avoiding
+        # a rescue that broadens the answer context to unrelated documents.
         scoped_misses = [
             item
             for item in local_misses
@@ -284,17 +311,39 @@ class ChunkSelector(ABC):
             return hits, misses, 0
 
         ranked_candidates: list[tuple[int, float, tuple[Any, float, float, float]]] = []
+        table_candidates: list[tuple[float, tuple[Any, float, float, float]]] = []
         for item in scoped_misses:
             chunk = item[0]
+            # Query overlap is a keyword match against the chunk text;
+            # _get_retrieval_score supplies the tie-breaker, not the search.
+            retrieval_score = self._get_retrieval_score(chunk)
+            if self._is_table_chunk(chunk):
+                table_candidates.append((retrieval_score, item))
             overlap = self._query_overlap_count(chunk, query_terms)
             if overlap <= 0:
                 continue
-            ranked_candidates.append((overlap, self._get_retrieval_score(chunk), item))
+            ranked_candidates.append((overlap, retrieval_score, item))
 
-        if not ranked_candidates:
+        if not ranked_candidates and not table_candidates:
             return hits, misses, 0
 
         ranked_candidates.sort(key=lambda row: (row[0], row[1]), reverse=True)
+        best_table: tuple[Any, float, float, float] | None = None
+        if table_candidates and not any(
+            self._is_table_chunk(item[0]) for item in local_hits
+        ):
+            best_table = max(table_candidates, key=lambda row: row[0])[1]
+            ranked_candidates = [
+                row for row in ranked_candidates if row[2] is not best_table
+            ]
+            ranked_candidates.insert(
+                0,
+                (
+                    self._query_overlap_count(best_table[0], query_terms),
+                    self._get_retrieval_score(best_table[0]),
+                    best_table,
+                ),
+            )
         need = target_min_local_hits - len(local_hits)
         add_count = min(max_additional, need, len(ranked_candidates))
         if add_count <= 0:
@@ -305,16 +354,20 @@ class ChunkSelector(ABC):
 
         new_hits = list(hits)
         new_hits.extend(rescued_items)
-        # Keep deterministic sort: still by effective logit so strict hits stay first.
+        # Restore the normal effective-logit order, not the candidate ranking.
         new_hits.sort(key=lambda item: item[3], reverse=True)
         new_misses = [item for item in misses if id(item[0]) not in rescued_ids]
 
+        overlap_count = sum(
+            self._query_overlap_count(item[0], query_terms) > 0
+            for item in rescued_items
+        )
         self.pretty.write(
             "I",
             "Rerank fallback",
             (
                 "Low-recall rescue action: Added "
-                f"{add_count} query-overlap local chunk(s) from retrieval order "
+                f"{add_count} local chunk(s) ({overlap_count} with query overlap) "
                 f"(input_fetch_k={configured_fetch_k!r} "
                 f"input_context_chunks={configured_context_chunks!r} "
                 f"fixed_k={fixed_k} "
@@ -326,6 +379,19 @@ class ChunkSelector(ABC):
             ),
             color=BRIGHT_YELLOW,
         )
+        if best_table is not None:
+            chunk = best_table[0]
+            context = str(getattr(chunk, "page_content", "") or "").splitlines()
+            table_reference = context[0] if context else "table chunk"
+            self.pretty.write(
+                "I",
+                "Rerank fallback",
+                "Low-recall rescue: Kept the best retrieval-ranked table chunk "
+                f"in a reserved rescue slot: {self._get_filename(chunk)} | "
+                f"{table_reference} "
+                f"(retrieval score={self._get_retrieval_score(chunk):.4f}).",
+                color=BRIGHT_YELLOW,
+            )
 
         return new_hits, new_misses, add_count
 

@@ -15,15 +15,17 @@ import sentence_transformers.sentence_transformer.modules as models
 import torch
 from langchain_huggingface import HuggingFaceEmbeddings
 from sentence_transformers import CrossEncoder, SentenceTransformer
-from transformers import AutoTokenizer
+from transformers import AutoTokenizer, PreTrainedTokenizerBase
 from transformers import logging as hf_logging
 
+from AI.VllmClients import VllmCrossEncoder, VllmEmbeddings
 from Commons.Exceptions import ModelLoadError
 from Commons.SingletonMixin import SingletonMixin
 from Compliance.HFDownloader import HFDownloader
 from Config.Config import Config
-from Gui.Colors import ORANGE
+from Gui.Colors import ORANGE, TURQUOISE
 from Gui.PrettyWriter import PrettyWriter
+from Helpers.DebugHelper import DebugHelper
 from Helpers.Helpers import Helpers
 from Helpers.PerfLogger import PerfLogger
 
@@ -70,6 +72,7 @@ class ModelsCache(SingletonMixin):
         self.use_cpu: bool = self.cfg.get_bool("USE_CPU")
         self.bits: int = self.cfg.get_int("EMBEDDER_BITS", 32)
         self.lastDeviceBitSize: int = 0
+        self._logged_embedding_models: set[str] = set()
 
     # -----------------------------------------------------------------
     # GPU → CPU fallback
@@ -131,6 +134,8 @@ class ModelsCache(SingletonMixin):
         Reads USE_CPU live from config so runtime changes (e.g. Informer
         fallback) are always respected regardless of call-order.
         """
+        if self._vllm_endpoint_active():
+            return torch.device("cpu"), "cpu", torch.float32, 0
         bits: int = self.cfg.get_int("EMBEDDER_BITS", 32)
         target_dtype: torch.dtype = self.helpers.bit_to_dtype(bits)
 
@@ -165,8 +170,12 @@ class ModelsCache(SingletonMixin):
     # -----------------------------------------------------------------
     # Quantized SentenceTransformer
     # -----------------------------------------------------------------
-    def load_quantized_model(self, model_name: str) -> SentenceTransformer:
+    def load_quantized_model(
+        self, model_name: str
+    ) -> SentenceTransformer | VllmEmbeddings:
         """Load a quantized SentenceTransformer model, using cache if available."""
+        if self._vllm_endpoint_active():
+            return VllmEmbeddings(**self._vllm_client_kwargs("_ACTIVE_EMBED"))
         device, device_type, target_dtype, _ = self.switch2device()
         hf_args: Dict[str, Any] = self.helpers.get_model_args("_ACTIVE_EMBED")
         revision: str | None = hf_args.get("revision")
@@ -218,20 +227,79 @@ class ModelsCache(SingletonMixin):
             )
         pooling = models.Pooling(
             embedding_dimension=transformer.get_embedding_dimension(),
-            pooling_mode="mean",
+            pooling_mode="cls",
         )
 
-        model = SentenceTransformer(modules=[transformer, pooling], device=str(device))
+        # BGE-M3 / Arctic-Embed v2 use CLS pooling and expect normalized vectors.
+        model = SentenceTransformer(
+            modules=[transformer, pooling, models.Normalize()], device=str(device)
+        )
         model.to(target_dtype).eval()
 
         self.sentence_transformer_cache.append({cache_key: model})
         return model
 
     # -----------------------------------------------------------------
+    # vLLM-served embedder / cross-encoder
+    # -----------------------------------------------------------------
+    def _vllm_endpoint_active(self) -> bool:
+        """Embedder/cross-encoder follow _ACTIVE_ENDPOINT: vllm -> vLLM, else HF."""
+        return (
+            str(self.cfg.get_str("_ACTIVE_ENDPOINT", "ollama")).strip().lower()
+            == "vllm"
+        )
+
+    def _vllm_client_kwargs(self, active: str) -> Dict[str, Any]:
+        model_args: Dict[str, Any] = self.helpers.get_model_args(active)
+        # Generic _VLLM server entry, superseded by the model's "VLLM" slot.
+        server: Dict[str, Any] = self.helpers.get_active_endpoint_args(active)
+        # Without an own BASE_URL the model shares the chat server; the client
+        # needs its root because it appends /embeddings, /rerank or /score.
+        base_url = str(server.get("BASE_URL", "")).rstrip("/")
+        base_url = base_url.removesuffix("/chat/completions")
+        return {
+            "base_url": base_url,
+            "model": str(model_args.get("MODEL") or model_args["model_name"]),
+            "api_key": str(server.get("API_KEY", "")),
+            "timeout": float(server.get("REQUEST_TIMEOUT", 120.0)),
+            "batch_size": int(server.get("BATCH_SIZE", 64)),
+            "call_logger": self._log_vllm_call,
+        }
+
+    def _log_vllm_call(self, stage: str, purpose: str, model: str) -> None:
+        """Show the first embedding call per model, then require component detail."""
+        logged_models = self._logged_embedding_models
+        level = 55 if stage == "Encode" and model in logged_models else 30
+        if not DebugHelper.check(self.cfg, level):
+            return
+        self.pretty.write("I", "Call LLM", f"Stage: {stage}", color=TURQUOISE)
+        self.pretty.write(
+            "I",
+            "Call LLM",
+            f"Model: {model} prompt template: None purpose: {purpose}",
+            color=TURQUOISE,
+        )
+        if stage == "Encode":
+            logged_models.add(model)
+
+    # -----------------------------------------------------------------
     # HuggingFace Embeddings
     # -----------------------------------------------------------------
-    def get_hf_embeddings(self) -> HuggingFaceEmbeddings:
-        """Load HuggingFace embeddings, using cache if available."""
+    def get_hf_embeddings(self) -> HuggingFaceEmbeddings | VllmEmbeddings:
+        """Load HuggingFace embeddings, using cache if available.
+
+        With ``_ACTIVE_ENDPOINT = "vllm"`` a :class:`VllmEmbeddings` client is
+        returned instead (same ``embed_documents`` / ``embed_query`` surface).
+        """
+        if self._vllm_endpoint_active():
+            kwargs = self._vllm_client_kwargs("_ACTIVE_EMBED")
+            self.pretty.write(
+                "I",
+                "vLLM",
+                f"Using vLLM embeddings '{kwargs['model']}' at {kwargs['base_url']}",
+            )
+            return VllmEmbeddings(**kwargs)
+
         model_args: Dict[str, Any] = self.helpers.get_model_args("_ACTIVE_EMBED")
         model_name: str = model_args["model_name"]
         revision: str | None = model_args.get("revision")
@@ -376,7 +444,7 @@ class ModelsCache(SingletonMixin):
     # -----------------------------------------------------------------
     # CrossEncoder
     # -----------------------------------------------------------------
-    def get_cross_encoder(self) -> CrossEncoder:
+    def get_cross_encoder(self) -> CrossEncoder | VllmCrossEncoder:
         """Load a CrossEncoder model via HFDownloader.
 
         When HF_HUB_OFFLINE=1 and the model is already downloaded this is a
@@ -387,6 +455,22 @@ class ModelsCache(SingletonMixin):
         download() and trigger the re-download consent prompt.
         """
         from pathlib import Path as _Path
+
+        if self._vllm_endpoint_active():
+            kwargs = self._vllm_client_kwargs("_ACTIVE_CROSS")
+            self.pretty.write(
+                "I",
+                "vLLM",
+                f"Using vLLM cross-encoder '{kwargs['model']}' at {kwargs['base_url']}",
+            )
+            return VllmCrossEncoder(
+                **kwargs,
+                api_style=str(
+                    self.helpers.get_active_endpoint_args("_ACTIVE_CROSS").get(
+                        "API_STYLE", "score"
+                    )
+                ),
+            )
 
         args: Dict[str, Any] = self.helpers.get_model_args("_ACTIVE_CROSS")
         model_name: str = args["model_name"]
@@ -460,6 +544,17 @@ class ModelsCache(SingletonMixin):
     # -----------------------------------------------------------------
     # Text truncation
     # -----------------------------------------------------------------
+    def get_embedding_tokenizer(self, model_name: str) -> PreTrainedTokenizerBase:
+        """Use the same tokenizer and credentials for counting and truncation."""
+        model_args: Dict[str, Any] = self.helpers.get_model_args("_ACTIVE_EMBED")
+        hf_api_key: str = model_args.get("hf_api_key", "")
+        return AutoTokenizer.from_pretrained(  # type: ignore[reportUnknownMemberType]
+            model_name,
+            use_fast=True,
+            cache_dir=self.cache_dir,
+            token=hf_api_key or None,
+        )
+
     def truncate_texts(
         self,
         texts: list[str],
@@ -475,14 +570,7 @@ class ModelsCache(SingletonMixin):
         """
         if not texts:
             return []
-        model_args: Dict[str, Any] = self.helpers.get_model_args("_ACTIVE_EMBED")
-        hf_api_key: str = model_args.get("hf_api_key", "")
-        tokenizer: Any = AutoTokenizer.from_pretrained(  # type: ignore[reportUnknownMemberType]
-            model_name,
-            use_fast=True,
-            cache_dir=self.cache_dir,
-            token=hf_api_key or None,
-        )
+        tokenizer = self.get_embedding_tokenizer(model_name)
         enc: Any = tokenizer(  # type: ignore[reportUnknownVariableType]
             texts,
             truncation=True,

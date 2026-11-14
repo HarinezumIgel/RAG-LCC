@@ -3,6 +3,7 @@ import logging
 import os
 import sys
 import time
+from io import StringIO
 from pathlib import Path
 from typing import Any, Dict
 
@@ -14,8 +15,12 @@ from langdetect import detect  # type: ignore[reportMissingTypeStubs]
 from openpyxl.worksheet.worksheet import Worksheet
 from pdf2image import \
     convert_from_path  # type: ignore[reportUnknownVariableType]
-from pdfminer.high_level import extract_text as extractPDF
+from pdfminer.converter import TextConverter
+from pdfminer.layout import LAParams
+from pdfminer.pdfinterp import PDFPageInterpreter, PDFResourceManager
+from pdfminer.pdfpage import PDFPage
 from PIL import Image
+from tqdm import tqdm
 
 from Algos.Masker import Masker
 from Algos.UnicodeNormalizer import UnicodeNormalizer
@@ -35,6 +40,7 @@ from Helpers.Helpers import Helpers
 from Helpers.OfficeDocConverter import OfficeDocConverter
 from Helpers.PerfLogger import PerfLogger
 from Helpers.ValidExtensions import ValidExtensions
+from Strategies.Chunkers.TableChunker import DocumentBlock, TableChunker
 from Strategies.ProcessingStrategy import ProcessingStrategy
 from Strategies.StrategyType import StrategyType
 
@@ -83,6 +89,7 @@ class LoadAndClassifyProcessor(SingletonMixin):
 
         self.fileName: str | None = None
         self.fileHash: str = "N/A"
+        self._document_blocks: list[DocumentBlock] = []
 
         # Validators, converters & delegates
         self.valid_extsInstance: ValidExtensions = ValidExtensions()
@@ -133,7 +140,7 @@ class LoadAndClassifyProcessor(SingletonMixin):
         if self.friendly_name == "RAGLoad":
             self.collection_name: str
             self.collection_name, _ = self.chromaDBHelper.change_chroma_collection(
-                self.cfg.get_str("COLLECTION"), True  # type: ignore[reportArgumentType]
+                self.helpers.embedder_collection_name(), True
             )
 
         self.tesseract_path = self.helpers.configure_tesseract()
@@ -231,6 +238,8 @@ class LoadAndClassifyProcessor(SingletonMixin):
             },
             "content": self.content,
         }
+        if self._document_blocks:
+            self.doc["blocks"] = self._document_blocks
 
         return self.doc
 
@@ -297,18 +306,35 @@ class LoadAndClassifyProcessor(SingletonMixin):
         file_name: str = self.fileName or ""
         content: str = ""
         disabled_office_component: str = ""
+        # Reset per file so failed/empty extraction cannot reuse prior tables.
+        self._document_blocks = []
+        is_ingestion = self.strategy.strategy_type == StrategyType.DOCUMENT_INGESTION
 
         if self.valid_extsInstance.check(file_name, ["pdf"]):
             logging.getLogger("pdfminer").setLevel(logging.ERROR)
-            content = extractPDF(self.escapedFilePath).strip()
+            content = self._extract_pdf_text(self.escapedFilePath).strip()
             if not content:
-                for page in convert_from_path(self.escapedFilePath, dpi=300):
+                for page in tqdm(
+                    convert_from_path(self.escapedFilePath, dpi=300),
+                    desc="PDF OCR",
+                    unit="page",
+                    dynamic_ncols=True,
+                    bar_format="{desc}: {n_fmt} {unit} [{elapsed}, {rate_fmt}]",
+                ):
                     try:
-                        content = (
+                        content += (
                             str(pytesseract.image_to_string(page)) + "\n"  # type: ignore[reportUnknownMemberType]
                         )
                     finally:
                         page.close()
+            if is_ingestion:
+                self._document_blocks = TableChunker.extract_pdf(
+                    self.escapedFilePath,
+                    self.pretty,
+                    detect_printed_labels=self.cfg.get_bool(
+                        "_CHUNKERS.PDF_PAGE.DETECT_PRINTED_LABEL", True, silent=True
+                    ),
+                )
 
         # _CONSIDER_AS_TEXT_FILE: plain-text formats whose
         # content is read as-is (txt, md, py, csv, log, …).
@@ -331,6 +357,18 @@ class LoadAndClassifyProcessor(SingletonMixin):
                     for row in tbl.rows
                     for cell in row.cells
                 )
+                if is_ingestion and doc_obj.tables:
+                    self._document_blocks = TableChunker.extract_word(doc_obj)
+                    # Ordered content also drives language/compliance checks;
+                    # classification retains its existing flat extraction.
+                    content = "\n".join(
+                        (
+                            block.text
+                            if not block.table_index
+                            else "\n".join(" | ".join(row) for row in block.rows)
+                        )
+                        for block in self._document_blocks
+                    )
             else:
                 disabled_office_component = "MS Word"
 
@@ -374,6 +412,31 @@ class LoadAndClassifyProcessor(SingletonMixin):
 
         return content, disabled_office_component
 
+    @staticmethod
+    def _extract_pdf_text(file_path: str) -> str:
+        """Use pdfminer's default extraction pipeline with per-page progress."""
+        with open(file_path, "rb") as source, StringIO() as output, tqdm(
+            desc="PDF text extraction",
+            unit="page",
+            dynamic_ncols=True,
+            bar_format="{desc}: {n_fmt} {unit} [{elapsed}, {rate_fmt}]",
+        ) as progress:
+            resources = PDFResourceManager(caching=True)
+            device = TextConverter(
+                resources,
+                output,
+                codec="utf-8",
+                laparams=LAParams(),
+            )
+            try:
+                interpreter = PDFPageInterpreter(resources, device)
+                for page in PDFPage.get_pages(source, caching=True):
+                    interpreter.process_page(page)
+                    progress.update(1)
+                return output.getvalue()
+            finally:
+                device.close()
+
     def _handle_extraction_error(self, error: Exception, is_office: bool) -> None:
         if is_office:
             self.pretty.write(
@@ -415,6 +478,9 @@ class LoadAndClassifyProcessor(SingletonMixin):
             preserve_newlines=self._chunker_preserves_newlines(),
         )
         self.content = self.masker.mask(self.content)
+        self._document_blocks = TableChunker.normalize_blocks(
+            self._document_blocks, self.unicode_normalizer, self.masker
+        )
         self.doc = self._make_doc()
         self.strategy.process(self.doc)
         self.processed_countInstance.increment()

@@ -1,7 +1,7 @@
 # Legal and Compliance Notes
 
 RAG‑LCC is designed for experimentation and learning, not for production deployment.
-Use it with care, especially when enabling features that access external services.
+Review the configuration carefully: features that access external services may be enabled.
 
 This document is provided for informational purposes only. It does not constitute legal
 advice, compliance advice, or professional guidance of any kind. The authors and
@@ -33,8 +33,8 @@ RAG‑LCC **does not**:
 - replace human judgment.
 
 All detection results are probabilistic. False positives and false negatives will occur.
-Final decisions regarding enforcement, disclosure, remediation, or use of outputs must be
-made by a qualified human operator.
+Operators are responsible for reviewing results and deciding on downstream
+enforcement, disclosure, remediation, and use of outputs.
 
 ---
 
@@ -48,8 +48,8 @@ made by a qualified human operator.
   All rules, thresholds, and configurations are defined and controlled by the operator.
 
 - **Human responsibility**
-  Any blocking, redaction, reporting, or external disclosure must be reviewed and approved
-  by a human. RAG‑LCC does not autonomously enforce outcomes.
+  Configured rules can automatically mask or block content. Operators are responsible
+  for reviewing results and deciding on downstream actions and disclosures.
 
 - **Experimental limitations**
   The software may contain errors, omissions, or design limitations and has not been
@@ -66,18 +66,20 @@ Operators are solely responsible for determining:
 - whether a DPIA or other assessment is required,
 - how retention, access control, and deletion are handled.
 
-The default configuration is local‑only. Any use of external model endpoints, remote data export,
-or network access is explicitly configured by the operator and is outside the control of
-the authors.
+Network activity depends on the configuration and environment. Deployment disables the
+web-search master switch, but development settings may differ, Hugging Face Hub access may
+be allowed, and model endpoints may be remote. Operators should review all settings and data
+flows before use.
 
 ---
 
 ## 🌐 Web / Internet Search — Privacy Warning
 
-RAG‑LCC includes an **optional internet-search feature** which is
-**disabled by default**. When an operator enables it, RAG‑LCC sends the
-user's query to an external third-party search provider (currently
-DuckDuckGo). For the exact configuration keys and activation paths see
+RAG‑LCC includes an **optional internet-search feature**. Deployment disables its
+master switch; development settings may differ, and whether a query uses it also
+depends on the application and session settings. When used, RAG‑LCC sends the user's query
+to an external third-party search provider (currently DuckDuckGo). For the exact
+configuration keys and activation paths see
 [INSTALL.md § Enable Internet (Web) Search](INSTALL.md#-enable-internet-web-search-optional)
 and [SECURITY.md](SECURITY.md#-web--internet-search); this section describes only the
 privacy / liability implications.

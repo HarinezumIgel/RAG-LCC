@@ -145,7 +145,7 @@ def test_config_global_validate_absolute_path_rejects_indirection(
     monkeypatch.setattr(cfg_global, alias_name, alias_value, raising=False)
 
     with pytest.raises(SystemExit) as exc_info:
-        cfg_global._validate_absolute_path(f"${alias_name}", "unit_test")
+        cfg_global.validate_absolute_path(f"${alias_name}", "unit_test", "unit_test")
     assert exc_info.value.code == 1
     assert "direct absolute path" in capsys.readouterr().err
 
@@ -160,6 +160,37 @@ def test_config_global_validate_absolute_path_rejects_relative_alias(
     monkeypatch.setattr(cfg_global, alias_name, "relative/path", raising=False)
 
     with pytest.raises(SystemExit) as exc_info:
-        cfg_global._validate_absolute_path(f"${alias_name}", "unit_test")
+        cfg_global.validate_absolute_path(f"${alias_name}", "unit_test", "unit_test")
     assert exc_info.value.code == 1
     assert "direct absolute path" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("app", ["RAGChat", "RAGChatService", "RAGLoad", "DocClassify"])
+def test_confidence_module_is_loaded_for_each_runtime(app, monkeypatch) -> None:
+    import Configuration.Config_Confidence as confidence_config
+
+    monkeypatch.setattr(cfg_mod.sys, "argv", [f"{app}.py"])
+    cfg = object.__new__(cfg_mod.Config)
+    cfg.__init__()
+
+    assert cfg.get("_CONFIDENCE_LOGGING") == confidence_config._CONFIDENCE_LOGGING
+    assert cfg.get("_QUALITY_CONFIDENCE") == confidence_config._QUALITY_CONFIDENCE
+    prompt = cfg.get("_PROMPT_QUALITY_DIMENSION_JUDGE")
+    assert "answer to evaluate" in prompt.format(answer="answer to evaluate")
+    assert not hasattr(cfg_mod.Config_Global, "_CONFIDENCE_LOGGING")
+    assert not hasattr(cfg_mod.Config_Global, "_QUALITY_CONFIDENCE")
+    assert not hasattr(
+        cfg_mod.Config_RAGChat_Prompts, "_PROMPT_QUALITY_DIMENSION_JUDGE"
+    )
+
+
+def test_app_confidence_override_has_precedence(monkeypatch) -> None:
+    override = {"emit_in_answer_block": False}
+    monkeypatch.setattr(cfg_mod.sys, "argv", ["RAGChat.py"])
+    monkeypatch.setattr(
+        cfg_mod.Config_RAGChat, "_QUALITY_CONFIDENCE", override, raising=False
+    )
+    cfg = object.__new__(cfg_mod.Config)
+    cfg.__init__()
+
+    assert cfg.get("_QUALITY_CONFIDENCE.emit_in_answer_block") is False

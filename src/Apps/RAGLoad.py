@@ -35,6 +35,7 @@ from Config.Config import Config
 from Globals.Globals import Globals
 from Gui.Colors import ORANGE as ORANGE  # re-exported
 from Gui.Colors import RED as RED
+from Gui.Colors import TURQUOISE
 from Gui.Informer import Informer
 from Gui.PrettyWriter import PrettyWriter
 from Helpers.ClassifyCSVReader import ClassifyCSVReader
@@ -105,6 +106,13 @@ class RAGLoad:
             "N",
             "",
             f"Workload took {elapsed_time} / {elapsed_time.total_seconds()} seconds",
+        )
+        # Always shown, independent of DEBUG_LEVEL.
+        PrettyWriter(always_on=True).write(
+            "N",
+            "",
+            f"Loaded collection: {self.proc.collection_name}",
+            color=TURQUOISE,
         )
         if os.environ.get("RAG_LCC_NW_TRACE", "0") == "1" and NetworkTracer is not None:
             NetworkTracer.disable_tracer()  # Patch socket to trace network calls

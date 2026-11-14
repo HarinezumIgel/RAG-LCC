@@ -6,6 +6,448 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [Unreleased]
+
+### Changed - Direct calls to known APIs
+
+- Language/flow configuration, indexed query planning, shared tokenization, and
+  spaCy configuration use their known APIs without reflective callable probes
+  or silent compatibility retries. Configuration and query-shaping errors
+  propagate instead of silently selecting fallback data.
+- Optional spaCy loaders retain their explicit `None` handling and model-load
+  error behavior. Genuine callbacks, including Chatter's streaming callback,
+  are unchanged.
+
+### Changed - Always-on splitter messages
+
+- Splitter input, timing, decomposition, and answer instruction
+  messages use PrettyWriter's brown text independently of debug level/mode,
+  without debug indentation. Progress bullets are blue; the validated
+  decomposition bullet is green. The redundant turn-summary message is removed.
+  Existing warning styling, redaction,
+  and explicit quiet-context suppression remain.
+
+### Changed - CLI list-marker display
+
+- CLI answer printing substitutes leading Markdown list markers (`-`, `*`, `+`)
+  with bullet glyphs, retaining list indentation and ANSI colors. Fenced code
+  and horizontal rules are excluded. This is display-only, not a full Markdown
+  renderer; stored answers and API responses are unchanged.
+
+### Added - Keyword/action query splitting
+
+- An additional JSON LLM call after normalization, approved history-aware
+  rewriting, and retrieval gates separates local information needs, retrieval
+  keywords, and the complete answer/operation instruction. It reuses
+  `_ACTIVE_LLM_REWRITE_PROMPT` and existing caller, parser, and budget helpers.
+- Enabled local retrievers search each need; BM25 additionally searches the
+  combined keywords when enabled with nonzero weight. Guardrail and
+  original-language legs run at most once per turn. Successful splitting
+  replaces MultiQuery paraphrases; warned decomposition failures restore the
+  legacy pipeline.
+- Local reranking retains per-need diagnostics and each chunk's maximum raw
+  relevance score. Existing fusion, language selection, deduplication,
+  thresholds, and context strategies remain; no per-need quotas or agent loop
+  were added. Web queries and conversation-history behavior are unchanged.
+- The answer model receives the complete request and operation over selected
+  evidence. Missing evidence is not proof of a negative; enumeration/comparison
+  completeness is not guaranteed. `summarize:` / `summary:` retain their
+  separate full-document path.
+
+### Changed - Split-query configuration and strategy feedback
+
+- `Config_KeywordActionSplitter.py` enables splitting by default and defines
+  query/keyword limits, sampling, and `_PROMPT_KEYWORD_ACTION_SPLITTER`.
+  Flow `use_keyword_action_splitter`, CLI `keyword_action_splitter`, and API
+  `enable_keyword_action_splitter` control it; picking a flow reapplies its
+  switch defaults.
+- `_PROMPT_KEYWORD_ACTION_ANSWER` and `_PROMPT_KEYWORD_ACTION_OPERATION` make
+  split-answer wording and list/table formatting configurable without changing
+  the main answer prompt. Generic action keywords are explicitly removed and
+  remaining counts validated; always-on informational messages show decomposition.
+- CLI strategy selection warns about estimated context-window risk using the
+  active session chunk count, not configured preset/candidate counts. It
+  suggests fewer chunks, a narrower strategy, or a supported larger model
+  window without changing settings. A quiet estimate is not a fit guarantee.
+
+### Changed - Runtime responsibility extraction
+
+- Factored command metadata/settings, query normalization, local retrieval,
+  scoring/context selection, marking, indexed planning/execution, request
+  mapping, and SSE lifecycle into dedicated modules. Existing facade methods,
+  shared state, and streaming lock ownership are preserved; no new callback
+  injection was introduced. Maintenance scripts are unchanged.
+
+### Documentation - Query-split flow and current configuration
+
+- Updated the README text flowchart and pipeline overview, architecture
+  responsibilities/source trees, and configuration controls/lookup order.
+  Documented fallback behavior, pronoun/translation ownership, unchanged
+  web/history paths, configurable prompts, and bounded-evidence limitations.
+- Strategy-reference thresholds now match configuration: NARROW `0.60`,
+  BALANCED_FILE_CAP `0.55`, DEFAULT/WIDE `0.50`, ULTRA_WIDE `0.45`.
+- Canonical full-suite validation after the summary test fixes:
+  **2,563 passed in 74.81 seconds**, with one existing Chroma deprecation warning.
+
+### Fixed - Summary test compatibility
+
+- Summary fixtures and prompt-budget tests use the current
+  `_PROMPT_FINAL_SUMMARY_PROMPT_TEMPLATE` configuration key.
+- The lightweight Chatter test shell includes the final keyword/action trace
+  helper used by normal answer generation. Service-selection tests explicitly
+  verify that a reply was resolved before checking its result.
+
+### Fixed - Deployment configuration and test baseline
+
+- Deployment now updates the current web-search and in-memory PDF-serving
+  switches, uses the maintained class-graph script, and restores the starting
+  directory on exit or failure. An existing target still requires an explicit
+  yes/no answer before it can be cleaned.
+- Model-selection tests no longer assume a machine-specific vLLM model alias
+  or endpoint, and class-graph tests use the maintained script.
+
+### Changed - Validation errors show shared session settings
+
+- Invalid API request responses again include user-facing session settings in
+  OpenWebUI, alongside the validation details and a logged reference ID.
+  Settings are labeled as unapplied to the invalid request; internal query,
+  language-detection, grounding, and retrieval-processing state is excluded.
+- API snapshots now reuse `QueryParts`' CLI settings layout and value allowlist,
+  including summary settings, metadata filters, flow overrides, and preferred
+  response language, instead of maintaining a duplicate formatter.
+
+### Added - Summary command alias
+
+- Accept `summary:` as an alias for `summarize:` in CLI RAGChat and
+  RAGChatService, including explicit document targets, pinned selections,
+  cancellation, and the CLI path-picker flow.
+
+### Fixed - OpenWebUI title requests bypass RAG
+
+- Recognize the newer `Generate a concise title summarizing the chat history.`
+  task prompt as well as the existing title prefix. These housekeeping requests
+  now use the lightweight JSON response instead of triggering document
+  retrieval, web search, and chat-history updates.
+- Both streaming and non-streaming housekeeping responses bypass request
+  overrides and the RAG lock. The web retrieval leg for ordinary queries is
+  unchanged; restart RAGChatService to load the updated title detector.
+
+### Documentation - Summary commands and OpenWebUI background tasks
+
+- Updated README, the hands-on tour, and the configuration reference with
+  `summary:` examples, shared selection behavior, and dedicated summary
+  sampling settings.
+- Documented recognized title/tag/follow-up task prefixes, JSON responses,
+  streaming behavior, and restart guidance in OPENWEBUI_SETTING_CHANGES.
+
+### Changed - CLI summary selection and picker returns
+
+- With no explicit target or pinned document, CLI `summarize:` opens the
+  existing `path!` picker directly. Selecting a document pins it and continues
+  the summary; returning leaves the selection unchanged and skips the summary.
+  OpenWebUI document selection is unchanged.
+- Pickers offer **Return - keep current setting** without clearing or resetting
+  existing values. Empty input in typed settings prompts also preserves the
+  current value. Returning from the debug comparison-mode picker preserves both
+  the previous level and mode; returning from collection or metadata selection
+  preserves existing filters.
+- Shared file/path selection and debug-setting logic now live in `QueryParts`,
+  with common return handling reused across pickers.
+
+### Fixed - Masker match-summary logging
+
+- Per-call masking match summaries now respect the level-40 debug guard and
+  no longer appear at debug level 30.
+
+### Documentation - Docs re-verified against code (changes since r1547)
+
+- ARCHITECTURE: both source trees now match `src/` (new Orchestrator,
+  Grounding, Configuration and Helper modules); chunk-selection chart routes by
+  strategy name (only `PerFileCapSelector` applies `filelim`); token-budget
+  formula shows the `reserved_output` fallback on overflow; download flow
+  shows the vLLM remote short-circuit; WordNet chart reflects
+  `SCORERS_ENABLED` and `MAX_SYNONYMS_PER_PHRASE = 1`; `_ACTIVE_*` defaults,
+  config-file list and CLI-overridable table updated.
+- CONFIGURATION_REFERENCE: lookup order matches `Config._load_from_constants()`
+  and `CliOverridePolicy`; added `Config_ContextSummarizer` /
+  `SUMMARY_WORD_LIMITS`, `_GROUNDING` relaxed keys, `_GROUNDING_MARKING`,
+  `_REGEX_INDEX` keys, `_CACHE_PATH_ABSOLUTE`, provider `PROVIDER` /
+  `REQUEST_TIMEOUT` / `MODEL_LICENSES_NOTE`, model `TAG` / `UPSTREAM_SOURCE`,
+  debug levels 28/33, and API fields `file` / `path` / `summary_length` /
+  `summary_temperature` / `chunk_overlap`; `_ACTIVE_*` defaults corrected.
+- Collection-name examples use the actual `_embedder_<impl>` suffix.
+
+### Changed - License compliance checks only active models
+
+- License compliance now checks only the **active** models: those selected
+  by the `_ACTIVE_*` slots in `Config_Models.py` (for `_ACTIVE_ENDPOINT`
+  the provider entry `_OLLAMA` / `_VLLM`), still filtered by `USED_BY`. Switching a slot
+  to a model that was consented earlier needs no new consent; switching to
+  an unconsented model or changing an active model's `_MODELS` entry
+  requires consent. Editing inactive models never prompts. An unknown
+  `_ACTIVE_*` value stops startup with `ComplianceViolationError`.
+  Offline (`LICENSE_DOWNLOAD = "0"`) re-consent after a config change uses
+  the stored license text and lists the changed key names. The whole-file
+  `_CRITICAL_CONFIG_HASHES["Config_Models"]` check is unchanged.
+- New `src/Helpers/ModelSelection.py` holds the `_ACTIVE_*` -> `_MODELS`
+  lookup. `Helpers.get_model_args` (runtime) and Compliance share it, and
+  the selectors are discovered from `Config_Models.py`, so no slot list is
+  duplicated.
+- `_MODELS` role entries keep per-provider values in nested `"OLLAMA"` /
+  `"VLLM"` slots instead of `MODEL_OLLAMA` / `MODEL_VLLM`
+  (e.g. `"VLLM": {"MODEL": "mistral_7b"}`). Model-specific values always
+  supersede the global ones: the model's slot for `_ACTIVE_ENDPOINT`, then
+  its role-level keys, then the generic endpoint entry (`_OLLAMA` / `_VLLM`)
+  and globals such as `_HF_API_KEY`. A slot can therefore set e.g.
+  `REQUEST_TIMEOUT`, `BASE_URL`, `BATCH_SIZE` or `HF_API_KEY` per model
+  (`"OLLAMA": {"HF_API_KEY": "hf_..."}` in `_LLM_REWRITE_PROMPT`).
+- Removed the separate vLLM server entries `_MODELS.vllm._VLLM_EMBED` /
+  `_VLLM_CROSS`. Embedder and cross-encoder use `_VLLM` (API key, timeout)
+  plus their own `"VLLM"` slot (alias, `API_STYLE` for cross-encoders,
+  optional `BASE_URL` / `BATCH_SIZE`). Without an own `BASE_URL` they call
+  the `_VLLM` server root (its URL without `/chat/completions`).
+  `Helpers.get_active_endpoint_args` lost its `server_role` parameter.
+- Removed the selectors `_ACTIVE_OPENWEBUI` and `_ACTIVE_RAGCHATSERVICE`.
+  `_MODELS.openwebui._OPENWEBUI` and `_MODELS.ragchatservice._RAGCHATSERVICE`
+  are fixed service entries: every `_MODELS` role that no `_ACTIVE_*`
+  selector covers and that has no `PROVIDER` key is always active (license
+  consent still follows `USED_BY`).
+- Fixed the `_HF_API_KEY` comment: it is the global fallback; a model's own
+  `HF_API_KEY` wins. Embedders/cross-encoders use the same layout
+  (`"VLLM": {"MODEL": "snowflake-embedder"}`); the tokenizer still uses the
+  Hugging Face id (`hf_model_name`). Chroma collections are stamped with the
+  active `MODEL`, so after switching `_ACTIVE_ENDPOINT` re-run RAGLoad /
+  DocClassify. Query rewrite and multi-query calls now pass
+  `model_role="_ACTIVE_LLM_REWRITE_PROMPT"` (endpoint overrides and token
+  budget of the rewrite model). Because the active entries changed, the next
+  start asks for license re-consent once for the active models.
+
+### Changed - Grounding via translated answer proxy
+
+- When the detected answer language matches none of the evidence languages
+  (e.g. German answer, English documents), the answer is translated into the
+  evidence language first instead of after a direct overlap check that cannot
+  succeed. Translation runs sentence by sentence (local Argos, cached).
+- A grounded translation is kept as the session's grounding proxy and drives
+  the CLI highlights (the matching German sentences are marked) and the
+  source-document highlights (the matching English passages are marked).
+  The displayed answer is never replaced. This supersedes the earlier rule
+  that translated validation alone never triggers source highlights.
+- A visible `Grounding` line (independent of the debug level) reports
+  `Answer grounded via translation de->en`.
+- Grounding debug level 33 also prints each translated answer proxy in the
+  document language before checking its support. When languages match, it
+  reports that no grounding translation is required.
+
+### Changed - Collection names carry the embedder
+
+- `COLLECTION` (config or `--collection`) is now a base name: the active
+  embedder is appended, e.g. `Test` -> `Test_embedder_snowflake`
+  (`Helpers.embedder_collection_name`). RAGLoad, RAGChat, DocClassify,
+  RAGChatService, exclusion lists and the RAGLoad index cleanup all use the
+  resolved name. Names that already end with `_embedder_<impl>`
+  (`Test_embedder_bge_m3`) are used unchanged, so existing suffixed collections and
+  explicit picks keep working.
+- The RAGChat collection picker (`collection!`) and the OpenWebUI model list
+  (`GET /v1/models`) show only collections created with the active embedder
+  and say so (`Helpers.active_embedder_collections`).
+- Chat history is shared across embedders: `history/` files use the base
+  collection name (`Test_<chat>_Query.txt` for `Test_embedder_snowflake` and
+  `Test_embedder_bge_m3`), via `HistoryManager.key` / `Helpers.base_collection_name`.
+- Migration: existing unsuffixed collections (e.g. `Test`) are no longer
+  listed or used by default. Re-run RAGLoad to build `Test_embedder_<impl>`
+  (renaming directories is not enough: Chroma and the BM25/graph/regex
+  indexes store the collection name). Old directories can be deleted.
+
+### Changed - Orchestration flow catalog (renamed, trimmed, validated)
+
+- Flows renamed to describe *language + retrievers + extras*. Old names keep
+  working through the new `_ORCHESTRATION_FLOW_ALIASES` (CLI, API, config):
+  `BGE_ENC_XENC` -> `NATIVE_ALL` (default),
+  `THOROUGH_QUERY_REWRITE` -> `ENGLISH_ALL_MULTILEG`,
+  `ORIGINAL_LANGUAGE_VECTOR_ONLY` -> `ORIGINAL_VECTOR`.
+- Removed `TRANSLATION_FOCUSED` (no clean experimental contrast) and
+  `ORIGINAL_LANGUAGE_ALL_RETRIEVERS` (superseded by `NATIVE_ALL`). Selecting
+  them now returns HTTP 400 (API) / "Invalid orchestrator_flow" (CLI).
+- New single-variable ablation flows around the `ENGLISH_ALL` baseline:
+  `ENGLISH_ALL_WORDNET`, `ENGLISH_ALL_NO_REWRITE`, `ENGLISH_ALL_NO_RERANK`,
+  `ENGLISH_VECTOR`, `ENGLISH_BM25`.
+- `Config_Orchestrator.py` now starts with a beginner glossary (query
+  versions, retrieval language, retrievers, legs, rerank/fallback/rescue,
+  grounding, confidence) and every flow carries a step-by-step story
+  ("will translate ... will rewrite ... will retrieve with ... per leg").
+  Every flow lists every key explicitly.
+- New guide [ORCHESTRATION_FLOWS.md](ORCHESTRATION_FLOWS.md): narrative
+  explanation of query versions, retrieval language, legs and every shipped
+  flow, experiment recipes, multilingual runs, overrides and key reference.
+  Linked from README, HANDS_ON_TOUR, CONFIGURATION_REFERENCE and ARCHITECTURE.
+- Flow configuration is validated at startup (`Orchestrator/FlowConfig.py`):
+  unknown/misspelled keys, non-boolean switches, invalid modes, query
+  sources, retrieval languages, aliases and default flow raise
+  `ConfigurationError`. A *missing* on/off key still means enabled.
+- Flow name/default/alias resolution is centralized in `FlowConfig`; removed
+  the scattered hard-coded fallback flow names.
+- `force_retrieve_mode` (flow or session) now actually restricts the local
+  retrievers for that turn (e.g. `BM25` runs only BM25; `ALL`/`WEB` do not
+  narrow). Disabled retrievers are reported with
+  `force_retrieve_mode=<mode>` in the stage status.
+- New session overrides, available as CLI knobs and API request fields:
+  `rerank_query_source` (REWRITTEN_QUERY | TRANSLATED_QUERY | ORIGINAL_QUERY) and
+  `retrieval_language` (english | native). Selecting a flow seeds both.
+- **Breaking:** query source `FINAL_QUERY` renamed to `REWRITTEN_QUERY`
+  (ORIGINAL -> TRANSLATED -> REWRITTEN names each version after the step that
+  produced it). There is no alias: flow configs using `FINAL_QUERY` fail
+  validation at startup, and CLI/API requests with it are rejected.
+- CLI: an invalid value for `orchestrator_flow`, `force_retrieve_mode` or a
+  query source no longer leaves the rejected value on the session.
+
+### Changed - Service default orchestration flow
+
+- `Config_RAGChatService.py` no longer forces `_DEFAULT_ORCHESTRATION_FLOW =
+  "THOROUGH_QUERY_REWRITE"`; RAGChatService now inherits the default from
+  `Config_Orchestrator.py` like the CLI. An optional service-only override is
+  provided as a commented line. Removed the unused `_ACTIVE_ORCHESTRATION_FLOW`
+  slot from `Config_RAGChatService.py`.
+
+
+### Added - Native retrieval language
+
+- New orchestration-flow knob `retrieval_language: english | native`
+  (default `english`, legacy behaviour). `native` keeps the query in the
+  user's language: no Argos translation before or after rewrite, strict
+  rewrite retry targets the user's language, alternates prompt uses the
+  retrieval language, PromptRewrite picks the spaCy model per language.
+  Indexed (BM25/Graph/Regex) buckets translate native->bucket language and skip
+  English-only WordNet expansion for non-English queries.
+- `bge_enc_xenc` flow switched to `retrieval_language: native` with
+  `REWRITTEN_QUERY` for main and rerank queries.
+
+### Added - Shared multilingual indexed query preparation
+
+- Prepare one language-query matrix for BM25, Graph, and Regex before local
+  retrieval: rewrite first, then generate alternatives, then translate the
+  primary query and alternatives into active languages present in the corpus.
+  Reuse same-language queries without translating them again.
+- Added `_INDEXED_QUERY.translation_failure_policy`: `skip_language` continues
+  with remaining retrieval paths and reports incomplete coverage; `stop`
+  reports the failed primary-query language and aborts before local retrieval.
+  Failed optional alternatives or guardrail translations are omitted rather
+  than aborting an otherwise usable language bucket.
+- Separate strict query-translation failures from the existing compliance
+  word-list translation fallback and cache. CLI and API feedback distinguishes
+  translation errors from compliance refusals.
+- Deduplicate alternatives and translation warnings; repeated alternate hits
+  do not gain extra votes over the original query during indexed fusion.
+- Made indexed WordNet expansion explicit through
+  `expand_indexed_queries_with_wordnet`; compliance scorer expansion is
+  separately opt-in through `_WORDNET.SCORERS_ENABLED`.
+
+### Changed - Live language-scoped fusion and reranking
+
+- Keep vector retrieval language-agnostic, then partition all local retriever
+  results by document language. Apply weighted RRF within each language and
+  round-robin interleave the buckets under the existing candidate-pool cap.
+- Score each local bucket with its matching primary language query rather
+  than concatenated queries. Retain the language with the highest top raw
+  reranker score for the existing threshold gates and chunk-selection strategy.
+- Score web snippets separately with the original rerank query. Web candidates
+  cannot choose the winning local language and remain eligible alongside its
+  chunks, subject to existing web weights and thresholds. Web-only pools bypass
+  local-language selection.
+- Preserve the legacy pool when no language query plan is available; unmatched
+  candidates use the existing rerank query with an explicit warning.
+- Removed the shadow reranking experiment. Live diagnostics now show yellow
+  language/query/chunk inputs, cyan top results and per-language score summaries
+  (top raw, mean top three, mean raw), and the winning local language in green.
+  Vector-alternative and indexed-query preparation details are grey.
+
+### Fixed - Cross-language grounding and source highlights
+
+- Route grounding translations by the selected evidence languages instead of
+  assuming that evidence shares the retrieval-query language. Detect the
+  language of web evidence when its metadata is missing.
+- After direct overlap checks fail, try internal answer translations against
+  evidence without changing the displayed answer language. Report translation
+  failures explicitly; debug level 30 shows the pre-validation answer and
+  translation routes.
+- Prepare source-document highlights only when the original answer has matching
+  spans in local evidence, excluding its Sources section. Translated validation
+  alone no longer triggers source preparation, document opening, or the
+  misleading VisualMarker preparation messages. Clear stale marked documents
+  when no local spans are available.
+
+### Changed - Quality evaluation modes and judge contract
+
+- Added flow/session selection of `off`, `heuristic`, `llm`, or `both` for
+  quality evaluation, with CLI controls and an API override.
+- Separate retrieval-derived heuristic signals from answer-text LLM ratings;
+  `both` reports them independently rather than averaging unlike metrics.
+- Restrict the answer-only judge to internal consistency and explanation
+  clarity. It does not claim to verify factual accuracy, question coverage,
+  reasoning validity, provenance, or citation support without source evidence.
+- Use a dedicated judge model with its own output budget and configurable
+  deterministic temperature. Validate the response contract, allow explicit
+  unassessable ratings, and report failed reviews without inventing scores.
+- Scope judge-model licence consent to chat applications.
+
+### Changed - Embedder / cross-encoder backend follows `_ACTIVE_ENDPOINT`
+
+- Removed `_EMBED_BACKEND` / `_CROSS_BACKEND`. `_ACTIVE_ENDPOINT = "vllm"` now
+  also routes the embedder and cross-encoder to the vLLM servers
+  (`_VLLM_EMBED` / `_VLLM_CROSS`, later removed — they now share `_VLLM`);
+  `"ollama"` uses in-process HF models.
+- With vLLM selected, skip local weight downloads and route compliance/KeyBERT
+  embedding paths remotely without loading a local SentenceTransformer.
+  Keep independent model licence verification and local ingestion tokenizers.
+
+### Changed - Diagnostics, setup, and deployment
+
+- Added shared sensitive-data masking for terminal/logger output, setup command
+  previews, credential-bearing URLs, and LLM request diagnostics.
+- Made LLM request/response labels provider-neutral and added coloured,
+  purpose-labelled call summaries at debug level 30.
+- Show the first vLLM embedding-call trace per model at debug level 30;
+  repeated calls require component debug level 55. Cross-encoder call
+  summaries remain at level 30.
+- Report ingestion totals with inserted/discarded chunk counts and discard
+  percentages; sort Roman and Arabic source-page labels consistently.
+- Tightened deployment signing scope, excluding `docs` and cleaning stale
+  signatures from excluded locations; normalise shebang-file line endings to LF.
+- Refreshed the README pipeline chart and related configuration/architecture
+  guidance for multilingual retrieval, live reranking, confidence, and grounding.
+
+### Tests
+
+- Added regression coverage for shared language-query preparation, translation
+  policies and cache isolation, native rewrite ordering, language-scoped fusion
+  and scoring, mixed/web-only candidate pools, and grounding translation routes.
+- Added coverage for source-highlight gating, quality modes and judge failures,
+  flat confidence exports, sensitive-data masking, and diagnostic formatting.
+- Latest focused grounding/visual-marker validation: **70 tests passed**.
+  This is not a full-suite result for the current working copy.
+
+---
+
+## [2026-10-22]
+
+### Changed - Confidence configuration, state, and reporting
+
+- Centralized `_CONFIDENCE_LOGGING`, `_QUALITY_CONFIDENCE`, and the quality judge
+  prompt in `src/Configuration/Config_Confidence.py`, loaded through the merged
+  `Config` lookup. Application-specific values retain precedence.
+- Consolidated retrieval and quality data in `Session.answer_confidence_result`;
+  evaluation and rendering receive the result explicitly instead of reading
+  duplicated session fields.
+- Fixed judge prompt formatting and included the answer being evaluated.
+- Added `Heuristic Confidence:` and model-labelled `Quality Dimensions` headers;
+  quality labels align across heuristic, LLM, and blended score columns.
+- Replaced JSON/session-blob CSV output with `CONFIDENCE_FLAT` exports: individual
+  scalar cells, repeated step occurrences, nested settings, untruncated scalar
+  text, and numeric document/chunk counts. Removed duplicate result/session
+  columns and kept legacy CSV files unchanged.
+- Added regression tests for configuration precedence, confidence-state
+  replacement, formatting, judge failures, and flat CSV round trips.
+
 ## [2026-10-12]
 
 ### 📚 Changed — _CACHE_PATH documentation synced
@@ -136,8 +578,8 @@ Todays release implements:
   `Config_Orchestrator.py`.
 - Removed `_ACTIVE_ORCHESTRATION_FLOW` from `Config_Orchestrator.py`.
 - Added indexed retriever synonym lookup control through orchestration flow
-  settings (`expand_indexed_queries`) with session/CLI visibility as
-  `indexed_synonyms` in flow-stage output.
+  settings (`expand_indexed_queries_with_wordnet`) with session/CLI visibility as
+  `indexed_wordnet` in flow-stage output.
 - Runtime flow resolution now follows one rule:
   - use `session.orchestrator_flow` when set
   - otherwise use `_DEFAULT_ORCHESTRATION_FLOW`
@@ -1250,8 +1692,6 @@ persist blank identity fields:
 Markdown configuration references were re-audited against `src/Configuration/*.py`
 with config files treated as the source of truth.
 
-- Corrected web-search defaults in docs to match `Config_WebSearch.py`:
-  `_WEB_SEARCH_MODE = "on"` and `_WEB_SEARCH.max_results = 10`.
 - Corrected selector names in docs to canonical active selectors:
   `_ACTIVE_CROSS`, `_ACTIVE_LLM`, `_ACTIVE_OPENWEBUI`.
 - Updated endpoint defaults in docs to match `Config_Models.py`:

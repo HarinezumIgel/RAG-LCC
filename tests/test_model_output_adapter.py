@@ -72,6 +72,73 @@ def adapter():
     return ModelOutputAdapter()
 
 
+@pytest.mark.parametrize(
+    "prompt_name", ["_PROMPT_CLASSIFY_MISTRAL", "_PROMPT_CLASSIFY_LLAMA"]
+)
+def test_classification_prompt_example_is_valid_json(prompt_name):
+    from collections import OrderedDict
+    from unittest.mock import MagicMock
+    from Configuration import Config_DocClassify
+    from Strategies.ClassifyHelper import ClassifyHelper
+
+    helper = object.__new__(ClassifyHelper)
+    helper.cfg = MagicMock()
+    helper.cfg.get.return_value = 3
+    prompt = helper.build_classify_prompt(
+        getattr(Config_DocClassify, prompt_name), OrderedDict([("animal", 0.5)])
+    )
+    assert "The response must start with { and end with }." in prompt
+    example = prompt.split("Example output:\n", 1)[1].split("\n", 1)[0]
+    assert set(json.loads(example)) == {
+        "Classification",
+        "Purpose",
+        "Language",
+        "Topic",
+        "Animal",
+        "Mammal",
+    }
+    result = ModelOutputAdapter().interpret({"content": example}, "openai/qwen")
+    assert result.is_json
+    assert json.loads(result.content or "") == json.loads(example)
+
+
+def test_classification_invalid_json_is_reported_and_recorded():
+    from collections import OrderedDict
+    from unittest.mock import MagicMock
+    from Strategies.ClassifyStrategy import ClassifyStrategy
+
+    strategy = object.__new__(ClassifyStrategy)
+    strategy.pretty = MagicMock()
+    strategy.processedCounter = MagicMock()
+    strategy.failedCounter = MagicMock()
+    strategy.globalsInstance = MagicMock()
+    strategy.csvWriter = MagicMock()
+    strategy.temperature_ext = 0.0
+    strategy.llm_model = "test-model"
+    strategy._clean_and_detect_language = MagicMock(return_value=("text", "en"))
+    strategy._gate_unsupported_language = MagicMock(return_value=False)
+    strategy._extract_and_format_keywords = MagicMock(
+        return_value=(OrderedDict([("animal", 0.5)]), None, [1.0])
+    )
+    strategy._run_pipeline_human_review = MagicMock(return_value=(False, []))
+    strategy._run_classification_llm = MagicMock(
+        return_value=ModelOutput(content="invalid", is_json=False)
+    )
+    doc = {"meta": {"FilePath": "test.txt"}}
+    strategy.process(doc)
+    assert doc["meta"]["Status"] == "NOT_OK"
+    assert doc["meta"]["Stage"] == "Classification"
+    assert doc["meta"]["Time"]
+    strategy.failedCounter.increment.assert_called_once()
+    strategy.csvWriter.write_json2csv.assert_called_once_with(doc["meta"], "NOT_OK")
+    strategy.pretty.write.assert_any_call(
+        "E",
+        "Classification",
+        "Response from test-model was not a JSON object; document marked NOT_OK. "
+        "Enable DEBUG_LEVEL ge 80 to inspect the response.",
+    )
+
+
 # ===========================================================================
 # Llama adapter – answer/reason key
 # ===========================================================================

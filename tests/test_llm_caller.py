@@ -158,6 +158,23 @@ class TestRedact:
         assert "<REDACTED>" in result
         assert "hunter2" not in result
 
+    def test_redacts_mixed_case_sensitive_keys(self):
+        caller = _make_caller()
+        result = json.loads(
+            caller.redact(
+                {
+                    "Authorization": "Bearer secret-token",
+                    "API_KEY": "secret-key",
+                    "ToKeN": "secret-token",
+                }
+            )
+        )
+        assert result == {
+            "Authorization": "<REDACTED>",
+            "API_KEY": "<REDACTED>",
+            "ToKeN": "<REDACTED>",
+        }
+
     def test_preserves_non_sensitive(self):
         caller = _make_caller()
         result = caller.redact({"model": "mistral:7b", "prompt": "hello"})
@@ -202,6 +219,87 @@ class TestMakeOnChunk:
 
 class TestCallLlmOptions:
     """Verify the unified ollama_options dict is correctly assembled into the payload."""
+
+    @pytest.mark.parametrize(
+        ("endpoint", "lines"),
+        [
+            ("ollama", [json.dumps({"response": "ok", "done": True})]),
+            (
+                "vllm",
+                [
+                    'data: {"choices":[{"delta":{"content":"ok"}}]}',
+                    "data: [DONE]",
+                ],
+            ),
+        ],
+    )
+    def test_response_debug_labels_are_provider_neutral_at_level_80(
+        self, endpoint, lines
+    ):
+        caller = _make_caller({"DEBUG_LEVEL": 80, "_ACTIVE_ENDPOINT": endpoint})
+        self._capture_post(
+            caller,
+            lines=lines,
+            model="test-model",
+            prompt="test",
+            ollama_options={},
+        )
+
+        labels = [call[0][1] for call in caller.pretty.calls]
+        assert "LLM RESPONSE STATUS" in labels
+        assert "LLM RESPONSE HEADERS" in labels
+        assert "OLLAMA RESPONSE STATUS" not in labels
+        assert "OLLAMA RESPONSE HEADERS" not in labels
+
+    def test_call_summary_is_debug_30_and_turquoise(self):
+        caller = _make_caller({"DEBUG_LEVEL": 30})
+        self._capture_post(
+            caller,
+            model="openai/qwen2_5_14b_instruct",
+            prompt="hello",
+            ollama_options={},
+            stage="Answer-text LLM review",
+            purpose="Judge",
+        )
+
+        model_line = next(
+            call
+            for call in caller.pretty.calls
+            if call[0][1] == "Call LLM" and call[0][2].startswith("Model:")
+        )
+        stage_line = next(
+            call
+            for call in caller.pretty.calls
+            if call[0][1] == "Call LLM" and call[0][2].startswith("Stage:")
+        )
+        summary_lines = [
+            call
+            for call in caller.pretty.calls
+            if call[0][1] == "Call LLM" and call[0][2].startswith(("Stage:", "Model:"))
+        ]
+        assert summary_lines == [stage_line, model_line]
+        assert model_line[0][2] == (
+            "Model: openai/qwen2_5_14b_instruct prompt template: None purpose: Judge"
+        )
+        assert stage_line[0][2] == "Stage: Answer-text LLM review"
+        from Gui.Colors import TURQUOISE
+
+        assert model_line[1]["color"] == TURQUOISE
+        assert stage_line[1]["color"] == TURQUOISE
+
+    def test_call_summary_is_hidden_below_debug_30(self):
+        caller = _make_caller({"DEBUG_LEVEL": 20})
+        self._capture_post(
+            caller,
+            model="mistral:7b",
+            prompt="hello",
+            ollama_options={},
+        )
+
+        assert not any(
+            call[0][1] == "Call LLM" and call[0][2].startswith(("Model:", "Stage:"))
+            for call in caller.pretty.calls
+        )
 
     def _capture_post(self, caller, lines=None, **call_kwargs):
         """Call call_llm and capture the payload sent to requests.post."""
@@ -596,6 +694,34 @@ class TestBackendAdapterSelection:
         adapter = caller._create_backend_adapter()
 
         assert isinstance(adapter, VllmBackendAdapter)
+
+    def test_adapter_uses_model_specific_endpoint_args(self):
+        from AI.LLMBackendAdapter import VllmBackendAdapter
+
+        class RoleHelpers:
+            def get_active_endpoint_args(self, model_role=None):
+                timeout = 300.0 if model_role == "_ACTIVE_LLM_JUDGE" else 120.0
+                return {"BASE_URL": "http://x/v1", "REQUEST_TIMEOUT": timeout}
+
+        adapter = VllmBackendAdapter(
+            RoleHelpers(), StubConfig({"_ACTIVE_ENDPOINT": "vllm"}), StubPrettyWriter()
+        )
+        assert adapter.provider_args["REQUEST_TIMEOUT"] == 120.0
+        adapter.model_role = "_ACTIVE_LLM_JUDGE"
+        assert adapter.provider_args["REQUEST_TIMEOUT"] == 300.0
+
+    def test_adapter_falls_back_when_helper_has_no_model_role(self):
+        from AI.LLMBackendAdapter import VllmBackendAdapter
+
+        class OldHelpers:
+            def get_active_endpoint_args(self):
+                return {"REQUEST_TIMEOUT": 99.0}
+
+        adapter = VllmBackendAdapter(
+            OldHelpers(), StubConfig({"_ACTIVE_ENDPOINT": "vllm"}), StubPrettyWriter()
+        )
+        adapter.model_role = "_ACTIVE_LLM"
+        assert adapter.provider_args["REQUEST_TIMEOUT"] == 99.0
 
     def test_vllm_adapter_extracts_openai_style_content(self):
         from AI.LLMBackendAdapter import VllmBackendAdapter

@@ -443,6 +443,7 @@ def _load_rewriter_methods() -> dict[str, Any]:
         "_strip_context_tag",
         "_build_topic_detect_prompt",
         "_build_rewrite_ollama_options",
+        "_nlp_for_session",
         "rewrite",
     ]
     loaded: dict[str, Any] = {}

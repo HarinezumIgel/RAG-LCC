@@ -31,7 +31,7 @@ This reference covers both a **quick-scan overview** (tables by topic and by con
 |---------------|-------------------|-------------|
 | **Retrieval Strategies** | `NARROW`, `BALANCED_FILE_CAP`, `DEFAULT`, `WIDE`, `ULTRA_WIDE` | Pre-configured retrieval profiles balancing precision/recall. Control final_chunks_to_llm (20-1500), retriever_k (60-3000), threshold (0.45-0.60), and per-file limits. |
 | **Retrieval Modes** | `VECTOR`, `BM25`, `GRAPH`, `REGEX`, `VECTOR_BM25`, `VECTOR_GRAPH`, `BM25_GRAPH`, `VECTOR_REGEX`, `BM25_REGEX`, `GRAPH_REGEX`, `ALL`, `WEB` | Select retrieval algorithms. VECTOR uses embeddings; BM25 uses keyword matching; GRAPH uses entity co-occurrence; REGEX uses verb/noun lemma matching; combined modes use RRF fusion. WEB adds internet search results. |
-| **Orchestration Flows** | `THOROUGH_QUERY_REWRITE`, `TRANSLATION_FOCUSED`, `ORIGINAL_LANGUAGE_VECTOR_ONLY`, `ORIGINAL_LANGUAGE_ALL_RETRIEVERS` | Turn-level flow profiles from `Config_Orchestrator.py` that gate query-source selection, local/web stages, retriever stage switches, reranking, and grounding before final context assembly. |
+| **Orchestration Flows** | `NATIVE_ALL`, `ENGLISH_ALL`, `ENGLISH_ALL_MULTILEG`, `ENGLISH_ALL_WORDNET`, `ENGLISH_ALL_NO_REWRITE`, `ENGLISH_ALL_NO_RERANK`, `ENGLISH_VECTOR`, `ENGLISH_BM25`, `ORIGINAL_VECTOR` | Turn-level flow profiles from `Config_Orchestrator.py` that gate query-source selection, local/web stages, retriever stage switches, reranking, and grounding before final context assembly. |
 | **Final Chunks to LLM** | 20-1500 chunks (strategy-dependent) | How many chunks are sent to the LLM after retrieval and selection. Directly affects context window usage and answer quality. |
 | **Retriever K** | 60-3000 candidates (strategy-dependent) | How many candidates each retriever fetches before fusion/reranking. Higher = better recall but slower. |
 | **File Limit** | `filelim`: 0-20 chunks per file | Maximum chunks allowed from any single file in final selection. Enforces cross-file diversity. 0 = no limit. |
@@ -43,6 +43,262 @@ This reference covers both a **quick-scan overview** (tables by topic and by con
 | **Reranking** | `rerank`: 0/1, Cross-encoder model | Enables/disables neural reranking of candidates. When enabled, uses cross-encoder (mmarco-mMiniLMv2-L12) to rescore query-chunk pairs for relevance. |
 | **Rerank Threshold** | 0.45-0.60 (sigmoid probability) | Cross-encoder confidence floor to keep a chunk. Applied after cross-encoder scoring. Lower = more permissive; higher = stricter filtering. If no chunk clears the floor, reranking is skipped and chunks fall back to retrieval (RRF) order. |
 | **RRF Weights** | `vector_weight`, `bm25_weight`, `graph_weight`, `regex_weight`, `web_weight`: 0.0-1.0+ | Per-retriever weights for Reciprocal Rank Fusion. 1.0 = full weight; 0.0 = disabled. Controls relative influence of each retrieval method. |
+
+### Optional keyword/action splitting
+
+[`Config_KeywordActionSplitter.py`](src/Configuration/Config_KeywordActionSplitter.py)
+defines `_KEYWORD_ACTION_SPLITTER` and its prompt for both RAGChat and
+RAGChatService. It is **on by default**. Disable it per session with
+`keyword_action_splitter=false` or `enable_keyword_action_splitter=false`, or per
+API request with `"enable_keyword_action_splitter": false`. Selecting another
+flow resets session flow switches. Set `"use_keyword_action_splitter": true`
+in a flow for a permanent flow-specific setting. The shipped flow defaults are
+defined in `_ORCHESTRATION_FLOWS` in `Config_Orchestrator.py`.
+
+These are **session settings**, not application-startup flags:
+
+```text
+orchestrator_flow=ENGLISH_ALL
+keyword_action_splitter=true
+debug_level=30
+keyword_action_splitter?
+```
+
+Use `keyword_action_splitter=false` to restore ordinary retrieval and MultiQuery
+when otherwise enabled. In an API request, use `enable_keyword_action_splitter`
+as a JSON boolean alongside the normal request fields. Session/request settings
+override the flow default; picking a different flow reapplies that flow's defaults.
+
+| Setting | Default | Purpose |
+| --- | --- | --- |
+| `max_retrieval_queries` | `8` | Bound local information-need fan-out. |
+| `min_keywords` / `max_keywords` | `3` / `8` | Validate retrieval keyword counts. |
+| `LLM_PARAM` | temperature `0.05`, top_k `10`, top_p `0.9`, num_predict `1024` | Requested decomposition sampling/output parameters; shared model/token-budget resolution determines the effective call limits. |
+| `LLM_PARAM.use_ollama_gpu` | `True` | When `False`, supplies `num_gpu=0` to the existing Ollama call path; does not reconfigure a vLLM server. |
+
+The JSON result has `retrieval_queries`, `key_words`, `entities`, `action_part`,
+and `answer_instruction`; it has **no `intent` field**. Existing retrieval/intent
+gates remain and run before splitting. Enabled Vector, BM25,
+Graph and Regex retrievers search the information needs; BM25 also gets a keyword-only
+leg when enabled with nonzero weight. Existing language shaping and metadata filters still apply. Decomposition
+replaces MultiQuery paraphrase generation for that turn rather than multiplying
+its fan-out. A warned decomposition failure restores the existing pipeline.
+Generic action verbs accidentally returned as keywords are removed with an
+explicit warning. The remaining keywords must still satisfy the configured
+count limits; otherwise decomposition fails rather than inventing replacements.
+String lists are deduplicated case-insensitively. Entities must occur in the
+supplied original, translated, or accepted-rewrite text. Invalid JSON, schema,
+counts, or entity grounding cause an explicit warned fallback, not guessed
+replacement fields.
+On successful splitting, decomposed needs replace the main local query text;
+local reranking uses the corresponding language-shaped needs and keeps the
+maximum raw relevance score per chunk. Keyword-only chunks are scored against
+all needs; per-need scores remain available for diagnostics. Existing query-source selectors still govern
+the guardrail and unchanged web/rerank paths.
+
+The splitter uses `_ACTIVE_LLM_REWRITE_PROMPT` and its `_LLM_REWRITE_PROMPT`
+provider/model configuration in [Config_Models.py](src/Configuration/Config_Models.py).
+There is no separate splitter model selector. It is a non-streaming JSON call
+using shared `LLMCaller`, `TokenBudget`, and `FileUtils.try_parse_json`.
+The prompt receives `original_request`, `translated_request`, and
+`accepted_rewrite`, plus the effective retrieval language. Translation remains
+flow-controlled. Approved previous-turn referents come from the rewrite;
+within-request pronouns follow `enable_pronoun_substitution`.
+
+Splitter input, timing, decomposition, and final-answer instruction
+messages print independently of debug level/mode, using brown text without debug
+indentation. Progress messages have blue bullets; the validated decomposition
+has a green bullet. Decomposition failures and
+keyword-cleanup warnings retain warning styling. Normal writer redaction and
+explicit quiet-context suppression still apply.
+
+Existing fusion, candidate caps, language selection, deduplication, thresholds
+and chunk-selection strategies are preserved; there are no per-query context quotas.
+Decomposition can improve comparison retrieval but does not guarantee evidence
+for every subject/dimension survives selection.
+
+Final-answer templates live in
+[`Config_RAGChat_Prompts.py`](src/Configuration/Config_RAGChat_Prompts.py):
+`_PROMPT_KEYWORD_ACTION_ANSWER` wraps `{user_query}`, `{answer_instruction}`
+and `{action_instruction}`; `_PROMPT_KEYWORD_ACTION_OPERATION` formats
+`{action_part}` only when an operation is present. Customize these to change
+the split-answer wording or default list/table formatting. The decomposition
+prompt remains in `Config_KeywordActionSplitter.py`. Ordinary unsplit queries
+do not use these templates.
+
+| Prompt lookup key | Configuration file | Format placeholders |
+| --- | --- | --- |
+| `_PROMPT_KEYWORD_ACTION_SPLITTER` | `Config_KeywordActionSplitter.py` | `{input_json}`, `{retrieval_language}`, `{pronoun_substitution}`, `{max_retrieval_queries}`, `{min_keywords}`, `{max_keywords}` |
+| `_PROMPT_KEYWORD_ACTION_ANSWER` | `Config_RAGChat_Prompts.py` | `{user_query}`, `{answer_instruction}`, `{action_instruction}` |
+| `_PROMPT_KEYWORD_ACTION_OPERATION` | `Config_RAGChat_Prompts.py` | `{action_part}` |
+
+Preserve these placeholders when customizing prompts, and escape literal JSON
+braces as `{{` / `}}`. `action_part=null` omits the operation template, not the
+answer instruction. The operation template defaults to Markdown bullets/tables
+unless the user requests another format. These templates supplement the existing
+main answer prompt; the splitter prompt is sent in a separate LLM call, not added
+to the final answer prompt.
+
+Standard debug level **30** reports input variants, validated output, local
+queries/hit counts, query associations and the final answer instruction.
+No additional splitter turn-summary line is printed. Debug text is not
+answer/history content.
+
+Web search and its prefilters still use the existing normalized query; history
+still stores the original user text and generated answer. The dedicated
+`summarize:` / `summary:` commands bypass splitting and retain full-document
+summarization. Standalone operations requiring no retrieval
+are explicitly unsupported; this switch does not enable agentic tool execution.
+
+### Retrieval diagnostics
+
+Confidence settings and the judge prompt are defined in
+`src/Configuration/Config_Confidence.py`. Quality scoring reads
+`_QUALITY_CONFIDENCE` through the merged `Config` lookup,
+not directly from a particular configuration module. Each orchestration flow in
+`src/Configuration/Config_Orchestrator.py` sets `confidence_evaluation` (default
+`both` for every shipped flow). The session parameter of the same name overrides
+that default. The chatter settings show a **Confidence** line with this selector:
+
+| Mode | Evaluation |
+| --- | --- |
+| `off` | No additional diagnostics or judge call. |
+| `heuristic` | Static retrieval diagnostics only; never calls the judge. |
+| `llm` | Answer-only text ratings; never computes or substitutes quality heuristics. |
+| `both` | Separate retrieval diagnostics and answer-only text ratings; no averaging. |
+
+Use `confidence_evaluation=llm` to set the session mode,
+`confidence_evaluation!` to pick, `confidence_evaluation?` to inspect, and
+`confidence_evaluation-` to clear the override and inherit the flow.
+The API accepts `"confidence_evaluation": "llm"` (invalid values return HTTP 400).
+Selecting a flow resets the override, like other flow settings.
+The old `_QUALITY_CONFIDENCE.enabled` and `llm_judge.enabled` switches are removed.
+`emit_in_answer_block` controls display after the retrieval-confidence metrics.
+The judge template is also resolved through `Config` using
+`_PROMPT_QUALITY_DIMENSION_JUDGE`, so configuration overrides apply to the
+prompt. Retrieval and review results share one
+`Session.answer_confidence_result` object, passed explicitly to evaluation and
+answer-rendering helpers. CSV logging reads that object. Judge call failures are logged and stored on
+the result. In `both` mode, a failed judge leaves explicitly labelled
+heuristic-only scores. In `llm` mode, a failed or invalid judge produces no
+quality scores, logs the failure, and sets `quality_mode=llm_failed`; there is no
+heuristic fallback. Resetting turn state clears the
+entire result.
+Retrieval metrics appear under the `Heuristic Confidence:` header.
+The LLM review header identifies the judge model when ratings are available.
+
+#### What the diagnostics mean
+
+Each displayed value includes an explanation of what it measures and what it
+does not establish. All values are uncalibrated diagnostics, not probabilities.
+
+| Static diagnostic | Formula / interpretation | Limitation |
+| --- | --- | --- |
+| Evidence relevance | `0.55 * top_score + 0.35 * mean_top3 + 0.10 * (not fallback)` | Retrieval scores, not factual accuracy of the answer. |
+| Retrieval coverage | `0.70 * selected/target` (ratio capped at 1) plus `0.30 * min(selected/6, 1)` | Evidence quantity, not whether the question was fully answered. |
+| Evidence availability | `0.70 * relevance_support + 0.20 * evidence_presence + 0.10 * evidence_quantity` | Does not verify citations or claim-to-source support. |
+
+`relevance_support` is the mean of the top score and top-three mean;
+`evidence_presence` is 1 when chunks exist, otherwise 0; `evidence_quantity`
+is selected chunk count divided by six, capped at 1. Diagnostics are clamped
+to [0, 1], and all three are zero when no evidence chunks exist.
+There is no static reasoning-quality score: retrieval statistics cannot measure it.
+
+The answer-only LLM review supports exactly two subjective ratings:
+
+- **Internal consistency:** absence of apparent contradictions within the answer;
+  does not verify factual correctness.
+- **Explanation clarity:** how understandable the explanation is; does not
+  establish reasoning validity.
+
+The judge sees neither the question nor source evidence. It uses the dedicated
+`_ACTIVE_LLM_JUDGE` model (Qwen2.5 14B Instruct by default), independently of
+the generation model; it can still share the generator's blind spots.
+Accuracy, answer completeness, reasoning validity, and citation support are
+**not assessed**. The judge can return `null` for an unassessable rating;
+that value is displayed as **not assessed** and is not exported as a score.
+The prompt requires exactly `internal_consistency` and `explanation_clarity`,
+each a number in [0, 1] or `null`. Old four-dimension judge responses are rejected.
+An entirely unassessable response is explicitly logged and stored as a review
+failure, without inventing ratings.
+
+#### Active controls and defaults
+
+| Lookup key | Current default | Runtime effect |
+| --- | --- | --- |
+| `_CONFIDENCE_LOGGING.enabled` | `True` | Record pipeline confidence events and enable confidence logging. |
+| `_CONFIDENCE_LOGGING.emit_pretty` | `True` | Emit selection-confidence diagnostics; does not hide the answer confidence block. |
+| `_CONFIDENCE_LOGGING.csv_enabled` | `True` | Write the flat per-turn CSV. |
+| `_ORCHESTRATION_FLOWS.<flow>.confidence_evaluation` | `"both"` | Flow default; session `confidence_evaluation` overrides it. |
+| `_ACTIVE_LLM_JUDGE` | `"qwen2_5_14b_instruct"` | Dedicated answer-text review model, selected in `Config_Models.py`. |
+| `_QUALITY_CONFIDENCE.emit_in_answer_block` | `True` | Append explained retrieval diagnostics / answer-text review. |
+| `_QUALITY_CONFIDENCE.judge_temperature` | `0.0` | Sampling temperature for the judge call; `0.0` keeps ratings reproducible. |
+| `_PROMPT_QUALITY_DIMENSION_JUDGE` | JSON-score prompt | Formats the evaluated answer through `{answer}`; literal JSON braces must be doubled. |
+| `_CONFIDENCE_EVALUATOR.weight_top` | `0.50` | `C_final` weight of the best selected chunk score. |
+| `_CONFIDENCE_EVALUATOR.weight_mean_top` | `0.30` | `C_final` weight of the top-3 mean chunk score. |
+| `_CONFIDENCE_EVALUATOR.weight_coverage` | `0.15` | `C_final` weight of selected / `final_chunks_to_llm`. |
+| `_CONFIDENCE_EVALUATOR.weight_local` | `0.05` | `C_final` weight of the local (non-web) chunk share. |
+| `_CONFIDENCE_EVALUATOR.fallback_penalty` | `0.15` | Subtracted when the low-confidence rerank fallback triggered. |
+| `_CONFIDENCE_EVALUATOR.level_high` | `0.78` | Minimum `C_final` for `HIGH`. |
+| `_CONFIDENCE_EVALUATOR.level_medium` | `0.56` | Minimum `C_final` for `MEDIUM`; below is `LOW`. |
+| `_CONFIDENCE_EVALUATOR.unknown_scale_score` | `0.5` | Chunk score when only RRF/BM25/graph/regex scores exist. |
+
+Except for the session parameter `confidence_evaluation`, these internal keys
+are not CLI flags. Edit
+[Config_Confidence.py](src/Configuration/Config_Confidence.py) (`_CONFIDENCE_EVALUATOR`:
+[Config_ConfidenceEvaluator.py](src/Configuration/Config_ConfidenceEvaluator.py)) or supply
+application-specific configuration overrides through the normal merge.
+Blend weights and the former unused `csv_enabled`, `dimensions`,
+`llm_judge.strict_json`, and `provenance` settings within `_QUALITY_CONFIDENCE`
+are removed. CSV output remains gated by `_CONFIDENCE_LOGGING.csv_enabled`.
+
+Quality scores do not change retrieval `C_final` or the baseline
+`Confidence: HIGH/MEDIUM/LOW` message, which remains visible even in `off` mode.
+Only executed scorers appear in the output and CSV. `quality_mode` is
+`heuristic_only`, `llm_only`, or `both` on success. There are no shared dimensions
+or `avg` scores. These checks are not a replacement for evidence grounding.
+
+#### Flat CSV layout
+
+Confidence CSV files use the `CONFIDENCE_FLAT` filename suffix to keep the flat
+schema separate from older JSON-based files. Each row represents one query turn.
+Nested settings use dotted column paths, language events use
+`language_detection.<index>.<field>`, and pipeline events use
+`step.<step name>.<occurrence>.<field>` (indices start at 1). Repeated steps are
+retained instead of overwritten. Literal dots in keys are escaped as `~1` and
+literal tildes as `~0`. Scalar text is not truncated.
+
+The flat export omits duplicate session copies, rendered confidence summaries,
+raw judge JSON (parsed scores are exported), and runtime configuration/writer
+objects. `answer_confidence_score` is the canonical final score; the identical
+`answer_confidence_c_final` column is omitted. Selected chunks, grounding texts,
+and marked document payloads are represented by numeric count columns rather
+than embedded content. Existing legacy files are not rewritten: list placeholders
+and truncated JSON in those files cannot recover the original event data.
+
+| Column or column pattern | Contents |
+| --- | --- |
+| `answer_confidence_level`, `answer_confidence_score` | Retrieval band and canonical final score. |
+| `answer_confidence_<component>` | Weighted terms and raw evidence signals; no duplicate `c_final` column. |
+| `quality_evidence_relevance_heuristic`, `quality_retrieval_coverage_heuristic`, `quality_evidence_availability_heuristic` | Static retrieval diagnostics. |
+| `quality_internal_consistency_llm`, `quality_explanation_clarity_llm` | Assessed subjective answer-text ratings only. |
+| `quality_retrieval_<signal>` | Relevance support, evidence presence, and evidence quantity. |
+| `quality_mode`, `quality_error`, `quality_judge_model` | Evaluation mode, failure text, and attempted judge model. |
+| `step.<name>.<occurrence>.<field>` | Timestamp, source, status, level, score, and non-redundant details per execution. |
+| `language_detection.<index>.<field>` | Individual language-detection event fields. |
+| `orchestration.<name>` | Planned stage confidence placeholders, separate from execution events. |
+| `session_<setting>.<nested path>` | Nested session setting values; scalar settings keep `session_<setting>`. |
+| `session_last_chosen_chunks_count`, `session_chunk_texts_for_grounding_count`, `session_marked_documents_count` | Counts instead of source-document payloads. |
+
+Historical accuracy/completeness/reasoning/provenance and `_avg` columns are
+not populated by new turns. Existing CSV files retain old columns and rows;
+new diagnostic columns have distinct names and must not be interpreted as
+equivalent to those historical quality scores.
+
+Column headers grow when new event occurrences or settings appear. Existing rows
+receive empty cells for newly added columns. CSV values use the configured
+`CSV_DELIMITER` (currently `;`); duplicate-looking query-stage values are retained
+where they represent different pipeline stages, even when their text is equal.
 
 ### 🌐 Web Search
 
@@ -60,13 +316,13 @@ This reference covers both a **quick-scan overview** (tables by topic and by con
 | **Component** | **Options/Values** | **Purpose** |
 |---------------|-------------------|-------------|
 | **LLM — Generation** | `mistral:7b`, `llama3.1:8b`, any Ollama/vLLM model | Primary language model for answer generation; role selected with `_ACTIVE_LLM` in `Config_Models.py`. |
-| **LLM — Guard** | `llama-guard3:8b` (or any Ollama model) | Separate LLM role for prompt/response safety checking; configured independently via `_ACTIVE_LLM_CHK`. Runs against every user input and generated answer. |
+| **LLM — Guard** | `llama-guard3:8b` (or any Ollama model) | Separate LLM role for configured safety checks; selected independently via `_ACTIVE_LLM_CHK`. |
 | **LLM — Query Rewrite** | `mistral:7b`, `llama3.1:8b`, etc. | Dedicated role for topic detection and query rewriting, configured via `_ACTIVE_LLM_REWRITE_PROMPT`. Can be a smaller/faster model than the generation LLM. |
 | **Embedder** | `snowflake/snowflake-arctic-embed-l-v2.0` (HuggingFace) | Converts text to dense vectors. Used at indexing time (RAGLoad) and query time (RAGChat). Changing the model requires rebuilding the collection. |
 | **Cross-Encoder (Reranker)** | `cross-encoder/mmarco-mMiniLMv2-L12-H384-v1` (HuggingFace) | Rescores query-chunk pairs for precise relevance ranking. Applied only to top-k candidates; disable per strategy with `rerank: 0`. |
 | **Query Translation** | `argos` / `off` | Normalises non-English user queries to English before retrieval using Argos Translate (`argos`) or disables normalization (`off`). HF/M2M runtime translators were removed. |
 | **Inference Backend** | `ollama` (local) / `vllm` (networked, OpenAI-compatible) | LLM inference provider. Ollama for local single-machine use; vLLM for high-throughput or remote setups. Both configured via `BASE_URL` and optional `API_KEY`. |
-| **RAGChatService** | `HOST`, `PORT`: 11435, `API_KEY` | Exposes the RAG pipeline as an OpenAI-compatible REST API, making it a drop-in backend for OpenWebUI or any OpenAI client. |
+| **RAGChatService** | `HOST`, `PORT`: 11435, `API_KEY` | Exposes a limited OpenAI-compatible REST API for OpenWebUI and other clients that support the implemented subset. |
 | **Token Budgets** | `TOKEN_BUDGET_CONTEXT_CAP`: 32768, `RESERVED_OUTPUT`: 2048, `RESERVED_SYSTEM`: 1024 | Per-model token allocation. The remainder after reserved tokens is available for retrieved chunks. |
 | **CPU vs GPU** | `USE_CPU`: True/False, `EMBEDDER_BITS`: 16/32 | Forces CPU-only mode or enables GPU acceleration. Set EMBEDDER_BITS=32 when USE_CPU=True (FP16 requires GPU with accelerate). |
 | **License Consent** | `ModelGovernance/licenses/` | Tracks accepted model licenses. Required before model download or first use; updated automatically on consent. |
@@ -78,12 +334,12 @@ This reference covers both a **quick-scan overview** (tables by topic and by con
 | **Banned Word Algorithms** | `Regex`, `Jaccard`, `BM25`, `KeyBERT`, `Levenshtein` | Multi-algorithm detection pipeline. Regex+Levenshtein catches exact and near-matches; Jaccard uses character n-gram overlap; BM25 uses IR scoring; KeyBERT uses semantic similarity. All run in parallel and a consensus count gates the block decision. |
 | **Banned Word Thresholds** | Per-algorithm: 0.2-1.0 (normalized scores) | Minimum score per algorithm to count as a hit. Example: Regex=1.0 (exact), Jaccard=0.75 (75% n-gram overlap), KeyBERT=0.45 (semantic similarity). |
 | **Detection Config** | `STRICT_DETECT_CONFIG` with per-app pipelines | Per-application detection profiles (RAGLoad, RAGChat, DocClassify) with independent thresholds, algorithm sets, and LLM-check parameters. |
-| **Masking** | `APPLY_MASKING`: True/False | Redacts matched spans in-place before storage or display. Prevents banned content from entering embeddings or reaching the user. |
+| **Masking** | `APPLY_MASKING`: True/False | Replaces matches to configured masking patterns. Detection is incomplete, and streaming can emit tokens before final answer checks. |
 | **Required Algorithm Agreement** | `REQUIRED_ALGOS_ABOVE_THRESHOLD`: 2-4 | How many algorithms must agree before a block is triggered. Tune the precision/recall tradeoff for your content domain. |
 | **Stage Check Gates** | `PROMPT_CHECK.Check`, `PIPELINE_CHECK.Check` | Startup validation now honors stage gates. If a stage is `Check=False`, consensus-threshold validation for that stage is skipped. |
-| **WordNet Synonym Expansion** | `ENABLED`: True, `DEPTH`: 1, `MAX_SYNONYMS_PER_PHRASE`: 1 | Expands banned phrases with NLTK WordNet synonyms before detection. Increases coverage at some false-positive risk; only affects Regex/Jaccard/BM25 (KeyBERT already uses embeddings). |
-| **Leet Speak Normalization** | `_LEET_MAP`: 0→o, 1→i, 3→e, etc. | Decodes common leet-speak substitutions before detection. Catches evasion attempts that replace letters with visually similar digits or symbols. |
-| **Unicode Confusables** | `_CONFUSABLES`: Cyrillic/Turkish lookalikes | Normalizes Unicode lookalike characters (Cyrillic а→a, İ→i, ß→ss) before detection. Catches cross-script obfuscation invisible to the human eye. |
+| **WordNet Synonym Expansion** | `ENABLED`: True, `SCORERS_ENABLED`: False, `DEPTH`: 1, `MAX_SYNONYMS_PER_PHRASE`: 1 | Compliance Regex/Jaccard/BM25 expansion is opt-in. Retrieval expansion remains independently flow-controlled under the master switch. |
+| **Leet Speak Normalization** | `_LEET_MAP`: 0→o, 1→i, 3→e, etc. | Decodes configured leet-speak substitutions before detection; other evasions may be missed. |
+| **Unicode Confusables** | `_CONFUSABLES`: Cyrillic/Turkish lookalikes | Normalizes configured Unicode lookalikes (Cyrillic а→a, İ→i, ß→ss) before detection; other obfuscations may be missed. |
 
 ### 💬 Prompts & Query Processing
 
@@ -121,13 +377,13 @@ This reference covers both a **quick-scan overview** (tables by topic and by con
 | **Summary Sentence Count** | `SUMMARY_SENTENCE_CNT`: 10 | Maximum sentences in the "Purpose" summary field generated by DocClassify. |
 | **Reverse Stemming** | `REVERSE_STEMMING`: True/False | Converts stemmed keywords back to original surface forms before CSV output. Improves readability of extracted classification fields. |
 | **CSV-Filtered Load** | `LOAD_FROM_CLASSIFY_CSV` + `CLASSIFY_CSV_QUERY` (SQLite WHERE) | Load only documents satisfying a SQL query on a prior DocClassify CSV output — the classify-then-selectively-load workflow. |
-| **Grounding Markers** | Sentence-level source citations | Answer sentences are marked as grounded only when they overlap with retrieved chunk text. Sensitivity is tunable via `_MARKED_DOCS_GROUNDING`. |
+| **Grounding Markers** | Sentence-level grounding references | Answer sentences are marked as grounded only when they overlap with retrieved chunk text. Sensitivity is tunable via `_GROUNDING`. |
 
 ### 🐛 Debugging & Logging
 
 | **Component** | **Options/Values** | **Purpose** |
 |---------------|-------------------|-------------|
-| **Debug Levels** | `None`: 0, `Basic`: 10, `Service`: 20, `Query Rewrite`: 29, `Standard`: 30, `Prompt Check Input`: 31, `Chunk Content`: 32, `Grounding`: 33, `Algos`: 40, `Components`: 55, `Chat Prompt`: 60, `Extracted Content`: 70, `Ollama Response`: 80, `Streaming`: 100 | Hierarchical debug output verbosity. Higher levels include all lower levels. Standard (30) shows pipeline flow; Chunk Content (32) shows full retrieved text; Chat Prompt (60) shows LLM inputs; Streaming (100) shows raw token output. |
+| **Debug Levels** | `None`: 0, `Basic`: 10, `Service`: 20, `Query Rewrite`: 29, `Standard`: 30, `Prompt Check Input`: 31, `Chunk Content`: 32, `Grounding`: 33, `Algos`: 40, `Components`: 55, `Chat Prompt`: 60, `Extracted Content`: 70, `LLM Response`: 80, `Streaming`: 100 | Hierarchical debug output verbosity. Higher levels include all lower levels. Standard (30) shows pipeline flow; Chunk Content (32) shows full retrieved text; Chat Prompt (60) shows LLM inputs; Streaming (100) shows raw token output. |
 | **Debug Level Format** | `30` (exact), `ge 30` (≥30), `is 33` (==33), `none` (silent) | How to specify debug levels. Can target exact level, minimum level, or specific level only. |
 | **Performance Logging** | `PERFORMANCE_LOGGING`: True/False | Logs start/stop timestamps of all major operations to logs/Performance/perf.log. Used for profiling and optimization. |
 
@@ -137,7 +393,7 @@ This reference covers both a **quick-scan overview** (tables by topic and by con
 |---------------|-------------------|-------------|
 | **Request Timeout** | `REQUEST_TIMEOUT`: 600 seconds | Maximum wait time for Ollama/OpenAI API responses. Prevents hanging on slow inference or network issues. |
 | **JSON Repair** | `TRY_FIX_JSON_LLM_REPLY`: True/False | Attempts to fix malformed JSON from LLM responses by appending missing closing braces. Quick fix for non-strict JSON models. |
-| **Internet Access Toggles** | `HF_HUB_OFFLINE`, `TRANSFORMERS_OFFLINE`, `HF_DATASETS_OFFLINE` in Config_Internet_Env | Control Hugging Face Hub access. Set to "1" to work fully offline after initial model downloads. |
+| **Internet Access Toggles** | `HF_HUB_OFFLINE`, `TRANSFORMERS_OFFLINE`, `HF_DATASETS_OFFLINE` in Config_Internet_Env | Control Hugging Face Hub access. Offline use also requires local endpoints and models and disabling web search. |
 
 ### 🎨 User Interface & Display
 
@@ -151,7 +407,7 @@ This reference covers both a **quick-scan overview** (tables by topic and by con
 | **Grounding Markers** | Sentence-level overlap highlighting | Marks grounded answer fragments based on overlap with retrieved evidence. Not gated by debug level; debug controls diagnostics only. |
 | **Single-File Boost** | `SINGLE_CHUNK_SCORE_BOOST`: 1.25 | Score multiplier applied when all chunks come from one file. Rewards concentrated evidence. |
 | **License Consent** | Files in ModelGovernance/licenses/ | Tracks user consent for model licenses. Enforced before model download or use. |
-| **Internet Access Toggles** | `HF_HUB_OFFLINE`, `TRANSFORMERS_OFFLINE`, `HF_DATASETS_OFFLINE` in Config_Internet_Env | Control Hugging Face Hub access. Set to "1" to work fully offline after initial model downloads. |
+| **Internet Access Toggles** | `HF_HUB_OFFLINE`, `TRANSFORMERS_OFFLINE`, `HF_DATASETS_OFFLINE` in Config_Internet_Env | Control Hugging Face Hub access. Offline use also requires local endpoints and models and disabling web search. |
 
 ---
 
@@ -172,7 +428,7 @@ This reference covers both a **quick-scan overview** (tables by topic and by con
 | **Chunkers - PDF Page** | `Config_Global.py` | `_CHUNKERS["PDF_PAGE"]` | MAX_CHUNK_SIZE, PRESERVE_NEWLINES, DETECT_PRINTED_LABEL (per-page chunking) |
 | **Active Chunker Config** | `Config_Global.py` | `_ACTIVE_CHUNKER_CONFIG` | "DETAILED" or "FAST" |
 | **Chunker Strategy Routing** | `Config_Global.py` | `_CHUNK_STRATEGY[profile][extension]` | Maps file extensions to chunkers per profile |
-| **Metadata Extraction** | `Config_Global.py` | `_METADATA_EXTRACTION` | ENABLED master switch; DOC_INFO_FIELDS (canonical field → source-property synonyms, PDF + Office); GENERIC_FIELDS (filesystem fallback for other types); PDF_PAGE_LABEL_FIELD (printed page label field name); SHOW_IN_ANSWER (append metadata section to answers) |
+| **Metadata Extraction** | `Config_Global.py` | `_METADATA_EXTRACTION` | ENABLED master switch; DOC_INFO_FIELDS (canonical field → source-property synonyms, PDF + Office); GENERIC_FIELDS (filesystem fallback for other types); SHOW_IN_ANSWER (append metadata section to answers). PDF page identity is always captured at ingestion. |
 | **Office Extraction Toggles** | `Config_Global.py` | `_OFFICE_DOC_EXTRACTION["Word"]`, `["Power Point"]`, `["Excel"]` | Per-format extraction enable |
 | **Text File Extensions** | `Config_Global.py` | `_CONSIDER_AS_TEXT_FILE` | List of extensions treated as plain text |
 | **Tesseract Path** | `Config_Internet_Env.py` | `os.environ["TESSERACT_PATH"]` | OCR executable location |
@@ -186,6 +442,7 @@ This reference covers both a **quick-scan overview** (tables by topic and by con
 | **Default Orchestration Flow** | `Config_Orchestrator.py` | `_DEFAULT_ORCHESTRATION_FLOW` | Default retrieval orchestration profile when session `orchestrator_flow` is unset |
 | **Allowed Orchestration Flows** | `Config_Orchestrator.py` | `_ALLOWED_ORCHESTRATION_FLOWS` | Optional allow-list exposed to `orchestrator_flow` selection |
 | **Orchestration Flow Profiles** | `Config_Orchestrator.py` | `_ORCHESTRATION_FLOWS[flow_name]` | Per-flow query-source and stage-gate profile dict |
+| **Query Split Default** | `Config_Orchestrator.py` | `_ORCHESTRATION_FLOWS[flow]["use_keyword_action_splitter"]` | `True` in shipped flows |
 | **Strategy Definitions** | `Config_RAGChat_Strategies.py` | `_STRATEGIES[strategy_name]` | Per-strategy parameters dict |
 | **Final Chunks to LLM** | `Config_RAGChat_Strategies.py` | `_STRATEGIES[strategy]["final_chunks_to_llm"]` | Per-strategy chunk count |
 | **Retriever K** | `Config_RAGChat_Strategies.py` | `_STRATEGIES[strategy]["retriever_k"]` | Per-strategy candidate fetch count |
@@ -215,12 +472,13 @@ This reference covers both a **quick-scan overview** (tables by topic and by con
 |---------------|----------------|----------------------|-----------|
 | **Active LLM** | `Config_Models.py` | `_ACTIVE_LLM` | Implementation key for main generation model |
 | **Active LLM Guard** | `Config_Models.py` | `_ACTIVE_LLM_CHK` | Implementation key for safety check model |
-| **Active LLM Rewriter** | `Config_Models.py` | `_ACTIVE_LLM_REWRITE_PROMPT` | Implementation key for query rewrite model |
+| **Active LLM Rewriter** | `Config_Models.py` | `_ACTIVE_LLM_REWRITE_PROMPT` | Shared model for query rewrite, keyword/action splitting, and MultiQuery fallback |
+| **Active LLM Judge** | `Config_Models.py` | `_ACTIVE_LLM_JUDGE` | Implementation key for answer-text review model |
 | **Active Embedder** | `Config_Models.py` | `_ACTIVE_EMBED` | Implementation key for embedding model |
 | **Active Cross-Encoder** | `Config_Models.py` | `_ACTIVE_CROSS` | Implementation key for reranking model |
 | **Active Endpoint** | `Config_Models.py` | `_ACTIVE_ENDPOINT` | "ollama" or "vllm" |
 | **Model Definitions** | `Config_Models.py` | `_MODELS[impl][role]` | Hierarchical model config: `_MODELS["mistral"]["_LLM"]` etc. |
-| **LLM Config** | `Config_Models.py` | `_MODELS[impl]["_LLM"]` | MODEL_OLLAMA, MODEL_VLLM, PROMPT_CHAT, TOKEN_BUDGET_* |
+| **LLM Config** | `Config_Models.py` | `_MODELS[impl]["_LLM"]` | OLLAMA / VLLM provider slots (MODEL), PROMPT_CHAT, TOKEN_BUDGET_* |
 | **Embedder Config** | `Config_Models.py` | `_MODELS[impl]["_EMBED"]` | MODEL, HF_API_KEY, LICENSE, SOURCE |
 | **Cross-Encoder Config** | `Config_Models.py` | `_MODELS[impl]["_CROSS"]` | MODEL, QUERY_INSTRUCTION, LICENSE |
 | **Ollama Endpoint** | `Config_Models.py` | `_MODELS["ollama"]["_OLLAMA"]["BASE_URL"]` | Ollama server address (default: localhost:11434) |
@@ -236,6 +494,9 @@ This reference covers both a **quick-scan overview** (tables by topic and by con
 |---------------|----------------|----------------------|-----------|
 | **Chat Prompt Template** | `Config_RAGChat_Prompts.py` | `_PROMPT_CHAT` | Main answer generation prompt (fully replaceable per model; service mode can override in `Config_RAGChatService.py`) |
 | **Query Rewrite Prompts** | `Config_RAGChat_Prompts.py` / `Config_RAGChat_Rewrite.py` | `_PROMPT_TOPIC_DETECT`, `_PROMPT_QUERY_EXPAND` | Conversation context analysis and alternate-phrasings generation |
+| **Query Split Limits and Sampling** | `Config_KeywordActionSplitter.py` | `_KEYWORD_ACTION_SPLITTER` | Max 8 needs, 3–8 distinct keywords; separate JSON-call parameters |
+| **Query Split Prompt** | `Config_KeywordActionSplitter.py` | `_PROMPT_KEYWORD_ACTION_SPLITTER` | Task-only decomposition from original, translated, and accepted-rewrite input |
+| **Split Answer Templates** | `Config_RAGChat_Prompts.py` | `_PROMPT_KEYWORD_ACTION_ANSWER`, `_PROMPT_KEYWORD_ACTION_OPERATION` | Answer/operation instructions over retrieved evidence; used only after successful splitting |
 | **Chat Context** | `Config_RAGChat_Strategies.py` | `_STRATEGIES[strategy]["use_chat_context"]`, `["turns"]`, `["max_history_turns"]` | Conversation memory settings per strategy |
 | **Topic Summary Mode** | `Config_RAGChat_Strategies.py` | `_STRATEGIES[strategy]["TOPIC_SUMMARY_MODE"]` | "last" (most recent turn) or "all" (full history) |
 | **LLM Parameters** | `Config_RAGChat_Strategies.py` | `_STRATEGIES[strategy]["temperature"]`, `["top_k"]`, `["top_p"]`, `["max_output_tokens"]` | Per-strategy generation sampling params |
@@ -245,7 +506,7 @@ This reference covers both a **quick-scan overview** (tables by topic and by con
 | **Multi-Query Expansion** | `Config_RAGChat_Rewrite.py` | `_MULTI_QUERY["enabled"]`, `["num_variants"]` | Toggle and variant count (default 3) for alternate-phrasings retrieval |
 | **Multi-Query LLM Params** | `Config_RAGChat_Rewrite.py` | `_MULTI_QUERY["LLM_PARAM"]` | temperature (higher=more diverse), top_k, top_p, num_predict |
 | **Chunk Near-Dedup** | `Config_RAGChat_Rewrite.py` | `_CHUNK_DEDUP["enabled"]`, `["threshold"]`, `["include_web_chunks"]` | Jaccard similarity threshold and web-chunk inclusion for near-duplicate removal |
-| **Answer Grounding** | `Config_RAGChat_Display.py` | `_MARKED_DOCS_GROUNDING["min_sentence_tokens"]`, `["min_fragment_len"]`, `["min_overlap_window"]` | Sensitivity of sentence-level grounding detection |
+| **Answer Grounding** | `Config_Grounder.py` | `_GROUNDING.min_sentence_tokens`, `_GROUNDING.min_fragment_len`, `_GROUNDING.min_overlap_window` | Sensitivity of sentence-level grounding detection |
 | **Answer Colors** | `Config_RAGChat_Display.py` | `_MARKED_DOCS_COLORS["highlight"]`, `["answer_mark"]`, `["answer_ansi"]` | Per-output-mode color for chunk highlight, Markdown/HTML, and CLI ANSI |
 | **KeyBERT Chat** | `Config_RAGChat.py` | `_KEY_BERT["TOP_N_FIRST"]`, `["TOP_N_SECOND"]` | Keyword extraction limits for query-time use |
 | **RAGLoad KeyBERT** | `Config_RAGLoad.py` | `_KEY_BERT` | TOP_N_FIRST, TOP_N_SECOND for indexing-time keyword extraction |
@@ -346,7 +607,8 @@ configs and are part of the effective configuration surface.
 | --- | --- | --- |
 | `Config_Global.py` | `_ABSOLUTE_PATH` | Canonical project-root absolute path used by path-derived defaults and root-path guards. |
 | `Config_Global.py` | `_CACHE_PATH` | Shared project-local cache root for Argos/NLTK/spaCy assets; resolved and validated under project-root guards. |
-| `Config_Global.py` | `_CONFIDENCE_LOGGING` | Confidence signal controls (`enabled`, `emit_pretty`, `csv_enabled`). |
+| `Config_Confidence.py` | `_CONFIDENCE_LOGGING`, `_QUALITY_CONFIDENCE`, `_PROMPT_QUALITY_DIMENSION_JUDGE` | Confidence logging, quality scoring, and judge prompt. |
+| `Config_ConfidenceEvaluator.py` | `_CONFIDENCE_EVALUATOR` | Retrieval evidence confidence (`C_final`) weights, fallback penalty, and level thresholds. |
 | `Config_Banned_Content.py` | `HARDBLOCK_PATTERNS` | Always-on hard-block regex patterns for critical unsafe intents (web retrieval guard). |
 | `Config_Banned_Content.py` | `INJECTION_PATTERNS` | Prompt-injection / attack signature regex patterns used by injection gating. |
 | `Config_Banned_HumanReview_CSV.py` | `_LABEL_ALIAS` | Human-review label alias map (for example Regex -> Regex+Levenshtein). |
@@ -378,14 +640,14 @@ configs and are part of the effective configuration surface.
 **Change the active LLM:**
 ```python
 # Config_Models.py
-_ACTIVE_LLM = "mistral"  # or "llama", etc.
+_ACTIVE_LLM = "qwen2_5_7b_instruct"  # or "mistral", "llama"
 ```
 
 **Change embedder or cross-encoder:**
 ```python
 # Config_Models.py
-_ACTIVE_EMBED = "snowflake"
-_ACTIVE_CROSS = "mmarco"
+_ACTIVE_EMBED = "bge_m3"        # or "snowflake"
+_ACTIVE_CROSS = "bge_reranker"  # or "mmarco"
 ```
 
 ### 🔍 Retrieval
@@ -477,23 +739,28 @@ set debug none     # Disable debugging
 
 RAG-LCC uses layered configuration modules under `src/Configuration/`. `Config()` merges them in a fixed precedence order (later entries override earlier ones):
 
-> **CLI args** are validated first and may override only keys from
-> `Config_Global.py` and the active app config. Keys starting with `_` or `$`
-> are rejected.
+> **CLI args** are validated first (`src/Config/CliOverridePolicy.py`) and may
+> override only UPPERCASE, non-dict keys from `Config_Global.py`, the active app
+> config, and — for RAGLoad/RAGChat/RAGChatService — `Config_Load_Retrievers.py`.
+> Keys starting with `_`, `$`, or `INTERNAL_` are rejected.
 
 1. **Config_Global.py**
-2. **Config_Load_Retrievers.py**
-3. **Config_Load_Chunkers.py**
-4. **Config_Languages.py**
-5. **Config_Models.py**
-6. **Config_Banned_Detection.py**
-7. **Config_Banned_HumanReview_CSV.py**
-8. **Config_Banned_Content.py**
-9. **Config_Banned_Prompts.py**
-10. **Config_WebSearch.py**
-11. **Config_Orchestrator.py**
-12. **RAGChat split modules** (`Config_RAGChat_Core.py`, `Config_RAGChat_Strategies.py`, `Config_RAGChat_Prompts.py`, `Config_RAGChat_Rewrite.py`, `Config_RAGChat_Display.py`) when the active app is RAGChat/RAGChatService
-13. **App-specific config** — `Config_RAGChat.py`, `Config_RAGLoad.py`, `Config_DocClassify.py`, or `Config_RAGChatService.py` (highest file priority)
+2. **Config_Confidence.py**
+3. **Config_Load_Retrievers.py**
+4. **Config_Load_Chunkers.py**
+5. **Config_ContextSummarizer.py**
+6. **Config_Grounder.py**
+7. **Config_ConfidenceEvaluator.py**
+8. **Config_Languages.py** (re-exports `Config_Languages_Catalog.py`, `Config_Languages_Retrievers.py`, `Config_Languages_Normalization.py`)
+9. **Config_Models.py**
+10. **Config_Banned_Detection.py**
+11. **Config_Banned_HumanReview_CSV.py**
+12. **Config_Banned_Content.py**
+13. **Config_Banned_Prompts.py**
+14. **Config_WebSearch.py**
+15. **Config_Orchestrator.py**
+16. **RAGChat split modules** (`Config_RAGChat.py`, `Config_RAGChat_Strategies.py`, `Config_RAGChat_Prompts.py`, `Config_RAGChat_Rewrite.py`, `Config_KeywordActionSplitter.py`, `Config_RAGChat_Display.py`) when the active app is RAGChat/RAGChatService
+17. **App-specific config** — `Config_RAGChat.py`, `Config_RAGLoad.py`, `Config_DocClassify.py`, or `Config_RAGChatService.py` (highest file priority)
 
 `Config_Internet_Env.py` is separate from `Config()` merge order: it sets environment variables for internet access, tracing, and offline toggles.
 
@@ -502,9 +769,9 @@ RAG-LCC uses layered configuration modules under `src/Configuration/`. `Config()
 - All merged files above are loaded as Python modules and therefore require valid Python syntax.
 - `Config_Internet_Env.py` contains **only environment variables** (no regular config keys).
 - Keys starting with `_` are internal and **cannot** be overridden via CLI arguments.
-- Keys starting with `$` are indirect lookups (the value names another config key).
+- Keys starting with `$` are indirect lookups (the value names another config key); the target must live in the same module.
 - Top-level settings must be **UPPERCASE**.
-- CLI overrides apply **only** to `Config_Global.py` and the **app-specific** config (`Config_RAGChat.py`, `Config_RAGLoad.py`, `Config_DocClassify.py`, or `Config_RAGChatService.py`). Keys in `Config_Load_Retrievers.py`, `Config_Load_Chunkers.py`, `Config_Languages.py`, `Config_Models.py`, `Config_Banned_Detection.py`, `Config_Banned_HumanReview_CSV.py`, `Config_Banned_Content.py`, `Config_Banned_Prompts.py`, `Config_WebSearch.py`, `Config_Orchestrator.py`, and `Config_Internet_Env.py` are **not** exposed as CLI arguments.
+- CLI overrides apply **only** to `Config_Global.py`, the **app-specific** config (`Config_RAGChat.py`, `Config_RAGLoad.py`, `Config_DocClassify.py`, or `Config_RAGChatService.py`), and `Config_Load_Retrievers.py` for RAGLoad/RAGChat/RAGChatService. Dict-valued keys are never exposed. All other modules (`Config_Confidence.py`, `Config_Load_Chunkers.py`, `Config_ContextSummarizer.py`, `Config_Grounder.py`, `Config_ConfidenceEvaluator.py`, `Config_Languages*.py`, `Config_Models.py`, `Config_Banned_*.py`, `Config_WebSearch.py`, `Config_Orchestrator.py`, `Config_KeywordActionSplitter.py`, `Config_RAGChat_*.py`, `Config_Internet_Env.py`) are **not** exposed as CLI arguments. The interactive session switch `keyword_action_splitter` is distinct from a startup argument.
 
 ## 🌐 1. Config_Global.py — Shared Defaults
 
@@ -532,7 +799,7 @@ The remaining Ollama-related setting in `Config_Global.py` is:
 
 | Key | Default used in this repository | Purpose |
 | --- | --- | --- |
-| `REQUEST_TIMEOUT` | `600` | Seconds to wait for an Ollama response before timing out. |
+| `REQUEST_TIMEOUT` | `600` | Legacy global value; LLM/embedder/reranker calls do **not** read it. The effective timeout is `REQUEST_TIMEOUT` in `_MODELS["ollama"]["_OLLAMA"]` (`120.0`) / `_MODELS["vllm"]["_VLLM"]` (`600.0`), or a per-model `"OLLAMA"`/`"VLLM"` slot. |
 
 ### 🎫 Token Budget
 
@@ -566,7 +833,7 @@ See `Config_Models.py` for model-specific values.
 | Key | Default used in this repository | Purpose |
 | --- | --- | --- |
 | `RETRIEVAL_STORES_KEEP` | `False` | `True` = preserve existing collection, BM25 index, and graph index on startup. `False` = wipe and recreate. Defined in `Config_Load_Retrievers.py`; applies to `RAGLoad.py` **only**. |
-| `COLLECTION` | `"Test"` | Active ChromaDB collection name. Defined in `Config_Load_Retrievers.py`; change it in that file when you want a different startup collection. |
+| `COLLECTION` | `"Test"` | Base name of the active ChromaDB collection. Defined in `Config_Load_Retrievers.py` (or `--collection`). The active embedder is appended (`"Test"` -> `"Test_embedder_bge_m3"` with `_ACTIVE_EMBED = "bge_m3"`); names already ending with `_embedder_<impl>` of any `_EMBED` model (e.g. `"Test_embedder_snowflake"`) are used unchanged. The RAGChat collection picker (`collection!`) and the OpenWebUI model list (`GET /v1/models`) show only collections of the active embedder. |
 
 All collection-defining settings — HNSW neighbour counts, chunker selection,
 chunk sizes, and AUTO_CHUNK routing — are grouped under the **COLLECTION SCHEMA**
@@ -612,6 +879,50 @@ The `PDF_PAGE` chunker (used when `_CHUNK_STRATEGY` maps `"pdf"` to `"PDF_PAGE"`
 | `PRESERVE_NEWLINES` | `False` | When `True`, newlines in the extracted PDF text are kept, which can help tables and bulleted lists stay legible in the chunk. |
 | `DETECT_PRINTED_LABEL` | `True` | When `True`, the chunker recovers the **printed** page number from each page's footer/header text (numeric or Roman, e.g. `iii`, `12`) when the PDF's `/PageLabels` metadata does not declare it, and stores it in `PageLabel`. Detection is language-aware — the "page"/"of" keywords are translated for non-English documents via the cached translator. Set `False` to trust `/PageLabels` only. |
 
+#### Tables in Word and PDF
+
+Chroma ingestion splits document writes using the client's reported maximum
+record batch size. This limits records per write, not tokens or words per chunk.
+Write failures propagate; a document spanning multiple batches is not atomic.
+Incremental BM25, graph, and regex updates refresh the saved collection count
+before persistence so subsequent chat requests do not rebuild solely because
+the saved count predates newly ingested files.
+
+Table handling is automatic for detected Word/PDF tables under both FAST and
+DETAILED profiles. Keep selecting the normal document chunker; it delegates only
+table blocks to the shared `TableChunker`, while retaining surrounding prose.
+No `TABLE` routing entry or extra extraction dependency is needed.
+
+Table fragments repeat identity and complete column headers in their actual
+embedded/stored text, independently of `HEADING.BREADCRUMB_MODE`. Explicit Word
+header rows are preferred; conservative inference is recorded in
+`TableHeaderSource`, and uncertain tables retain data with positional column
+labels. `TableIndex` distinguishes tables even when both contain `birth_date`.
+
+`_CHUNKERS.TABLE.MAX_CHUNK_TOKENS` (default **512**) controls table splitting
+and final ingestion validation independently of prose chunk sizes. The effective
+limit is capped by the embedding tokenizer's maximum input length. Identity,
+headers and special tokens count toward this budget. This setting does not
+change prose chunking or require a `TABLE` routing entry.
+Oversized rows become labelled continuations. If the complete header leaves
+insufficient room, ingestion raises an error asking for a larger table budget
+rather than silently truncating columns.
+
+PDF extraction is best-effort; page continuations are not automatically merged,
+and OCR fallback does not reconstruct scanned tables. Markdown tables are not
+parsed by this feature. Table detection skips constructing unused prose blocks
+when no usable tables are detected anywhere in a PDF. Mixed documents retain
+prose from every page, including table-free pages and page-level fallbacks.
+Document metadata and PDF page counts share one reader; the text-extraction,
+OCR, and page-chunking parsers remain unchanged.
+PDF extraction displays page progress for text extraction, table detection,
+block assembly, page chunking, and OCR when those stages run. All stages show
+an increasing page counter, elapsed time, and processing rate, without bars or
+percentages (for example, `PDF text extraction: 357 page [00:10, 32.58page/s]`).
+Reload affected documents after adopting this change;
+existing chunks are not rewritten automatically. If unchanged files would be
+skipped, enable `PROCESS_IF_UNCHANGED` for reingestion.
+
 ### 🏷️ Document Metadata Extraction
 
 The `_METADATA_EXTRACTION` slot in `Config_Global.py` controls extra metadata harvested from source files at load time and attached to **every** chunk of that file. Extraction runs once in the ingestion pipeline via the singleton `DocumentMetadataExtractor` (in `src/Strategies/Chunkers/`), so all chunkers benefit regardless of file type. Formats with readable document properties — PDF (pypdf) and the modern Office XML formats docx, pptx, xlsx — yield the rich `DOC_INFO_FIELDS`; **every other type** (images, text, csv, code, legacy Office, …) falls back to the generic filesystem `GENERIC_FIELDS`. Because chunk metadata is baked into the ChromaDB collection, changing any value requires a reload (`RETRIEVAL_STORES_KEEP = False`). ChromaDB only accepts scalar metadata, so all extracted values are coerced to strings and empty/missing fields are skipped.
@@ -621,7 +932,7 @@ The `_METADATA_EXTRACTION` slot in `Config_Global.py` controls extra metadata ha
 | `ENABLED` | `True` | Master switch. `False` restores legacy behaviour (no extra metadata, physical page numbers only). |
 | `DOC_INFO_FIELDS` | Author, DocTitle, Subject, Creator, Producer, DocCreated, DocModified, LastModifiedBy, Keywords | Maps each **canonical** chunk-metadata field to an ordered list of raw source-property **synonyms** searched across formats (case-insensitive; first non-empty wins). Different formats name the same concept differently — e.g. `DocCreated` resolves from PDF `creation_date` **or** Office `created`. Truly ambiguous names are pre-normalised in `DocumentMetadataExtractor` (e.g. openpyxl's `creator`, which means *author*, is emitted as `author`). Remove a key to skip that field. |
 | `GENERIC_FIELDS` | FileSizeBytes→`size`, FileModified→`modified` | Fallback fields for file types **without** a document-info reader. Sourced from the filesystem: `size` (bytes) and `modified` (mtime). Applied to images, plain text, csv, source code, legacy Office, etc. |
-| `PDF_PAGE_LABEL_FIELD` | `PageLabel` | Field name under which the PDF's **printed** page label (e.g. `i`, `ii`, `1`, `2`) is stored. The physical 1-based page index always remains in `PageNumber`. Source citations and the LLM context header display this label when present, so front-matter pages (Roman numerals) cite correctly. Empty string disables label capture. |
+PDF ingestion always stores the physical 1-based index in `PageNumber` and the printed label in `PageLabel` (empty when unknown), independently of metadata extraction. Prose, tables and LLM source headers use only the printed label (`Page iii`), or explicitly `PDF page 7` when no printed label is known. Physical page metadata is omitted from LLM context when a printed label is available. Grounding uses `PageNumber` directly, without page-number correction or compatibility handling. Existing collections must be re-ingested.
 | `SHOW_IN_ANSWER` | `True` | Append a **Document metadata** section (per source file: FilePath, harvested fields, and the page labels referenced) to the end of CLI (RAGChat) and HTTP (RAGChatService) answers. Set `False` to rely only on the LLM-generated Sources section. |
 
 A `Pages` field (integer page/slide count) is also attached for PDFs and PPTX decks (`0`, and therefore skipped, for formats without pages such as images). At **load** time, `Config_RAGLoad.py` → `SHOW_EXTRACTED_METADATA` (default `True`) prints the harvested fields for each ingested file in magenta so you can verify extraction.
@@ -659,6 +970,24 @@ Language-specific model routing for Graph/Regex retrieval is optional:
 - Configure only installed model package names (for example `"de_core_news_sm"`).
 - `python src/Scripts/SpacyLanguageModels.py install` installs the union of default and per-language model entries.
 - `python src/Scripts/SpacyLanguageModels.py` (no arguments) shows status.
+
+The `_REGEX_INDEX` slot in `Config_Languages_Retrievers.py` controls the verb/noun regex retriever:
+
+| Key | Default | Purpose |
+| --- | --- | --- |
+| `REGEX_INDEX_DIR` | `<project_root>/chromadb/regex` | Index storage root |
+| `max_candidates` | `50` | Candidates kept before the final top-k cap |
+| `min_token_chars` | `3` | Ignore shorter lemmas (verbs and nouns) |
+| `noun_pos_tags` | `["NOUN", "PROPN"]` | POS tags forming the noun channel |
+| `exclude_auxiliaries` | `True` | Drop auxiliary verbs from the verb channel |
+| `aux_lemmas` | `be, do, have, can, could, may, might, must, shall, should, will, would` | Lemmas treated as auxiliaries |
+| `require_both_when_available` | `True` | Strict gate: require verb **and** noun hits when the query has both |
+| `min_verb_hits` / `min_noun_hits` | `1` / `1` | Minimum hits per channel for the strict gate |
+| `fallback_to_verb_only` | `True` | If the strict gate finds nothing, allow verb-only matches |
+| `fallback_min_verb_hits` | `1` | Minimum verb hits in fallback mode |
+| `verb_weight` / `noun_weight` | `2.0` / `1.0` | Coverage score weights |
+| `both_match_bonus` | `0.25` | Bonus when both channels match |
+| `fallback_score_scale` | `0.6` | Damps fallback scores so strict matches rank first |
 
 The `_BM25_INDEX` slot in `Config_Languages.py` controls BM25 Okapi scoring and
 Reciprocal Rank Fusion (RRF) parameters:
@@ -751,15 +1080,17 @@ capping output to a maximum verbosity.
 | 0 | None | Silent — no diagnostic output |
 | 10 | Basic | High-level pass/fail outcomes across all subsystems |
 | 20 | Service | API request dump, service lifecycle events |
+| 28 | Retrieval Orchestration | Stage-by-stage retrieval orchestration flow |
 | 29 | Query Rewrite | Rewrite decisions and topic-detect results |
 | 30 | Standard | **Default.** Pipeline flow: session state, retrieval decisions, compliance outcomes |
 | 31 | Prompt Check Input | Text fed to the banned-phrase filter chain + system-message hint (skipped, not checked) |
 | 32 | Chunk Content | Full text and metadata of every chunk selected for the LLM context window (file, chunk_id, FileHash, all scores, retriever sources, raw `page_content`) |
+| 33 | Grounding | Answer-grounding / source-reference matching details |
 | 40 | Algos | Scorer internals, masker rules, accumulator, keyword extraction |
 | 55 | Components | Synonym detail, argostranslate, transformers, URL logging |
 | 60 | Chat Prompt | Full prompt text sent to the LLM |
 | 70 | Extracted Content | Raw document content from classification |
-| 80 | Ollama Response | Raw Ollama request/response bodies |
+| 80 | LLM Response | Raw LLM request/response details across supported providers |
 | 100 | Streaming | Per-chunk raw streaming output |
 
 You can also use the string form when setting the debug level at the interactive prompt
@@ -786,6 +1117,9 @@ combined string format is parsed in one place.
 `debug_level=30`, `debug_level!` (interactive named-preset picker), `debug_level?`
 (show current), `debug_mode=ge` / `debug_mode=is` / `debug_mode=le`, `debug_mode!`.
 The effective values appear on the `▶ Debug:` line of the `show?` status block.
+At the RAGChat settings prompt, `show?` repeats the grouped current values shown
+at startup. `help?` uses the same Chat, Summarize, Retrieval and Orchestration
+hierarchy, but displays command explanations and usage examples instead.
 
 - `URL_DEBUG` (`False`) enables `urllib` HTTP debug output.
 - `HF_DEBUG` (`False`) enables Hugging Face debug logging.
@@ -815,14 +1149,25 @@ These keys are defined in `Config_Languages.py` and merged into the runtime conf
 | Key | Default used in this repository | Purpose |
 | --- | --- | --- |
 | `_CACHE_PATH` | `.caches` (resolved as `<project>/.caches`) | Shared cache root for NLTK stopwords and Argos/spaCy script assets. Use a direct path (no `$...` indirection); path must stay within project root. |
+| `_CACHE_PATH_ABSOLUTE` | `<_ABSOLUTE_PATH>/.caches` | Derived absolute form of `_CACHE_PATH` (`os.path.join(_ABSOLUTE_PATH, _CACHE_PATH)`). Do not edit; change `_CACHE_PATH` instead. |
 
 ### 📚 WordNet Synonym Expansion (Optional)
 
-When enabled (`_WORDNET.ENABLED = True` in `Config_Languages.py`), the banned-word list is expanded with English synonyms from [NLTK WordNet](https://wordnet.princeton.edu/) before translation and detection. See [WordNet Synonym Expansion in ARCHITECTURE.md](ARCHITECTURE.md#-wordnet-synonym-expansion-optional) for full details.
+Compliance banned-word expansion requires both `_WORDNET.ENABLED = True` and
+`_WORDNET.SCORERS_ENABLED = True` in `Config_Languages_Normalization.py` (re-exported
+by `Config_Languages.py`). `SCORERS_ENABLED` defaults to `False`: Regex, Jaccard,
+and BM25 scorers use configured phrases without automatic synonyms, while keeping
+existing language translation. KeyBERT remains unchanged. Retrieval WordNet
+expansion is unaffected by this scorer switch and retains its flow controls.
+Restart the application after changing this setting because scorer banlists are
+built at initialization. This switch does not change unordered token matching:
+disabling synonyms alone does not resolve multiword false positives such as
+separate occurrences of "card" and "number".
 
 | Key | Default used in this repository | Purpose |
 | --- | --- | --- |
 | `_WORDNET.ENABLED` | `True` | Master switch. Set to `False` to skip synonym expansion entirely. |
+| `_WORDNET.SCORERS_ENABLED` | `False` | Opt in to WordNet expansion for compliance Regex/Jaccard/BM25 scorers only; also requires the master switch. Does not affect retrieval. |
 | `_WORDNET.DEPTH` | `1` | Synonym hop depth. `1` = direct synonyms only (recommended). `2` adds synonyms-of-synonyms. |
 | `_WORDNET.MAX_SYNONYMS_PER_PHRASE` | `1` | Maximum synonyms added per original banned phrase. Prevents list explosion. |
 | `_WORDNET.POS_FILTER` | `["n", "v"]` | Restrict to these WordNet parts of speech: `n`(oun), `v`(erb), `a`(dj), `r`(adv), `s`(at-adj). Empty list = accept all. |
@@ -995,35 +1340,47 @@ This file defines every model used by RAG-LCC. After editing it, update `_CRITIC
 
 `LICENSE_URL` entries should point to canonical upstream license texts (for example Apache, MIT, or upstream repository LICENSE files), consistent with the setup scripts that fetch native package licenses directly from upstream sources.
 
+Descriptive per-model keys (shown in license consent and compliance output): `FRIENDLY_NAME`, `SOURCE` (where the weights are pulled from), optional `UPSTREAM_SOURCE` (original publisher when `SOURCE` is a mirror, e.g. Ollama → Hugging Face for `llama_guard`), `LICENSE`, `LICENSE_URL`, `COMPLIANCE_MSG`, optional `TAG` (attribution line such as `"Built with Meta Llama 3."`), `MODEL_CARD`, and `USED_BY` (apps that require consent).
+
 ### 🔩 Implementation Selectors
 
-`Config_Models.py` uses a two-level dictionary `_MODELS[<impl>][<role>]` to resolve model configurations. Eight top-level selector variables choose which implementation (impl key) to use for each model role:
+`Config_Models.py` uses a two-level dictionary `_MODELS[<impl>][<role>]` to resolve model configurations. Top-level selector variables choose which implementation (impl key) to use for each model role:
 
 ```python
-_ACTIVE_LLM_CHK            = "llama_guard"  # impl for _LLM_CHK role. llama_guard, llama, mistral
-_ACTIVE_LLM                = "mistral"      # impl for _LLM role. mistral, llama
-_ACTIVE_LLM_REWRITE_PROMPT = "mistral"      # impl for _LLM_REWRITE_PROMPT role. mistral default; llama also available
-_ACTIVE_EMBED              = "snowflake"    # impl for _EMBED role
-_ACTIVE_CROSS              = "mmarco"       # impl for _CROSS role
-_ACTIVE_ENDPOINT           = "ollama"       # active inference endpoint: ollama or vllm
-_ACTIVE_OPENWEBUI          = "openwebui"    # impl for _OPENWEBUI role
+_ACTIVE_LLM_CHK            = "llama_guard"          # impl for _LLM_CHK role. llama_guard, llama, mistral, qwen2_5_7b_instruct
+_ACTIVE_LLM                = "qwen2_5_7b_instruct"  # impl for _LLM role. qwen2_5_7b_instruct, mistral, llama
+_ACTIVE_LLM_REWRITE_PROMPT = "qwen2_5_7b_instruct"  # impl for _LLM_REWRITE_PROMPT role. qwen2_5_7b_instruct, mistral, llama
+_ACTIVE_LLM_JUDGE          = "qwen2_5_14b_instruct" # impl for _LLM_JUDGE role. qwen2_5_14b_instruct, qwen2_5_1_5b_instruct
+_ACTIVE_EMBED              = "bge_m3"               # impl for _EMBED role. bge_m3, snowflake
+_ACTIVE_CROSS              = "bge_reranker"         # impl for _CROSS role. bge_reranker, mmarco
+_ACTIVE_ENDPOINT           = "vllm"                 # active inference endpoint: ollama or vllm
 ```
+
+The service entries `_MODELS["openwebui"]["_OPENWEBUI"]` and `_MODELS["ragchatservice"]["_RAGCHATSERVICE"]` have no selector: they are fixed and always in use (license consent still follows their `USED_BY`).
 
 | Selector | Default used in this repository | Resolves to | Allowed values |
 | --- | --- | --- | --- |
-| `_ACTIVE_EMBED` | `"snowflake"` | `_MODELS["snowflake"]["_EMBED"]` | `snowflake` |
-| `_ACTIVE_CROSS` | `"mmarco"` | `_MODELS["mmarco"]["_CROSS"]` | `mmarco` |
-| `_ACTIVE_LLM` | `"mistral"` | `_MODELS["mistral"]["_LLM"]` | `mistral`, `llama` |
-| `_ACTIVE_LLM_CHK` | `"llama_guard"` | `_MODELS["llama_guard"]["_LLM_CHK"]` | `llama_guard`, `llama`, `mistral` |
-| `_ACTIVE_LLM_REWRITE_PROMPT` | `"mistral"` | `_MODELS["mistral"]["_LLM_REWRITE_PROMPT"]` | `mistral`, `llama` |
+| `_ACTIVE_EMBED` | `"bge_m3"` | `_MODELS["bge_m3"]["_EMBED"]` | `bge_m3`, `snowflake` |
+| `_ACTIVE_CROSS` | `"bge_reranker"` | `_MODELS["bge_reranker"]["_CROSS"]` | `bge_reranker`, `mmarco` |
+| `_ACTIVE_LLM` | `"qwen2_5_7b_instruct"` | `_MODELS["qwen2_5_7b_instruct"]["_LLM"]` | `qwen2_5_7b_instruct`, `mistral`, `llama` |
+| `_ACTIVE_LLM_CHK` | `"llama_guard"` | `_MODELS["llama_guard"]["_LLM_CHK"]` | `llama_guard`, `llama`, `mistral`, `qwen2_5_7b_instruct` |
+| `_ACTIVE_LLM_REWRITE_PROMPT` | `"qwen2_5_7b_instruct"` | `_MODELS["qwen2_5_7b_instruct"]["_LLM_REWRITE_PROMPT"]` | `qwen2_5_7b_instruct`, `mistral`, `llama` |
+| `_ACTIVE_LLM_JUDGE` | `"qwen2_5_14b_instruct"` | `_MODELS["qwen2_5_14b_instruct"]["_LLM_JUDGE"]` | `qwen2_5_14b_instruct`, `qwen2_5_1_5b_instruct` (small judge) |
 | `_ACTIVE_ENDPOINT` | `"vllm"` | `_MODELS["ollama"]["_OLLAMA"]` or `_MODELS["vllm"]["_VLLM"]` | `ollama`, `vllm` |
-| `_ACTIVE_OPENWEBUI` | `"openwebui"` | `_MODELS["openwebui"]["_OPENWEBUI"]` | `openwebui` |
+
+With `_ACTIVE_ENDPOINT = "vllm"`, embedding and cross-encoder inference runs
+remotely, including embedding calls used by compliance scoring and KeyBERT
+keyword extraction. Startup skips local embedding/reranker weight downloads,
+and no local SentenceTransformer is loaded. Model licence verification and
+acceptance records remain enforced by `Compliance`, independently of downloads.
+Local Hugging Face tokenizer files are still allowed for ingestion truncation.
+The configured remote model must be provisioned by the server operator.
 
 To switch models, change the selector value to another key that carries a matching role entry in `_MODELS`.
 
 ### 🧲 Embedding Model (`_MODELS["snowflake"]["_EMBED"]`)
 
-Creates vector representations for semantic search. Used during RAGLoad (once per document), DocClassify (once per document), and RAGChat (every query). The impl key is selected by `_ACTIVE_EMBED = "snowflake"`.
+Creates vector representations for semantic search. Used during RAGLoad (once per document), DocClassify (once per document), and RAGChat (every query). The impl key is selected by `_ACTIVE_EMBED` (`"bge_m3"` default used in this repository, or `"snowflake"`).
 
 ```python
 "snowflake": {
@@ -1041,12 +1398,35 @@ Creates vector representations for semantic search. Used during RAGLoad (once pe
 
 | `_ACTIVE_LLM` | `_ACTIVE_LLM_CHK` | LLM Model | Compliance Model | Notes |
 | --- | --- | --- | --- | --- |
-| `mistral` | `llama_guard` | Mistral 7B | Llama Guard 3 | Default configuration used in this repository. General-purpose LLM + dedicated guard model. |
+| `qwen2_5_7b_instruct` | `llama_guard` | Qwen2.5 7B Instruct | Llama Guard 3 | Default configuration used in this repository. |
+| `qwen2_5_7b_instruct` | `qwen2_5_7b_instruct` | Qwen2.5 7B Instruct | Qwen2.5 7B Instruct | Same model for both roles. |
+| `mistral` | `llama_guard` | Mistral 7B | Llama Guard 3 | General-purpose LLM + dedicated guard model. |
 | `mistral` | `llama` | Mistral 7B | Llama 3.1 8B | General-purpose LLM + Llama as compliance checker. |
 | `mistral` | `mistral` | Mistral 7B | Mistral 7B | Same model for both roles. |
 | `llama` | `llama_guard` | Llama 3.1 8B | Llama Guard 3 | Llama for generation + dedicated guard model. |
 | `llama` | `llama` | Llama 3.1 8B | Llama 3.1 8B | Same model for both roles. |
 | `llama` | `mistral` | Llama 3.1 8B | Mistral 7B | Llama for generation + Mistral as compliance checker. |
+
+### _LLM_JUDGE Model
+
+The answer-text judge uses `qwen2.5:14b` with Ollama and the served model name
+`openai/qwen2_5_14b_instruct` with vLLM. Provision the model externally
+(for example, `ollama pull qwen2.5:14b`) and ensure the vLLM endpoint exposes
+that exact served name. The judge call uses its own role's output-token budget
+and `_QUALITY_CONFIDENCE.judge_temperature`.
+
+Small models are not suitable judges. With the same prompt, `qwen2.5:1.5b`
+returned identical ratings for clear, self-contradictory, and garbled answers.
+Asked plainly, it did not detect a direct contradiction. `qwen2.5:14b`
+separated those cases correctly. The `qwen2_5_1_5b_instruct` entry
+(`_LLM_JUDGE` only) is kept for experiments and is not recommended.
+
+Qwen2.5-14B-Instruct is licensed under **Apache-2.0**, as confirmed by its
+[official model card](https://huggingface.co/Qwen/Qwen2.5-14B-Instruct).
+The model entry points to the
+[upstream license text](https://huggingface.co/Qwen/Qwen2.5-14B-Instruct/resolve/main/LICENSE)
+for the existing license approval step in RAGChat and RAGChatService.
+Consent is not granted automatically.
 
 ### ✏️ _LLM_REWRITE_PROMPT Model Options
 
@@ -1054,7 +1434,8 @@ The `_ACTIVE_LLM_REWRITE_PROMPT` selector chooses which model rewrites follow-up
 
 | `_ACTIVE_LLM_REWRITE_PROMPT` | Rewrite Model | Notes |
 | --- | --- | --- |
-| `mistral` | Mistral 7B | Default configuration used in this repository. Apache-2.0. |
+| `qwen2_5_7b_instruct` | Qwen2.5 7B Instruct | Default configuration used in this repository. |
+| `mistral` | Mistral 7B | Apache-2.0. |
 | `llama` | Llama 3.1 8B | Available alternative. Follows multi-rule instructions reliably. |
 
 The rewrite LLM can be freely combined with any `_ACTIVE_LLM` / `_ACTIVE_LLM_CHK` combination from the table above.
@@ -1069,7 +1450,7 @@ The rewrite LLM can be freely combined with any `_ACTIVE_LLM` / `_ACTIVE_LLM_CHK
 
 ### 🔀 Cross-Encoder Model (`_MODELS["mmarco"]["_CROSS"]`)
 
-Re-ranks search results retrieved from ChromaDB to improve relevance ordering. The impl key is selected by `_ACTIVE_CROSS = "mmarco"`. Used by `RAGChat.py`.
+Re-ranks search results retrieved from ChromaDB to improve relevance ordering. The impl key is selected by `_ACTIVE_CROSS` (`"bge_reranker"` default used in this repository, or `"mmarco"`). Used by `RAGChat.py`.
 
 ```python
 "mmarco": {
@@ -1089,13 +1470,13 @@ Re-ranks search results retrieved from ChromaDB to improve relevance ordering. T
 
 ### 🧠 Inference LLM (`_MODELS["mistral"]["_LLM"]`)
 
-Generates responses (RAGChat) or classification labels (DocClassify). Runs locally via Ollama or vLLM (depending on `_ACTIVE_ENDPOINT`). The impl key is selected by `_ACTIVE_LLM = "mistral"` (default used in this repository) or `_ACTIVE_LLM = "llama"`.
+Generates responses (RAGChat) or classification labels (DocClassify). Runs locally via Ollama or vLLM (depending on `_ACTIVE_ENDPOINT`). The impl key is selected by `_ACTIVE_LLM = "qwen2_5_7b_instruct"` (default used in this repository), `"mistral"`, or `"llama"`.
 
 ```python
 "mistral": {
     "_LLM": {
-        "MODEL_OLLAMA": "mistral:7b",
-        "MODEL_VLLM": "mistral_7b",
+        "OLLAMA": {"MODEL": "mistral:7b"},
+        "VLLM": {"MODEL": "mistral_7b"},
         "PROMPT_CHAT": "_PROMPT_CHAT",
         "PROMPT_CLASSIFY": "_PROMPT_CLASSIFY_MISTRAL",
         ...
@@ -1105,15 +1486,19 @@ Generates responses (RAGChat) or classification labels (DocClassify). Runs local
 
 To switch models, change the `_ACTIVE_LLM` selector variable in `Config_Models.py` (e.g. `_ACTIVE_LLM = "llama"` resolves to `_MODELS["llama"]["_LLM"]` for Llama 3.1 8B). See the [_LLM/_LLM_CHK Model Combinations](#-_llm_llm_chk-model-combinations) table above for all supported values.
 
+**Provider slots.** Model settings that differ between Ollama and vLLM live in the nested `"OLLAMA"` and `"VLLM"` dicts of a role entry. Model-specific values always supersede the global ones: first the model's slot for the active `_ACTIVE_ENDPOINT`, then the model's role-level keys, then the generic endpoint entry (`_OLLAMA`, `_VLLM`) and globals such as `_HF_API_KEY`. For example, `"OLLAMA": {"HF_API_KEY": "hf_..."}` in the `_LLM_REWRITE_PROMPT` entry of `llama` uses that key for this model only while Ollama is active. With `_ACTIVE_ENDPOINT = "vllm"` the entry above resolves to `MODEL = "mistral_7b"`; adding e.g. `"REQUEST_TIMEOUT": 300.0` to its `"VLLM"` slot overrides the endpoint timeout for this model only. Embedder and cross-encoder entries work the same way: the role-level `MODEL` is the Hugging Face id (used for local loading and the tokenizer), `"VLLM": {"MODEL": "snowflake-embedder"}` is the alias served by vLLM/LiteLLM. They share the `_VLLM` entry (API key, timeout); without an own `"BASE_URL"` in their `"VLLM"` slot they call the `_VLLM` server root (its `BASE_URL` without `/chat/completions`). Cross-encoders also set `"API_STYLE"` (`"rerank"` or `"score"`) in that slot.
+
+**Embedding compatibility.** Chroma collections store `embed_model` (the effective model name), `embed_alias` (the `_ACTIVE_EMBED` key, e.g. `snowflake`) and `embed_bits` (`EMBEDDER_BITS`). Matching alias and bits allow reuse across hosts and endpoints even when Hugging Face and backend-served model names differ. Keep each alias tied to the same underlying embedder; use a different key for a different model. Nonempty collections missing alias or bits are rejected: there is no legacy-name fallback or automatic migration. Rebuild such collections with RAGLoad / DocClassify. New empty collections are stamped on ingestion. For remote embeddings, `EMBEDDER_BITS` must describe the precision configured on the server; it does not change or verify the server's precision.
+
 ### ✏️ Query Rewrite LLM (`_MODELS["llama"]["_LLM_REWRITE_PROMPT"]`)
 
-A dedicated LLM used to rewrite follow-up queries for coreference resolution in multi-turn chat. When chat context is enabled, ambiguous references (e.g. "are they mammals?") are rewritten into self-contained questions (e.g. "which of cats, hedgehogs, and dogs are mammals") before retrieval. Each conversation turn is tagged with the active file filter (or `[No file filter]`), so the rewriter can detect context switches — when the user changes to a different file, prior entities are not carried over. The impl key is selected by `_ACTIVE_LLM_REWRITE_PROMPT = "mistral"` (default used in this repository) or `"llama"`. Rewrite parameters (`temperature`, `top_k`, `top_p`, `num_predict`, `streaming`, `topic_confidence_threshold`, `TOPIC_SUMMARY_MODE`, `TRANSLATION_BACKEND`) are configured separately in `_QUERY_REWRITE` in `Config_RAGChat_Rewrite.py`.
+A dedicated LLM used to rewrite follow-up queries for coreference resolution in multi-turn chat. When chat context is enabled, ambiguous references (e.g. "are they mammals?") are rewritten into self-contained questions (e.g. "which of cats, hedgehogs, and dogs are mammals") before retrieval. Each conversation turn is tagged with the active file filter (or `[No file filter]`), so the rewriter can detect context switches — when the user changes to a different file, prior entities are not carried over. The impl key is selected by `_ACTIVE_LLM_REWRITE_PROMPT = "qwen2_5_7b_instruct"` (default used in this repository), `"mistral"`, or `"llama"`. Rewrite parameters (`temperature`, `top_k`, `top_p`, `num_predict`, `streaming`, `topic_confidence_threshold`, `TOPIC_SUMMARY_MODE`, `TRANSLATION_BACKEND`) are configured separately in `_QUERY_REWRITE` in `Config_RAGChat_Rewrite.py`.
 
 ```python
 "mistral": {
     "_LLM_REWRITE_PROMPT": {
-        "MODEL_OLLAMA": "mistral:7b",
-        "MODEL_VLLM": "mistral_7b",
+        "OLLAMA": {"MODEL": "mistral:7b"},
+        "VLLM": {"MODEL": "mistral_7b"},
         "PROMPT_TOPIC_DETECT": "_PROMPT_TOPIC_DETECT",
         ...
     },
@@ -1127,8 +1512,8 @@ A separate LLM used to validate prompts and outputs against compliance rules. De
 ```python
 "llama_guard": {
     "_LLM_CHK": {
-        "MODEL_OLLAMA": "llama-guard3:8b",
-        "MODEL_VLLM": "llama_guard3_8b",
+        "OLLAMA": {"MODEL": "llama-guard3:8b"},
+        "VLLM": {"MODEL": "llama_guard3_8b"},
         "PROMPT_CHAT": "_PROMPT_CHECK_CHAT_LLAMA_GUARD",
         "PROMPT_CLASSIFY": "_PROMPT_CHECK_CLASSIFY_LLAMA_GUARD",
         ...
@@ -1183,6 +1568,9 @@ If curl returns JSON, connectivity is working—use that hostname/IP as `<host>`
 | `STREAMING_REQ` | `False` | Enable streamed responses from Ollama. |
 | `TRY_FALLBACK_URLS` | `True` | `True` — try up to 6 fallback candidates on failure. `False` — probe `BASE_URL` once and exit immediately on failure (use for fixed remote IPs). |
 | `USE_GPU` | `True` | Let Ollama use the GPU for inference. |
+| `PROVIDER` | `"ollama"` | Provider identifier. |
+| `REQUEST_TIMEOUT` | `120.0` | Seconds per request (per-model `"OLLAMA"` slot may override). |
+| `MODEL_LICENSES_NOTE` | ``"Each model has its own license—see `ollama list`"`` | Informational note shown with provider license. |
 
 #### vLLM (`_MODELS["vllm"]["_VLLM"]`)
 
@@ -1192,8 +1580,12 @@ If curl returns JSON, connectivity is working—use that hostname/IP as `<host>`
 | `STREAMING_REQ` | `False` | Enable streamed responses from vLLM. |
 | `TRY_FALLBACK_URLS` | `True` | `True` — try up to 6 fallback candidates on failure. `False` — probe `BASE_URL` once and exit immediately on failure (use for fixed remote IPs). |
 | `USE_GPU` | `True` | Informational runtime flag for provider metadata. |
+| `PROVIDER` | `"vllm"` | Provider identifier. |
+| `API_KEY` | `""` (set your LiteLLM/vLLM key) | Bearer key for the server; shared by LLM, embedder and cross-encoder calls. |
+| `REQUEST_TIMEOUT` | `600.0` | Seconds per request (per-model `"VLLM"` slot may override). |
+| `MODEL_LICENSES_NOTE` | `"Model licenses depend on the served checkpoint."` | Informational note shown with provider license. |
 
-Set `_ACTIVE_ENDPOINT = "vllm"` to switch to vLLM and make sure the selected models (`MODEL_VLLM`) are available on that endpoint.
+Set `_ACTIVE_ENDPOINT = "vllm"` to switch to vLLM and make sure the selected models (`"VLLM": {"MODEL": ...}` of the active LLM, embedder and cross-encoder entries) are available on that endpoint.
 
 If you want to run models locally behind a [LiteLLM](https://github.com/BerriAI/litellm) proxy (which exposes an OpenAI-compatible endpoint on port 4000), see [HarinezumIgel/harinezumigel-llm-stack](https://github.com/HarinezumIgel/harinezumigel-llm-stack) — a unified LiteLLM + vLLM launcher for managing LLM deployments in Docker with configuration-driven orchestration.
 
@@ -1201,7 +1593,7 @@ If you want to run models locally behind a [LiteLLM](https://github.com/BerriAI/
 
 ### 🌐 OpenWebUI Provider Metadata (`_MODELS["openwebui"]["_OPENWEBUI"]`)
 
-Records the OpenWebUI provider details (license, BASE_URL). Used by `RAGChatService`. The impl key is selected by `_ACTIVE_OPENWEBUI = "openwebui"`.
+Records the OpenWebUI provider details (license, BASE_URL). Used by `RAGChatService`. Fixed service entry without selector.
 
 | Key | Default used in this repository | Purpose |
 | --- | --- | --- |
@@ -1209,7 +1601,7 @@ Records the OpenWebUI provider details (license, BASE_URL). Used by `RAGChatServ
 
 #### 📡 `ragchatservice` — RAGChatService HTTP Listener Configuration
 
-Records the RAGChatService listener configuration (host, port, API key). The impl key is selected by `_ACTIVE_RAGCHATSERVICE = "ragchatservice"`.
+Records the RAGChatService listener configuration (host, port, API key). Fixed service entry without selector.
 
 | Key | Default used in this repository | Purpose |
 | --- | --- | --- |
@@ -1302,11 +1694,27 @@ Each strategy is a complete parameter set defined in `_STRATEGIES` (see [Strateg
 
 | Strategy | `final_chunks_to_llm` | `retriever_k` | `threshold` | `max_output_tokens` | `filelim` | Use case |
 | --- | --- | --- | --- | --- | --- | --- |
-| DEFAULT | 50 | 100 | 0.60 | 14 366 | 15 | General-purpose, score-ranked (default) |
-| NARROW | 20 | 80 | 0.70 | 8 192 | 5 | Precise, answer-focused |
-| BALANCED_FILE_CAP | 40 | 60 | 0.65 | 14 366 | 10 | Balanced with per-file chunk cap |
-| WIDE | 60 | 160 | 0.60 | 14 366 | 20 | Exploratory, high recall |
-| ULTRA_WIDE | 1 500 | 3 000 | 0.55 | 14 366 | 0 | Exhaustive / debugging |
+| DEFAULT | 50 | 100 | 0.50 | 14 366 | 15 | General-purpose, score-ranked (default) |
+| NARROW | 20 | 80 | 0.60 | 8 192 | 5 | Precise, answer-focused |
+| BALANCED_FILE_CAP | 40 | 60 | 0.55 | 14 366 | 10 | Balanced with per-file chunk cap |
+| WIDE | 60 | 160 | 0.50 | 14 366 | 20 | Exploratory, high recall |
+| ULTRA_WIDE | 1 500 | 3 000 | 0.45 | 14 366 | 0 | Broad diagnostic retrieval; no coverage guarantee |
+
+The CLI warns immediately after `strategy!` selection (also for `strategy=...`
+and `strategy*preset`) when the estimated retrieved text exceeds the effective
+model window after system/output reserves. Calculation uses the **active session**
+`final_chunks_to_llm` (`context_chunks`), not the preset value or candidate
+`retriever_k` (`fetch_k`). Changing `context_chunks` or `context_size` rechecks it.
+This is a word-based estimate using the active chunker's nominal size, not a
+tokenizer-based fit check; indexed chunk sizes and prompt overhead can differ.
+The warning does not change the selected strategy or chunk count, and recommends
+a narrower strategy, fewer chunks, or a larger supported LLM context window.
+Absence of a warning does not guarantee that the eventual prompt fits.
+A larger `context_size` setting is useful only when the backend actually supports
+that window; update the served model configuration and its model caps/metadata
+as required. Increasing the RAG-side setting alone cannot extend a vLLM engine's
+maximum context length. Splitting adds its own call and a short final task wrapper,
+but broad chunk selection is still the main source of final-prompt growth.
 
 > `DEFAULT` uses `ScoreRankedSelector` — chunks are selected strictly by descending reranker score.
 > `BALANCED_FILE_CAP` uses `PerFileCapSelector` — caps each source file to at most `filelim` chunks, preventing any single file from dominating the context window.
@@ -1346,30 +1754,70 @@ Strategy parameters explained:
 ### 🧭 Orchestration Flows (`Config_Orchestrator.py`)
 
 Flow profiles are loaded from `Config_Orchestrator.py` and selected by session knob `orchestrator_flow`.
+The top of `Config_Orchestrator.py` contains a beginner glossary (query versions,
+retrieval language, retrievers, *legs*, rerank/fallback/rescue, grounding,
+confidence) and every flow has a step-by-step "will translate / will rewrite /
+will retrieve" story. For a narrative walkthrough of the same material (with
+experiment recipes), see [ORCHESTRATION_FLOWS.md](ORCHESTRATION_FLOWS.md).
 
 Selector slots:
 
 | Slot | Default used in this repository | Purpose |
 | --- | --- | --- |
-| `_DEFAULT_ORCHESTRATION_FLOW` | `"THOROUGH_QUERY_REWRITE"` | Default flow profile when session does not request a specific flow. |
+| `_DEFAULT_ORCHESTRATION_FLOW` | `"NATIVE_ALL"` | Default flow profile when session does not request a specific flow. Used by both RAGChat and RAGChatService; `Config_RAGChatService.py` may override it for the service only (commented out by default). |
 | `_ALLOWED_ORCHESTRATION_FLOWS` | `[]` (empty) | Optional allow-list; when empty, all keys from `_ORCHESTRATION_FLOWS` are exposed. |
-| `_ALLOWED_ORCHESTRATION_QUERY_SOURCES` | `FINAL_QUERY`, `TRANSLATED_QUERY`, `ORIGINAL_QUERY` | Valid values for `main_query_source` / `secondary_query_source`. |
-| `_ORCHESTRATION_FLOWS` | 4 profiles | Profile dictionary that controls stage gates and query-source selection. |
+| `_ALLOWED_ORCHESTRATION_QUERY_SOURCES` | `REWRITTEN_QUERY`, `TRANSLATED_QUERY`, `ORIGINAL_QUERY` | Valid values for `main_query_source` / `secondary_query_source` / `rerank_query_source`. |
+| `_ORCHESTRATION_FLOW_ALIASES` | `BGE_ENC_XENC`→`NATIVE_ALL`, `THOROUGH_QUERY_REWRITE`→`ENGLISH_ALL_MULTILEG`, `ORIGINAL_LANGUAGE_VECTOR_ONLY`→`ORIGINAL_VECTOR` | Legacy flow names accepted everywhere (CLI, API, default/allow-list slots) and mapped to the current name. |
+| `_ORCHESTRATION_FLOWS` | 9 profiles | Profile dictionary that controls stage gates and query-source selection. |
+
+Flow catalog (every flow except `ORIGINAL_VECTOR` differs from the
+`ENGLISH_ALL` baseline in exactly one aspect, so they can be compared directly):
+
+| Flow | Retrieval language | Retrievers | Differs from `ENGLISH_ALL` by |
+| --- | --- | --- | --- |
+| `NATIVE_ALL` (default) | native | all four | stays in the user's language end-to-end |
+| `ENGLISH_ALL` (baseline) | english | all four | — |
+| `ENGLISH_ALL_MULTILEG` | english | all four | adds the secondary leg and the original-language vector leg |
+| `ENGLISH_ALL_WORDNET` | english | all four | WordNet synonym expansion of indexed queries |
+| `ENGLISH_ALL_NO_REWRITE` | english | all four | no LLM query rewrite / pronoun substitution |
+| `ENGLISH_ALL_NO_RERANK` | english | all four | no cross-encoder rerank (and therefore no fallback/rescue) |
+| `ENGLISH_VECTOR` | english | vector only | BM25/Graph/Regex off |
+| `ENGLISH_BM25` | english | BM25 only | Vector/Graph/Regex off |
+| `ORIGINAL_VECTOR` | english | vector only | vector searches the untranslated original question |
+
+Running the English experiments multilingually: keep the flow and set
+`retrieval_language=native` (CLI: after selecting the flow, because selecting a
+flow resets it; API: request field `retrieval_language`), or copy the flow
+under a new name with `"retrieval_language": "native"`. This requires a
+multilingual embedder and reranker (`_ACTIVE_EMBED` = `bge_m3` / `snowflake`,
+`_ACTIVE_CROSS` = `bge_reranker` / `mmarco`). `ENGLISH_ALL` in native mode is
+`NATIVE_ALL`; the per-flow effects are listed in the
+"MAKING A FLOW MULTILINGUAL" section of `Config_Orchestrator.py`.
+
+Validation: flow configuration is checked at startup. Unknown or misspelled
+keys, non-boolean on/off switches, invalid `force_retrieve_mode`, query
+sources, `retrieval_language`, `confidence_evaluation`, alias targets and an
+unknown default flow raise `ConfigurationError`. A *missing* on/off key is
+treated as enabled (`True`).
 
 Side-by-side flow slot check (configuration slot vs runtime field):
 
 | Flow profile slot (`_ORCHESTRATION_FLOWS.<flow>.<slot>`) | Runtime field (`_OrchestrationFlowProfile`) | Effect |
 | --- | --- | --- |
-| `force_retrieve_mode` | `retrieve_mode_override` | Optional per-flow override of strategy/session `retrieve_mode`. |
-| `main_query_source` | `primary_query_source` | Selects primary query leg (`FINAL_QUERY` / `TRANSLATED_QUERY` / `ORIGINAL_QUERY`). |
+| `force_retrieve_mode` | `retrieve_mode_override` | Optional per-flow override of strategy/session `retrieve_mode`. A local mode (`VECTOR`, `BM25`, `VECTOR_BM25`, ...) also switches off the local retrievers it does not name for that turn (never switches one on); `ALL`/`WEB`/empty do not narrow. |
+| `main_query_source` | `primary_query_source` | Selects primary query leg (`REWRITTEN_QUERY` / `TRANSLATED_QUERY` / `ORIGINAL_QUERY`). |
 | `secondary_query_source` | `guardrail_query_source` | Selects secondary query leg when enabled. |
+| `rerank_query_source` | `rerank_query_source` | Query the cross-encoder scores chunks against. Session/CLI/API override: `rerank_query_source`. |
+| `retrieval_language` | `retrieval_language_mode` | `english` (translate to English) or `native` (stay in the user's language). Session/CLI/API override: `retrieval_language`. |
+| `confidence_evaluation` | `confidence_evaluation` | `off` / `heuristic` / `llm` / `both`. Session/CLI/API override: `confidence_evaluation`. |
 | `use_secondary_query` | `enable_guardrail_leg` | Enables dual-query guardrail retrieval leg. |
 | `use_original_language_vector` | `enable_original_language_vector_leg` | Enables original-language vector retrieval leg. |
 | `shape_indexed_queries` | `enable_indexed_query_shaping` | Enables language-aware indexed query shaping for BM25/Graph/Regex. |
 | `translate_indexed_queries` | `enable_indexed_query_translation` | Enables indexed-stage query translation (for example EN→DE) during shaping. |
-| `expand_indexed_queries` | `enable_indexed_query_synonym_expansion` | Enables WordNet-based synonym expansion for indexed-stage queries before optional translation. |
+| `expand_indexed_queries_with_wordnet` | `enable_indexed_query_wordnet_expansion` | Appends WordNet synonyms to indexed-stage queries before optional translation. |
 | `use_vector_alternates` | `enable_vector_alternate_queries` | Enables MultiQuery alternate vector fan-out usage. |
 | `use_query_rewrite` | `enable_query_rewrite` | Enables query rewrite stage for the turn. |
+| `use_keyword_action_splitter` | `enable_keyword_action_splitter` | Separate decomposition after gates; session `keyword_action_splitter` / API `enable_keyword_action_splitter` overrides it. Successful splitting replaces local main-query text and MultiQuery, not guardrail/web query selectors. |
 | `use_pronoun_substitution` | `enable_pronoun_substitution` | Enables pronoun/coreference substitution in rewrite stage. |
 | `run_vector` | `enable_vector_retriever` | Gates vector retriever stage. |
 | `run_bm25` | `enable_bm25_retriever` | Gates BM25 retriever stage. |
@@ -1385,6 +1833,7 @@ Side-by-side contradiction checks (flow intent vs CLI/session knobs):
 | Flow-controlled stage | Session/CLI knob that can override effective behavior | Runtime contradiction attribution |
 | --- | --- | --- |
 | `run_vector`, `run_bm25`, `run_graph`, `run_regex` | `retrieve_mode` excluding that retriever | `cli_knob=retrieve_mode=<MODE>` |
+| `run_vector`, `run_bm25`, `run_graph`, `run_regex` | `force_retrieve_mode=<local mode>` excluding that retriever | `cli_knob=force_retrieve_mode=<MODE>` |
 | `run_rerank` | `rerank=0` / `rerank=1` | `cli_knob=rerank=0` or `cli_knob=rerank=1` |
 | `run_low_score_fallback`, `run_low_recall_rescue` | dependent on effective rerank state (`run_rerank` + `rerank`) | `cli_knob=rerank=0` when rerank is disabled in session CLI |
 | `run_grounding` | `mark_text=false` | `cli_knob=mark_text=false` |
@@ -1400,9 +1849,61 @@ Local/web stage execution is not flow-profile controlled. It is derived from
 > See [Chat Context](ARCHITECTURE.md#-chat-context) in the architecture guide
 > for details on how multi-turn memory, retrieval, and incremental pruning work.
 
+#### Multilingual indexed queries
+
+`_INDEXED_QUERY` in `src/Configuration/Config_Orchestrator.py` controls the shared
+BM25/Graph/Regex query plan:
+
+| Key | Default | Behavior |
+| --- | --- | --- |
+| `language_detection_limit` | `0` | Read metadata for the whole scoped collection. A positive integer caps the read and may miss languages beyond that sample. Other file/metadata filters remain in effect. |
+| `translation_failure_policy` | `"skip_language"` | Skip an affected language's indexed searches and warn about incomplete coverage. `"stop"` aborts before local retrieval if the primary query cannot be translated. |
+| `use_alternates` | `True` | Run generated alternatives separately through all enabled indexed retrievers when indexed query shaping is enabled and the primary source is `REWRITTEN_QUERY`. Independent of `use_vector_alternates`. |
+
+Order: resolve/rewrite the question, apply retrieval gates, then either split
+information needs or use ordinary MultiQuery expansion (up to three alternatives)
+when splitting is disabled or fails. Discover scoped document languages and
+prepare the translated query forms before local searches. With splitting, this
+planning is reused for each need and the optional BM25 keyword leg; there is no
+additional MultiQuery fan-out. For ordinary queries, prepare one shared query
+matrix before local searches. Native retrieval flows (for example `NATIVE_ALL`)
+keep rewriting and alternatives in the user's language. Existing English-mode
+flows retain their English normalization behavior. Same-language forms are reused
+without translation. Indexed translation uses the configured local Argos backend;
+missing packages, disabled backends, empty translations, and runtime failures do
+not fall back to wrong-language text when translation is requested.
+
+A failed alternative or guardrail translation only removes that optional query
+for that language, under either policy. Successful unchanged translations are
+accepted (names and identifiers may legitimately stay unchanged). With
+`skip_language`, multilingual vector and web paths remain independent. If no
+indexed language queries or other retrieval paths remain, retrieval reports an
+explicit error.
+
+Each variant is searched separately, with the document-language filter and
+language-specific NLP. Within each indexed retriever, variants are deduplicated
+by chunk identity and ordered by their best weighted reciprocal rank (original
+weight `1.0`, alternative weight `0.9`); repeated paraphrase hits do not accumulate
+extra votes. Existing cross-retriever fusion and reranking follow.
+
+Debug level **30** prints `QueryPlan` steps for language detection, rewrite,
+alternative generation, document-language discovery (including the configured
+limit), prepared query forms, per-retriever results, and variant merging.
+Translation failures remain visible even without debug output.
+Warnings are deduplicated per turn, document language, and query category
+(primary, guardrail, alternative). Debug level 30 retains each failed query's
+details; a later turn reports failures again. Retrieval uses the separate
+`SharedHelpers.translate_query_text` API and cache. Compliance wordlists retain
+the existing `translate_text` fallback and warning semantics.
+Incomplete-coverage notices are also included in CLI/API answer notices.
+Strict-policy failures return a retrieval-error message, not a no-results or
+content-compliance refusal.
+
 ### 🔀 Multi-Query Expansion (`_MULTI_QUERY` in `Config_RAGChat_Rewrite.py`)
 
 Controls the optional alternate-query recall-broadening pass that runs during retrieval.
+It is the legacy path when keyword/action splitting is disabled or fails;
+successful splitting does not also generate paraphrases.
 
 ```python
 _MULTI_QUERY: dict[str, Any] = {
@@ -1421,8 +1922,8 @@ _MULTI_QUERY: dict[str, Any] = {
 
 | Key | Default | Purpose |
 | --- | --- | --- |
-| `enabled` | `True` | Enable multi-query expansion. When `False`, retrieval runs only on the (optionally rewritten) user query. |
-| `num_variants` | `3` | Number of alternate phrasings to generate. Each variant triggers one additional VECTOR search. BM25 and Graph legs are not affected. |
+| `enabled` | `True` | Enable legacy multi-query expansion. When `False` and no successful split is active, no paraphrase fan-out runs; existing main/guardrail/original-language paths remain. |
+| `num_variants` | `3` | Number of alternate phrasings to generate after rewriting. Vector fan-out is flow-controlled; BM25/Graph/Regex fan-out is controlled by `_INDEXED_QUERY.use_alternates` and indexed shaping. |
 | `LLM_PARAM.temperature` | `0.5` | Sampling temperature for the expansion LLM call. Higher values produce more varied phrasings. |
 | `LLM_PARAM.top_k` | `40` | Top-k sampling limit for the expansion call. |
 | `LLM_PARAM.top_p` | `0.95` | Nucleus sampling threshold for the expansion call. |
@@ -1436,7 +1937,10 @@ The prompt template for the expansion call is `PROMPT_QUERY_EXPAND`, configured 
 "PROMPT_QUERY_EXPAND": "_PROMPT_QUERY_EXPAND",
 ```
 
-The actual template string is `_PROMPT_QUERY_EXPAND` in `Config_RAGChat_Rewrite.py`.  It instructs the LLM to return a JSON array of `num_variants` strings — anything else is silently ignored and retrieval falls back to the original query only.
+The actual template string is `_PROMPT_QUERY_EXPAND` in `Config_RAGChat_Rewrite.py`.
+It instructs the LLM to return a JSON array of `num_variants` strings. Empty,
+invalid, or failed responses emit a warning and retain the original query;
+partial valid results retain the available distinct alternatives.
 
 Alternate-query hits are folded into the main RRF candidate pool before the merge step.  Duplicate chunks (same `doc_id`) are discarded; only the first occurrence (highest-ranked from any query variant) is kept.  The generated variants are logged at debug level 29.
 
@@ -1469,7 +1973,7 @@ See [Near-duplicate chunk removal in ARCHITECTURE.md](ARCHITECTURE.md#selection-
 
 | Key | Location | Default | Purpose |
 | --- | --- | --- | --- |
-| `WEB_SEARCH_MODE` (environment variable) | `Config_Internet_Env.py` | `"0"` | **Master switch.** Controls whether web search is active. Overrides all other web-search settings, including `_OPENWEB_UI_WEBSEARCH`. Values: `"0"` — web search disabled (safe default); `"1"` — internet search enabled (user queries may be sent to DuckDuckGo). Operators enabling `"1"` must review `LEGAL.md § Web Search` and `SECURITY.md`. |
+| `WEB_SEARCH_MODE` (environment variable) | `Config_Internet_Env.py` | `"0"` in deployment; development settings may differ | **Master switch.** Controls whether web search is permitted. Overrides all other web-search settings, including `_OPENWEB_UI_WEBSEARCH`. Values: `"0"` — web search disabled; `"1"` — internet search enabled (user queries may be sent to DuckDuckGo). Review `LEGAL.md § Web Search` and `SECURITY.md`. |
 | `_QUERY_LOG` | `Config_RAGChat.py` / `Config_RAGChatService.py` | `logs/RAGChat/queries.log` | Append-only audit log written for every web search attempt, including blocked ones. Each app writes to its own log subdirectory. Set to `""` to disable logging. |
 | `_INTENT_FILTER_LOG` | `Config_RAGChat.py` / `Config_RAGChatService.py` | `logs/RAGChat/intent_filter.log` | Append-only log for `WebSearchFilter` intent-classifier decisions (ALLOW, BLOCK, ESCALATE). Written for both web and local queries. Each app writes to its own log subdirectory. Set to `""` to disable. |
 
@@ -1490,7 +1994,7 @@ The status line `▶ Web:` in the chat console shows the current state:
 
 #### Topic (context) switch
 
-To hard-switch topics without clearing history or disabling `use_chat_context`, prefix your query with **`new:`** (or `new topic:`):
+To start a new topic and clear the conversation history without disabling `use_chat_context`, prefix your query with **`new:`** (or `new topic:`):
 
 ```text
 new: tell me about fish
@@ -1505,7 +2009,7 @@ See [ARCHITECTURE.md § Query Rewrite](ARCHITECTURE.md#query-rewrite-coreference
 
 | Key | Default | Purpose |
 | --- | --- | --- |
-| `_OPENWEB_UI_WEBSEARCH` | `True` | Default web-search state for new OpenWebUI sessions. `WEB_SEARCH_MODE` is the **master switch** and overrides this knob: when `WEB_SEARCH_MODE = "0"`, web queries are blocked regardless of this value; when `WEB_SEARCH_MODE = "1"`, `True` auto-enables web search for requests that do not pass an explicit `web_search` parameter. A startup warning is printed at **RAGChatService** startup when this is `True` but the master switch is not `"1"`. |
+| `_OPENWEB_UI_WEBSEARCH` | `False` in deployment; development settings may differ | Default web-search state for new OpenWebUI sessions. `WEB_SEARCH_MODE` is the **master switch** and overrides this knob: when `WEB_SEARCH_MODE = "0"`, web queries are blocked regardless of this value; when `WEB_SEARCH_MODE = "1"`, `True` auto-enables web search for requests that do not pass an explicit `web_search` parameter. A startup warning is printed at **RAGChatService** startup when this is `True` but the master switch is not `"1"`. |
 
 ### �️ Visual Markers (`mark_text`)
 
@@ -1539,23 +2043,101 @@ _MARKED_DOCS_COLORS = {
 
 #### Answer grounding sensitivity
 
-Grounding behaviour is configured in one grouped slot:
+Grounding behaviour is configured in [Config_Grounder.py](src/Configuration/Config_Grounder.py)
+and read through the merged `Config` lookups:
 
 | Key | Default | Purpose |
 | --- | --- | --- |
-| `_MARKED_DOCS_GROUNDING.min_sentence_tokens` | `5` | Minimum token count a sentence must have to be considered for grounding. Lower values increase matches. |
-| `_MARKED_DOCS_GROUNDING.min_fragment_len` | `12` | Minimum fragment length extracted from chunks for overlap matching. Lower values increase matches. |
-| `_MARKED_DOCS_GROUNDING.min_overlap_window` | `5` | Contiguous token window size for paraphrase grounding. Lower values increase matches for paraphrased text. |
+| `_GROUNDING.min_sentence_tokens` | `5` | Minimum token count a sentence must have to be considered for grounding. Lower values increase matches. |
+| `_GROUNDING.min_fragment_len` | `12` | Minimum fragment length extracted from chunks for overlap matching. Lower values increase matches. |
+| `_GROUNDING.min_overlap_window` | `5` | Contiguous token window size for lexical grounding. |
+| `_GROUNDING.relaxed_min_sentence_tokens` | `4` | Second pass (paraphrased/translated answers): minimum unique tokens a sentence needs. |
+| `_GROUNDING.relaxed_min_shared_tokens` | `3` | Second pass: minimum tokens shared with one evidence text. |
+| `_GROUNDING.relaxed_min_token_len` | `3` | Second pass: only tokens with at least this many characters count. |
+| `_GROUNDING.relaxed_substantive_token_len` | `5` | Second pass: at least one shared token must be this long. |
+| `_GROUNDING.relaxed_min_containment` | `0.60` | Second pass: shared tokens must cover this share of the smaller token set. |
+| `_GROUNDING.index_cache_max_tokens` | `500_000` | Upper bound of the per-chunk token/n-gram index cache reused by validation, CLI marks and source marks within one turn. |
 
 Grounding is active whenever `mark_text` is enabled for a session. There is no separate `enabled` switch — set `answer_ansi: ""` to disable CLI terminal highlights, and `mark_text=false` to disable document marking entirely.
 
 ```python
-_MARKED_DOCS_GROUNDING = {
+_GROUNDING = {
     "min_sentence_tokens": 5,
     "min_fragment_len": 12,
     "min_overlap_window": 5,
+    "relaxed_min_sentence_tokens": 4,
+    "relaxed_min_shared_tokens": 3,
+    "relaxed_min_token_len": 3,
+    "relaxed_substantive_token_len": 5,
+    "relaxed_min_containment": 0.60,
+    "index_cache_max_tokens": 500_000,
 }
 ```
+
+#### Parallel PDF marking
+
+PDF marking (pdfplumber/pypdf) is CPU-bound, so several PDFs can be marked in
+parallel in separate lightweight worker processes
+([MarkWorker.py](src/VisualMarkers/MarkWorker.py), run as
+`python -m VisualMarkers.MarkWorker`; it imports only `VisualMarkers`). Each
+worker costs roughly a second to start, so workers are used only when at least
+two PDFs are marked and the estimated number of pages to scan reaches
+`min_scan_pages` (a snippet without a page number counts as a full-document
+scan). A failed or timed-out worker falls back to in-process marking for that file.
+
+| Key | Default | Purpose |
+| --- | --- | --- |
+| `_GROUNDING_MARKING.max_workers` | `4` | Maximum parallel marking workers; `<= 1` disables parallel marking. |
+| `_GROUNDING_MARKING.min_scan_pages` | `12` | Minimum estimated pages to scan before workers are started. |
+| `_GROUNDING_MARKING.worker_timeout_s` | `300` | Per-worker timeout in seconds before falling back to in-process marking. |
+
+#### Summary context chunk IDs and passage marking
+
+Summary inputs and model outputs share a structured JSON format:
+
+```json
+{"statements": [{"text": "The stack stores local variables.", "context_chunk_ids": [12, 13]}]}
+```
+
+In the first pass, each input statement contains indexed chunk text and its
+turn-local, 1-based position in the selected document list (`SummaryChunkId`
+metadata). Intermediate and final statements carry the same integer IDs
+separately from their text. These identify grounding context, not document
+provenance citations. The displayed summary contains only plain text; the
+grounder receives structured statements via `session.summary_statements`.
+There is no regex extraction of inline chunk labels.
+
+The summarizer requests schema-constrained JSON (`format: <schema>` for Ollama,
+`response_format: {"type": "json_schema", "json_schema": ...}` for
+vLLM/OpenAI-compatible endpoints). The endpoint must support structured outputs;
+unsupported formats fail explicitly rather than falling back to plain text.
+Malformed JSON, empty statements, missing fields, and non-positive or non-integer
+IDs fail explicitly. IDs absent from that call's input are removed with a warning;
+statement text remains subject to independent grounding. Empty ID lists are
+allowed; a final summary with no IDs warns and searches all context chunks.
+Split chunks and reduction statements retain their IDs. All serialized JSON,
+including escaped text and repeated ID lists, counts against the context budget.
+
+Chunk IDs are hints, not proof: referenced chunks must independently match a bounded
+source passage. Incorrect hints fall back to searching other chunks. Summary
+marking accepts either a contiguous overlap with at least two substantive words,
+or a conservative token-overlap paraphrase. Numbers and explicit negation must
+agree. This is lexical support, not semantic entailment or factual verification.
+CLI and PDF summary marks use the same passage matcher, including translated
+proxies. Normal question-answer marking keeps its existing matching policy.
+
+| Key | Default | Purpose |
+| --- | --- | --- |
+| `_GROUNDING_MARKING.summary_support_only` | `True` | Mark only verified support passages in summaries; `False` also marks input chunks in yellow. |
+| `_GROUNDING_MARKING.passage_tokens` | `48` | Maximum whitespace-separated words per summary support passage; long sentences use half-overlapping windows. |
+| `_GROUNDING_MARKING.relaxed_min_shared_tokens` | `4` | Minimum distinct shared tokens of at least three characters for paraphrase marking. |
+| `_GROUNDING_MARKING.relaxed_min_answer_coverage` | `0.60` | Minimum share of answer tokens covered by one source passage. |
+
+PDF highlights use separate rectangles for each text line and separated columns.
+Marking reports the **new** highlight count and physical, 1-based page numbers,
+not printed page labels. Zero matches produce an explicit warning. PDF metadata
+`RAGHighlightCount` and `RAGHighlightPages` carry these diagnostics back from
+parallel workers; existing PDF annotations are not included in the new count.
 
 #### Streaming downgrade
 
@@ -1610,6 +2192,37 @@ Chat and settings history are stored in the `history/` directory. The fallback c
 
 - `<collection>_<chat name>_Query.txt`
 - `<collection>_<chat name>_Settings.txt`
+
+## 📝 3c. Config_ContextSummarizer.py — Document Summarization
+
+Used by `ContextSummarizer` (`src/Chat/ContextSummarizer.py`) for map-reduce document summaries.
+Start a summary with `summarize:` or its alias `summary:`, optionally followed
+by an indexed filename or full path. In CLI session settings, use
+`summary_length=long`, `summary_temperature=0.3`, or `chunk_overlap=5`;
+OpenWebUI accepts API fields of the same names in Advanced Parameters.
+See [document selection and examples](HANDS_ON_TOUR.md#summarize-an-indexed-document).
+
+Summary calls use `summary_temperature` (or `SUMMARY_TEMPERATURE`), not the
+ordinary chat `temperature`. Session `top_p`, `top_k`, and extra API passthrough
+options are not forwarded by `ContextSummarizer`. The session context-size
+override still participates in summary token budgeting.
+
+| Key | Default | Purpose |
+| --- | --- | --- |
+| `SUMMARY_LENGTH` | `"medium"` | `short`, `medium`, `long`, or `very_long`; selects a row of `SUMMARY_WORD_LIMITS` |
+| `CHUNK_OVERLAP` | `5` | Whole chunks shared between consecutive summary batches (≥ 0) |
+| `SUMMARY_TEMPERATURE` | `0.3` | Temperature for chunk, reduction, and final summary calls (0.0–1.0) |
+| `SUMMARY_PROMPT_TEMPLATE` | `"Please summarize the following text in at most {max_words} words. Do not pad:"` | Per-batch prompt; `{max_words}` = intermediate limit |
+| `_PROMPT_FINAL_SUMMARY_PROMPT_TEMPLATE` | Combine partial summaries … `{max_words}` words | Final reduction prompt; `{max_words}` = final limit |
+
+`SUMMARY_WORD_LIMITS` (defined in `Config_Grounder.py`):
+
+| Length | Intermediate | Final |
+| --- | --- | --- |
+| `short` | 150 | 400 |
+| `medium` | 300 | 1000 |
+| `long` | 600 | 2000 |
+| `very_long` | 1000 | 4000 |
 
 ## 📥 5. Config_RAGLoad.py — Document Ingestion
 
@@ -1802,6 +2415,21 @@ For a hands-on example, see [Change provided example prompt in HANDS_ON_TOUR.md]
 | `_SERVE_DOCS.single_use` | `False` | Destroy cache entry after first fetch |
 | `_SERVE_DOCS.public_base_url` | `""` | Externally-reachable base URL for `/marked` links |
 
+### 📨 Per-request Session Fields
+
+`ChatCompletionRequest` (`src/Api/ChatCompletionHandler.py`) accepts these optional fields in addition to the strategy/retrieval knobs; invalid values return **HTTP 400**:
+
+| Field | Validation | Effect |
+| --- | --- | --- |
+| `file` | Filename only (no directory part, no NUL, not `.`/`..`); surrounding quotes stripped | Restricts retrieval to that file name (`session.file_name`) |
+| `path` | Full document path (no NUL, not `.`/`..`) | Restricts retrieval to that document path (`session.file_path`) |
+| `enable_keyword_action_splitter` | Optional JSON boolean | Overrides the flow's split-query switch for this request; no effect on the dedicated `summarize:` / `summary:` path |
+| `summary_length` | `short`, `medium`, `long`, `very_long` (`ContextSummarizer.validate_setting`) | Overrides `SUMMARY_LENGTH` for the session |
+| `summary_temperature` | Float `0.0`–`1.0` | Overrides `SUMMARY_TEMPERATURE` |
+| `chunk_overlap` | Non-negative integer | Overrides `CHUNK_OVERLAP` |
+
+`file` and `path` are mutually exclusive (`"Specify either file or path, not both."`). Switching `collection` clears both selections and metadata filters.
+
 ### 📋 RAGChat-Derived Settings in Service Mode
 
 Shared RAGChat settings are also available in service mode via split-module loading:
@@ -1810,7 +2438,8 @@ Shared RAGChat settings are also available in service mode via split-module load
 - `_ALLOWED_RETRIEVE_MODES`
 - `_KEY_BERT` (flat structure)
 - `_QUERY_REWRITE` parameters
-- `_MARKED_DOCS_COLORS` and `_MARKED_DOCS_GROUNDING`
+- `_KEYWORD_ACTION_SPLITTER`, `_PROMPT_KEYWORD_ACTION_SPLITTER`, and the split-answer/operation templates
+- `_MARKED_DOCS_COLORS`, `_GROUNDING`, and `_GROUNDING_MARKING`
 - All other RAGChat configuration
 
 ### 🔄 Relationship to Config_RAGChat.py
@@ -1929,19 +2558,19 @@ All three default to empty dicts — no behavioral change until populated.
 
 This file controls all internet connectivity and diagnostic toggles. It is described in detail in the [Internet Access](INSTALL.md#-internet-access) section. The key environment variables are:
 
-| Environment Variable | default used in this repository | Purpose |
+| Environment Variable | Configuration value | Purpose |
 | --- | --- | --- |
 | `LICENSE_DOWNLOAD` | `"0"` | Online fetch license on every run. Defined in `Config_Models.py`. When `"0"`, the Compliance module prompts for per-fetch consent. |
 | `RAG_LCC_NW_TRACE` | `"0"` | Socket-level network tracing (debug). |
-| `RAG_LCC_STACK_TRACE` | `"0"` | Stack traces on errors. |
-| `WEB_SEARCH_MODE` | `"0"` | **Master web-search switch.** `"0"` = disabled (safe default); `"1"` = internet search enabled (user queries may be sent to DuckDuckGo). Operators enabling `"1"` must review `LEGAL.md § Web Search` and `SECURITY.md`. |
+| `RAG_LCC_STACK_TRACE` | varies by deployment | Stack traces on errors. |
+| `WEB_SEARCH_MODE` | `"0"` in deployment | **Master web-search switch.** `"0"` = disabled; `"1"` = internet search enabled (user queries may be sent to DuckDuckGo). Development settings may differ. Review `LEGAL.md § Web Search` and `SECURITY.md`. |
 | `TESSERACT_PATH` | `r"C:/Program Files/Tesseract-OCR/tesseract.exe\|/usr/bin/tesseract"` | OS-aware Tesseract OCR path. Format: `"windows_path\|linux_path"`. The framework selects the appropriate half at runtime. Set via `os.environ.setdefault` (only applied when not already set in the environment). |
-| `HF_HUB_OFFLINE` | `"1"` | Disable Hugging Face Hub downloads when `"1"` (safe default). Set to `"0"` to allow model downloads. |
+| `HF_HUB_OFFLINE` | varies by deployment | Disable Hugging Face Hub downloads when `"1"`; `"0"` allows model downloads. |
 | `TRANSFORMERS_OFFLINE` | `"1"` | Disable transformers library hub access when `"1"`. |
 | `HF_DATASETS_OFFLINE` | `"1"` | Disable HF datasets hub access when `"1"`. |
 | `ARGOS_MODEL_PROVIDER` | `"OPENNMT"` | Force Argos Translate to use local packages only. |
-| `SERVE_OPENWEBUI_CHAT` | `"0"` | When `"1"`, RAGChatService accepts connections from OpenWebUI (inbound only). Printed as an info banner at startup. |
-| `SERVE_IN_MEMORY_DOCS_HTTP` | `"0"` | Enable the in-memory document HTTP server used by RAGChatService for `/marked/<token>` links. `"0"` = disabled (no in-memory docs store). `"1"` = enabled. See `_SERVE_DOCS` in `Config_RAGChatService.py` for TTL and size limits. |
+| `SERVE_OPENWEBUI_CHAT` | varies by deployment | When `"1"`, RAGChatService accepts connections from OpenWebUI (inbound only). Printed as an info banner at startup. |
+| `SERVE_IN_MEMORY_DOCS_HTTP` | `"0"` in deployment | Enable the in-memory document HTTP server used by RAGChatService for `/marked/<token>` links. `"0"` = disabled (no in-memory docs store). `"1"` = enabled. Development settings may differ. See `_SERVE_DOCS` in `Config_RAGChatService.py` for TTL and size limits. |
 | `HF_HUB_DISABLE_PROGRESS_BARS` | `"0"` | Show Hugging Face Hub progress bars during model downloads. Set to `"1"` to suppress progress bar output for cleaner log output. |
 | `TOKENIZERS_PARALLELISM` | `"false"` | Prevent tokenizer parallelism warnings from HuggingFace tokenizers. Set via `os.environ.setdefault` (only applied when not already set). |
 

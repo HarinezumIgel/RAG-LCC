@@ -2,8 +2,8 @@
 Deployment Manifest
 ================================================================================
 
-Generated      : 2026-10-12T13:57:16.554938+00:00
-Python         : 3.14.8 (CPython)
+Generated      : 2026-11-14T18:05:53.193494+00:00
+Python         : 3.14.10 (CPython)
 Platform       : Windows-11-10.0.26300-SP0
 Git commit     : unavailable
 Release        : See current release
@@ -19,10 +19,10 @@ License Generation Tool
 ────────────────────────────────────────────────────────────────────────────────
 SHA-256 Integrity Hashes
 ────────────────────────────────────────────────────────────────────────────────
-  requirements_final.txt : 3d2288b1564c2b8616a1156b92a696c278263e9c5b4e9fd0e897b9a3c7d9bdba
-  Licenses.json          : 6b1b9d34391907edbdc617d75c25a1198ea3bc390ee4d4d1f4cc6f93aa6812e0
-  Licenses.txt           : 602d52b7bbc46fe80d6cb032901e8a62e3f566222d8bd176f4d662f8a5fb5d47
-  Licenses.spdx          : 8442632d24a18012d5d59b2c364247dd99d1f001630430502074ff4a880ea380
+  requirements_final.txt : 6b01933deef88b57a3936e835f949fdb2a54f036f2ec9591b429a8c44c362293
+  Licenses.json          : 4bc1e471cad8279a542653fa6358e982e3228a7e4bb7ff268398acc90f265e48
+  Licenses.txt           : f41c8dad8769389db28f2a637640fd61c4d95b5acde72a7df3dab77df9b3d9ea
+  Licenses.spdx          : a3a5a33f2b6332e696899c035dd76174c5131c5cf71ccf2481c8d1b2a3051693
 
 ────────────────────────────────────────────────────────────────────────────────
 Installed Packages  (requirements_final.txt)
@@ -43,6 +43,7 @@ InquirerPy
 json5
 keybert
 langchain-chroma
+langchain_chroma
 langchain_core
 langchain_huggingface
 langchain_text_splitters
@@ -72,6 +73,8 @@ sentencepiece>=0.2.1
 spacy
 starlette
 torch
+tqdm
+transformers
 uvicorn
 wcwidth
 xlsxwriter
@@ -80,205 +83,205 @@ xlsxwriter
 License Summary  (Licenses.txt)
 ────────────────────────────────────────────────────────────────────────────────
 Third-Party Package License Summary
-==============================================================================================================================================
+=============================================================================================================================================
 
 This overview is provided for informational purposes only. Signing attests only to the integrity of
 this document, not to the legal validity, authorship, or completeness of any third-party licenses
 referenced herein. Users are responsible for reviewing and complying with all third-party terms.
 
-Generated : 2026-10-12T15:57:16.514307
+Generated : 2026-11-14T19:05:53.153719
 Packages  : 185
 
-----------------------------------------------------------------------------------------------------------------------------------------------
+---------------------------------------------------------------------------------------------------------------------------------------------
 
-Name                                     Version       License                                            Author
---------------------------------------   -----------   ------------------------------------------------   ------------------------------------
-Jinja2                                   3.1.6         BSD License                                        UNKNOWN
-MarkupSafe                               3.0.4         BSD-3-Clause                                       UNKNOWN
-PyPika                                   0.51.1        Apache Software License                            Timothy Heys
-PyYAML                                   6.0.3         MIT License                                        Kirill Simonov
-Pygments                                 2.21.0        BSD-2-Clause                                       Georg Brandl <georg@python.org>
-aiohappyeyeballs                         2.7.1         Python Software Foundation License                 J. Nick Koston
-aiohttp                                  3.14.5        Apache-2.0 AND MIT                                 UNKNOWN
-aiohttp-retry                            2.9.1         MIT License                                        Dmitry Inyutin
-aiosignal                                1.4.0         Apache Software License                            UNKNOWN
-annotated-doc                            0.0.5         MIT                                                =?utf-8?q?Sebasti=C3=A1n_Ram=C3=A...
-annotated-types                          0.8.0         MIT                                                Adrian Garcia Badaracco <1755071+...
-anyio                                    4.15.1        MIT                                                Alex Grönholm <alex.gronholm@next...
-argostranslate                           1.11.0        MIT License                                        Argos Open Technologies, LLC
-attrs                                    26.1.0        MIT                                                Hynek Schlawack <hs@ox.cx>
-bcrypt                                   5.0.0         Apache Software License                            The Python Cryptographic Authorit...
-blingfire                                0.1.8         MIT License                                        Bling
-blis                                     1.3.3         BSD License                                        Matthew Honnibal
-build                                    1.6.1         MIT                                                Filipe Laíns <lains@riseup.net>, ...
-catalogue                                2.0.10        MIT License                                        Explosion
-certifi                                  2026.7.22     Mozilla Public License 2.0 (MPL 2.0)               Kenneth Reitz
-cffi                                     2.1.1         MIT-0                                              Armin Rigo, Maciej Fijalkowski
-chardet                                  7.6.0         0BSD                                               Dan Blanchard <dan.blanchard@gmai...
-charset-normalizer                       3.5.2         MIT                                                "Ahmed R. TAHRI" <tahri.ahmed@pro...
-chromadb                                 1.5.9         Apache Software License                            Jeff Huber <jeff@trychroma.com>, ...
-click                                    8.5.0         BSD-3-Clause                                       UNKNOWN
-cloudpathlib                             0.26.0        MIT License                                        DrivenData <info@drivendata.org>
-cloudpickle                              3.1.2         BSD License                                        The cloudpickle developer team
-colorama                                 0.4.6         BSD License                                        Jonathan Hartley <tartley@tartley...
-confection                               1.3.3         MIT License                                        Explosion
-cryptography                             50.0.2        Apache-2.0 OR BSD-3-Clause                         The Python Cryptographic Authorit...
-ctranslate2                              4.8.2         MIT                                                OpenNMT
-cymem                                    2.0.13        MIT License                                        Matthew Honnibal
-ddgs                                     9.16.0        MIT                                                deedy5
-distro                                   1.9.0         Apache Software License                            Nir Cohen
-docopt                                   0.6.2         MIT License                                        Vladimir Keleshev
-durationpy                               0.11          MIT                                                Ilia Choly
-emoji                                    2.16.0        BSD License                                        Taehoon Kim <carpedm20@gmail.com>...
-et_xmlfile                               2.0.0         MIT License                                        See AUTHORS.txt
-fastapi                                  0.143.0       MIT                                                Sebastián Ramírez <tiangolo@gmail...
-filelock                                 4.1.1         MIT                                                UNKNOWN
-flatbuffers                              25.12.19      Apache Software License                            Derek Bailey
-frozenlist                               1.8.0         Apache-2.0                                         UNKNOWN
-fsspec                                   2026.9.0      BSD-3-Clause                                       UNKNOWN
-googleapis-common-protos                 1.75.5        Apache-2.0                                         Google LLC <googleapis-packages@g...
-graphviz                                 0.21          MIT                                                Sebastian Bank <sebastian.bank@un...
-grpcio                                   1.84.0        Apache-2.0                                         The gRPC Authors <grpc-io@googleg...
-h11                                      0.16.0        MIT License                                        Nathaniel J. Smith
-hf-xet                                   1.7.0         Apache-2.0                                         UNKNOWN
-html2text                                2025.4.15     GPL-3.0-or-later                                   Aaron Swartz <me@aaronsw.com>
-httpcore                                 1.0.9         BSD-3-Clause                                       Tom Christie <tom@tomchristie.com>
-httpcore2                                2.13.1        BSD-3-Clause                                       Tom Christie <tom@tomchristie.com>
-httptools                                0.9.0         MIT                                                Yury Selivanov <yury@magic.io>
-httpx                                    0.28.1        BSD License                                        Tom Christie <tom@tomchristie.com>
-httpx2                                   2.13.1        BSD-3-Clause                                       Tom Christie <tom@tomchristie.com>
-huggingface_hub                          1.33.0        Apache Software License                            Hugging Face, Inc.
-idna                                     3.20          BSD-3-Clause                                       Kim Davies <kim+pypi@gumleaf.org>
-importlib_resources                      7.1.0         Apache-2.0                                         Barry Warsaw <barry@python.org>
-iniconfig                                2.3.1         MIT                                                Ronny Pfannschmidt <opensource@ro...
-inquirerpy                               0.3.4         MIT License                                        Kevin Zhuang
-joblib                                   1.6.0         BSD-3-Clause                                       Gael Varoquaux <gael.varoquaux@no...
-json5                                    0.17.3        Apache-2.0                                         Dirk Pranke <dpranke@gmail.com>
-jsonpatch                                1.35          BSD-3-Clause                                       Stefan Kögl
-jsonpointer                              3.2.1         BSD License                                        Stefan Kögl
-jsonschema                               4.26.0        MIT                                                Julian Berman <Julian+jsonschema@...
-jsonschema-specifications                2025.9.1      MIT                                                Julian Berman <Julian+jsonschema-...
-keybert                                  0.9.0         MIT License                                        Maarten Grootendorst <maartengroo...
-kubernetes                               37.0.1        Apache-2.0                                         Kubernetes
-langchain-chroma                         1.1.0         MIT                                                UNKNOWN
-langchain-core                           1.6.9         MIT License                                        UNKNOWN
-langchain-huggingface                    1.2.3         MIT License                                        UNKNOWN
-langchain-protocol                       0.0.19        MIT License                                        UNKNOWN
-langchain-text-splitters                 1.1.3         MIT License                                        UNKNOWN
-langdetect                               1.0.9         Apache Software License                            Michal Mimino Danilak
-langsmith                                0.14.7        MIT                                                LangChain <support@langchain.dev>
-lingua-language-detector                 2.2.0         Apache Software License                            "Peter M. Stahl" <pemistahl@gmail...
-lxml                                     6.1.3         BSD-3-Clause                                       lxml dev team
-markdown-it-py                           4.2.0         MIT License                                        Chris Sewell <chrisj_sewell@hotma...
-mdurl                                    0.1.2         MIT License                                        Taneli Hukkinen <hukkin@users.nor...
-minisbd                                  0.9.5         GNU Affero General Public License v3               LibreTranslate Authors
-mmh3                                     5.3.1         MIT License                                        Hajime Senuma <hajime.senuma@gmai...
-mpmath                                   1.3.0         BSD License                                        Fredrik Johansson
-multidict                                7.1.0         Apache-2.0                                         Andrew Svetlov <andrew.svetlov@gm...
-murmurhash                               1.0.15        MIT License                                        Explosion
-narwhals                                 2.27.1        MIT                                                Marco Gorelli
-networkx                                 3.7           BSD-3-Clause                                       Aric Hagberg <hagberg@lanl.gov>
-nltk                                     3.9.2         Apache Software License                            NLTK Team
-numpy                                    2.5.4         BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC...   Travis E. Oliphant et al.
-oauthlib                                 4.0.0         BSD-3-Clause                                       The OAuthlib Community
-onnxruntime                              1.31.0        MIT License                                        Microsoft Corporation
-openpyxl                                 3.1.5         MIT License                                        See AUTHORS
-opentelemetry-api                        1.45.1        Apache-2.0                                         OpenTelemetry Authors <cncf-opent...
-opentelemetry-exporter-otlp-common       0.66b1        Apache-2.0                                         OpenTelemetry Authors <cncf-opent...
-opentelemetry-exporter-otlp-proto-c...   1.45.1        Apache-2.0                                         OpenTelemetry Authors <cncf-opent...
-opentelemetry-exporter-otlp-proto-grpc   1.45.1        Apache-2.0                                         OpenTelemetry Authors <cncf-opent...
-opentelemetry-proto                      1.45.1        Apache-2.0                                         OpenTelemetry Authors <cncf-opent...
-opentelemetry-sdk                        1.45.1        Apache-2.0                                         OpenTelemetry Authors <cncf-opent...
-opentelemetry-semantic-conventions       0.66b1        Apache-2.0                                         OpenTelemetry Authors <cncf-opent...
-orjson                                   3.13.0        MPL-2.0 AND (Apache-2.0 OR MIT)                    UNKNOWN
-overrides                                7.7.0         Apache License, Version 2.0                        Mikko Korpela
-packaging                                26.3          Apache-2.0 OR BSD-2-Clause                         Donald Stufft <donald@stufft.io>
-pandas                                   3.0.6         BSD License                                        The Pandas Development Team <pand...
-pdf2image                                1.17.0        MIT License                                        Edouard Belval
-pdfminer.six                             20260107      MIT                                                Yusuke Shinyama, Pieter Marsman
-pdfplumber                               0.11.10       MIT License                                        Jeremy Singer-Vine
-pfzy                                     0.3.4         MIT License                                        Kevin Zhuang
-pillow                                   12.3.0        MIT-CMU                                            Jeffrey 'Alex' Clark <aclark@acla...
-pip                                      26.2.1        MIT                                                The pip developers <distutils-sig...
-pip-licenses                             5.5.5         MIT                                                Mr. Walls
-pip-review                               1.3.0         BSD License                                        Julian Gonggrijp, Vincent Driessen
-pipreqs                                  0.4.13        Apache Software License                            Vadim Kravcenko
-pluggy                                   1.6.0         MIT License                                        Holger Krekel <holger@merlinux.eu>
-preshed                                  3.0.13        MIT License                                        Explosion
-prettytable                              3.18.0        BSD-3-Clause                                       Luke Maurits <luke@maurits.id.au>
-primp                                    2.0.1         MIT License                                        deedy5
-prompt_toolkit                           3.0.53        BSD License                                        Jonathan Slenders
-propcache                                0.5.4         Apache-2.0                                         Andrew Svetlov
-protobuf                                 7.36.2        3-Clause BSD License                               protobuf@googlegroups.com
-pybase64                                 1.5.1         BSD-2-Clause                                       Matthieu Darbois
-pycparser                                3.11          BSD-3-Clause                                       Eli Bendersky <eliben@gmail.com>
-pydantic                                 2.14.1        MIT                                                Samuel Colvin <s@muelcolvin.com>,...
-pydantic-settings                        2.15.0        MIT                                                Samuel Colvin <s@muelcolvin.com>,...
-pydantic_core                            2.50.1        MIT                                                Samuel Colvin <s@muelcolvin.com>,...
-pypdf                                    6.20.0        BSD-3-Clause                                       Mathieu Fenniak <biziqe@mathieu.f...
-pypdfium2                                5.14.0        BSD-3-Clause, Apache-2.0, dependency licenses      pypdfium2-team
-pyproject_hooks                          1.3.3         MIT                                                Thomas Kluyver <thomas@kluyver.me...
-pytesseract                              0.3.13        Apache Software License                            Samuel Hoffstaetter
-pytest                                   9.1.1         MIT                                                Brianna Laugher, Bruno Oliveira, ...
-python-dateutil                          2.9.0.post0   Apache Software License; BSD License               Gustavo Niemeyer
-python-docx                              1.2.0         MIT License                                        Steve Canny <stcanny@gmail.com>
-python-dotenv                            1.2.4         BSD-3-Clause                                       Saurabh Kumar <me+github@saurabh-...
-python-pptx                              1.0.2         MIT License                                        Steve Canny <stcanny@gmail.com>
-pywin32                                  312           Python Software Foundation License                 Mark Hammond (et al)
-referencing                              0.37.0        MIT                                                Julian Berman <Julian+referencing...
-regex                                    2026.9.29     Apache-2.0 AND CNRI-Python                         Matthew Barnett <regex@mrabarnett...
-requests                                 2.34.2        Apache Software License                            Kenneth Reitz <me@kennethreitz.org>
-requests-oauthlib                        2.0.0         BSD License                                        Kenneth Reitz
-requests-toolbelt                        1.0.0         Apache Software License                            Ian Cordasco, Cory Benfield
-rich                                     15.0.0        MIT License                                        Will McGugan
-rpds-py                                  2026.9.1      MIT                                                Julian Berman <Julian+rpds@GrayVi...
-sacremoses                               0.1.1         MIT License                                        UNKNOWN
-safetensors                              0.8.0         Apache Software License                            Nicolas Patry <patry.nicolas@prot...
-scikit-learn                             1.9.1         BSD-3-Clause                                       UNKNOWN
-scipy                                    1.18.1        BSD License                                        UNKNOWN
-sentence-transformers                    6.1.0         Apache-2.0                                         Nils Reimers <info@nils-reimers.d...
-sentencepiece                            0.2.2         Apache-2.0                                         Taku Kudo <taku@google.com>
-setuptools                               81.0.0        MIT                                                Python Packaging Authority <distu...
-shellingham                              1.5.4         ISC License (ISCL)                                 Tzu-ping Chung
-six                                      1.17.0        MIT License                                        Benjamin Peterson
-smart_open                               8.0.2         MIT License                                        Radim Rehurek <me@radimrehurek.com>
-sniffio                                  1.3.1         Apache Software License; MIT License               "Nathaniel J. Smith" <njs@pobox.com>
-spacy                                    3.8.16        MIT License                                        Explosion
-spacy-legacy                             3.0.12        MIT License                                        Explosion
-spacy-loggers                            1.0.5         MIT                                                Explosion
-srsly                                    2.5.4         MIT License                                        Explosion
-stanza                                   1.10.1        Apache License 2.0                                 Stanford Natural Language Process...
-starlette                                1.7.0         BSD-3-Clause                                       Tom Christie <tom@tomchristie.com>
-sympy                                    1.14.0        BSD License                                        SymPy development team
-tenacity                                 9.2.1         Apache-2.0                                         Julien Danjou <julien@danjou.info>
-thinc                                    8.3.13        MIT License                                        Explosion
-threadpoolctl                            3.7.0         BSD-3-Clause                                       Thomas Moreau <thomas.moreau.2010...
-tokenizers                               0.23.3        Apache Software License                            Nicolas Patry <patry.nicolas@prot...
-torch                                    2.14.1        Apache-2.0 AND Apache-2.0 WITH LLVM-exception...   PyTorch Team <packages@pytorch.org>
-tqdm                                     4.70.1        MPL-2.0 AND MIT                                    UNKNOWN
-transformers                             5.19.0        Apache 2.0 License                                 The Hugging Face team (past and f...
-truststore                               0.10.4        MIT                                                Seth Michael Larson <sethmichaell...
-typer                                    0.27.3        MIT                                                Sebastián Ramírez <tiangolo@gmail...
-typing-inspection                        0.4.4         MIT                                                Victorien Plot <contact@vctrn.dev>
-typing_extensions                        4.16.0        PSF-2.0                                            "Guido van Rossum, Jukka Lehtosal...
-tzdata                                   2026.5        Apache-2.0                                         Python Software Foundation
-urllib3                                  2.8.0         MIT                                                Andrey Petrov <andrey.petrov@shaz...
-uuid_utils                               0.17.1        BSD-3-Clause                                       Amin Alaee <mohammadamin.alaee@gm...
-uvicorn                                  0.54.0        BSD-3-Clause                                       Tom Christie <tom@tomchristie.com>
-wasabi                                   1.1.3         MIT                                                Explosion
-watchfiles                               1.3.0         MIT License                                        Samuel Colvin <s@muelcolvin.com>
-wcwidth                                  0.9.2         MIT License                                        Jeff Quast <contact@jeffquast.com>
-weasel                                   1.0.0         MIT License                                        Explosion
-websocket-client                         1.9.2         Apache-2.0                                         liris
-websockets                               17.2          BSD-3-Clause                                       Aymeric Augustin <aymeric.augusti...
-wheel                                    0.48.0        MIT                                                Daniel Holth <dholth@fastmail.fm>
-wrapt                                    2.5.0         BSD-2-Clause                                       Graham Dumpleton <Graham.Dumpleto...
-xlsxwriter                               3.2.9         BSD License                                        John McNamara
-xxhash                                   4.0.1         BSD-2-Clause                                       Yue Du
-yarg                                     0.1.10        MIT License                                        Kura
-yarl                                     1.25.1        Apache-2.0                                         Andrew Svetlov
-zstandard                                0.25.0        BSD-3-Clause                                       Gregory Szorc <gregory.szorc@gmai...
+Name                                     Version      License                                            Author
+--------------------------------------   ----------   ------------------------------------------------   ------------------------------------
+Jinja2                                   3.1.6        BSD License                                        UNKNOWN
+MarkupSafe                               3.0.4        BSD-3-Clause                                       UNKNOWN
+PyPika                                   0.51.1       Apache Software License                            Timothy Heys
+PyYAML                                   6.0.3        MIT License                                        Kirill Simonov
+Pygments                                 2.21.0       BSD-2-Clause                                       Georg Brandl <georg@python.org>
+aiohappyeyeballs                         2.7.1        Python Software Foundation License                 J. Nick Koston
+aiohttp                                  3.14.5       Apache-2.0 AND MIT                                 UNKNOWN
+aiohttp-retry                            2.9.1        MIT License                                        Dmitry Inyutin
+aiosignal                                1.4.0        Apache Software License                            UNKNOWN
+annotated-doc                            0.0.6        MIT                                                Sebastián Ramírez <tiangolo@gmail...
+annotated-types                          0.8.0        MIT                                                Adrian Garcia Badaracco <1755071+...
+anyio                                    4.16.0       MIT                                                Alex Grönholm <alex.gronholm@next...
+argostranslate                           1.11.0       MIT License                                        Argos Open Technologies, LLC
+attrs                                    26.1.0       MIT                                                Hynek Schlawack <hs@ox.cx>
+bcrypt                                   5.0.0        Apache Software License                            The Python Cryptographic Authorit...
+blingfire                                0.1.8        MIT License                                        Bling
+blis                                     1.3.4        BSD License                                        Matthew Honnibal
+build                                    1.6.1        MIT                                                Filipe Laíns <lains@riseup.net>, ...
+catalogue                                2.0.10       MIT License                                        Explosion
+certifi                                  2026.10.23   Mozilla Public License 2.0 (MPL 2.0)               Kenneth Reitz
+cffi                                     2.1.1        MIT-0                                              Armin Rigo, Maciej Fijalkowski
+chardet                                  7.7.0        0BSD                                               Dan Blanchard <dan.blanchard@gmai...
+charset-normalizer                       3.5.2        MIT                                                "Ahmed R. TAHRI" <tahri.ahmed@pro...
+chromadb                                 1.5.9        Apache Software License                            Jeff Huber <jeff@trychroma.com>, ...
+click                                    8.5.1        BSD-3-Clause                                       UNKNOWN
+cloudpathlib                             0.26.0       MIT License                                        DrivenData <info@drivendata.org>
+cloudpickle                              3.1.2        BSD License                                        The cloudpickle developer team
+colorama                                 0.4.6        BSD License                                        Jonathan Hartley <tartley@tartley...
+confection                               1.3.4        MIT License                                        Explosion
+cryptography                             50.0.2       Apache-2.0 OR BSD-3-Clause                         The Python Cryptographic Authorit...
+ctranslate2                              4.9.0        MIT                                                OpenNMT
+cymem                                    2.0.16       MIT License                                        Matthew Honnibal
+ddgs                                     9.16.1       MIT                                                deedy5
+distro                                   1.9.0        Apache Software License                            Nir Cohen
+docopt                                   0.6.2        MIT License                                        Vladimir Keleshev
+durationpy                               0.11         MIT                                                Ilia Choly
+emoji                                    2.16.0       BSD License                                        Taehoon Kim <carpedm20@gmail.com>...
+et_xmlfile                               2.0.0        MIT License                                        See AUTHORS.txt
+fastapi                                  0.163.0      MIT                                                Sebastián Ramírez <tiangolo@gmail...
+filelock                                 4.2.10       MIT                                                UNKNOWN
+flatbuffers                              25.12.19     Apache Software License                            Derek Bailey
+frozenlist                               1.8.0        Apache-2.0                                         UNKNOWN
+fsspec                                   2026.9.0     BSD-3-Clause                                       UNKNOWN
+googleapis-common-protos                 1.76.0       Apache-2.0                                         Google LLC <googleapis-packages@g...
+graphviz                                 0.21         MIT                                                Sebastian Bank <sebastian.bank@un...
+grpcio                                   1.85.1       Apache-2.0                                         The gRPC Authors <grpc-io@googleg...
+h11                                      0.16.0       MIT License                                        Nathaniel J. Smith
+hf-xet                                   1.8.0        Apache-2.0                                         UNKNOWN
+html2text                                2025.4.15    GPL-3.0-or-later                                   Aaron Swartz <me@aaronsw.com>
+httpcore                                 1.0.9        BSD-3-Clause                                       Tom Christie <tom@tomchristie.com>
+httpcore2                                2.16.0       BSD-3-Clause                                       Tom Christie <tom@tomchristie.com>
+httptools                                0.9.0        MIT                                                Yury Selivanov <yury@magic.io>
+httpx                                    0.28.1       BSD License                                        Tom Christie <tom@tomchristie.com>
+httpx2                                   2.16.0       BSD-3-Clause                                       Tom Christie <tom@tomchristie.com>
+huggingface_hub                          1.33.0       Apache Software License                            Hugging Face, Inc.
+idna                                     3.20         BSD-3-Clause                                       Kim Davies <kim+pypi@gumleaf.org>
+importlib_resources                      7.1.0        Apache-2.0                                         Barry Warsaw <barry@python.org>
+iniconfig                                2.3.1        MIT                                                Ronny Pfannschmidt <opensource@ro...
+inquirerpy                               0.3.4        MIT License                                        Kevin Zhuang
+joblib                                   1.6.0        BSD-3-Clause                                       Gael Varoquaux <gael.varoquaux@no...
+json5                                    0.17.3       Apache-2.0                                         Dirk Pranke <dpranke@gmail.com>
+jsonpatch                                1.47         BSD-3-Clause                                       Stefan Kögl
+jsonpointer                              3.12         BSD-3-Clause                                       Stefan Kögl
+jsonschema                               4.26.0       MIT                                                Julian Berman <Julian+jsonschema@...
+jsonschema-specifications                2025.9.1     MIT                                                Julian Berman <Julian+jsonschema-...
+keybert                                  0.9.0        MIT License                                        Maarten Grootendorst <maartengroo...
+kubernetes                               37.0.2       Apache-2.0                                         Kubernetes
+langchain-chroma                         1.1.0        MIT                                                UNKNOWN
+langchain-core                           1.8.0        MIT License                                        UNKNOWN
+langchain-huggingface                    1.2.3        MIT License                                        UNKNOWN
+langchain-protocol                       0.0.21       MIT License                                        UNKNOWN
+langchain-text-splitters                 1.1.3        MIT License                                        UNKNOWN
+langdetect                               1.0.9        Apache Software License                            Michal Mimino Danilak
+langsmith                                0.14.17      MIT License                                        LangChain
+lingua-language-detector                 2.2.0        Apache Software License                            "Peter M. Stahl" <pemistahl@gmail...
+lxml                                     6.1.3        BSD-3-Clause                                       lxml dev team
+markdown-it-py                           4.3.0        MIT License                                        Chris Sewell <chrisj_sewell@hotma...
+mdurl                                    0.1.2        MIT License                                        Taneli Hukkinen <hukkin@users.nor...
+minisbd                                  0.9.5        GNU Affero General Public License v3               LibreTranslate Authors
+mmh3                                     5.3.1        MIT License                                        Hajime Senuma <hajime.senuma@gmai...
+mpmath                                   1.3.0        BSD License                                        Fredrik Johansson
+multidict                                7.2.1        Apache-2.0                                         Andrew Svetlov <andrew.svetlov@gm...
+murmurhash                               1.0.16       MIT License                                        Explosion
+narwhals                                 2.28.0       MIT                                                Marco Gorelli
+networkx                                 3.7          BSD-3-Clause                                       Aric Hagberg <hagberg@lanl.gov>
+nltk                                     3.9.2        Apache Software License                            NLTK Team
+numpy                                    2.5.4        BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC...   Travis E. Oliphant et al.
+oauthlib                                 4.0.1        BSD-3-Clause                                       The OAuthlib Community
+onnxruntime                              1.32.0       MIT License                                        Microsoft Corporation
+openpyxl                                 3.1.5        MIT License                                        See AUTHORS
+opentelemetry-api                        1.45.2       Apache-2.0                                         OpenTelemetry Authors <cncf-opent...
+opentelemetry-exporter-otlp-common       0.66b2       Apache-2.0                                         OpenTelemetry Authors <cncf-opent...
+opentelemetry-exporter-otlp-proto-c...   1.45.2       Apache-2.0                                         OpenTelemetry Authors <cncf-opent...
+opentelemetry-exporter-otlp-proto-grpc   1.45.2       Apache-2.0                                         OpenTelemetry Authors <cncf-opent...
+opentelemetry-proto                      1.45.2       Apache-2.0                                         OpenTelemetry Authors <cncf-opent...
+opentelemetry-sdk                        1.45.2       Apache-2.0                                         OpenTelemetry Authors <cncf-opent...
+opentelemetry-semantic-conventions       0.66b2       Apache-2.0                                         OpenTelemetry Authors <cncf-opent...
+orjson                                   3.13.0       MPL-2.0 AND (Apache-2.0 OR MIT)                    UNKNOWN
+overrides                                7.7.0        Apache License, Version 2.0                        Mikko Korpela
+packaging                                26.3         Apache-2.0 OR BSD-2-Clause                         Donald Stufft <donald@stufft.io>
+pandas                                   3.1.1        BSD-3-Clause                                       The Pandas Development Team <pand...
+pdf2image                                1.17.0       MIT License                                        Edouard Belval
+pdfminer.six                             20260107     MIT                                                Yusuke Shinyama, Pieter Marsman
+pdfplumber                               0.11.10      MIT License                                        Jeremy Singer-Vine
+pfzy                                     0.3.4        MIT License                                        Kevin Zhuang
+pillow                                   13.0.0       MIT-CMU                                            Jeffrey 'Alex' Clark <aclark@acla...
+pip                                      26.3         MIT                                                The pip developers <distutils-sig...
+pip-licenses                             5.5.5        MIT                                                Mr. Walls
+pip-review                               1.3.0        BSD License                                        Julian Gonggrijp, Vincent Driessen
+pipreqs                                  0.4.13       Apache Software License                            Vadim Kravcenko
+pluggy                                   1.7.0        MIT License                                        Holger Krekel
+preshed                                  3.0.15       MIT License                                        Explosion
+prettytable                              3.18.0       BSD-3-Clause                                       Luke Maurits <luke@maurits.id.au>
+primp                                    2.0.1        MIT License                                        deedy5
+prompt_toolkit                           3.0.53       BSD License                                        Jonathan Slenders
+propcache                                0.5.4        Apache-2.0                                         Andrew Svetlov
+protobuf                                 7.36.2       3-Clause BSD License                               protobuf@googlegroups.com
+pybase64                                 1.5.2        BSD-2-Clause                                       Matthieu Darbois
+pycparser                                3.12         BSD-3-Clause                                       Eli Bendersky <eliben@gmail.com>
+pydantic                                 2.14.3       MIT                                                Samuel Colvin <s@muelcolvin.com>,...
+pydantic-settings                        2.16.3       MIT                                                Samuel Colvin <s@muelcolvin.com>,...
+pydantic_core                            2.50.4       MIT                                                Samuel Colvin <s@muelcolvin.com>,...
+pypdf                                    7.1.0        BSD-3-Clause                                       Mathieu Fenniak <biziqe@mathieu.f...
+pypdfium2                                5.15.2       BSD-3-Clause, Apache-2.0, dependency licenses      pypdfium2-team
+pyproject_hooks                          1.3.3        MIT                                                Thomas Kluyver <thomas@kluyver.me...
+pytesseract                              0.3.13       Apache Software License                            Samuel Hoffstaetter
+pytest                                   9.2.0        MIT                                                Brianna Laugher, Bruno Oliveira, ...
+python-dateutil                          4.0.0        BSD-3-Clause                                       Gustavo Niemeyer <gustavo@niemeye...
+python-docx                              1.2.0        MIT License                                        Steve Canny <stcanny@gmail.com>
+python-dotenv                            1.2.4        BSD-3-Clause                                       Saurabh Kumar <me+github@saurabh-...
+python-pptx                              1.0.2        MIT License                                        Steve Canny <stcanny@gmail.com>
+pywin32                                  312          Python Software Foundation License                 Mark Hammond (et al)
+referencing                              0.37.0       MIT                                                Julian Berman <Julian+referencing...
+regex                                    2026.11.9    Apache-2.0 AND CNRI-Python                         Matthew Barnett <regex@mrabarnett...
+requests                                 2.34.2       Apache Software License                            Kenneth Reitz <me@kennethreitz.org>
+requests-oauthlib                        2.0.0        BSD License                                        Kenneth Reitz
+requests-toolbelt                        1.0.0        Apache Software License                            Ian Cordasco, Cory Benfield
+rich                                     15.0.0       MIT License                                        Will McGugan
+rpds-py                                  2026.9.1     MIT                                                Julian Berman <Julian+rpds@GrayVi...
+sacremoses                               0.1.1        MIT License                                        UNKNOWN
+safetensors                              0.8.0        Apache Software License                            Nicolas Patry <patry.nicolas@prot...
+scikit-learn                             1.9.1        BSD-3-Clause                                       UNKNOWN
+scipy                                    1.18.1       BSD License                                        UNKNOWN
+sentence-transformers                    6.3.0        Apache-2.0                                         Nils Reimers <info@nils-reimers.d...
+sentencepiece                            0.2.3        Apache-2.0                                         Taku Kudo <taku@google.com>
+setuptools                               81.0.0       MIT                                                Python Packaging Authority <distu...
+shellingham                              1.5.4        ISC License (ISCL)                                 Tzu-ping Chung
+six                                      1.17.0       MIT License                                        Benjamin Peterson
+smart_open                               9.0.4        MIT                                                Radim Rehurek <me@radimrehurek.com>
+sniffio                                  1.3.1        Apache Software License; MIT License               "Nathaniel J. Smith" <njs@pobox.com>
+spacy                                    3.8.18       MIT License                                        Explosion
+spacy-legacy                             3.0.12       MIT License                                        Explosion
+spacy-loggers                            1.0.5        MIT                                                Explosion
+srsly                                    2.5.6        MIT License                                        Explosion
+stanza                                   1.10.1       Apache License 2.0                                 Stanford Natural Language Process...
+starlette                                1.10.0       BSD-3-Clause                                       Tom Christie <tom@tomchristie.com>
+sympy                                    1.14.0       BSD License                                        SymPy development team
+tenacity                                 9.2.1        Apache-2.0                                         Julien Danjou <julien@danjou.info>
+thinc                                    8.3.14       MIT License                                        Explosion
+threadpoolctl                            3.8.0        BSD-3-Clause                                       Thomas Moreau <thomas.moreau.2010...
+tokenizers                               0.23.3       Apache Software License                            Nicolas Patry <patry.nicolas@prot...
+torch                                    2.15.0       Apache-2.0 AND Apache-2.0 WITH LLVM-exception...   PyTorch Team <packages@pytorch.org>
+tqdm                                     4.70.1       MPL-2.0 AND MIT                                    UNKNOWN
+transformers                             5.23.0       Apache 2.0 License                                 The Hugging Face team (past and f...
+truststore                               0.10.5       MIT                                                Seth Michael Larson <sethmichaell...
+typer                                    0.29.1       MIT                                                Sebastián Ramírez <tiangolo@gmail...
+typing-inspection                        0.4.5        MIT                                                Victorien Plot <contact@vctrn.dev>
+typing_extensions                        4.16.0       PSF-2.0                                            "Guido van Rossum, Jukka Lehtosal...
+tzdata                                   2026.6       Apache-2.0                                         Python Software Foundation
+urllib3                                  2.8.0        MIT                                                Andrey Petrov <andrey.petrov@shaz...
+uuid_utils                               0.19.0       BSD-3-Clause                                       Amin Alaee <mohammadamin.alaee@gm...
+uvicorn                                  0.54.0       BSD-3-Clause                                       Tom Christie <tom@tomchristie.com>
+wasabi                                   1.1.3        MIT                                                Explosion
+watchfiles                               1.3.0        MIT License                                        Samuel Colvin <s@muelcolvin.com>
+wcwidth                                  0.9.4        MIT License                                        Jeff Quast <contact@jeffquast.com>
+weasel                                   1.0.1        MIT License                                        Explosion
+websocket-client                         1.9.2        Apache-2.0                                         liris
+websockets                               17.4         BSD-3-Clause                                       Aymeric Augustin <aymeric.augusti...
+wheel                                    0.48.0       MIT                                                Daniel Holth <dholth@fastmail.fm>
+wrapt                                    2.5.2        BSD-2-Clause                                       Graham Dumpleton <Graham.Dumpleto...
+xlsxwriter                               3.3.1        BSD-2-Clause                                       John McNamara <jmcnamara@cpan.org>
+xxhash                                   4.1.0        BSD-2-Clause                                       Yue Du
+yarg                                     0.1.10       MIT License                                        Kura
+yarl                                     1.25.1       Apache-2.0                                         Andrew Svetlov
+zstandard                                0.25.0       BSD-3-Clause                                       Gregory Szorc <gregory.szorc@gmai...
 
-==============================================================================================================================================
+=============================================================================================================================================
 
 ================================================================================

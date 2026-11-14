@@ -8,7 +8,7 @@ import requests
 from AI.LLMBackendAdapter import (LLMBackendAdapter, OllamaBackendAdapter,
                                   VllmBackendAdapter)
 from Config.Config import Config
-from Gui.Colors import ORANGE
+from Gui.Colors import ORANGE, TURQUOISE
 from Gui.PrettyWriter import PrettyWriter
 from Helpers.DebugHelper import DebugHelper
 from Helpers.Helpers import Helpers
@@ -38,10 +38,11 @@ class LLMCaller:
         """
         if isinstance(obj, dict):
             data = cast(dict[str, Any], obj)
+            sensitive_keys = {key.casefold() for key in keys}
             redacted: dict[str, Any] = {}
             for key, value in data.items():
-                redacted["<REDACTED>" if key in keys else key] = (
-                    "<REDACTED>" if key in keys else value
+                redacted[key] = (
+                    "<REDACTED>" if str(key).casefold() in sensitive_keys else value
                 )
             return json.dumps(redacted, default=str)
         return json.dumps(obj, default=str)
@@ -160,12 +161,23 @@ class LLMCaller:
 
         return resolved_output, resolved_ctx
 
-    def _create_backend_adapter(self) -> LLMBackendAdapter:
-        """Select the transport adapter for the active provider."""
+    def _create_backend_adapter(
+        self, model_role: str | None = None
+    ) -> LLMBackendAdapter:
+        """Select the transport adapter for the active provider.
+
+        *model_role* (an ``_ACTIVE_*`` selector) lets the model's provider slot
+        override the generic endpoint settings (BASE_URL, REQUEST_TIMEOUT, ...).
+        """
         provider = str(self.cfg.get_str("_ACTIVE_ENDPOINT", "ollama")).lower()
         if provider == "vllm":
-            return VllmBackendAdapter(self.helpers, self.cfg, self.pretty)
-        return OllamaBackendAdapter(self.helpers, self.cfg, self.pretty)
+            adapter: LLMBackendAdapter = VllmBackendAdapter(
+                self.helpers, self.cfg, self.pretty
+            )
+        else:
+            adapter = OllamaBackendAdapter(self.helpers, self.cfg, self.pretty)
+        adapter.model_role = model_role
+        return adapter
 
     def call_llm(
         # Main method to call LLM endpoint with streaming and callback support.
@@ -180,17 +192,15 @@ class LLMCaller:
         timeout: Optional[float] = None,
         streaming: bool | None = None,
         stage: str = "",
+        purpose: str = "Inference",
         top_level_params: dict[str, Any] | None = None,
         model_role: str | None = None,
     ) -> Dict[str, str]:
 
+        adapter = self._create_backend_adapter(model_role or "_ACTIVE_LLM")
         # Use provided timeout, otherwise get from provider configuration
         if timeout is None:
-            adapter = self._create_backend_adapter()
             timeout = adapter.provider_args.get("REQUEST_TIMEOUT", 120.0)
-        else:
-            timeout = timeout
-        adapter = self._create_backend_adapter()
         provider_label: str = adapter.name.upper()
         provider_args = adapter.provider_args
         base_url: str = adapter.base_url
@@ -237,11 +247,20 @@ class LLMCaller:
 
         try:
             # Main request/streaming logic
-            self.pretty.write(
-                "I",
-                "Call LLM",
-                f"Model: {model} prompt template: {template_name} stage: {stage}",
-            )
+            if DebugHelper.check(self.cfg, 30):
+                self.pretty.write(
+                    "I",
+                    "Call LLM",
+                    f"Stage: {stage}",
+                    color=TURQUOISE,
+                )
+                self.pretty.write(
+                    "I",
+                    "Call LLM",
+                    f"Model: {model} prompt template: {template_name} "
+                    f"purpose: {purpose}",
+                    color=TURQUOISE,
+                )
             self.pretty.write(
                 "I",
                 "Call LLM",
@@ -276,10 +295,8 @@ class LLMCaller:
                 timeout=timeout,
             )
             if DebugHelper.check(self.cfg, 80):
-                self.pretty.write("D", "OLLAMA RESPONSE STATUS", f"{resp.status_code}")
-                self.pretty.write(
-                    "D", "OLLAMA RESPONSE HEADERS", f"{dict(resp.headers)}"
-                )
+                self.pretty.write("D", "LLM RESPONSE STATUS", f"{resp.status_code}")
+                self.pretty.write("D", "LLM RESPONSE HEADERS", f"{dict(resp.headers)}")
             resp.raise_for_status()
 
             # Streaming loop with robust accumulation and label detection

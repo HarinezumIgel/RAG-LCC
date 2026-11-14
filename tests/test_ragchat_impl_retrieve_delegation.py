@@ -35,7 +35,12 @@ with open(_SRC, encoding="utf-8") as _f:
 
 
 def _compile_method(method_name: str) -> Any:
-    method_src = _extract_method(_RAG_SOURCE, method_name)
+    source = _RAG_SOURCE
+    if method_name == "_fetch_local_docs":
+        path = os.path.join(os.path.dirname(_SRC), "LocalRetrieverExecutor.py")
+        with open(path, encoding="utf-8") as fh:
+            source = fh.read()
+    method_src = _extract_method(source, method_name)
     ns: dict[str, Any] = {
         "Session": object,
         "Tuple": tuple,

@@ -5,6 +5,7 @@
 
 import os
 import sys
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
@@ -60,10 +61,116 @@ def _patch_setup_common(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 class TestSetupFlow:
+    def test_config_review_uses_installed_configs(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        config = tmp_path / "src" / "Configuration"
+        config.mkdir(parents=True)
+        expected = {
+            "Config_Models.py",
+            "Config_Banned_Detection.py",
+            "Config_Banned_Content.py",
+            "Config_Banned_Prompts.py",
+            "Config_Load_Retrievers.py",
+            "Config_Load_Chunkers.py",
+            "Config_WebSearch.py",
+            "Config_Internet_Env.py",
+        }
+        for name in expected:
+            (config / name).write_text("# installed config\n", encoding="utf-8")
+        (config / "Config_Global.py").write_text("# not reviewed\n", encoding="utf-8")
+        monkeypatch.setattr(Setup, "_PROJECT_ROOT", tmp_path)
+
+        files = Setup._collect_config_files()
+
+        assert {name for name, _, _ in files} == expected
+        assert all(
+            path.parent == config and status == "critical" for _, status, path in files
+        )
+        assert not (tmp_path / "Examples").exists()
+
+    def test_missing_installed_configs_are_reported(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        monkeypatch.setattr(Setup, "_PROJECT_ROOT", tmp_path)
+        with pytest.raises(FileNotFoundError, match="Config_Models.py"):
+            Setup._collect_config_files()
+
+    def test_review_step_does_not_run_copy_script(
+        self, monkeypatch: pytest.MonkeyPatch, _restore_argv: Any
+    ) -> None:
+        _patch_setup_common(monkeypatch)
+        scripts: list[str] = []
+        monkeypatch.setattr(
+            Setup, "_run_step", lambda **kwargs: scripts.append(kwargs["script"])
+        )
+        monkeypatch.setattr(Setup, "_run_setup_questions", lambda: None)
+        monkeypatch.setattr(Setup, "_confirm", lambda prompt: True)
+        files = [
+            ("Config_Models.py", "critical", Path("Configuration") / "Config_Models.py")
+        ]
+        monkeypatch.setattr(Setup, "_collect_config_files", lambda: files)
+        reviewed: list[object] = []
+        monkeypatch.setattr(
+            Setup,
+            "_review_config_files_interactive",
+            lambda selected: reviewed.append(selected) or True,
+        )
+        sys.argv = ["Setup.py", "--skip-signature-verification"]
+
+        Setup.main()
+
+        assert reviewed == [files]
+        assert "CopyExampleConfigs.py" not in scripts
+        assert "RecalcConfigHashes.py" in scripts
+
+    def test_vllm_selection_prints_orchestration_hint(
+        self,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        Setup._print_vllm_orchestration_hint("vllm")
+
+        output = capsys.readouterr().out
+        assert "configuration-driven orchestration" in output
+        assert "models, LLMs, embedders, and rerankers" in output
+        assert "https://github.com/HarinezumIgel/harinezumigel-llm-stack" in output
+
+    def test_ollama_selection_does_not_print_vllm_hint(
+        self,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        Setup._print_vllm_orchestration_hint("ollama")
+
+        assert capsys.readouterr().out == ""
+
+    def test_required_command_masks_credential_arguments(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        monkeypatch.setattr(
+            Setup.subprocess,
+            "run",
+            lambda command: SimpleNamespace(returncode=0),
+        )
+
+        Setup._run_required_command(
+            ["client", "--api-key", "command-line-secret"],
+            "client setup",
+        )
+
+        output = capsys.readouterr().out
+        assert "command-line-secret" not in output
+        assert "******" in output
+
+    @pytest.mark.parametrize(
+        "skip_review", ["--no-config-review", "--no-examples-copy"]
+    )
     def test_normal_mode_runs_spacy_step_before_rehash(
         self,
         monkeypatch: pytest.MonkeyPatch,
         _restore_argv: Any,
+        skip_review: str,
     ) -> None:
         _patch_setup_common(monkeypatch)
 
@@ -95,7 +202,7 @@ class TestSetupFlow:
 
         sys.argv = [
             "Setup.py",
-            "--no-examples-copy",
+            skip_review,
             "--skip-signature-verification",
         ]
         Setup.main()

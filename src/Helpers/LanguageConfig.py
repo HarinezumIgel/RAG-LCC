@@ -5,88 +5,12 @@ from __future__ import annotations
 from typing import Any, Dict
 
 
-def _cfg_get_list(cfg: Any, key: str, default: list[Any] | None = None) -> list[Any]:
-    fallback = default if default is not None else []
-    indirect_getter = getattr(cfg, "indirect_list", None)
-    if callable(indirect_getter):
-        try:
-            value = indirect_getter(key, fallback, silent=True)
-        except TypeError:
-            value = indirect_getter(key, fallback)
-        except Exception:
-            value = fallback
-        if isinstance(value, list):
-            return value
-        return fallback
-
-    getter = getattr(cfg, "get_list", None)
-    if callable(getter):
-        try:
-            value = getter(key, fallback, silent=True)
-        except TypeError:
-            value = getter(key, fallback)
-        except Exception:
-            value = fallback
-        if isinstance(value, list):
-            return value
-        return fallback
-
-    generic_get = getattr(cfg, "get", None)
-    if callable(generic_get):
-        try:
-            value = generic_get(key, fallback)
-        except Exception:
-            value = fallback
-        if isinstance(value, list):
-            return value
-    return fallback
-
-
-def _cfg_get_dict(
-    cfg: Any,
-    key: str,
-    default: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    fallback = default if default is not None else {}
-    indirect_getter = getattr(cfg, "indirect_dict", None)
-    if callable(indirect_getter):
-        try:
-            value = indirect_getter(key, fallback, silent=True)
-        except TypeError:
-            value = indirect_getter(key, fallback)
-        except Exception:
-            value = fallback
-        if isinstance(value, dict):
-            return value
-        return fallback
-
-    getter = getattr(cfg, "get_dict", None)
-    if callable(getter):
-        try:
-            value = getter(key, fallback, silent=True)
-        except TypeError:
-            value = getter(key, fallback)
-        except Exception:
-            value = fallback
-        if isinstance(value, dict):
-            return value
-        return fallback
-
-    generic_get = getattr(cfg, "get", None)
-    if callable(generic_get):
-        try:
-            value = generic_get(key, fallback)
-        except Exception:
-            value = fallback
-        if isinstance(value, dict):
-            return value
-    return fallback
-
-
 def get_lang_code_to_name(cfg: Any) -> dict[str, str]:
     """Return normalized ISO code -> language name mapping."""
     mapping: dict[str, str] = {"en": "english"}
-    raw_mapping = _cfg_get_dict(cfg, "_ARGOS_DEFINITIONS.LANG_CODE_TO_NAME", {})
+    raw_mapping: dict[str, Any] = cfg.indirect_dict(
+        "_ARGOS_DEFINITIONS.LANG_CODE_TO_NAME", {}, silent=True
+    )
     for code, name in raw_mapping.items():
         normalized_code = str(code or "").strip().lower()
         normalized_name = str(name or "").strip().lower()
@@ -124,7 +48,9 @@ def get_active_language_codes(cfg: Any) -> set[str]:
     """Return active language codes from ACTIVE_LANGUAGES, defaulting to English."""
     name_to_code = get_lang_name_to_code(cfg)
 
-    active_raw = _cfg_get_list(cfg, "_ARGOS_DEFINITIONS.ACTIVE_LANGUAGES", ["en"])
+    active_raw: list[Any] = cfg.indirect_list(
+        "_ARGOS_DEFINITIONS.ACTIVE_LANGUAGES", ["en"], silent=True
+    )
     active_codes: set[str] = set()
     for item in active_raw:
         token = str(item or "").strip().lower()
@@ -145,7 +71,9 @@ def get_active_argos_pairs(cfg: Any) -> list[tuple[str, str]]:
     """Return configured Argos pairs filtered to active language codes."""
     active_codes = get_active_language_codes(cfg)
     name_to_code = get_lang_name_to_code(cfg)
-    raw_pairs = _cfg_get_list(cfg, "_ARGOS_DEFINITIONS.ARGOS_LANGUAGES", [])
+    raw_pairs: list[Any] = cfg.indirect_list(
+        "_ARGOS_DEFINITIONS.ARGOS_LANGUAGES", [], silent=True
+    )
 
     pairs: list[tuple[str, str]] = []
     seen: set[tuple[str, str]] = set()

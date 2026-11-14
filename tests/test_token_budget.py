@@ -106,3 +106,46 @@ def test_token_budget_message_uses_active_backend_name(monkeypatch):
     assert any(
         "vLLM" in message and "context-length" in message for message in pretty.messages
     )
+
+
+def test_judge_uses_its_own_output_budget(monkeypatch):
+    from AI.TokenBudget import TokenBudget
+    from Configuration.Config_Models import _ACTIVE_LLM_JUDGE, _MODELS
+    from Helpers.Helpers import Helpers
+
+    TokenBudget._reset()
+    judge_args = _MODELS[_ACTIVE_LLM_JUDGE]["_LLM_JUDGE"]
+    main_args = _MODELS["mistral"]["_LLM"]
+    monkeypatch.setattr(
+        Helpers,
+        "get_model_args",
+        lambda self, selector: {
+            **(judge_args if selector == "_ACTIVE_LLM_JUDGE" else main_args),
+            "MODEL": "test-model",
+        },
+    )
+    try:
+        budget = TokenBudget(
+            cfg=GuardConfig(),
+            pretty=StubPrettyWriter(),
+            llm_caller=StubLLMCaller(),
+        )
+        assert (
+            budget.compute_dynamic_max_tokens(
+                "Review this answer",
+                "test-model",
+                silent=True,
+                model_role="_ACTIVE_LLM_JUDGE",
+            )
+            == 256
+        )
+        assert (
+            budget.compute_dynamic_max_tokens(
+                "Review this answer",
+                "test-model",
+                silent=True,
+            )
+            == 2048
+        )
+    finally:
+        TokenBudget._reset()

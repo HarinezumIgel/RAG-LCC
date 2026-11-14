@@ -145,6 +145,10 @@ class ConfigurationError(RAGLCCException):
     pass
 
 
+class QueryTranslationError(RAGLCCException):
+    """Raised when an indexed query cannot be translated to a required language."""
+
+
 class TesseractPathError(RAGLCCException):
     """Raised when no usable Tesseract executable can be resolved for OCR."""
 

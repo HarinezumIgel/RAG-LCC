@@ -25,6 +25,7 @@ import sys
 import types
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -41,12 +42,14 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 from fastapi import HTTPException
 from fastapi.responses import JSONResponse, StreamingResponse
 
+from Chat.FileSelector import ServiceFileSelector
 from Api.ChatCompletionHandler import (
     ChatMessage,
     ChatCompletionRequest,
     _buildQuery,
     _applyRequestToSession,
     _complianceResponse,
+    _isTitleRequest,
     handleRequest,
 )
 
@@ -59,10 +62,16 @@ class StubSession:
     """Minimal Session-like object with all attributes used by applyRequestToSession."""
 
     def __init__(self):
+        self.is_service: bool = False
         self.file_name: str | None = None
+        self.summary_length: str | None = None
+        self.summary_temperature: float | None = None
+        self.chunk_overlap: int | None = None
         self.file_path: str | None = None
         self.metadata_filters: dict[str, str] = {}
         self.query: str | None = None
+        self.user_query_input: str | None = None
+        self.indexed_query_error: str | None = None
         self.strategy: str | None = None
         self.orchestrator_flow: str | None = None
         self.retriever_k: int | None = None
@@ -117,15 +126,17 @@ class StubConfig:
         return default
 
     def get_dict(self, key, default=None, *, silent=False) -> dict:
+        if key == "_ORCHESTRATION_FLOW_ALIASES":
+            return {"THOROUGH_QUERY_REWRITE": "ENGLISH_ALL_MULTILEG"}
         return default if default is not None else {}
 
     def get_list(self, key, default=None, *, silent=False) -> list:
         _ = silent
         if key == "_ALLOWED_ORCHESTRATION_FLOWS":
             return [
-                "THOROUGH_QUERY_REWRITE",
-                "TRANSLATION_FOCUSED",
-                "ORIGINAL_LANGUAGE_VECTOR_ONLY",
+                "ENGLISH_ALL_MULTILEG",
+                "ENGLISH_ALL",
+                "ORIGINAL_VECTOR",
             ]
         if key == "_ALLOWED_RETRIEVE_MODES":
             return [
@@ -450,6 +461,18 @@ class TestBuildQuery:
         msgs = [self._msg("user", "what is a hedgehog?")]
         assert _buildQuery(msgs) == "what is a hedgehog?"
 
+    @pytest.mark.parametrize("prefix", ["new:", "NEW TOPIC:", "newtopic:"])
+    @pytest.mark.parametrize("system", ["", "Use the supplied evidence."])
+    def test_new_topic_prefix_is_not_part_of_model_input(self, prefix, system):
+        msgs = [
+            self._msg("system", system),
+            self._msg("user", f"  {prefix} What animals are mentioned?"),
+        ]
+        expected = "What animals are mentioned?"
+        if system:
+            expected = f"{system}\n\n{expected}"
+        assert _buildQuery(msgs) == expected
+
     def test_last_user_message_wins(self):
         msgs = [
             self._msg("user", "first question"),
@@ -526,6 +549,94 @@ class TestApplyRequestToSession:
 
     # --- collection / model -------------------------------------------------
 
+    def test_new_topic_preserves_raw_input_and_system_prompt(self):
+        raw = "new: What animals are mentioned?"
+        session = self._apply(
+            _base_req(
+                messages=[
+                    {"role": "system", "content": "Use the supplied evidence."},
+                    {"role": "user", "content": raw},
+                ]
+            )
+        )
+        assert session.user_query_input == raw
+        assert (
+            session.query == "Use the supplied evidence.\n\nWhat animals are mentioned?"
+        )
+
+        self._apply(
+            _base_req(messages=[{"role": "user", "content": "What do they eat?"}]),
+            session=session,
+        )
+        assert session.user_query_input == "What do they eat?"
+        assert session.query == "What do they eat?"
+
+    @pytest.mark.parametrize(
+        "params, filename, path, expected_filter",
+        [
+            ({"file": " doc.pdf "}, "doc.pdf", None, {"FileName": {"$eq": "doc.pdf"}}),
+            (
+                {"path": r'"D:\docs\doc.pdf"'},
+                None,
+                r"D:\docs\doc.pdf",
+                {"FilePath": {"$eq": r"D:\docs\doc.pdf"}},
+            ),
+            ({"file": ""}, None, None, None),
+            ({"path": " "}, None, None, None),
+        ],
+    )
+    def test_document_pin_sets_session_and_retrieval_filter(
+        self,
+        params,
+        filename,
+        path,
+        expected_filter,
+    ):
+        session = self._apply(_base_req(**params))
+        assert session.is_service is True
+        assert session.file_name == filename
+        assert session.file_path == path
+        assert session.base_kwargs is not None
+        assert session.base_kwargs.get("filter") == expected_filter
+
+    @pytest.mark.parametrize(
+        "params",
+        [
+            {"file": "doc.pdf", "path": r"D:\docs\other.pdf"},
+            {"file": r"D:\docs\doc.pdf"},
+            {"path": "D:\\docs\\"},
+            {"file": ".."},
+            {"path": "invalid\x00path"},
+        ],
+    )
+    def test_invalid_document_selection_rejected(self, params):
+        with pytest.raises(HTTPException) as exc:
+            self._apply(_base_req(**params))
+        assert exc.value.status_code == 400
+
+    def test_document_pin_does_not_leak_between_requests(self):
+        pinned = self._apply(_base_req(file="doc.pdf"))
+        unpinned = self._apply(_base_req())
+        assert pinned.file_name == "doc.pdf"
+        assert unpinned.file_name is None
+        assert unpinned.base_kwargs is not None
+        assert "filter" not in unpinned.base_kwargs
+
+    @pytest.mark.parametrize("mode", ["off", "heuristic", "llm", "both", " LLM "])
+    def test_confidence_evaluation_override(self, mode):
+        session = self._apply(_base_req(confidence_evaluation=mode))
+        assert session.confidence_evaluation == mode.strip().lower()
+
+    def test_invalid_confidence_mode_does_not_mutate_session(self):
+        session = StubSession()
+        session.collection_name = "TestCollection"
+        session.orchestrator_flow = "ENGLISH_ALL_MULTILEG"
+        session.confidence_evaluation = "heuristic"
+        with pytest.raises(HTTPException) as exc:
+            self._apply(_base_req(confidence_evaluation="invalid"), session=session)
+        assert exc.value.status_code == 400
+        assert session.confidence_evaluation == "heuristic"
+
     def test_collection_name_set_from_model(self):
         req = _base_req(model="DocsToLoadOrClassify")
         session = self._apply(req)
@@ -551,7 +662,7 @@ class TestApplyRequestToSession:
         session = StubSession()
         session.collection_name = "OldCollection"
         session.strategy = "NARROW"
-        session.orchestrator_flow = "THOROUGH_QUERY_REWRITE"
+        session.orchestrator_flow = "ENGLISH_ALL_MULTILEG"
         session.retriever_k = 77
         session.file_name = "doc.txt"
         session.file_path = "D:/OldCollection/doc.txt"
@@ -612,13 +723,13 @@ class TestApplyRequestToSession:
         req = _base_req(strategy="WIDE")
         _applyRequestToSession(req, StubSession(), RecordingQP(), StubConfig())
         assert called_with == ["WIDE"]
-        assert called_flow_with == ["THOROUGH_QUERY_REWRITE"]
+        assert called_flow_with == ["ENGLISH_ALL_MULTILEG"]
 
     def test_valid_orchestrator_flow_applied(self):
         for flow in (
-            "THOROUGH_QUERY_REWRITE",
-            "TRANSLATION_FOCUSED",
-            "ORIGINAL_LANGUAGE_VECTOR_ONLY",
+            "ENGLISH_ALL_MULTILEG",
+            "ENGLISH_ALL",
+            "ORIGINAL_VECTOR",
         ):
             session = StubSession()
             req = _base_req(orchestrator_flow=flow)
@@ -626,9 +737,42 @@ class TestApplyRequestToSession:
             assert session.orchestrator_flow == flow
 
     def test_orchestrator_flow_case_insensitive(self):
-        req = _base_req(orchestrator_flow="translation_focused")
+        req = _base_req(orchestrator_flow="english_all")
         session = self._apply(req)
-        assert session.orchestrator_flow == "TRANSLATION_FOCUSED"
+        assert session.orchestrator_flow == "ENGLISH_ALL"
+
+    def test_legacy_orchestrator_flow_alias_resolved(self):
+        req = _base_req(orchestrator_flow="thorough_query_rewrite")
+        session = self._apply(req)
+        assert session.orchestrator_flow == "ENGLISH_ALL_MULTILEG"
+
+    def test_removed_orchestrator_flow_raises_400(self):
+        req = _base_req(orchestrator_flow="TRANSLATION_FOCUSED")
+        with pytest.raises(HTTPException) as exc_info:
+            self._apply(req)
+        assert exc_info.value.status_code == 400
+
+    @pytest.mark.parametrize(
+        "source", ["REWRITTEN_QUERY", "translated_query", "ORIGINAL_QUERY"]
+    )
+    def test_rerank_query_source_override(self, source):
+        session = self._apply(_base_req(rerank_query_source=source))
+        assert session.rerank_query_source == source.upper()
+
+    def test_invalid_rerank_query_source_raises_400(self):
+        with pytest.raises(HTTPException) as exc_info:
+            self._apply(_base_req(rerank_query_source="BOGUS"))
+        assert exc_info.value.status_code == 400
+
+    @pytest.mark.parametrize("language", ["english", "NATIVE", " Native "])
+    def test_retrieval_language_override(self, language):
+        session = self._apply(_base_req(retrieval_language=language))
+        assert session.retrieval_language_override == language.strip().upper()
+
+    def test_invalid_retrieval_language_raises_400(self):
+        with pytest.raises(HTTPException) as exc_info:
+            self._apply(_base_req(retrieval_language="german"))
+        assert exc_info.value.status_code == 400
 
     def test_invalid_orchestrator_flow_raises_400(self):
         req = _base_req(orchestrator_flow="CUSTOM_FLOW")
@@ -809,6 +953,33 @@ class TestComplianceResponse:
 # ===========================================================================
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Generate a concise title summarizing the chat history.",
+        "### Task:\nSummarize this document.",
+        "Explain this prompt: ### Task:\nGenerate a concise title summarizing the chat history.",
+        "summarize: document.pdf",
+    ],
+)
+def test_title_detection_does_not_swallow_regular_queries(text):
+    assert not _isTitleRequest(_base_req(messages=[{"role": "user", "content": text}]))
+
+
+def test_title_detection_uses_last_user_message_only():
+    req = _base_req(
+        messages=[
+            {
+                "role": "user",
+                "content": "### Task:\nGenerate a concise title summarizing the chat history.",
+            },
+            {"role": "assistant", "content": '{"title": "RAG Chat"}'},
+            {"role": "user", "content": "summarize: document.pdf"},
+        ]
+    )
+    assert not _isTitleRequest(req)
+
+
 class TestHandleRequest:
     """
     All heavy deps are passed as stub instances so nothing real is ever
@@ -854,6 +1025,350 @@ class TestHandleRequest:
         finally:
             executor.shutdown(wait=False)
 
+    @pytest.mark.parametrize(
+        "prompt, expected",
+        [
+            (
+                "### Task:\nGenerate a concise, 3-5 word title for the chat.",
+                {"title": "RAG Chat"},
+            ),
+            (
+                "### Task:\nGenerate a concise title summarizing the chat history.\n"
+                "### Guidelines:\nKeep it short: 2-4 words is best.\n"
+                '### Output:\nJSON format: {"title": "your concise title here"}\n'
+                "### Chat History:\n<chat_history>\n"
+                "USER: summarize: document.pdf\nASSISTANT: \n</chat_history>",
+                {"title": "RAG Chat"},
+            ),
+            ("### Task:\nGenerate 1-3 broad tags for the chat.", {"tags": ["General"]}),
+            (
+                "### Task:\nSuggest 3-5 relevant follow-up questions for the chat.",
+                {"follow_ups": []},
+            ),
+        ],
+    )
+    @pytest.mark.parametrize("stream", [False, True])
+    def test_housekeeping_bypasses_rag_and_session_updates(
+        self, prompt, expected, stream, monkeypatch
+    ):
+        import Api.ChatCompletionHandler as module
+
+        apply_request = MagicMock(
+            side_effect=AssertionError("Unexpected session update")
+        )
+        monkeypatch.setattr(module, "_applyRequestToSession", apply_request)
+        chatter = MagicMock()
+        rag = MagicMock()
+        ai_helpers = MagicMock()
+        req = _base_req(
+            messages=[{"role": "user", "content": prompt}],
+            stream=stream,
+            max_tokens=1000,
+        )
+
+        response = self._run_handle(
+            req, chatter=chatter, rag=rag, ai_helpers=ai_helpers
+        )
+
+        if stream:
+            assert isinstance(response, StreamingResponse)
+
+            async def collect():
+                parts = []
+                async for part in response.body_iterator:
+                    parts.append(part.decode() if isinstance(part, bytes) else part)
+                return "".join(parts)
+
+            events = _run(collect())
+            payloads = [
+                json.loads(line[len("data: ") :])
+                for line in events.splitlines()
+                if line.startswith("data: ") and line != "data: [DONE]"
+            ]
+            content = "".join(
+                item["choices"][0]["delta"].get("content", "") for item in payloads
+            )
+            assert "data: [DONE]" in events
+        else:
+            assert isinstance(response, JSONResponse)
+            content = json.loads(response.body)["choices"][0]["message"]["content"]
+        assert json.loads(content) == expected
+        apply_request.assert_not_called()
+        assert chatter.mock_calls == []
+        assert rag.mock_calls == []
+        assert ai_helpers.mock_calls == []
+
+    def test_summary_settings_reach_api_session(self):
+        chatter = StubChatter()
+        chatter.run = MagicMock(wraps=chatter.run)
+        req = _base_req(stream=False)
+        req.summary_length = "very long"
+        req.summary_temperature = 0.0
+        req.chunk_overlap = 0
+        self._run_handle(req, chatter=chatter)
+        session = chatter.run.call_args.args[0]
+        assert session.summary_length == "very_long"
+        assert session.summary_temperature == 0.0
+        assert session.chunk_overlap == 0
+
+    @pytest.mark.parametrize("stream", [False, True])
+    def test_markdown_table_reaches_openwebui_unchanged(self, stream, monkeypatch):
+        monkeypatch.setenv("SERVE_IN_MEMORY_DOCS_HTTP", "0")
+        table = (
+            "| Animal | Mammal |\n| --- | --- |\n" "| Hedgehogs | yes |\n| Fish | N/A |"
+        )
+
+        class MarkdownChatter(StubChatter):
+            cfg = StubConfig()
+
+            def run(self, session, *, apiChunkHandler=None, is_streaming=None):
+                if apiChunkHandler is not None:
+                    apiChunkHandler(self._answer)
+                return True, self._answer
+
+        async def collect():
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                response = await handleRequest(
+                    req=_base_req(stream=stream),
+                    chatter=MarkdownChatter(answer=table),
+                    rag=StubRAG(),
+                    aiHelpers=StubAIHelpers(),
+                    queryParts=StubQueryParts(),
+                    cfg=StubConfig(),
+                    lock=asyncio.Lock(),
+                    executor=executor,
+                )
+                if isinstance(response, StreamingResponse):
+                    events = [
+                        json.loads(chunk.removeprefix("data: ").strip())
+                        async for chunk in response.body_iterator
+                        if isinstance(chunk, str) and "[DONE]" not in chunk
+                    ]
+                    return "".join(
+                        event["choices"][0]["delta"].get("content", "")
+                        for event in events
+                    )
+                return json.loads(response.body)["choices"][0]["message"]["content"]
+
+        assert _run(collect()) == table
+
+    @pytest.mark.parametrize(
+        "query, override",
+        [
+            ("What does it say?", None),
+            ("summarize:", None),
+            ("summarize: other.pdf", "other.pdf"),
+            ("summary:", None),
+            ("summary: other.pdf", "other.pdf"),
+        ],
+    )
+    @pytest.mark.parametrize("stream", [False, True])
+    @pytest.mark.parametrize(
+        "selection, filename, path, expected_filter",
+        [
+            ({"file": "doc.pdf"}, "doc.pdf", None, {"FileName": {"$eq": "doc.pdf"}}),
+            (
+                {"path": r"D:\docs\doc.pdf"},
+                None,
+                r"D:\docs\doc.pdf",
+                {"FilePath": {"$eq": r"D:\docs\doc.pdf"}},
+            ),
+        ],
+    )
+    def test_pinned_document_reaches_chat_and_summary_with_visible_notice(
+        self,
+        monkeypatch,
+        query,
+        override,
+        stream,
+        selection,
+        filename,
+        path,
+        expected_filter,
+    ):
+        monkeypatch.setenv("SERVE_IN_MEMORY_DOCS_HTTP", "0")
+
+        class RecordingChatter(StubChatter):
+            cfg = StubConfig()
+
+            def run(self, session, *, apiChunkHandler=None, is_streaming=None):
+                if apiChunkHandler is not None:
+                    apiChunkHandler(self._answer)
+                return True, self._answer
+
+        chatter = RecordingChatter(answer="Document answer.")
+        chatter.run = MagicMock(wraps=chatter.run)
+        req = _base_req(
+            **selection,
+            stream=stream,
+            messages=[ChatMessage(role="user", content=query)],
+        )
+
+        async def collect():
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                response = await handleRequest(
+                    req=req,
+                    chatter=chatter,
+                    rag=StubRAG(),
+                    aiHelpers=StubAIHelpers(),
+                    queryParts=StubQueryParts(),
+                    cfg=StubConfig(),
+                    lock=asyncio.Lock(),
+                    executor=executor,
+                )
+                if isinstance(response, StreamingResponse):
+                    events = [
+                        json.loads(chunk.removeprefix("data: ").strip())
+                        async for chunk in response.body_iterator
+                        if isinstance(chunk, str) and "[DONE]" not in chunk
+                    ]
+                    return "".join(
+                        event["choices"][0]["delta"].get("content", "")
+                        for event in events
+                    )
+                return json.loads(response.body)["choices"][0]["message"]["content"]
+
+        content = _run(collect())
+        session = chatter.run.call_args.args[0]
+        assert session.query == query
+        assert session.file_name == filename
+        assert session.file_path == path
+        assert session.base_kwargs["filter"] == expected_filter
+        assert content.startswith(
+            f"Pinned document (chat and summarize): {path or filename}"
+        )
+        assert "Document answer." in content
+        if override:
+            assert (
+                f"Summary target for this turn: {override} (pin unchanged)" in content
+            )
+        else:
+            assert "Summary target for this turn" not in content
+
+    @pytest.mark.parametrize("command", ["b", "b:", " B: "])
+    @pytest.mark.parametrize("stream", [False, True])
+    def test_terminal_navigation_is_not_sent_to_pipeline(self, command, stream):
+        chatter = MagicMock()
+        rag = MagicMock()
+        ai_helpers = MagicMock()
+        req = _base_req(
+            stream=stream,
+            messages=[ChatMessage(role="user", content=command)],
+        )
+        response = self._run_handle(
+            req, chatter=chatter, rag=rag, ai_helpers=ai_helpers
+        )
+        if not stream:
+            content = json.loads(response.body)["choices"][0]["message"]["content"]
+            assert "not available in OpenWebUI" in content
+        chatter.run.assert_not_called()
+        rag.set_vector_store.assert_not_called()
+        ai_helpers.check_user_prompt_with_filter_chain.assert_not_called()
+
+    def test_summary_lookup_failure_preserves_pin_notice(self):
+        class MissingDocumentChatter(StubChatter):
+            def run(self, session, **kwargs):
+                session.indexed_query_error = (
+                    "Summarize: no indexed chunks found for missing.pdf."
+                )
+                return False, session.indexed_query_error
+
+        response = self._run_handle(
+            _base_req(
+                file="missing.pdf",
+                messages=[ChatMessage(role="user", content="summarize:")],
+            ),
+            chatter=MissingDocumentChatter(),
+        )
+        content = json.loads(response.body)["choices"][0]["message"]["content"]
+        assert content.startswith("Pinned document (chat and summarize): missing.pdf")
+        assert "no indexed chunks found" in content
+        assert "compliance check" not in content
+
+    def test_summary_without_pin_lists_grounded_documents(self):
+        class IndexedRag(StubRAG):
+            def indexed_file_metadata(self, session, file_names):
+                assert file_names == ["doc.pdf", "other.pdf"]
+                return [
+                    {"FileName": "doc.pdf", "FilePath": r"D:\docs\doc.pdf"},
+                    {"FileName": "other.pdf", "FilePath": r"D:\docs\other.pdf"},
+                ]
+
+        chatter = StubChatter()
+        chatter.run = MagicMock(wraps=chatter.run)
+        req = _base_req(
+            messages=[
+                {"role": "user", "content": "What is in these docs?"},
+                {
+                    "role": "assistant",
+                    "content": "Answer\n\n---\n📄 **Sources**\n- doc.pdf\n- other.pdf\n",
+                },
+                {"role": "user", "content": "summarize:"},
+            ]
+        )
+
+        response = self._run_handle(req, chatter=chatter, rag=IndexedRag())
+
+        content = json.loads(response.body)["choices"][0]["message"]["content"]
+        assert "1. 👉 `D:\\docs\\doc.pdf`" in content
+        assert "2. 👉 `D:\\docs\\other.pdf`" in content
+        assert "`cancel`" in content
+        chatter.run.assert_not_called()
+
+    def test_service_numbered_selection_runs_summary_for_selected_path(self):
+        selected_path = r"D:\docs\other.pdf"
+        listed = ServiceFileSelector.format_choices([r"D:\docs\doc.pdf", selected_path])
+        chatter = StubChatter()
+        chatter.run = MagicMock(wraps=chatter.run)
+        ai_helpers = MagicMock(spec=StubAIHelpers)
+        req = _base_req(
+            messages=[
+                {"role": "user", "content": "What is in these docs?"},
+                {"role": "assistant", "content": listed},
+                {"role": "user", "content": "2"},
+            ]
+        )
+
+        response = self._run_handle(req, chatter=chatter, ai_helpers=ai_helpers)
+
+        session = chatter.run.call_args.args[0]
+        content = json.loads(response.body)["choices"][0]["message"]["content"]
+        assert session.query == f"summarize: {selected_path}"
+        assert "The hedgehog answer." in content
+        ai_helpers.check_user_prompt_with_filter_chain.assert_not_called()
+
+    def test_service_cancel_reply_does_not_run_summary(self):
+        listed = ServiceFileSelector.format_choices([r"D:\docs\doc.pdf"])
+        chatter = StubChatter()
+        chatter.run = MagicMock(wraps=chatter.run)
+        req = _base_req(
+            messages=[
+                {"role": "assistant", "content": listed},
+                {"role": "user", "content": "cancel"},
+            ]
+        )
+
+        response = self._run_handle(req, chatter=chatter)
+
+        content = json.loads(response.body)["choices"][0]["message"]["content"]
+        assert content == "Summarization cancelled. Nothing was summarized."
+        chatter.run.assert_not_called()
+
+    @pytest.mark.parametrize(
+        "name, value",
+        [
+            ("summary_length", "huge"),
+            ("summary_temperature", -1.0),
+            ("chunk_overlap", -1),
+        ],
+    )
+    def test_invalid_summary_settings_rejected(self, name, value):
+        req = _base_req(stream=False)
+        setattr(req, name, value)
+        with pytest.raises(HTTPException) as exc:
+            _applyRequestToSession(req, StubSession(), StubQueryParts(), StubConfig())
+        assert exc.value.status_code == 400
+
     # --- happy path: non-streaming ------------------------------------------
 
     def test_non_streaming_returns_json_response(self):
@@ -874,6 +1389,25 @@ class TestHandleRequest:
         assert body["choices"][0]["message"]["role"] == "assistant"
         assert body["model"] == "AnimalDocs"
 
+    def test_grounded_document_link_precedes_answer(self, monkeypatch):
+        monkeypatch.setenv("SERVE_IN_MEMORY_DOCS_HTTP", "1")
+        link_block = "[Grounded document](https://example.test/marked/source.pdf)\n\n"
+        monkeypatch.setattr(
+            "Api.ChatCompletionHandler.register_marked_documents",
+            lambda *_args: link_block,
+        )
+
+        response = self._run_handle(
+            _base_req(stream=True), answer="The grounded answer."
+        )
+
+        assert isinstance(response, JSONResponse)
+        content = json.loads(response.body)["choices"][0]["message"]["content"]
+        assert content.startswith(link_block)
+        assert content.index("Grounded document") < content.index(
+            "The grounded answer."
+        )
+
     def test_non_streaming_response_shape(self):
         resp = self._run_handle(_base_req(stream=False))
         body = json.loads(resp.body)
@@ -881,6 +1415,69 @@ class TestHandleRequest:
         assert body["object"] == "chat.completion"
         assert "created" in body
         assert "usage" in body
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            "summarize:",
+            "summarize: doc.pdf",
+            r"SuMmArIzE: D:\docs\doc.pdf",
+        ],
+    )
+    @pytest.mark.parametrize("stream", [False, True])
+    def test_summary_skips_prompt_checks_and_preserves_command(self, command, stream):
+        class SummaryChatter(StubChatter):
+            cfg = StubConfig()
+
+            def run(self, session, *, apiChunkHandler=None, is_streaming=None):
+                if apiChunkHandler is not None:
+                    apiChunkHandler(self._answer)
+                return True, self._answer
+
+        chatter = SummaryChatter(answer="Document summary with confidence.")
+        chatter.run = MagicMock(wraps=chatter.run)
+        ai_helpers = MagicMock(spec=StubAIHelpers)
+        rag = StubRAG()
+        rag.intent_filter = MagicMock()
+        req = ChatCompletionRequest(
+            model="AnimalDocs",
+            stream=stream,
+            messages=[
+                ChatMessage(role="system", content="Operator instructions."),
+                ChatMessage(role="user", content=command),
+            ],
+        )
+
+        async def collect():
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                response = await handleRequest(
+                    req=req,
+                    chatter=chatter,
+                    rag=rag,
+                    aiHelpers=ai_helpers,
+                    queryParts=StubQueryParts(),
+                    cfg=StubConfig(),
+                    lock=asyncio.Lock(),
+                    executor=executor,
+                    serviceCfgDebugLevel=0,
+                )
+                if isinstance(response, StreamingResponse):
+                    return "".join(
+                        [
+                            chunk if isinstance(chunk, str) else bytes(chunk).decode()
+                            async for chunk in response.body_iterator
+                        ]
+                    )
+                return bytes(response.body).decode()
+
+        result = _run(collect())
+
+        assert "Document summary with confidence." in result
+        chatter.run.assert_called_once()
+        assert chatter.run.call_args.args[0].query == command
+        ai_helpers.check_user_prompt_with_filter_chain.assert_not_called()
+        ai_helpers.check_prompt_with_llm_guard.assert_not_called()
+        rag.intent_filter.score_query.assert_not_called()
 
     # --- happy path: streaming ----------------------------------------------
 
@@ -959,14 +1556,54 @@ class TestHandleRequest:
 
         class MissingRAG:
             def set_vector_store(self, session):
-                raise CollectionNotFoundError("unknown_collection")
+                raise CollectionNotFoundError("internal collection detail")
 
         req = _base_req(stream=False)
         resp = self._run_handle(req, rag=MissingRAG())
         body = json.loads(resp.body)
         content = body["choices"][0]["message"]["content"]
-        assert "ragchatservice" in content.lower()
-        assert "unknown_collection" in content
+        assert "collection unavailable" in content.lower()
+        assert "internal collection detail" not in content
+        assert "Reference: ragchat-" in content
+
+    @pytest.mark.parametrize("stream", [False, True])
+    def test_embed_model_mismatch_advises_selecting_compatible_collection(self, stream):
+        from Commons.Exceptions import EmbedModelMismatch
+
+        class MismatchedRAG:
+            def set_vector_store(self, session):
+                raise EmbedModelMismatch("private stored and current model details")
+
+        req = _base_req(stream=stream)
+        resp = self._run_handle(req, rag=MismatchedRAG())
+        if stream:
+            assert isinstance(resp, StreamingResponse)
+
+            async def collect():
+                chunks: list[str] = []
+                async for chunk in resp.body_iterator:
+                    chunks.append(
+                        chunk.decode() if isinstance(chunk, bytes) else str(chunk)
+                    )
+                return "".join(chunks)
+
+            response_text = _run(collect())
+            payloads = [
+                json.loads(line[len("data: ") :])
+                for line in response_text.splitlines()
+                if line.startswith("data: ") and line != "data: [DONE]"
+            ]
+            content = "".join(
+                item["choices"][0]["delta"].get("content", "") for item in payloads
+            )
+            assert "data: [DONE]" in response_text
+        else:
+            content = json.loads(resp.body)["choices"][0]["message"]["content"]
+
+        assert "\u26a0\ufe0f" in content
+        assert "select a collection built with the active embedder" in content
+        assert "private stored and current model details" not in content
+        assert "Reference: ragchat-" in content
 
     # --- LLMResultError → 502 -----------------------------------------------
 
@@ -981,7 +1618,63 @@ class TestHandleRequest:
         resp = self._run_handle(req, chatter=FailingChatter())
         body = json.loads(resp.body)
         content = body["choices"][0]["message"]["content"]
-        assert "llm" in content.lower() or "ragchatservice" in content.lower()
+        assert "request could not be completed" in content.lower()
+        assert "LLM timed out" not in content
+
+    def test_translation_error_is_not_reported_as_compliance_refusal(self):
+        class _TranslationFailure(StubChatter):
+            def run(self, session, **kwargs):
+                session.indexed_query_error = (
+                    "Retrieval stopped: Cannot translate document language 'fr'."
+                )
+                return False, session.indexed_query_error
+
+        response = self._run_handle(
+            _base_req(stream=False), chatter=_TranslationFailure()
+        )
+        content = json.loads(response.body)["choices"][0]["message"]["content"]
+        assert "Retrieval stopped" in content and "'fr'" in content
+        assert "compliance check" not in content
+
+    def test_streamed_translation_error_is_not_followed_by_compliance_refusal(self):
+        from types import SimpleNamespace
+        from Api.ChatCompletionHandler import _streamGenerator
+
+        class _TranslationFailure(StubChatter):
+            cfg = StubConfig()
+
+            def run(self, session, *, apiChunkHandler=None, **kwargs):
+                session.indexed_query_error = (
+                    "Retrieval stopped: Cannot translate document language 'fr'."
+                )
+                apiChunkHandler(session.indexed_query_error)
+                return False, session.indexed_query_error
+
+        async def collect():
+            lock = asyncio.Lock()
+            await lock.acquire()
+            session = SimpleNamespace(indexed_query_error=None)
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                chunks = [
+                    chunk
+                    async for chunk in _streamGenerator(
+                        _TranslationFailure(),
+                        session,
+                        "request",
+                        "model",
+                        asyncio.get_running_loop(),
+                        executor,
+                        lock,
+                    )
+                ]
+            assert not lock.locked()
+            return "".join(chunks)
+
+        result = _run(collect())
+        assert "Retrieval stopped" in result and "'fr'" in result
+        assert "compliance check" not in result
+        assert '"finish_reason":"stop"' in result
+        assert "[DONE]" in result
 
     def test_vllm_backend_error_returns_backend_specific_message(self):
         from Commons.Exceptions import VllmNotRunning
@@ -997,6 +1690,8 @@ class TestHandleRequest:
         assert resp.status_code == 503
         body = json.loads(resp.body)
         assert "vllm" in body["detail"].lower()
+        assert "http://example/v1/models" not in body["detail"]
+        assert "Reference: ragchat-" in body["detail"]
 
     # --- generic exception → 500 --------------------------------------------
 
@@ -1009,4 +1704,6 @@ class TestHandleRequest:
         resp = self._run_handle(req, rag=BrokenRAG())
         body = json.loads(resp.body)
         content = body["choices"][0]["message"]["content"]
-        assert "ragchatservice" in content.lower() or "disk full" in content.lower()
+        assert "request could not be completed" in content.lower()
+        assert "disk full" not in content.lower()
+        assert "Reference: ragchat-" in content

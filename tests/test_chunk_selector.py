@@ -575,6 +575,56 @@ class TestFilterThresholdLowRecallRescue:
         assert rescued in result
         assert session.rerank_partial_recall_rescue_triggered is True
 
+    def test_reserves_rescue_slot_for_retrieval_ranked_table_without_query_overlap(
+        self,
+    ):
+        session = _StubSession(threshold=0.60, boost=1.0)
+        session.post_rewrite_query_en = "show me the pcie card slots"
+        sel = _make_selector(session)
+
+        hits = [
+            _make_chunk(
+                score=0.80,
+                path="/docs/ts_p620_user_guide.pdf",
+                content=f"page {i} pcie card procedure",
+            )
+            for i in range(7)
+        ]
+        table = _make_chunk(
+            score=-7.0,
+            path="/docs/ts_p620_user_guide.pdf",
+            content="Table 2 | Page 12\nColumns: column_1 | column_2\nRow 1: x16 | x8",
+        )
+        table.metadata["TableIndex"] = 2
+        table.metadata["rrf_score"] = 0.97
+
+        lexical_misses = [
+            _make_chunk(
+                score=-8.0 - (i * 0.01),
+                path="/docs/ts_p620_user_guide.pdf",
+                content=f"pcie card slots noise chunk {i}",
+            )
+            for i in range(45)
+        ]
+        for i, chunk in enumerate(lexical_misses):
+            chunk.metadata["rrf_score"] = 0.50 - (i * 0.001)
+
+        result = sel.filter_threshold(hits + [table] + lexical_misses)
+
+        assert table in result
+        assert session.rerank_partial_recall_rescue_triggered is True
+        messages = [str(args[2]) for args, _kwargs in session.pretty.calls]
+        assert any(
+            "Kept the best retrieval-ranked table chunk" in message
+            and "ts_p620_user_guide.pdf | Table 2 | Page 12" in message
+            and "retrieval score=0.9700" in message
+            for message in messages
+        )
+        assert any(
+            "17 local chunk(s) (16 with query overlap)" in message
+            for message in messages
+        )
+
     def test_rescue_can_be_disabled_by_flow_toggle(self):
         """Flow knob can disable low-recall rescue while keeping thresholding active."""
         session = _StubSession(

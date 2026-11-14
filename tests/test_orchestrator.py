@@ -3,7 +3,7 @@
 # pyright: reportArgumentType=false, reportPrivateUsage=false
 # pyright: reportUnknownArgumentType=false, reportMissingTypeArgument=false
 # pyright: reportAttributeAccessIssue=false, reportUnusedImport=false
-"""Tests for Chat.Orchestrator.
+"""Tests for Orchestrator.Orchestrator.
 
 These tests verify orchestration sequencing, early-exit branches, and debug
 trace emission at level 28.
@@ -11,13 +11,18 @@ trace emission at level 28.
 
 import os
 import sys
+from dataclasses import replace
+from types import SimpleNamespace
 from typing import Any
+from unittest.mock import MagicMock
 
 import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from Chat.Orchestrator import Orchestrator
+from Orchestrator.Orchestrator import Orchestrator
+from Orchestrator.OrchestratorTypes import GuardrailInputs
+from Commons.Exceptions import ConfigurationError, QueryTranslationError
 from Gui.Colors import BRIGHT_GREEN, CYAN
 
 
@@ -45,6 +50,7 @@ class StubSession:
         self.orig_translated_query_en: str | None = "Q1"
         self.seed_retrieval_query: str | None = None
         self.t1_query: str | None = None
+        self.enable_keyword_action_splitter: bool | None = False
         self.debug_level: int = 0
         self.debug_mode: str = "ge"
 
@@ -213,6 +219,9 @@ class HostStub:
         self.calls: list[str] = []
         self.merge_args: tuple[Any, ...] | None = None
 
+    def _normalize_language_bucket(self, language: Any) -> str | None:
+        return str(language or "").strip().lower() or None
+
     @staticmethod
     def _mode_flags_for_local_retrievers(
         retrieve_mode: str,
@@ -322,9 +331,14 @@ class _LocalCfgStub:
         self,
         pairs: list[list[str]] | None = None,
         active_languages: list[str] | None = None,
+        indexed_settings: dict[str, Any] | None = None,
     ) -> None:
         self.pairs = pairs or [["en", "de"]]
         self.active_languages = active_languages or ["en", "de"]
+        self.indexed_settings = indexed_settings or {}
+
+    def get_dict(self, key: str, default: Any, silent: bool = False) -> Any:
+        return dict(self.indexed_settings) if key == "_INDEXED_QUERY" else default
 
     def get_list(self, key: str, default: Any, silent: bool = False) -> Any:
         _ = (default, silent)
@@ -333,6 +347,9 @@ class _LocalCfgStub:
         if key == "_ARGOS_DEFINITIONS.ARGOS_LANGUAGES":
             return list(self.pairs)
         return []
+
+    indirect_list = get_list
+    indirect_dict = get_dict
 
 
 class _LocalSharedStub:
@@ -420,10 +437,12 @@ class LocalHostStub:
         language_bucket: str | None,
         primary_query: str,
         guardrail_query: str,
+        enable_translation: bool = True,
+        enable_synonym_expansion: bool = False,
     ) -> tuple[str, str]:
         _ = mySession
         target_language = self._normalize_language_bucket(language_bucket)
-        if not target_language:
+        if not target_language or not enable_translation:
             return primary_query, guardrail_query
 
         if not target_language:
@@ -773,6 +792,45 @@ class TestOrchestrator:
         assert bool(getattr(session, "enable_low_score_fallback", True)) is False
         assert bool(getattr(session, "enable_low_recall_rescue", True)) is False
 
+    def test_pre_gate_disabled_stages_provide_explicit_empty_inputs(self) -> None:
+        host = HostStub(set_vector_ok=True, gate_result=False)
+        session = StubSession()
+        session.user_query_original = "Wie leben Igel?"
+        session.user_language = "german"
+        orchestrator = Orchestrator(host)
+        profile = orchestrator.orchestratorOverrides.resolve_orchestration_flow_profile(
+            session
+        )
+        profile = replace(
+            profile,
+            enable_keyword_action_splitter=False,
+            enable_query_rewrite=False,
+            enable_pronoun_substitution=False,
+            enable_guardrail_leg=False,
+            enable_original_language_vector_leg=False,
+            enable_vector_alternate_queries=False,
+            enable_indexed_query_shaping=False,
+            enable_indexed_query_translation=False,
+            enable_indexed_query_wordnet_expansion=False,
+        )
+
+        result = orchestrator._run_pre_gate_pipeline(session, flow_profile=profile)
+
+        assert result.should_abort is False
+        assert result.post_gate_inputs is not None
+        assert result.post_gate_inputs.resolved_guardrail == GuardrailInputs(
+            primary_query="Q2",
+            guardrail_query="",
+            use_guardrail=False,
+        )
+        assert result.post_gate_inputs.alternate_queries == []
+        assert result.post_gate_inputs.enable_original_language_vector_leg is False
+        assert result.post_gate_inputs.enable_indexed_query_shaping is False
+        assert result.post_gate_inputs.enable_indexed_query_translation is False
+        assert result.post_gate_inputs.enable_indexed_query_wordnet_expansion is False
+        assert session.enable_query_rewrite is False
+        assert session.enable_pronoun_substitution is False
+
     def test_run_emits_yellow_flow_stage_knob_status_lines(
         self,
         monkeypatch: pytest.MonkeyPatch,
@@ -876,7 +934,7 @@ class TestOrchestrator:
             for message, color in knob_messages
         )
 
-    def test_resolve_flow_profile_reads_indexed_translation_and_synonym_flags(
+    def test_resolve_flow_profile_reads_indexed_translation_and_wordnet_flags(
         self,
     ) -> None:
         class _CfgStub:
@@ -885,7 +943,8 @@ class TestOrchestrator:
                     return {
                         "FLOW_FLAGS": {
                             "translate_indexed_queries": False,
-                            "expand_indexed_queries": False,
+                            "expand_indexed_queries_with_wordnet": False,
+                            "confidence_evaluation": "llm",
                         }
                     }
                 return default if isinstance(default, dict) else {}
@@ -909,11 +968,20 @@ class TestOrchestrator:
         session = StubSession()
         orchestrator = Orchestrator(host)
 
-        profile = orchestrator._resolve_orchestration_flow_profile(session)
+        profile = orchestrator.orchestratorOverrides.resolve_orchestration_flow_profile(
+            session
+        )
 
         assert profile.name == "FLOW_FLAGS"
         assert profile.enable_indexed_query_translation is False
-        assert profile.enable_indexed_query_synonym_expansion is False
+        assert profile.enable_indexed_query_wordnet_expansion is False
+        assert profile.confidence_evaluation == "llm"
+        session.confidence_evaluation = "off"
+        effective = orchestrator.orchestratorOverrides.resolve_effective_flow_profile_for_session(
+            session, profile
+        )
+        assert effective.confidence_evaluation == "off"
+        assert profile.confidence_evaluation == "llm"
 
     def test_run_disables_low_recall_rescue_when_rerank_cli_off(
         self,
@@ -1472,6 +1540,111 @@ class TestOrchestrator:
 
 
 class TestLocalRetrievalOrchestration:
+    @pytest.mark.parametrize(
+        ("flow_flag", "docs_field"),
+        [
+            ("_flow_enable_vector_retriever", "vector_docs"),
+            ("_flow_enable_bm25_retriever", "bm25_docs"),
+            ("_flow_enable_graph_retriever", "graph_docs"),
+            ("_flow_enable_regex_retriever", "regex_docs"),
+        ],
+    )
+    def test_disabled_flow_retriever_contributes_no_docs(
+        self,
+        flow_flag: str,
+        docs_field: str,
+    ) -> None:
+        host = LocalHostStub(use_guardrail=False)
+        session = LocalSessionStub()
+        orchestrator = Orchestrator(host)
+        setattr(orchestrator, flow_flag, False)
+
+        local_docs = orchestrator._run_local_docs_stage(
+            session,
+            retrieve_mode="ALL",
+            bm25_query="question",
+            alternate_queries=[],
+            orig_translated_query_en="question",
+            resolved_guardrail=GuardrailInputs("question", "", False),
+        )
+
+        assert getattr(local_docs, docs_field) == []
+
+    def test_all_flow_retrievers_disabled_returns_no_results_without_answer_generation(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from Chat.Chatter import Chatter
+
+        monkeypatch.setenv("WEB_SEARCH_MODE", "0")
+        host = LocalHostStub(use_guardrail=False)
+        orchestrator = Orchestrator(host)
+        for flow_flag in (
+            "_flow_enable_vector_retriever",
+            "_flow_enable_bm25_retriever",
+            "_flow_enable_graph_retriever",
+            "_flow_enable_regex_retriever",
+        ):
+            setattr(orchestrator, flow_flag, False)
+
+        class _NoPathsRag:
+            @staticmethod
+            def parse_chat_command(_query: str) -> tuple[str, str]:
+                return "", ""
+
+            def retrieve(self, _session: Any) -> tuple[str, int]:
+                local_docs = orchestrator._run_local_docs_stage(
+                    LocalSessionStub(),
+                    retrieve_mode="ALL",
+                    bm25_query="question",
+                    alternate_queries=[],
+                    orig_translated_query_en="question",
+                    resolved_guardrail=GuardrailInputs("question", "", False),
+                )
+                assert local_docs.vector_docs == []
+                assert local_docs.bm25_docs == []
+                assert local_docs.graph_docs == []
+                assert local_docs.regex_docs == []
+                return "", 0
+
+        chatter = MagicMock()
+        chatter.is_streaming = False
+        chatter.rag = _NoPathsRag()
+        chatter.prompt = "{context}\n{input}"
+        chatter.cfg = SimpleNamespace(
+            get_str=lambda key, *_args: "RAGChat" if key == "_FRIENDLY_NAME" else "",
+            get=lambda key, default=None: (
+                120 if key == "TERMINAL_LINE_SIZE" else default
+            ),
+        )
+        chatter.pretty.write = MagicMock()
+        chatter.print_llm_answer = MagicMock()
+        chatter.confidence_logger.flush_turn_csv = MagicMock()
+        chatter.llmCaller.call_llm = MagicMock()
+        chatter._build_query_notice.return_value = ""
+        chatter._handle_no_results.side_effect = (
+            lambda *args: Chatter._handle_no_results(chatter, *args)
+        )
+        session = SimpleNamespace(
+            query="question",
+            retrieve_mode="ALL",
+            retriever_k=5,
+            max_output_tokens=128,
+            temperature=0.1,
+            top_k=20,
+            top_p=0.9,
+            clarification_response=None,
+            debug_level=0,
+            debug_mode="ge",
+        )
+
+        success, response = Chatter.run(chatter, session, is_streaming=False)
+
+        assert success is True
+        assert response is not None
+        assert "context is empty" in response
+        chatter.llmCaller.call_llm.assert_not_called()
+
     def test_run_local_retrievers_stores_guardrail_counts_when_active(self) -> None:
         host = LocalHostStub(use_guardrail=True)
         session = LocalSessionStub()
@@ -1491,7 +1664,11 @@ class TestLocalRetrievalOrchestration:
         assert bm25_docs == ["b1", "b2"]
         assert graph_docs == []
         assert regex_docs == []
-        assert host.last_run_indexed_args == ("Q2", True, {"FileName": "A.txt"})
+        assert host.last_run_indexed_args == (
+            "Q2",
+            True,
+            {"FileName": "A.txt", "Language": "en"},
+        )
         assert host.indexed_stage_labels == [["BM25"]]
         assert host.last_store_args == (2, 3)
         assert session.retrieval_top_k_orig_query_en == 2
@@ -1516,7 +1693,11 @@ class TestLocalRetrievalOrchestration:
         assert bm25_docs == ["b1"]
         assert graph_docs == []
         assert regex_docs == []
-        assert host.last_run_indexed_args == ("Q2", False, {"FileName": "A.txt"})
+        assert host.last_run_indexed_args == (
+            "Q2",
+            False,
+            {"FileName": "A.txt", "Language": "en"},
+        )
         assert host.indexed_stage_labels == [["BM25"]]
         assert host.last_store_args is None
         assert session.retrieval_top_k_orig_query_en is None
@@ -1546,7 +1727,7 @@ class TestLocalRetrievalOrchestration:
         assert regex_docs == ["r1"]
         assert host.indexed_stage_labels == [["BM25"], ["Graph"], ["Regex"]]
         assert host.run_indexed_file_filters == [
-            {"FileName": "A.txt"},
+            {"FileName": "A.txt", "Language": "en"},
             {"FileName": "A.txt", "Language": "en"},
             {"FileName": "A.txt", "Language": "en"},
         ]
@@ -1639,15 +1820,17 @@ class TestLocalRetrievalOrchestration:
             guardrail_query: str,
         ) -> Any:
             _ = (mySession, file_filter, primary_query, guardrail_query)
-            return _Invocation(
-                {"FileName": "B.txt"},
-                "Q2|bm25",
-                "Q1|bm25",
-            )
+            return [
+                _Invocation(
+                    {"FileName": "B.txt"},
+                    "Q2|bm25",
+                    "Q1|bm25",
+                )
+            ]
 
         monkeypatch.setattr(
             orchestrator,
-            "_bm25_stage_invocation",
+            "_bm25_stage_invocations",
             _fake_bm25_stage_invocation,
         )
 
@@ -1865,7 +2048,7 @@ class TestLocalRetrievalOrchestration:
                 self.alternate_queries = ["ALT1", "ALT2"]
                 self.file_filter = {"FileName": "A.txt"}
 
-        class _LocalStageResult:
+        class LocalStageResult:
             def __init__(self) -> None:
                 self.local_docs = type(
                     "_Docs",
@@ -1907,7 +2090,7 @@ class TestLocalRetrievalOrchestration:
             nonlocal captured_local_stage_inputs
             _ = mySession
             captured_local_stage_inputs = local_inputs
-            return _LocalStageResult()
+            return LocalStageResult()
 
         monkeypatch.setattr(
             orchestrator,
@@ -2033,7 +2216,7 @@ class TestLocalRetrievalOrchestration:
                 self.alternate_queries = []
                 self.file_filter = {"FileName": "A.txt"}
 
-        class _LocalStageResult:
+        class LocalStageResult:
             def __init__(self) -> None:
                 self.local_docs = type(
                     "_Docs",
@@ -2073,7 +2256,7 @@ class TestLocalRetrievalOrchestration:
             local_inputs: Any,
         ) -> Any:
             _ = (mySession, local_inputs)
-            return _LocalStageResult()
+            return LocalStageResult()
 
         def _fake_store_guardrail_topk_if_enabled(
             mySession: LocalSessionStub,
@@ -2262,6 +2445,7 @@ class TestLocalRetrievalOrchestration:
         )
         session = LocalSessionStub()
         orchestrator = Orchestrator(host)
+        orchestrator._indexed_alternate_queries = ["ALT1", "ALT2"]
 
         stage_filters = [
             {"FileName": "A.txt", "Language": "de"},
@@ -2307,10 +2491,92 @@ class TestLocalRetrievalOrchestration:
             guardrail_query="Q1",
         )
 
-        assert [it.language_bucket for it in iterations] == ["de", "en"]
-        assert [it.file_filter for it in iterations] == stage_filters
-        assert [it.primary_query for it in iterations] == ["Q2|de", "Q2|en"]
-        assert [it.guardrail_query for it in iterations] == ["Q1|de", "Q1|en"]
+        assert [it.language_bucket for it in iterations] == [
+            "de",
+            "de",
+            "de",
+            "en",
+            "en",
+            "en",
+        ]
+        assert [it.file_filter for it in iterations] == [
+            stage_filters[0],
+            stage_filters[0],
+            stage_filters[0],
+            stage_filters[1],
+            stage_filters[1],
+            stage_filters[1],
+        ]
+        assert [it.primary_query for it in iterations] == [
+            "Q2|de",
+            "ALT1|de",
+            "ALT2|de",
+            "Q2|en",
+            "ALT1|en",
+            "ALT2|en",
+        ]
+        assert [it.guardrail_query for it in iterations] == [
+            "Q1|de",
+            "",
+            "",
+            "Q1|en",
+            "",
+            "",
+        ]
+        status_messages = [
+            str(call[0][2])
+            for call in host.pretty.calls
+            if len(call[0]) >= 3
+            and call[0][1] == "Retrieval Orchestration"
+            and "idx_stage flow=" in str(call[0][2])
+        ]
+        assert len(status_messages) == 2
+        assert "flow=N/A language=de" in status_messages[0]
+        assert "primary_query source=REWRITTEN_QUERY lang=en->de" in status_messages[0]
+        assert (
+            "guardrail_query source=TRANSLATED_QUERY lang=en->de" in status_messages[0]
+        )
+        assert "original='Q1'" in status_messages[0]
+        assert "staged='Q1|de'" in status_messages[0]
+        assert "alternative_query='ALT1'" in status_messages[0]
+        assert "stage_alternative_query='ALT1|de'" in status_messages[0]
+        assert "alternative_query='ALT2'" in status_messages[0]
+        assert "stage_alternative_query='ALT2|de'" in status_messages[0]
+        assert "alternative_query='ALT1'" in status_messages[1]
+        assert "stage_alternative_query='ALT1|en'" in status_messages[1]
+
+    def test_indexed_stage_status_identifies_flow_disabled_guardrail(self) -> None:
+        host = LocalHostStub(use_guardrail=False)
+        orchestrator = Orchestrator(host)
+
+        orchestrator.orchestratorMessages.write_indexed_stage_query_status(
+            flow_name="NATIVE_ALL",
+            target_language="de",
+            primary_query_source="REWRITTEN_QUERY",
+            primary_source_language="en",
+            was_translated=True,
+            primary_query="describe the device",
+            stage_primary_query="Gerät beschreiben",
+            guardrail_query_source="TRANSLATED_QUERY",
+            guardrail_source_language="en",
+            guardrail_query="",
+            stage_guardrail_query="",
+            guardrail_disabled_reason="disabled_by_flow",
+            indexed_shaping_enabled=True,
+        )
+
+        message = next(
+            str(call[0][2])
+            for call in host.pretty.calls
+            if len(call[0]) >= 3
+            and call[0][1] == "Retrieval Orchestration"
+            and "idx_stage flow=" in str(call[0][2])
+        )
+        assert "flow=NATIVE_ALL language=de" in message
+        assert "guardrail_query source=TRANSLATED_QUERY lang=en->de" in message
+        assert (
+            "value=N/A (disabled by flow NATIVE_ALL: guardrail leg is off)" in message
+        )
 
     def test_run_local_retrievers_graph_regex_stage_shapes_queries_per_language(
         self,
@@ -2522,7 +2788,7 @@ class TestLocalRetrievalOrchestration:
             ("Q1", "de", "en"),
         ]
 
-    def test_shape_graph_regex_stage_queries_logs_original_and_translated_queries(
+    def test_shape_graph_regex_stage_queries_does_not_log_incomplete_query_set(
         self,
     ) -> None:
         host = LocalHostStub(use_guardrail=False)
@@ -2549,15 +2815,8 @@ class TestLocalRetrievalOrchestration:
             for call in host.pretty.calls
             if len(call[0]) >= 3 and call[0][1] == "Retrieval Orchestration"
         ]
-        assert any(
-            "idx_stage l='de'" in message
-            and "r='BM25/Graph/Regex'" in message
-            and "tr=1" in message
-            and "\nprimary_query='Q2'" in message
-            and "\nstage_primary_query='Q2|de'" in message
-            and "\nguardrail_query='Q1'" in message
-            and "\nstage_guardrail_query='Q1|de'" in message
-            for message in orchestration_messages
+        assert not any(
+            "idx_stage flow=" in message for message in orchestration_messages
         )
 
     def test_shape_graph_regex_stage_queries_passes_translation_and_synonym_toggles(
@@ -2588,7 +2847,7 @@ class TestLocalRetrievalOrchestration:
         session = LocalSessionStub()
         orchestrator = Orchestrator(host)
         orchestrator._flow_enable_indexed_query_translation = False
-        orchestrator._flow_enable_indexed_query_synonym_expansion = False
+        orchestrator._flow_enable_indexed_query_wordnet_expansion = False
 
         stage_primary_query, stage_guardrail_query = (
             orchestrator._shape_graph_regex_stage_queries(
@@ -2817,6 +3076,45 @@ class TestLocalRetrievalOrchestration:
         assert normalized == "zz"
         assert calls == ["german"]
 
+    def test_normalize_language_bucket_propagates_host_error(self, monkeypatch) -> None:
+        host = LocalHostStub(use_guardrail=False)
+        orchestrator = Orchestrator(host)
+
+        def fail(language: Any) -> str | None:
+            raise ValueError("language normalization failed")
+
+        monkeypatch.setattr(host, "_normalize_language_bucket", fail)
+
+        with pytest.raises(ValueError, match="language normalization failed"):
+            orchestrator._normalize_language_bucket("german")
+
+    def test_query_shaping_type_error_is_logged_without_retry(
+        self, monkeypatch
+    ) -> None:
+        host = LocalHostStub(use_guardrail=False)
+        orchestrator = Orchestrator(host)
+        calls: list[dict[str, Any]] = []
+
+        def fail(session: Any, **kwargs: Any) -> tuple[str, str]:
+            calls.append(kwargs)
+            raise TypeError("query shaping failed")
+
+        monkeypatch.setattr(host, "_shape_graph_regex_stage_queries", fail)
+
+        with pytest.raises(TypeError, match="query shaping failed"):
+            orchestrator._shape_graph_regex_stage_queries(
+                LocalSessionStub(),
+                language_bucket="de",
+                primary_query="animal habitats",
+                guardrail_query="",
+            )
+
+        assert len(calls) == 1
+        assert any(
+            args[0] == "E" and "query shaping failed" in str(args[2])
+            for args, _ in host.pretty.calls
+        )
+
     def test_discover_graph_regex_languages_normalizes_from_collection(self) -> None:
         class _CollectionStub:
             def __init__(self) -> None:
@@ -2856,7 +3154,6 @@ class TestLocalRetrievalOrchestration:
             {
                 "include": ["metadatas"],
                 "where": {"FileName": "A.txt"},
-                "limit": 5000,
             }
         ]
 
@@ -2890,6 +3187,60 @@ class TestLocalRetrievalOrchestration:
 
         assert buckets_plain == ["de"]
         assert buckets_eq == ["en"]
+
+    @pytest.mark.parametrize(
+        ("file_filter", "expected_where", "expected_buckets"),
+        [
+            (None, [None], ["en", "de"]),
+            ({}, [None], ["en", "de"]),
+            ({"Language": "de"}, [None], ["de"]),
+            ({"Language": {"$eq": "de"}}, [None], ["de"]),
+            ({"FileName": "A.txt"}, [None, {"FileName": "A.txt"}], ["de"]),
+            (
+                {"Language": "de", "FileName": "A.txt"},
+                [None, {"FileName": "A.txt"}],
+                ["de"],
+            ),
+        ],
+    )
+    def test_language_planning_reuses_identical_discovery(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        file_filter: dict[str, Any] | None,
+        expected_where: list[dict[str, Any] | None],
+        expected_buckets: list[str],
+    ) -> None:
+        class _CollectionStub:
+            def __init__(self) -> None:
+                self.where_calls: list[dict[str, Any] | None] = []
+
+            def get(self, **kwargs: Any) -> dict[str, Any]:
+                where = kwargs.get("where")
+                self.where_calls.append(where)
+                languages = ["de"] if where else ["en", "de"]
+                return {"metadatas": [{"Language": language} for language in languages]}
+
+        host = LocalHostStub(use_guardrail=False)
+        host.collection = _CollectionStub()  # type: ignore[assignment]
+        orchestrator = Orchestrator(host)
+        active_calls: list[None] = []
+        resolve_active = orchestrator._active_configured_language_codes
+
+        def count_active() -> set[str]:
+            active_calls.append(None)
+            return resolve_active()
+
+        monkeypatch.setattr(
+            orchestrator, "_active_configured_language_codes", count_active
+        )
+
+        buckets = orchestrator._plan_graph_regex_language_buckets(
+            LocalSessionStub(), file_filter
+        )
+
+        assert buckets == expected_buckets
+        assert host.collection.where_calls == expected_where
+        assert len(active_calls) == 1
 
     def test_plan_graph_regex_language_buckets_intersects_active_and_present(
         self,
@@ -2975,15 +3326,6 @@ class TestLocalRetrievalOrchestration:
                     ]
                 }
 
-        class _CfgStub:
-            def get_list(self, key: str, default: Any, silent: bool = False) -> Any:
-                _ = (default, silent)
-                if key == "_ARGOS_DEFINITIONS.ACTIVE_LANGUAGES":
-                    return ["en", "de"]
-                if key == "_ARGOS_DEFINITIONS.ARGOS_LANGUAGES":
-                    return [["en", "de"]]
-                return []
-
         class _SharedStub:
             def __init__(self) -> None:
                 self.lang_name_to_code: dict[str, str] = {
@@ -2993,7 +3335,7 @@ class TestLocalRetrievalOrchestration:
 
         host = LocalHostStub(use_guardrail=False)
         host.collection = _CollectionStub()  # type: ignore[attr-defined]
-        host.cfg = _CfgStub()  # type: ignore[attr-defined]
+        host.cfg = _LocalCfgStub()
         host.pretty = StubPretty()  # type: ignore[attr-defined]
         host._shared = _SharedStub()  # type: ignore[attr-defined]
         host.collection_name = "TestCollection"  # type: ignore[attr-defined]
@@ -3001,7 +3343,11 @@ class TestLocalRetrievalOrchestration:
         session = LocalSessionStub()
         orchestrator = Orchestrator(host)
 
-        orchestrator._emit_vector_store_language_status(session)
+        orchestrator.orchestratorMessages.emit_vector_store_language_status(
+            session,
+            vector_store_languages=orchestrator._discover_graph_regex_languages(None),
+            active_codes=sorted(orchestrator._active_configured_language_codes()),
+        )
 
         assert any(
             len(call[0]) >= 3
@@ -3029,25 +3375,20 @@ class TestLocalRetrievalOrchestration:
                     ]
                 }
 
-        class _CfgStub:
-            def get_list(self, key: str, default: Any, silent: bool = False) -> Any:
-                _ = (default, silent)
-                if key == "_ARGOS_DEFINITIONS.ACTIVE_LANGUAGES":
-                    return ["en", "de"]
-                if key == "_ARGOS_DEFINITIONS.ARGOS_LANGUAGES":
-                    return [["en", "de"]]
-                return []
-
         host = LocalHostStub(use_guardrail=False)
         host.collection = _CollectionStub()  # type: ignore[attr-defined]
-        host.cfg = _CfgStub()  # type: ignore[attr-defined]
+        host.cfg = _LocalCfgStub()
         host.pretty = StubPretty()  # type: ignore[attr-defined]
         host.collection_name = "TestCollection"  # type: ignore[attr-defined]
 
         session = LocalSessionStub()
         orchestrator = Orchestrator(host)
 
-        orchestrator._emit_vector_store_language_status(session)
+        orchestrator.orchestratorMessages.emit_vector_store_language_status(
+            session,
+            vector_store_languages=orchestrator._discover_graph_regex_languages(None),
+            active_codes=sorted(orchestrator._active_configured_language_codes()),
+        )
 
         assert any(
             len(call[0]) >= 3
@@ -3057,6 +3398,377 @@ class TestLocalRetrievalOrchestration:
             and "fr" in str(call[0][2])
             for call in host.pretty.calls  # type: ignore[attr-defined]
         )
+
+
+class TestMultilingualQueryPlan:
+    @pytest.mark.parametrize("debug", [0, 30])
+    def test_translation_warnings_deduplicate_per_turn_language_and_category(
+        self,
+        monkeypatch,
+        debug,
+    ) -> None:
+        host = LocalHostStub(use_guardrail=False)
+        host.collection = _LocalCollectionStub([{"Language": "en"}, {"Language": "de"}])
+
+        def shape(session, *, primary_query, guardrail_query, **kwargs):
+            if primary_query.startswith("bad"):
+                raise QueryTranslationError("translation failed")
+            return primary_query, guardrail_query
+
+        monkeypatch.setattr(host, "_shape_graph_regex_stage_queries", shape)
+        orchestrator = Orchestrator(host)
+        session = LocalSessionStub()
+        session.debug_level = debug
+        for turn in range(2):
+            orchestrator.run_local_retrievers(
+                session,
+                retrieve_mode="BM25",
+                bm25_query="original",
+                alternate_queries=["bad1", "bad2", "bad3"],
+            )
+            warnings = [
+                args
+                for args, _ in host.pretty.calls
+                if args[0] == "W" and "Skipping alternative" in str(args[2])
+            ]
+            assert len(warnings) == (turn + 1) * 2
+            assert len(session.indexed_query_notices) == 2
+        details = [
+            args[2]
+            for args, _ in host.pretty.calls
+            if args[1] == "QueryPlan" and "translation failure;" in str(args[2])
+        ]
+        assert len(details) == (12 if debug == 30 else 0)
+        assert {
+            ("alternative", "en"),
+            ("alternative", "de"),
+        } == session.indexed_query_warning_keys
+
+    @pytest.mark.parametrize("limit, expected", [(0, ["en", "fr"]), (5000, ["en"])])
+    def test_discovers_languages_beyond_old_cutoff(self, limit, expected) -> None:
+        class _Collection:
+            def get(self, **kwargs):
+                assert kwargs["where"] == {"FileName": "A.txt"}
+                metas = [{"Language": "en"}] * 5000 + [{"Language": "fr"}]
+                return {"metadatas": metas[: kwargs.get("limit", len(metas))]}
+
+        host = LocalHostStub(use_guardrail=False)
+        host.cfg = _LocalCfgStub(indexed_settings={"language_detection_limit": limit})
+        host.collection = _Collection()
+        assert (
+            Orchestrator(host)._discover_graph_regex_languages(
+                {"FileName": "A.txt", "Language": "en"}
+            )
+            == expected
+        )
+
+    @pytest.mark.parametrize(
+        "settings",
+        [
+            {"language_detection_limit": -1},
+            {"language_detection_limit": True},
+            {"translation_failure_policy": "fallback"},
+            {"use_alternates": "false"},
+        ],
+    )
+    def test_rejects_invalid_settings(self, settings) -> None:
+        host = LocalHostStub(use_guardrail=False)
+        host.cfg = _LocalCfgStub(indexed_settings=settings)
+        with pytest.raises(ConfigurationError):
+            Orchestrator(host)._indexed_query_settings()
+
+    def test_shares_four_by_four_matrix_across_three_retrievers(
+        self, monkeypatch
+    ) -> None:
+        host = LocalHostStub(use_guardrail=False, mode_flags=(False, True, True, True))
+        host.cfg = _LocalCfgStub(active_languages=["de", "en", "fr", "it"])
+        host.collection = _LocalCollectionStub(
+            [{"Language": language} for language in ["de", "en", "fr", "it"]]
+        )
+        translations = []
+
+        def shape(
+            session, *, language_bucket, primary_query, guardrail_query, **kwargs
+        ):
+            if language_bucket != "de":
+                translations.append((primary_query, language_bucket))
+                return f"{primary_query}|{language_bucket}", ""
+            return primary_query, ""
+
+        monkeypatch.setattr(host, "_shape_graph_regex_stage_queries", shape)
+        session = LocalSessionStub()
+        session.current_query_lang = session.retrieval_language = "de"
+        orchestrator = Orchestrator(host)
+        orchestrator.run_local_retrievers(
+            session,
+            retrieve_mode="ALL",
+            bm25_query="original",
+            alternate_queries=["alt1", "alt2", "alt3"],
+        )
+        assert len(translations) == 12
+        assert len(set(translations)) == 12
+        assert len(host.run_indexed_primary_queries) == 48
+        for language in ["de", "en", "fr", "it"]:
+            suffix = "" if language == "de" else f"|{language}"
+            expected = {
+                f"{query}{suffix}" for query in ["original", "alt1", "alt2", "alt3"]
+            }
+            for label in ["BM25", "Graph", "Regex"]:
+                actual = set()
+                for query, file_filter, labels in zip(
+                    host.run_indexed_primary_queries,
+                    host.run_indexed_file_filters,
+                    host.indexed_stage_labels,
+                ):
+                    assert file_filter is not None
+                    if file_filter["Language"] == language and label in labels:
+                        actual.add(query)
+                assert actual == expected
+
+    @pytest.mark.parametrize("policy", ["stop", "skip_language"])
+    def test_primary_failure_applies_policy_before_vector_search(
+        self, monkeypatch, policy
+    ) -> None:
+        host = LocalHostStub(use_guardrail=False, mode_flags=(True, True, True, True))
+        host.cfg = _LocalCfgStub(
+            indexed_settings={"translation_failure_policy": policy}
+        )
+        host.collection = _LocalCollectionStub([{"Language": "en"}, {"Language": "de"}])
+
+        def shape(
+            session, *, language_bucket, primary_query, guardrail_query, **kwargs
+        ):
+            if language_bucket == "de":
+                raise QueryTranslationError("missing en->de")
+            return primary_query, guardrail_query
+
+        monkeypatch.setattr(host, "_shape_graph_regex_stage_queries", shape)
+        orchestrator = Orchestrator(host)
+        arguments = dict(
+            retrieve_mode="ALL",
+            bm25_query="original",
+            alternate_queries=[],
+        )
+        if policy == "stop":
+            with pytest.raises(QueryTranslationError, match="document language 'de'"):
+                orchestrator.run_local_retrievers(LocalSessionStub(), **arguments)
+            assert "_run_vector_retriever_with_guardrail" not in host.calls
+            assert host.run_indexed_primary_queries == []
+        else:
+            orchestrator.run_local_retrievers(LocalSessionStub(), **arguments)
+            assert "_run_vector_retriever_with_guardrail" in host.calls
+            assert all(
+                f is not None and f["Language"] == "en"
+                for f in host.run_indexed_file_filters
+            )
+            assert any("coverage is incomplete" in str(a) for a, _ in host.pretty.calls)
+        assert orchestrator._prepared_indexed_stage_iterations is None
+
+    def test_failed_alternative_does_not_abort_strict_policy(self, monkeypatch) -> None:
+        host = LocalHostStub(use_guardrail=False)
+        host.cfg = _LocalCfgStub(
+            indexed_settings={"translation_failure_policy": "stop"}
+        )
+
+        def shape(
+            session, *, language_bucket, primary_query, guardrail_query, **kwargs
+        ):
+            if primary_query == "bad":
+                raise QueryTranslationError("alternative unavailable")
+            return primary_query, guardrail_query
+
+        monkeypatch.setattr(host, "_shape_graph_regex_stage_queries", shape)
+        Orchestrator(host).run_local_retrievers(
+            LocalSessionStub(),
+            retrieve_mode="BM25",
+            bm25_query="original",
+            alternate_queries=["good", "bad"],
+        )
+        assert host.run_indexed_primary_queries == ["original", "good"]
+        assert any("Skipping alternative" in str(a) for a, _ in host.pretty.calls)
+
+    def test_equivalent_shaped_alternatives_are_reported_but_dispatched_once(
+        self,
+        monkeypatch,
+    ) -> None:
+        host = LocalHostStub(use_guardrail=False)
+        shaped_queries: list[str] = []
+
+        def shape(session, *, primary_query, guardrail_query, **kwargs):
+            shaped_queries.append(primary_query)
+            return (
+                "normalized" if primary_query == "original" else "same alternative",
+                guardrail_query,
+            )
+
+        monkeypatch.setattr(host, "_shape_graph_regex_stage_queries", shape)
+        Orchestrator(host).run_local_retrievers(
+            LocalSessionStub(),
+            retrieve_mode="BM25",
+            bm25_query="original",
+            alternate_queries=["ORIGINAL", "first", "second"],
+        )
+
+        assert shaped_queries == ["original", "first", "second"]
+        assert host.run_indexed_primary_queries == ["normalized", "same alternative"]
+        reports = [
+            str(args[2])
+            for args, _ in host.pretty.calls
+            if len(args) > 2 and "idx_stage flow=" in str(args[2])
+        ]
+        assert len(reports) == 1
+        assert "alternative_query='first'" in reports[0]
+        assert "alternative_query='second'" in reports[0]
+
+    def test_all_failed_languages_without_vector_or_web_reports_error(
+        self, monkeypatch
+    ) -> None:
+        host = LocalHostStub(use_guardrail=False)
+
+        def shape(*args, **kwargs):
+            raise QueryTranslationError("no translator")
+
+        monkeypatch.setattr(host, "_shape_graph_regex_stage_queries", shape)
+        with pytest.raises(QueryTranslationError, match="No usable"):
+            Orchestrator(host).run_local_retrievers(
+                LocalSessionStub(),
+                retrieve_mode="BM25",
+                bm25_query="original",
+                alternate_queries=[],
+            )
+        assert host.run_indexed_primary_queries == []
+        assert any("No usable" in str(a) for a, _ in host.pretty.calls)
+
+    def test_failed_guardrail_is_omitted_even_under_stop_policy(
+        self, monkeypatch
+    ) -> None:
+        host = LocalHostStub(use_guardrail=True)
+        host.cfg = _LocalCfgStub(
+            indexed_settings={"translation_failure_policy": "stop"}
+        )
+
+        def shape(session, *, primary_query, guardrail_query, **kwargs):
+            if primary_query == "seed":
+                raise QueryTranslationError("seed translation failed")
+            return primary_query, guardrail_query
+
+        monkeypatch.setattr(host, "_shape_graph_regex_stage_queries", shape)
+        Orchestrator(host).run_local_retrievers(
+            LocalSessionStub(),
+            retrieve_mode="BM25",
+            bm25_query="original",
+            alternate_queries=[],
+            orig_translated_query_en="seed",
+        )
+        assert host.last_run_indexed_args == (
+            "original",
+            False,
+            {"FileName": "A.txt", "Language": "en"},
+        )
+        assert any("Skipping guardrail" in str(a) for a, _ in host.pretty.calls)
+
+    def test_zero_weight_indexed_retrievers_do_not_require_translation(
+        self, monkeypatch
+    ) -> None:
+        host = LocalHostStub(use_guardrail=False, mode_flags=(True, True, True, True))
+        host.cfg = _LocalCfgStub(
+            indexed_settings={"translation_failure_policy": "stop"}
+        )
+        original_specs = host._indexed_retriever_specs
+
+        def specs(*args, **kwargs):
+            return [
+                (label, enabled, 0.0, retriever, level, printer)
+                for label, enabled, weight, retriever, level, printer in original_specs(
+                    *args, **kwargs
+                )
+            ]
+
+        def shape(*args, **kwargs):
+            pytest.fail("Disabled indexed retrievers must not translate queries")
+
+        monkeypatch.setattr(host, "_indexed_retriever_specs", specs)
+        monkeypatch.setattr(host, "_shape_graph_regex_stage_queries", shape)
+        session = LocalSessionStub()
+        session.bm25_weight = session.graph_weight = session.regex_weight = 0.0
+        Orchestrator(host).run_local_retrievers(
+            session,
+            retrieve_mode="ALL",
+            bm25_query="original",
+            alternate_queries=[],
+        )
+        assert "_run_vector_retriever_with_guardrail" in host.calls
+        assert host.run_indexed_primary_queries == []
+
+    @pytest.mark.parametrize("debug, enabled", [(0, True), (30, True), (30, False)])
+    def test_debug_30_steps_and_alternates_switch(self, debug, enabled) -> None:
+        host = LocalHostStub(use_guardrail=False)
+        host.cfg = _LocalCfgStub(indexed_settings={"use_alternates": enabled})
+        session = LocalSessionStub()
+        session.debug_level = debug
+        Orchestrator(host).run_local_retrievers(
+            session,
+            retrieve_mode="BM25",
+            bm25_query="original",
+            alternate_queries=["alternative"],
+        )
+        assert host.run_indexed_primary_queries == (
+            ["original", "alternative"] if enabled else ["original"]
+        )
+        messages = [
+            str(a[2])
+            for a, _ in host.pretty.calls
+            if len(a) > 2 and a[1] == "QueryPlan"
+        ]
+        if debug == 30:
+            assert any(
+                "Step 4" in message and "whole collection" in message
+                for message in messages
+            )
+            assert not any("Step 5" in message for message in messages)
+            assert any("Step 6" in message for message in messages)
+        else:
+            assert messages == []
+        indexed_messages = [
+            str(a[2])
+            for a, _ in host.pretty.calls
+            if len(a) > 2
+            and a[1] == "Retrieval Orchestration"
+            and "idx_stage flow=" in str(a[2])
+        ]
+        assert len(indexed_messages) == 1
+        assert "original='original'" in indexed_messages[0]
+        assert ("alternative_query='alternative'" in indexed_messages[0]) is enabled
+
+    def test_repeated_alternative_hits_do_not_outvote_original(
+        self, monkeypatch
+    ) -> None:
+        from Orchestrator.OrchestratorTypes import GraphRegexStageIteration
+
+        host = LocalHostStub(use_guardrail=False)
+        orchestrator = Orchestrator(host)
+        original = RetrievalDocStub("anchor")
+
+        def search(session, *, primary_query, **kwargs):
+            docs = (
+                [original]
+                if primary_query == "original"
+                else [RetrievalDocStub("alternate")]
+            )
+            return {"BM25": docs, "Graph": [], "Regex": []}, 0, len(docs)
+
+        monkeypatch.setattr(orchestrator, "_run_indexed_specs_stage", search)
+        docs, _, _ = orchestrator._run_indexed_stage_group(
+            LocalSessionStub(),
+            stage_invocations=[
+                GraphRegexStageIteration("en", {"Language": "en"}, query, "", index > 0)
+                for index, query in enumerate(["original", "alt1", "alt2", "alt3"])
+            ],
+            specs=[("BM25", True, 1.0, None, 10, None)],
+            use_guardrail=False,
+            dispatch_per_spec=False,
+        )
+        assert [doc.metadata["id"] for doc in docs["BM25"]] == ["anchor", "alternate"]
 
 
 class TestWebRetrievalOrchestration:

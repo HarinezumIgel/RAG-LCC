@@ -105,6 +105,13 @@ class PageBasedChunker(ChunkerStrategy, ABC):
 
     # -- Subclass interface -------------------------------------------------
 
+    def chunk_prose(self, content: str, metadata: dict[str, Any]) -> ChunkResult:
+        """Use an extracted page block, never re-read table text as prose."""
+        number = int(metadata.get("PageNumber", 1))
+        title = str(metadata.get("PageLabel", ""))
+        texts = self._pages_to_texts([(number, title, content)])
+        return self._to_docs(texts, metadata), None
+
     @abstractmethod
     def _parse_pages(
         self, file_type: str, file_path: str, content: str

@@ -52,9 +52,8 @@ from starlette.middleware.base import RequestResponseEndpoint
 from starlette.responses import Response
 
 from AI.AIHelpers import AIHelpers
-from Api.ChatCompletionHandler import (  # pyright: ignore[reportPrivateUsage]; pyright: ignore[reportPrivateUsage, reportUnknownVariableType]
-    ChatCompletionRequest, _complianceResponse, _format_session_snapshot,
-    handleRequest)
+from Api.ChatCompletionHandler import (  # pyright: ignore[reportPrivateUsage, reportUnknownVariableType]
+    ChatCompletionRequest, _complianceResponse, handleRequest)
 from Api.MarkedDocsStore import \
     configure_default as configure_marked_docs_store
 from Api.MarkedDocsStore import get_default as get_marked_docs_store
@@ -281,6 +280,12 @@ class RAGChatService:
                 else "Validation error"
             )
             err_id = f"ragchat-{uuid.uuid4().hex}"
+            PrettyWriter().write(
+                "W",
+                "RAGChatService invalid API request:",
+                f"Request validation failed. Reference: {err_id}",
+                color=RED,
+            )
             if self.queryParts is not None:
                 PrettyWriter().write(
                     "W",
@@ -290,14 +295,14 @@ class RAGChatService:
                 )
                 self.queryParts.print_values()
             session_block = (
-                _format_session_snapshot(self.queryParts.session)
+                self.queryParts.format_session_snapshot()
                 if self.queryParts is not None
                 else ""
             )
             return _complianceResponse(
                 err_id,
                 model,
-                f"\u26a0\ufe0f **Invalid request parameter**\n\n{detail}{session_block}",
+                f"\u26a0\ufe0f **Invalid request parameter**\n\n{detail}\n\nReference: {err_id}{session_block}",
                 stream=stream,
             )
 
@@ -381,16 +386,7 @@ class RAGChatService:
 
         @self.app.get("/v1/models")
         async def listModels() -> JSONResponse:  # pyright: ignore[reportUnusedFunction]
-            chromaDbDir: str = self.cfg.get_str("_CHROMA_DB_DIR")
-            collections: List[str] = []
-            if chromaDbDir and os.path.isdir(chromaDbDir):
-                collections = sorted(
-                    name
-                    for name in os.listdir(chromaDbDir)
-                    if os.path.isdir(os.path.join(chromaDbDir, name))
-                    and not name.startswith(".")
-                    and not name.endswith("_ChatContext")
-                )
+            collections: List[str] = Helpers().active_embedder_collections()
             return JSONResponse(
                 content={
                     "object": "list",

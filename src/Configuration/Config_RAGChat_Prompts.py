@@ -36,7 +36,7 @@ If the context is entirely empty or absolutely irrelevant to the query, you MUST
 EXACTLY these two lines and NOTHING else — no metadata, no explanation, no rephrasing:
 
 I couldn't find relevant information to answer your query.
-Try increasing retriever_k, top_k and lower threshold or change strategy.
+Try starting a new topic with `new:`, switching to a different collection, or adjusting your session parameters.
 
 Do NOT alter, summarize, or add to those two lines.
 
@@ -114,6 +114,18 @@ Query:
 _PROMPT_CHAT_MISTRAL = _PROMPT_CHAT
 _PROMPT_CHAT_LLAMA = _PROMPT_CHAT
 
+_PROMPT_KEYWORD_ACTION_ANSWER = """Complete user request:
+{user_query}
+
+Self-contained answer instruction:
+{answer_instruction}{action_instruction}"""
+
+_PROMPT_KEYWORD_ACTION_OPERATION = """
+
+Requested operation to execute on the retrieved evidence:
+{action_part}
+Perform the operation, not a description of how to perform it. For a requested list, use Markdown bullets; for a requested table, use a Markdown table, unless the user explicitly specifies another format."""
+
 # ── Query Rewrite ──────────────────────────────────────────────────────────────
 
 _PROMPT_TOPIC_DETECT = """You are a conversational query analyser for a retrieval system.
@@ -163,7 +175,7 @@ RULE 3 - contextual_rewrite.
   Must be a complete, self-contained retrieval query.
   If depends_on_previous_turn = false, contextual_rewrite MUST be null.
   IMPORTANT: inline only domain entities (names, products, concepts).
-  Never inline page numbers, file names, URLs, or source citations — see RULE 10.
+  Never inline page numbers, file names, URLs, or source citations - see RULE 10.
 
 RULE 4 - standalone_rewrite.
   Always populate. Must be a clean, retrieval-ready query with no conversational

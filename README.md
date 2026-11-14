@@ -6,7 +6,7 @@
 </p>
 
 <p align="center">
-  <img src="Documentation/Presentations/RAG-LCC-Overview.png" alt="RAG-LCC Overview Diagram" width="95%" />
+  <img src="Documentation/Pics/RAG-LCC-Overview.png" alt="RAG-LCC Overview Diagram" width="95%" />
 </p>
 
 ## 🎯 Who this is for
@@ -27,7 +27,7 @@
 - RAGChat           (CLI GUI) and RAGChatService (Open WebUI integration)
 
 <p align="center">
-<img src="Documentation/Pics/GroundedDoc.jpg" alt="RAG-LCC Document grounding" />
+<img src="Documentation/Pics/HedgehogQueryGrounded.png" alt="RAG-LCC Document grounding" />
 <p>
 
 Instead of pushing ever‑larger context sizes, RAG‑LCC treats **classification, chunking, retrieval strategies, staged loading, and confidence evaluation** as first‑class architectural tools.
@@ -37,6 +37,12 @@ Instead of pushing ever‑larger context sizes, RAG‑LCC treats **classificatio
 ## 🎬 Demo
 
 ![Demo](Documentation/Pics/RAG-LCC-Screenshots.gif)
+
+### Tabular answer with source grounding
+
+A single query can retrieve information and request a table. This example shows an animal classification table alongside highlighted passages in the source documents.
+
+![Tabular answer with highlighted source documents](Documentation/Pics/TabularRepresentation.png)
 
 ### 📌 OpenWeb UI Example
 
@@ -54,7 +60,7 @@ Short: If you want to understand *why* your RAG fails, RAG-LCC gives you a playg
 
 Standard RAG is deceptively simple: embed documents, embed query, retrieve by cosine similarity, prompt the LLM. In practice this produces systems that are brittle in exactly the ways that matter most — they hallucinate when the corpus has conflicting information, they drift in multi‑turn chat as pronouns accumulate, they fail silently on minority‑language documents, and they have no principled way to prevent prohibited content from being stored or returned.
 
-**RAG‑LCC** (Retrieval‑Augmented Generation — Local Corpus & Classification) is an experimental lab for studying and addressing these failure modes. Instead of pushing ever‑larger context windows, it treats **classification, chunking, retrieval strategy, and content filtering** as first‑class architectural decisions. Documents are analysed, compressed, filtered, and assembled *before* reaching the LLM — so the model reasons over coherent, non‑contradictory context rather than an arbitrary pile of chunks.
+**RAG‑LCC** (Retrieval‑Augmented Generation — Local Corpus & Classification) is an experimental lab for studying and addressing these failure modes. Instead of pushing ever‑larger context windows, it treats **classification, chunking, retrieval strategy, and content filtering** as first‑class architectural decisions. Documents are analysed, compressed, filtered, and assembled *before* reaching the LLM to improve context quality; coherent or contradiction-free context is not guaranteed.
 
 To make tuning practical, every turn can emit a confidence breakdown that separates retrieval-quality signals (best hit quality, top-3 stability, evidence coverage, local-source share, and fallback penalties). This gives you a concrete feedback loop for improving ingestion and retrieval settings.
 
@@ -64,16 +70,16 @@ The system is built around four applications that form a deliberate pipeline:
 
 ### 🏷️ DocClassify — Know your corpus before you index it
 
-Before anything enters the retrieval indexes, `DocClassify` runs LLM‑powered keyword extraction and batch classification over your document collection. Every file gets structured metadata — topic, category, language, and any custom fields you define — written to a CSV.
+Before indexing, `DocClassify` runs LLM‑powered keyword extraction and batch classification over eligible documents. Successfully classified files receive structured metadata — topic, category, language, and any custom fields you define — in a CSV.
 
 This is not just labelling. It is **semantic compression**: large documents are reduced to meaning‑dense keyword signals early, before expensive embedding and retrieval. You can then filter that CSV with a plain SQL WHERE clause to decide exactly which documents proceed to indexing:
 
 ```python
-# Index only English mammal-related documents classified as Science
+# Select records whose Mammal field contains "Yes" and whose language is English
 CLASSIFY_CSV_QUERY = "Mammal LIKE '%Yes%' AND Language = 'English'"
 ```
 
-Documents that fail your criteria never get indexed — reducing token waste, context noise, and compliance surface area.
+Documents that fail the criteria are not processed for indexing in that run. Existing index entries are not necessarily removed when stores are retained.
 
 ---
 
@@ -86,7 +92,7 @@ Documents that fail your criteria never get indexed — reducing token waste, co
 - **Entity co‑occurrence graph** — spaCy NER entities and noun phrases extracted from every chunk and linked by document co‑occurrence; enables graph traversal to pull in thematically connected chunks that neither vector nor BM25 search would surface
 - **Regex verb/noun index** — spaCy lemma/POS extraction of content verbs and nouns with strict + fallback matching; boosts lexical precision for action/object queries that are under-expressed in dense embeddings
 
-Before any chunk is stored, it passes through a **multi‑algorithm compliance filter chain** — Regex+Levenshtein, Jaccard, BM25, KeyBERT — that detects and optionally masks prohibited content. Leet‑speak decoding and Unicode confusable normalization run first, so obfuscated phrases are caught before embedding.
+Configured masking patterns can replace matches in extracted text; separately, a **multi‑algorithm compliance filter chain** can reject flagged chunks before storage. Normalization can help detect some obfuscations, but masking and detection can miss content and do not guarantee compliance.
 
 Seven chunking strategies handle different document types: semantic boundary detection for free text, heading‑aware chunking for structured documents, per‑page for PDFs, per‑slide for presentations. Chunk boundaries match the document’s natural discourse structure rather than arbitrary token counts.
 
@@ -100,28 +106,31 @@ Files unchanged since the last run are skipped. Files flagged by prior complianc
 
 Each query runs through a staged pipeline:
 
-1. **[Compliance](LEGAL.md) pre‑check** — the multi‑algorithm filter chain (Regex+Levenshtein, Jaccard, BM25, KeyBERT) runs on the raw query; matched phrases are masked or the request is blocked before anything else happens
-2. **Translation** — non‑English queries normalised to English via Argos Translate (enabled X→EN pairs filtered by the active-language set)
-3. **Query rewriting** — pronouns and referents from prior turns resolved by a dedicated rewrite LLM; prefix with `new:` to hard‑switch topics without clearing history
-4. **Multi‑query expansion** — the LLM generates N alternate phrasings to broaden vocabulary coverage across the retrieval pool
-5. **Hybrid retrieval** — Vector + BM25 + Graph + Regex fused via weighted Reciprocal Rank Fusion; BM25/Graph/Regex use language-aware retrieval via language-bucket routing in multilingual corpora (query-relevant bucket first, then remaining active-and-present buckets); optional live DuckDuckGo web leg
+1. **[Compliance](LEGAL.md) pre‑check** — configured checks evaluate the query and may block it; detection is not guaranteed
+2. **Query language** — the selected orchestrator flow keeps the user's language or normalises the query to English via Argos Translate
+3. **Query rewriting** — pronouns and referents from prior turns resolved by a dedicated rewrite LLM; prefix with `new:` to start a new topic and reset the conversation
+4. **Retrieval gates and query splitting** — after normalization and approved history-aware rewriting, retrieval gates can stop underspecified or disallowed requests. Keyword/action splitting is **enabled by default**: a separate LLM call extracts information needs, keywords, and the operation to perform on retrieved evidence. Successful splitting replaces MultiQuery paraphrases; disabled or failed splitting uses the existing MultiQuery path
+5. **Hybrid retrieval** — enabled Vector + BM25 + Graph + Regex retrievers search each information need; BM25 additionally searches the combined keywords when enabled with nonzero weight. Existing language routing, metadata filters, guardrail/original-language legs, and weighted Reciprocal Rank Fusion remain in place. The optional DuckDuckGo web leg keeps its existing query
 6. **Near‑duplicate removal** — chunks sharing ≥ 85% token overlap collapsed before reranking
-7. **Cross‑encoder reranking** — neural relevance scoring on top‑k candidates
-8. **Strategy‑gated context assembly** — five profiles from `NARROW` (20 chunks, high precision) to `ULTRA_WIDE` (1500 chunks, exhaustive), with per‑file diversity caps
-9. **LLM reasoning** — context assembled above is passed to the generation model
-10. **[Compliance](LEGAL.md) post‑check** — the same filter chain re‑runs on the generated answer; matched spans are masked before the response reaches the user
+7. **Cross‑encoder reranking** — with a split, score local chunks against their associated, language-shaped needs and keep each chunk's best raw score; keyword-only hits are scored against all needs. Retain the best local language and independently scored web candidates for the existing selector
+8. **Strategy‑gated context assembly** — five profiles from `NARROW` (20 chunks, single-document focus) to `ULTRA_WIDE` (1500 chunks, broad diagnostic retrieval). Only `BALANCED_FILE_CAP` enforces per-file diversity caps; no strategy guarantees complete evidence coverage
+9. **LLM answering and transformation** — selected context, the complete request, and the split answer/operation instructions go to the generation model. Lists, tables, classifications, and comparisons are produced from that evidence, not through an agent/tool loop
+10. **[Compliance](LEGAL.md) post‑check** — configured checks may block a generated answer; streaming can emit tokens before the final answer check
 
-Answers are **grounded** — every sentence is checked for overlap with retrieved source text and marked visually, in CLI and API output alike. You see exactly which parts of the answer are evidence‑backed and which are not.
+- **[Document summarization](HANDS_ON_TOUR.md#summarize-an-indexed-document)** — summarize all indexed chunks of a selected document with `summarize:` or `summary:`. With no CLI pin, the path picker opens directly.
+- **Split-query controls** — `keyword_action_splitter=false` disables splitting for the session; API requests use `"enable_keyword_action_splitter": false`. Selecting a flow resets its switches, so apply session overrides afterwards. Prompts and limits are documented in [keyword/action splitting configuration](CONFIGURATION_REFERENCE.md#optional-keywordaction-splitting).
+
+When grounding is enabled, answers are checked for overlap with retrieved evidence. An internal translated answer can validate cross-language evidence without changing the displayed answer. CLI overlap marks and source-document highlights require matching spans in the original answer; translated validation alone does not authorise local source highlighting.
 
 ---
 
 ### 🌐 RAGChatService — OpenAI‑compatible RAG as a service
 
-`RAGChatService` wraps the complete RAGChat pipeline in an **OpenAI‑compatible REST API** (`POST /v1/chat/completions`). Point [OpenWebUI](https://github.com/open-webui/open-webui) at it — or any OpenAI client — and your local RAG pipeline becomes a selectable model with no prompt engineering required on the client side.
+`RAGChatService` exposes a **limited subset of the OpenAI‑compatible REST API** (`POST /v1/chat/completions`). It can be used with [OpenWebUI](https://github.com/open-webui/open-webui) and other clients that support that subset; full OpenAI API compatibility is not provided.
 
 ChromaDB collections appear as models in the OpenWebUI dropdown. RAG‑LCC knobs (`strategy`, `retriever_k`, `threshold`, `web_search`, `web_weight`, `web_fetch_k`) are exposed as OpenWebUI Advanced Parameters so non‑technical users can tune retrieval without editing config files.
 
-Supports Bearer‑token authentication, optional streaming, configurable host/port, and fully offline operation after initial setup.
+Supports optional Bearer‑token authentication for `/v1/` routes, streaming, and configurable host/port. Offline use requires local endpoints and models, disabled web search, and suitable offline settings.
 
 ---
 
@@ -174,23 +183,42 @@ Raw documents
 │  │    │  orchestrator flow resolve (Config_Orchestrator)       │    │
 │  │    │      stage gates + confidence-step handoff             │    │
 │  │    │  ① compliance pre-check  (banned-phrase filter chain)  │    │
-│  │    │  ② Argos translation   →  English (if non-English)     │    │
+│  │    │  ② query language: native or English (flow-defined)    │    │
 │  │    │  ③ query rewrite  (coreference resolution via LLM)     │    │
 │  │    ▼                                                        │    │
-│  │  multi-query expansion  (LLM → N alternate phrasings)       │    │
-│  │    │  each variant runs an additional Vector search         │    │
+│  │  retrieval gates: clarification/refusal can stop the turn   │    │
 │  │    ▼                                                        │    │
-│  │  local arms: Vector + language-aware BM25/Graph/Regex       │    │
-│  │  optional web arm: DuckDuckGo (web_search=on)               │    │
+│  │  keyword/action split LLM (default ON; separate call)       │    │
+│  │    valid: needs + keywords; retain answer/action tasks      │    │
+│  │    off/error: existing MultiQuery alternate phrasings       │    │
+│  │    │  needs OR primary + alternates → language query matrix │    │
+│  │    │  translation failure: skip language or stop (config)   │    │
+│  │    ▼                                                        │    │
+│  │  Vector: multilingual search; no language pre-filter        │    │
+│  │  BM25/Graph/Regex: matching-language queries + documents    │    │
+│  │    split: enabled retrievers per need + BM25 keyword leg    │    │
+│  │    guardrail/original-language legs: at most once per turn  │    │
+│  │  optional web arm: DuckDuckGo; existing query unchanged     │    │
 │  │                      │                                      │    │
 │  │                      ▼                                      │    │
-│  │         weighted RRF fusion (local) + web append            │    │
+│  │  partition ALL local results by document language           │    │
+│  │  weighted RRF per language → interleave under pool cap      │    │
+│  │  append web candidates separately                           │    │
 │  │                      │                                      │    │
 │  │                      ▼                                      │    │
 │  │          near-duplicate removal  (Jaccard)                  │    │
 │  │                      │                                      │    │
 │  │                      ▼                                      │    │
-│  │          cross-encoder reranker  (mmarco MiniLM)            │    │
+│  │  cross-encoder reranker (configured model)                  │    │
+│  │    local: each bucket + matching primary language query     │    │
+│  │    split: per-need raw scores → best score per local chunk  │    │
+│  │    keyword-only chunks: evaluate against every need         │    │
+│  │    web: separate group + original rerank query + snippets   │    │
+│  │    diagnostics: language inputs + raw-score summaries       │    │
+│  │                      │                                      │    │
+│  │                      ▼                                      │    │
+│  │  keep local language with highest top raw reranker score    │    │
+│  │  retain web candidates (not in local language competition)  │    │
 │  │                      │                                      │    │
 │  │                      ▼                                      │    │
 │  │     threshold gate (sigmoid(raw logit) ≥ local/web T)       │    │
@@ -199,24 +227,33 @@ Raw documents
 │  │       keep retrieval pool, select by RRF order              │    │
 │  │     guard B (run_low_recall_rescue):                        │    │
 │  │       else if local hits are sparse in large pools,         │    │
-│  │       rescue query-overlap misses by retrieval rank         │    │
+│  │       rescue query-overlap misses from represented files    │    │
+│  │       reserve best retrieval-ranked table if none survived  │    │
 │  │                      │                                      │    │
 │  │                      ▼                                      │    │
 │  │          chunk selection strategy                           │    │
 │  │          NARROW · BALANCED_FILE_CAP · DEFAULT · WIDE        │    │
+│  │          ULTRA_WIDE; existing caps, no per-need quotas      │    │
 │  │                      │                                      │    │
 │  │                      ▼                                      │    │
-│  │          context assembly  →  LLM reasoning                 │    │
+│  │          context + complete request → answer LLM            │    │
+│  │          split answer/operation templates when applicable   │    │
 │  │                      │                                      │    │
 │  │                      ▼                                      │    │
 │  │          ④ compliance post-check  (answer validation)       │    │
 │  │                      │                                      │    │
 │  │                      ▼                                      │    │
-│  │          answer grounding  (sentence-level overlap marks)   │    │
+│  │  grounding guard (when enabled): evidence overlap check     │    │
+│  │    other language → translated answer proxy first           │    │
+│  │    unsupported answer → no-evidence response                │    │
+│  │  answer/proxy spans → CLI marks on the displayed answer     │    │
+│  │  local matching spans → prepare/open source highlights      │    │
+│  │    no local spans → no source preparation or marker logs    │    │
 │  │                      │                                      │    │
 │  │                      ▼                                      │    │
 │  │          confidence evaluation + signals                    │    │
 │  │          (C_final, components, per-turn CSV)                │    │
+│  │          history: existing user query + delivered answer    │    │
 │  └─────────────────────────────────────────────────────────────┘    │
 │                                                                     │
 │  Web leg active only when WEB_SEARCH_MODE="1" and web_search=on     │
@@ -225,23 +262,32 @@ Raw documents
 
 A few refinements to keep in mind when reading the pipeline above:
 
-- **Two rerank fallback guards (ordered)** — Guard A `run_low_score_fallback` runs first; when no local chunk clears threshold, strict rerank filtering is skipped and retrieval (RRF) order is used (`Rerank skipped`). Guard B `run_low_recall_rescue` runs only when Guard A does not fire; it can re-add query-overlap local misses when strict thresholding leaves too few local hits in a large pool.
+- **Separate retrieval from the requested operation** — ask, for example, "Where do hedgehogs live and what do they eat? Create a list of foods." The split retrieves habitat and diet separately, adds a keyword BM25 leg, and asks the final LLM to answer both questions and produce the list. No intermediate keyword-entry turn is required; the existing manual keyword-then-action workflow remains available. The splitter consumes the original request, its translation, and the accepted rewrite; it does not independently reinterpret conversation history.
+- **Bounded evidence, not an agent loop** — comparisons and classifications reuse ordinary retrieval and answer generation. Missing evidence must be identified, not inferred from absence; splitting does not ensure every subject survives context selection. Standalone actions with no retrieval topic are unsupported. `summarize:` / `summary:` bypass splitting and use the full-document summary path.
+- **Context-window warning** — choosing a strategy in the CLI checks the active session `context_chunks`, not the configured preset count or candidate `fetch_k`. An approximate warning suggests fewer chunks, a narrower strategy, or a larger context window supported by the actual model/backend. It neither changes settings nor guarantees that a later prompt fits.
+- **Two rerank fallback guards (ordered)** — Guard A `run_low_score_fallback` runs first; when no local chunk clears threshold, strict rerank filtering is skipped and retrieval (RRF) order is used (`Rerank skipped`). Guard B `run_low_recall_rescue` runs only when Guard A does not fire; it re-adds query-overlap local misses from files already represented among the hits when strict thresholding leaves too few local hits in a large pool. If no table survived thresholding, one rescue slot is reserved for the best retrieval-ranked table fragment from those files, even without query-word overlap. The log identifies the retained table and its retrieval score. Rescue remains bounded by the retrieval/context settings; retaining a table does not guarantee the LLM will use or cite it.
 - **Multilingual retrieval routing** — local indexed retrievers (`BM25`, `Graph`, `Regex`) are dispatched by language bucket discovered from corpus metadata and active language config. Query-relevant language runs first, then remaining active-and-present buckets, so mixed-language corpora are still fully searched.
+- **Language-scoped reranking** — vector search stays language-agnostic, but its results join indexed results only in matching document-language buckets for local RRF and reranking. Unsplit queries use each bucket's primary language query, not concatenated alternatives. Split queries use the corresponding language-shaped information needs and retain the best raw score per chunk. The highest top raw reranker score chooses the local language passed to the existing threshold/strategy selector; web candidates remain separate and eligible. Missing language-query matches use the existing rerank query with a warning; without a language query plan, the legacy pool is preserved.
+- **Translation and grounding** — indexed query translation failures follow the configured `skip_language` or `stop` policy. Grounding may validate an internal answer translation against evidence without translating the user's displayed answer. Source highlighting is prepared only when the original answer has local matching spans, excluding the Sources section; otherwise stale highlights are cleared and no source-marker preparation messages are emitted.
 - **Metadata filtering** — harvested document metadata (author, title, dates, page labels, …) can be used as retrieval filters via the `metadata!` picker or `metadata=Field:Value`, narrowing all four local retrievers.
 - **Correct source pages** — citations and highlighted source documents use the document's *printed* page label (e.g. front-matter `iii`), while highlighting is placed on the true physical page.
 - **Confidence evaluation loop** — final answer confidence and intermediate components (`C_top`, `C_mean_top3`, `C_coverage`, `C_local`, `C_fallback_penalty`) are emitted per turn; these signals help tune ingestion and retrieval (for example: low `C_coverage` suggests revisiting chunking/retriever breadth, low `C_top` suggests improving query/retrieval quality, low `C_local` can indicate over-reliance on web results).
+- **Answer quality dimensions** — accuracy, completeness, reasoning, and provenance are reported separately from retrieval confidence. An optional LLM judge uses the answer-generation model; the output identifies that model and aligns heuristic, LLM, and blended scores. Settings and the judge prompt live in [Config_Confidence.py](src/Configuration/Config_Confidence.py). Flat per-turn CSV exports retain individual values and repeated pipeline steps instead of JSON cells. See [confidence configuration and CSV columns](CONFIGURATION_REFERENCE.md#answer-quality-confidence).
 
 The goal is **not** to feed the model *more* text — but to feed it **better, safer context**.
 
 ### 🧩 Orchestrator (retrieval control layer)
 
-`Orchestrator` (`src/Chat/Orchestrator.py`) is the internal control layer that runs one retrieval turn end-to-end while keeping concrete retrievers decoupled. It is instantiated in `RAGChatImpl` and coordinates the pipeline through a stage model (`prepare → gate → local/web retrieve → merge/context build`). In practice, this means the orchestrator defines the per-turn pipeline flow and can include the additional confidence-evaluation step that emits operator-facing confidence signals.
+[`Orchestrator`](src/Orchestrator/Orchestrator.py) is the internal control layer that runs one retrieval turn end-to-end while keeping concrete retrievers decoupled. It is instantiated in `RAGChatImpl` and coordinates the pipeline through a stage model (`prepare/normalize → gate → split or legacy expansion → local/web retrieve → merge/context build`). In practice, this means the orchestrator defines the per-turn pipeline flow and can include the additional confidence-evaluation step that emits operator-facing confidence signals.
+
+The [Orchestrator package](src/Orchestrator/) separates pipeline execution from its supporting responsibilities: `self.orchestratorMessages` owns traces, confidence-event emission, diagnostic notices, and buffered query reports; `self.orchestratorOverrides` resolves flow profiles and applies session/CLI overrides; `self.orchestratorHelper` owns candidate identity, native-leg merging, and best-rank merging across query variants. Shared pipeline records live in `OrchestratorTypes.py`. Pipeline methods separately handle required/optional query shaping, native indexed retrieval, flow setup, local retrieval, and web retrieval.
 
 What it does today:
 
-- Resolves session/query inputs, including normalized query text and multi-query alternates.
+- Resolves session/query inputs, including normalized query text and either split information needs or legacy multi-query alternates.
 - Defines the active turn flow profile and the confidence-evaluation handoff used by the answer-confidence output/logging path.
 - Applies retrieval gates before expensive retrieval legs run.
+- Runs and validates keyword/action decomposition after gates; successful splitting replaces local main-query fan-out, not the stored query or web query.
 - Plans and runs local retrieval stages (Vector, BM25, Graph, Regex), including guardrail dual-query execution and multilingual language-bucket routing.
 - Runs the optional web leg with administrator gating and optional pre-filtering.
 - Aggregates stage outputs, merges candidates, and builds final LLM context.
@@ -258,7 +304,7 @@ The orchestrator is an architectural component designed for extension. For examp
 
 ## 📊 Presentation
 
-A slide deck is available as [`RAG-LCC_Presentation.pptx`](Documentation/Presentations/RAG-LCC_Presentation.pptx).
+A slide deck is available as [`RAG-LCC_Presentation.pptx`](Documentation/Presentations/RAG-LCC_Presentation.pptx) and as an animated [GIF](Documentation/Presentations/RAG-LCC_Presentation.gif).
 It provides a quick visual overview of the architecture, the four applications, the retrieval pipeline, and the key design decisions — useful as a starting point before diving into the detailed documentation.
 
 ---
@@ -270,8 +316,8 @@ Key capabilities organized by application. Full configuration details, defaults,
 ### 🏷️ DocClassify
 
 - **Semantic compression** — KeyBERT keyword extraction + LLM classification produces meaning-dense CSV metadata (topic, category, language, and any custom fields you define)
-- **Classify-then-load** — filter the output CSV with a plain SQL WHERE clause before indexing: `"Mammal LIKE '%Yes%' AND Language = 'English'"`. Documents that fail the filter are never embedded
-- **Compliance filter chain** runs at classification time — detected phrases are masked before any embedding
+- **Classify-then-load** — filter the output CSV with a plain SQL WHERE clause before indexing: `"Mammal LIKE '%Yes%' AND Language = 'English'"`. Nonmatching documents are not processed for indexing in that run; retained stores may still contain older entries
+- **Compliance filtering and masking** — configured rules can mask matches and flag content at classification time; detection is not guaranteed
 - **Customisable extraction keys** — add or remove fields by editing `_YOUR_CLASSIFICATION_KEYS` and the matching prompt template; no code changes needed
 - **Reverse stemming** — classification output values are back-projected to original surface forms before CSV export
 - **`STRICT` / `BALANCED` / `RECALL`** extraction profiles control the LLM's sampling parameters
@@ -280,7 +326,7 @@ Key capabilities organized by application. Full configuration details, defaults,
 
 - **7 chunking strategies** with per-format routing: PDF→PDF_PAGE, DOCX/MD→heading, PPTX→slide, plain text→sliding window, sentences→sentence window, code/CSV→recursive, default→semantic boundary detection
 - **Four parallel indexes built simultaneously**: ChromaDB HNSW dense vectors, Okapi BM25 keyword index, spaCy entity co-occurrence graph, and a regex verb/noun lemma index (with language-aware BM25/Graph/Regex retrieval at query time)
-- **Compliance filter chain + masking** — Regex+Levenshtein, Jaccard, BM25, and KeyBERT all run before any chunk is stored; matched spans are redacted in place
+- **Compliance filter chain + masking** — configured patterns mask matches in extracted text; separate threshold-based checks may reject chunks before storage
 - **Obfuscation hardening** — leet-speak decoding (`1→i`, `3→e`, …) and Unicode confusable normalisation (Cyrillic lookalikes, `ß→ss`, …) run before detection
 - **Incremental processing** — SHA-256 hash check skips unchanged files; exclusion CSVs automatically drop previously-flagged documents
 - **Text extraction** — PDF (pdfplumber + pdfminer), MS Office via COM (Word, PowerPoint, Excel), images via Tesseract OCR, plain text and Markdown
@@ -289,26 +335,27 @@ Key capabilities organized by application. Full configuration details, defaults,
 ### 💬 RAGChat
 
 - **12 retrieval modes** — `VECTOR`, `BM25`, `GRAPH`, `REGEX`, six pairwise combinations, `ALL` (all four local retrievers), and `WEB` (web only). `BM25`, `GRAPH`, and `REGEX` are language-aware and execute per discovered corpus language bucket. See [Retrieval Stores & Search Modes](CONFIGURATION_REFERENCE.md#-retrieval-stores--search-modes).
-- **5 retrieval strategies** from `NARROW` (20 chunks, threshold 0.70, high precision) to `ULTRA_WIDE` (1 500 chunks, exhaustive); `BALANCED_FILE_CAP` enforces per-file diversity caps
+- **5 retrieval strategies** from `NARROW` (20 chunks, threshold 0.60, high precision) to `ULTRA_WIDE` (1 500 chunks, broad diagnostic retrieval); `BALANCED_FILE_CAP` enforces per-file diversity caps
 - **Multi-query expansion** — a dedicated LLM generates N alternate phrasings of the query; each variant runs an additional Vector search merged into the main pool before fusion
-- **Query rewriting / coreference resolution** — a second dedicated LLM resolves pronouns and referents from conversation history (`"are they mammals?"` → `"are hedgehogs mammals?"`); prefix with `new:` to hard-switch topics without clearing history
+- **Query rewriting / coreference resolution** — a second dedicated LLM resolves pronouns and referents from conversation history (`"are they mammals?"` → `"are hedgehogs mammals?"`); prefix with `new:` to start a new topic and reset the conversation
 - **Near-duplicate chunk removal** — Jaccard token-level deduplication of the retrieval pool runs after RRF fusion and before reranking
 - **Cross-encoder reranking** — mmarco MiniLM rescores every candidate; per-strategy sigmoid threshold drops weak matches; when the best local chunk stays below the threshold, cross-encoder filtering is skipped, the merged RRF pool is kept, and chunk ordering falls back to retrieval scores before selected chunks are passed to the final LLM context
-- **Flow-profile orchestration with contradiction-aware overrides** — retrieval turns are governed by named flow profiles; when session CLI knobs override flow intent, orchestration lines attribute the exact overriding knob (for example `retrieve_mode=WEB`, `mark_text=false`, `rerank=0`). Flow profiles also gate both rerank fallback actions (`run_low_score_fallback`, `run_low_recall_rescue`), with deterministic order: low-score fallback first, then low-recall rescue only if the first did not short-circuit. See [Orchestration Flows and CLI Override Precedence](ARCHITECTURE.md#orchestration-flows-and-cli-override-precedence) and [THOROUGH_QUERY_REWRITE Orchestration Flow](Documentation/FlowCharts/THOROUGH_QUERY_REWRITE.md).
-- **Confidence evaluation signals** — per-stage execution confidence events and final answer confidence scores are recorded each turn; confidence signals are persisted to dedicated confidence CSV files with dynamic `step_*` columns. See [Confidence Evaluation and Signals](ARCHITECTURE.md#confidence-evaluation-and-signals).
-- **Answer grounding** — every answer sentence is checked for overlap with retrieved source chunks and marked visually; CLI uses ANSI highlights, API returns marked source documents as `/marked/<token>` links
-- **Compliance filter chain** runs on queries before retrieval **and** on generated responses before delivery
-- **Multi-turn conversational memory** — rolling topic summary, configurable turn window, batch pruning; `new:` prefix isolates topics without discarding history
+- **Flow-profile orchestration with contradiction-aware overrides** — retrieval turns are governed by named flow profiles; when session CLI knobs override flow intent, orchestration lines attribute the exact overriding knob (for example `retrieve_mode=WEB`, `mark_text=false`, `rerank=0`). Flow profiles also gate both rerank fallback actions (`run_low_score_fallback`, `run_low_recall_rescue`), with deterministic order: low-score fallback first, then low-recall rescue only if the first did not short-circuit. For a plain-language guide to every flow and how to compare them, see [ORCHESTRATION_FLOWS.md](ORCHESTRATION_FLOWS.md); internals in [Orchestration Flows and CLI Override Precedence](ARCHITECTURE.md#orchestration-flows-and-cli-override-precedence) and [ENGLISH_ALL_MULTILEG Orchestration Flow](Documentation/FlowCharts/THOROUGH_QUERY_REWRITE.md).
+- **Confidence evaluation signals** — per-stage execution events, final retrieval confidence, and answer quality scores are recorded each turn. Dedicated `CONFIDENCE_FLAT` CSV files expose scalar metrics and `step.<name>.<occurrence>.<field>` columns without JSON blobs or duplicate session result fields. See [Confidence Evaluation and Signals](ARCHITECTURE.md#confidence-evaluation-and-signals).
+- **Answer grounding** — when enabled, matching answer/source spans may be highlighted in the CLI and marked source documents may be served as `/marked/<token>` links. Overlap does not establish factual accuracy.
+- **PDF page identity** — ingestion stores the physical PDF index in `PageNumber` for highlighting and the printed label in `PageLabel`. LLM context and citations show only the printed page (for example `Page 6`); when the label is unknown, they explicitly identify the physical index as `PDF page 12`. Physical page metadata is hidden from LLM context when a printed label is available. Re-ingest existing collections to replace older page prefixes; there is no compatibility conversion.
+- **Compliance checks** can block queries and generated responses; streaming may emit tokens before the final response check
+- **Multi-turn conversational memory** — rolling topic summary, configurable turn window, batch pruning; `new:` starts a new topic and resets the conversation
 - **Translation** — Argos Translate normalises non-English queries to English before retrieval and rewriting; the same Argos runtime translates banlists for document-language compliance checks
 - **Language-aware indexed retrievers** — `BM25`, `Graph`, and `Regex` run per discovered corpus language bucket constrained by active language config. Query-relevant language runs first, then remaining active-and-present buckets, preserving mixed-language recall. Configure active languages/models in [src/Configuration/Config_Languages.py](src/Configuration/Config_Languages.py) and translation behavior in [Translation configuration (Argos)](CONFIGURATION_REFERENCE.md#-translation-configuration-argos).
 - **Per-session web knobs** — `web_search` (`local_only` / `local_and_web` / `web_only`), `web_weight`, `web_fetch_k` (web document fetch count override), `fetch_page_content` (`snippets only` / `fetch pages`); see [CONFIGURATION_REFERENCE.md § Web Search Admin Knobs](CONFIGURATION_REFERENCE.md#-web-search--admin-knobs)
 
 ### 🌐 RAGChatService
 
-- **OpenAI-compatible REST API** (`POST /v1/chat/completions`) — any OpenAI client, LiteLLM proxy, or custom integration works without modification
+- **Limited OpenAI-compatible REST API** (`POST /v1/chat/completions`) — supports clients using the implemented subset; see [API limitations](LEGAL.md#-no-openai--openwebui-feature-parity)
 - **OpenWebUI integration** — ChromaDB collections appear as selectable models in the dropdown; retrieval knobs (`strategy`, `retriever_k`, `threshold`, `web_search`, `web_weight`, `web_fetch_k`) surface as Advanced Parameters
 - **In-memory document cache** — highlighted source documents served as short-lived `GET /marked/<token>` links; configurable TTL, total size cap, and CORS origins
-- **Bearer-token authentication**, configurable host/port, optional streaming, automatic streaming downgrade when document grounding is active
+- **Optional Bearer-token authentication for `/v1/`**, configurable host/port, optional streaming, automatic streaming downgrade when document grounding is active; marked-document links use separate access tokens
 - **`_OPENWEB_UI_WEBSEARCH`** — when `True` (and `WEB_SEARCH_MODE="1"`), the web leg is auto-enabled for every incoming OpenWebUI request that doesn't supply an explicit parameter
 
 ### 🔧 Cross-App
@@ -316,8 +363,8 @@ Key capabilities organized by application. Full configuration details, defaults,
 - **Compliance pipeline is identical across all apps** — same algorithms (Regex+Levenshtein, Jaccard, BM25, KeyBERT), same banlist, per-app consensus thresholds
 - **12 named debug levels** (0–100) — `Standard 30` shows pipeline flow; `Chunk Content 32` dumps full retrieved text; `Chat Prompt 60` shows the LLM input; all changeable live in-chat with `set debug ge 30`
 - **Config hash verification** — startup rejects runs where any hash-pinned config file was edited without updating `_CRITICAL_CONFIG_HASHES` (`python src/Scripts/RecalcConfigHashes.py` to update). This includes `Config_Models.py`, `Config_Banned_Detection.py`, `Config_Banned_Content.py`, `Config_Banned_Prompts.py`, `Config_Load_Retrievers.py`, `Config_Load_Chunkers.py`, `Config_WebSearch.py`, and `Config_Internet_Env.py`.
-- **Fully offline after initial setup** — `HF_HUB_OFFLINE="1"`, `TRANSFORMERS_OFFLINE="1"`, `WEB_SEARCH_MODE="0"` in `Config_Internet_Env.py`
-- **License consent workflows** — RAG‑LCC does not bundle any model; consent is recorded per-model in `ModelGovernance/licenses/` before first use
+- **Offline configuration** — use local endpoints and available local models, disable web search, and set appropriate offline flags. Deployment disables the web-search master switch; other settings and development configurations may differ. Review [internet settings](INSTALL.md#-internet-access).
+- **License consent workflows** — RAG‑LCC does not bundle any model; consent is recorded per-model in `ModelGovernance/licenses/` before first use. Only the models selected by the `_ACTIVE_*` slots are checked. Switching to an unconsented model, or changing an active model's config, asks for consent again
 
 ---
 
@@ -327,25 +374,30 @@ RAG‑LCC exposes every significant architectural decision as a configuration sl
 
 > **If you have a document corpus and want to optimize retrieval** — start with chunking strategies, retrieval mode and strategy profiles, and BM25/HNSW parameters.
 > **If you're studying RAG failure modes** — every stage from query rewriting to answer grounding can be inspected at named debug levels, disabled, or replaced independently.
-> **If you need to integrate or deploy it** — Ollama or vLLM backend, OpenAI-compatible REST service (`RAGChatService`), OpenWebUI drop-in, fully offline after initial setup.
+> **If you need to integrate it** — Ollama or vLLM backend, a limited OpenAI-compatible REST service (`RAGChatService`), OpenWebUI integration, and optional offline configuration.
+
+For the **vLLM backend**, the companion project
+[HarinezumIgel/harinezumigel-llm-stack](https://github.com/HarinezumIgel/harinezumigel-llm-stack)
+provides configuration-driven orchestration for self-hosted LiteLLM and vLLM
+deployments. Use it to serve the LLMs, embedder, and reranker required by RAG-LCC.
 
 | Area | What you configure | Why you'd tune it |
 |------|--------------------|-------------------|
 | **Chunking** | 7 strategies (Semantic, Heading, PDF/Page, Sliding Window, Recursive…); per-format routing; chunk size and overlap | Chunking quality determines retrieval precision — wrong boundaries produce noisy embeddings, referential ambiguity, and incoherent context |
 | **Retrieval mode** | `VECTOR`, `BM25`, `GRAPH`, `REGEX`, pairwise combinations, `ALL`, `WEB` — with per-retriever RRF weights | Switch between semantic recall, lexical precision, entity-graph traversal, and verb/noun pattern recall; `BM25`/`GRAPH`/`REGEX` run language-aware per corpus language bucket, and each store's influence is tunable independently |
-| **Retrieval strategy** | 5 profiles (`NARROW` → `ULTRA_WIDE`): chunk count to LLM, score threshold, per-file limits, retriever-k | Dial precision vs recall: 20 chunks for focused Q&A, 1500 for exhaustive exploratory search |
+| **Retrieval strategy** | 5 profiles (`NARROW` → `ULTRA_WIDE`): chunk count to LLM, score threshold, per-file limits, retriever-k | Dial precision vs recall: 20 chunks for focused Q&A, 1500 for broad exploratory search; no exhaustive-coverage guarantee |
 | **Reranking** | Cross-encoder on/off per strategy; sigmoid score threshold | Neural relevance pass after retrieval — switch off for speed, tune threshold for precision |
 | **Query processing** | Multi-query expansion (N alternate phrasings); context-dependent rewriting; pronoun/referent resolution; meta-descriptor guard | Boost recall via vocabulary diversity; prevent stale chat history from poisoning retrieval |
-| **Chat session** | Turns to keep, history window size, topic summary mode, preferred response language | Control conversational memory budget; isolate topics with `new:` to prevent referential drift |
+| **Chat session** | Turns to keep, history window size, topic summary mode, preferred response language | Control conversational memory budget; reset the conversation with `new:` |
 | **Models** | Any Ollama or vLLM model; separate roles for generation, query rewriting, and safety checking | Swap models per role — use a large model for generation and a small one for rewriting |
 | **Prompts** | Fully customisable per model and task: chat, classification, safety check, query rewrite, topic detect | Adapt RAG‑LCC to any domain by editing prompts; no code changes needed |
 | **Compliance** | 5-algorithm detection pipeline (Regex+Levenshtein, Jaccard, BM25, KeyBERT); per-app thresholds; masking; consensus count | Fine-tune false-positive/negative tradeoff independently for indexing vs chat |
-| **Content hardening** | Leet-speak and Unicode confusable normalization; WordNet synonym expansion; LLM guard model | Defense-in-depth: obfuscation is neutralized before embedding, LLM gates responses before delivery |
+| **Content hardening** | Leet-speak and Unicode confusable normalization; WordNet synonym expansion; LLM guard model | Experiment with layered checks; detection is incomplete and streamed tokens may precede the final check |
 | **Classification** | Customisable extraction keys; `STRICT`/`BALANCED`/`RECALL` profiles; SQLite filter for selective indexing | Classify first, then load only the documents that match your query's domain |
 | **Language** | 28-language detection (Lingua); Argos query translation (installed source→EN pairs); Argos banlist translation; language-aware `BM25`/`GRAPH`/`REGEX` bucket routing | Retrieve and filter correctly even in multilingual document corpora |
 | **Web search** | DuckDuckGo integration; 3-stage pre-filter (BM25 + cosine + rerank); intent blocking; per-session weight | Augment local retrieval with live web results; configure filtering aggressively enough to suppress noise |
-| **Answer grounding** | Sentence-level overlap detection; configurable match strictness; color markers per output mode | Distinguish grounded sentences from hallucinations at the sentence level, in CLI and API |
-| **Deployment** | Ollama or vLLM backend; `RAGChatService` (OpenAI-compatible REST); OpenWebUI drop-in | Same config and pipeline whether you run CLI, a service, or behind OpenWebUI |
+| **Answer grounding** | Sentence-level overlap detection; configurable match strictness; color markers per output mode | Inspect matching evidence; overlap does not establish accuracy |
+| **Integration** | Ollama or vLLM backend; `RAGChatService` (limited OpenAI-compatible REST); OpenWebUI integration | Explore the pipeline through CLI or supported API clients |
 | **Observability** | 12 named debug levels (`Standard 30` → `Streaming 100`); in-chat toggle; performance event log | Trace every step: retrieval scores, merged chunk pool, prompt text, grounding markers, raw token stream |
 
 Full slot-level details: [CONFIGURATION_REFERENCE.md](CONFIGURATION_REFERENCE.md#-quick-reference-config-file-and-slot-name) · per-file reference: [CONFIGURATION_REFERENCE.md](CONFIGURATION_REFERENCE.md#-lookup-order)
@@ -362,6 +414,7 @@ Full slot-level details: [CONFIGURATION_REFERENCE.md](CONFIGURATION_REFERENCE.md
 | 📸 [EXAMPLES.md](EXAMPLES.md) | End-to-end terminal sessions for `RAGLoad`, `RAGChat`, `DocClassify`, `RAGChatService` |
 | 🏗️ [ARCHITECTURE.md](ARCHITECTURE.md) | Pipeline internals · compliance chain · chunking · query rewrite · graph index |
 | 🧭 [HANDS_ON_TOUR.md](HANDS_ON_TOUR.md) | Curated hands-on session and suggested experiments |
+| 🔀 [ORCHESTRATION_FLOWS.md](ORCHESTRATION_FLOWS.md) | Retrieval flows explained: query versions · legs · every shipped flow · experiment recipes · multilingual runs |
 | 🔐 [SECURITY.md](SECURITY.md) | Security policy · threat model · limitations · web search risks |
 | ⚖️ [LEGAL.md](LEGAL.md) | This document — definitions, governance, disclaimers |
 | 📋 [CHANGELOG.md](CHANGELOG.md) | Version history and release notes |
@@ -500,9 +553,19 @@ False positives and false negatives **will** occur.
 Scope includes:
 *document ingestion, prompt validation, document classification, and LLM output validation as defined in* `./src/Configuration/Config_*.py`.
 
+## ⭐ Support the Project
+
+RAG-LCC is developed in personal time and continues to evolve through community interest, feedback, and experimentation.
+
+If the project helped you, please consider:
+
+- Starring the repository
+- Sharing it with colleagues and friends
+- Reporting issues and ideas
+
+The RAG-LCC Experimental Lab runs on curiosity, feedback, and GPUs converting electricity into heat. Community interest is a major motivation for continued development.
+
 ### ⚠️ Final Notice
 
 Use of RAG‑LCC is entirely **at the operator’s own risk**.
 Nothing in this repository guarantees correctness, safety, regulatory conformity, or suitability for any specific environment or risk profile.
-
-⭐ If you find this project useful, please consider giving it a star on GitHub. It helps others discover the project and motivates continued development.

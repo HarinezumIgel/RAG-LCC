@@ -4,6 +4,8 @@ _WORDNET: dict[str, int | bool | list[str]] = {
     # --- expansion control ---------------------------------------------------
     # Enable / disable synonym expansion globally
     "ENABLED": True,
+    # Compliance Regex/Jaccard/BM25 scorers opt in separately from retrieval.
+    "SCORERS_ENABLED": False,
     # WordNet lookup depth (1 = direct synonyms only, 2 = synonyms of synonyms)
     "DEPTH": 1,
     # Maximum number of synonyms to add per original banned phrase

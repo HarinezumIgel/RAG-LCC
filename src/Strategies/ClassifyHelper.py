@@ -10,7 +10,7 @@ import numpy as np
 import torch
 from keybert import KeyBERT  # type: ignore[reportMissingTypeStubs]
 from nltk.stem.snowball import \
-    SnowballStemmer  # type: ignore[reportMissingTypeStubs]
+    SnowballStemmer  # pyright: ignore[reportMissingTypeStubs]
 from sentence_transformers import util
 
 from AI.ModelsCache import ModelsCache

@@ -2,13 +2,20 @@ import logging
 import re
 import textwrap
 import time
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from typing import Any
 
 from Globals.Globals import Globals
 from Gui.Colors import *
 from Gui.Symbols import Symbols
+from Helpers.SensitiveData import mask_sensitive_data
 
 _ANSI_RE = re.compile(r"\033\[[0-9;]*m")
+_SUPPRESS_INFO: ContextVar[bool] = ContextVar(
+    "pretty_writer_suppress_info", default=False
+)
 
 
 def _fallback_wcswidth(s: Any) -> int:
@@ -32,6 +39,16 @@ class PrettyWriter:
     """
     Utility class for pretty terminal and log output with icons, colors, and wrapping.
     """
+
+    @staticmethod
+    @contextmanager
+    def suppress_info() -> Iterator[None]:
+        """Quiet informational output in this execution context, not other requests."""
+        token = _SUPPRESS_INFO.set(True)
+        try:
+            yield
+        finally:
+            _SUPPRESS_INFO.reset(token)
 
     def __init__(
         self,
@@ -93,6 +110,8 @@ class PrettyWriter:
 
         sev_upper = severity.strip().upper()
         is_error_or_warning = sev_upper in {"E", "ERROR", "W", "WARNING"}
+        if _SUPPRESS_INFO.get() and not is_error_or_warning:
+            return ""
         if not self.always_on and not is_error_or_warning:
             from Helpers.DebugHelper import \
                 DebugHelper  # lazy — avoids circular import
@@ -104,7 +123,7 @@ class PrettyWriter:
             max_line_length = self.terminal_line_size
 
         indent: str = "" if indent_level == 1 else " " * indent_level
-        message = str(message)
+        message = mask_sensitive_data(message)
 
         # Determine the colour to restore after the icon
         restore = color if color else RESET

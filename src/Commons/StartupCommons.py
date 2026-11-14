@@ -845,7 +845,7 @@ class StartupCommons:
                 pretty.write(
                     "I",
                     "ARGOS LICENSE",
-                    "Run:  python ./src/Scripts/ArgosTranslatePackages.py install  "
+                    'Run:  "python ./src/Scripts/ArgosTranslatePackages.py install"  '
                     "to accept the Argos Translate license and then restart.",
                     color=CYAN,
                 )
@@ -860,7 +860,7 @@ class StartupCommons:
                 pretty.write(
                     "I",
                     "SPACY LICENSE",
-                    "Run:  python ./src/Scripts/SpacyLanguageModels.py install  "
+                    'Run:  "python ./src/Scripts/SpacyLanguageModels.py install"  '
                     "to accept the spaCy model-package license and then restart.",
                     color=CYAN,
                 )

@@ -226,11 +226,11 @@ _PROMPT_CLASSIFY_MISTRAL = (
     # ╚═══════════════════════════════════════════════════════════════════╝
     "Every value MUST be a plain string. Never use nested objects, arrays, or sets as values.\n"
     "Only mention animals that actually appear in the keywords. Do not invent or add animals from the example.\n"
-    "The response must start with {{{{ and end with }}}}.\n"
+    "The response must start with {{ and end with }}.\n"
     "Example output:\n"
-    '{{{{"Classification": "Science", "Purpose": "A document summary", '
+    '{{"Classification": "Science", "Purpose": "A document summary", '
     '"Language": "English", "Topic": "Research", '
-    '"Animal": "AnimalA, AnimalB", "Mammal": "AnimalA: yes, AnimalB: dont know"}}}}\n\n'
+    '"Animal": "AnimalA, AnimalB", "Mammal": "AnimalA: yes, AnimalB: dont know"}}\n\n'
     "Weighted Keywords: "
 )
 

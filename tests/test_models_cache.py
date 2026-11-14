@@ -24,6 +24,152 @@ from AI.ModelsCache import ModelsCache
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.parametrize(
+    "debug,stage,expected",
+    [
+        ("ge 30", "Encode", True),
+        ("ge 55", "Encode", True),
+        ("ge 30", "Cross-encode", True),
+        ("ge 20", "Cross-encode", False),
+    ],
+)
+def test_vllm_embedding_traces_require_component_debug(debug, stage, expected):
+    mc = _build_models_cache({"DEBUG_LEVEL": debug})
+    mc._log_vllm_call(stage, "test purpose", "test-model")
+    assert len(mc.pretty.messages) == (2 if expected else 0)
+
+
+def test_vllm_first_embedding_trace_per_model_at_level_30():
+    mc = _build_models_cache({"DEBUG_LEVEL": "ge 30"})
+    mc._log_vllm_call("Encode", "first", "model-a")
+    mc._log_vllm_call("Encode", "repeat", "model-a")
+    mc._log_vllm_call("Encode", "other model", "model-b")
+    assert len(mc.pretty.messages) == 4
+    mc.cfg.set("DEBUG_LEVEL", "ge 55")
+    mc._log_vllm_call("Encode", "detail", "model-a")
+    assert len(mc.pretty.messages) == 6
+
+
+@pytest.mark.parametrize(
+    "loader", ["get_hf_embeddings", "load_quantized_model", "get_cross_encoder"]
+)
+def test_remote_loaders_never_construct_local_models(monkeypatch, loader):
+    mc = _build_models_cache({"_ACTIVE_ENDPOINT": "vllm"})
+    monkeypatch.setattr(
+        mc,
+        "_vllm_client_kwargs",
+        lambda *args: {"base_url": "http://localhost:8001/v1", "model": "remote-model"},
+    )
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("vLLM must not construct local models or select a GPU")
+
+    monkeypatch.setattr(mc, "switch2device", forbidden)
+    monkeypatch.setattr(_mc_mod, "SentenceTransformer", forbidden)
+    monkeypatch.setattr(_mc_mod, "HuggingFaceEmbeddings", forbidden)
+    monkeypatch.setattr(_mc_mod, "CrossEncoder", forbidden)
+    if loader == "get_cross_encoder":
+        mc.helpers.get_model_args = lambda *args, **kwargs: {}
+    method = getattr(mc, loader)
+    result = method("remote-model") if loader == "load_quantized_model" else method()
+    assert result.model == "remote-model"
+
+
+def test_remote_device_does_not_probe_cuda(monkeypatch):
+    mc = _build_models_cache({"_ACTIVE_ENDPOINT": "vllm"})
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: pytest.fail("CUDA probe"))
+    assert mc.switch2device() == (torch.device("cpu"), "cpu", torch.float32, 0)
+
+
+def test_remote_embeddings_support_tensor_and_keybert_interfaces(monkeypatch):
+    from AI.VllmClients import VllmEmbeddings
+    from keybert.backend._utils import select_backend
+
+    remote = VllmEmbeddings("http://localhost:8001/v1", "remote-model")
+    calls = []
+
+    def post(endpoint, payload):
+        calls.append((endpoint, payload))
+        return {
+            "data": [
+                {"index": i, "embedding": [1.0, 2.0]}
+                for i in range(len(payload["input"]))
+            ]
+        }
+
+    monkeypatch.setattr(remote, "_post", post)
+    assert select_backend(remote) is remote
+    assert remote.embed(["first", "second"]).shape == (2, 2)
+    assert torch.equal(
+        remote.encode("first", convert_to_tensor=True), torch.tensor([1.0, 2.0])
+    )
+    assert remote.encode(["first"], convert_to_tensor=True).shape == (1, 2)
+    assert remote.get_sentence_embedding_dimension() == 2
+    assert all(endpoint == "embeddings" for endpoint, _ in calls)
+
+
+@pytest.mark.parametrize("model_name", ["bge-m3-embedder", "snowflake-embedder"])
+def test_remote_keybert_serializes_candidate_batches(monkeypatch, model_name):
+    from typing import cast
+    import requests
+    from keybert import KeyBERT
+    from AI.VllmClients import VllmEmbeddings
+
+    batches = []
+
+    def post(url, json, headers, timeout):
+        requests.Request("POST", url, json=json, headers=headers).prepare()
+        batches.append(json["input"])
+        response = MagicMock()
+        response.json.return_value = {
+            "data": [
+                {"index": i, "embedding": [1.0, float(len(text))]}
+                for i, text in enumerate(json["input"])
+            ]
+        }
+        return response
+
+    monkeypatch.setattr(requests, "post", post)
+    remote = VllmEmbeddings("http://localhost:8001/v1", model_name, batch_size=2)
+    document = "hedgehogs eat insects and hedgehogs like gardens"
+    document_embedding = remote.embed([document])
+    model = KeyBERT(model=remote)
+    first = cast(
+        list[tuple[str, float]],
+        model.extract_keywords(
+            document,
+            keyphrase_ngram_range=(1, 2),
+            top_n=4,
+            doc_embeddings=document_embedding,
+        ),
+    )
+    second = model.extract_keywords(
+        " ".join(keyword for keyword, _ in first),
+        top_n=2,
+        doc_embeddings=document_embedding,
+    )
+    assert first and second
+    assert len(batches) > 2
+    assert batches[0] == [document]
+    assert all(isinstance(batch, list) and len(batch) <= 2 for batch in batches)
+    assert all(isinstance(text, str) for batch in batches for text in batch)
+
+
+def test_remote_keybert_propagates_request_failure(monkeypatch):
+    import numpy as np
+    import requests
+    from AI.VllmClients import VllmEmbeddings
+    from Commons.Exceptions import ModelLoadError
+
+    def post(*args, **kwargs):
+        raise requests.ConnectionError("server unavailable")
+
+    monkeypatch.setattr(requests, "post", post)
+    remote = VllmEmbeddings("http://localhost:8001/v1", "remote-model")
+    with pytest.raises(ModelLoadError, match="server unavailable"):
+        remote.embed(np.array(["hedgehog", "garden"]))
+
+
 class StubConfig:
     """Provides the config keys ModelsCache reads."""
 
@@ -124,6 +270,9 @@ class StubHelpers:
                 "hf_api_key": "",
             }
         return dict(self._model_args)
+
+    def get_active_endpoint_args(self, model_role=None):
+        return {"BASE_URL": "http://localhost:8001/v1", "API_STYLE": "rerank"}
 
     def bit_to_dtype(self, bits=32):
         dtype_map = {32: torch.float32, 16: torch.float16, 8: torch.qint8}
@@ -247,6 +396,7 @@ def _build_models_cache(cfg_overrides=None, helpers=None, pretty=None):
     mc.use_cpu = mc.cfg.get_bool("USE_CPU")
     mc.bits = mc.cfg.get_int("EMBEDDER_BITS", 32)
     mc.lastDeviceBitSize = 0
+    mc._logged_embedding_models = set()
     mc.perf_logger = MagicMock()
 
     return mc
@@ -884,3 +1034,26 @@ class TestSingleton:
         ModelsCache._reset()
 
         assert ModelsCache._instance is None
+
+
+@pytest.mark.parametrize(
+    ("server_url", "expected"),
+    [
+        ("http://h:4000/v1/chat/completions", "http://h:4000/v1"),
+        ("http://h:8001/v1/", "http://h:8001/v1"),
+    ],
+)
+def test_vllm_client_uses_server_root(server_url, expected):
+    mc = _build_models_cache({"_ACTIVE_ENDPOINT": "vllm"})
+
+    class Helpers:
+        def get_model_args(self, what):
+            return {"MODEL": "m-embed", "model_name": "m-embed"}
+
+        def get_active_endpoint_args(self, model_role=None):
+            return {"BASE_URL": server_url, "API_KEY": "k", "BATCH_SIZE": 8}
+
+    mc.helpers = Helpers()
+    kwargs = mc._vllm_client_kwargs("_ACTIVE_EMBED")
+    assert kwargs["base_url"] == expected
+    assert kwargs["model"] == "m-embed" and kwargs["batch_size"] == 8

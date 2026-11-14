@@ -60,3 +60,15 @@ class HistoryManager:
     def save(self, collection: str, mode: str) -> None:
         """No-op: prompt_toolkit's FileHistory auto-saves on each entry."""
         _ = collection, mode
+
+    @staticmethod
+    def key(collection: str | None, chat_name: str | None) -> str:
+        """History key ``<base collection>_<chat>`` shared by all embedders.
+
+        The embedder suffix is stripped (Test_embedder_snowflake -> Test), so the same
+        chat keeps its history when _ACTIVE_EMBED changes.
+        """
+        from Helpers.Helpers import Helpers  # lazy — avoids circular import
+
+        base = Helpers().base_collection_name(str(collection or ""))
+        return f"{base}_{chat_name}"

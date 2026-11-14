@@ -3,8 +3,10 @@
 
 import os
 import sys
+from unittest.mock import Mock, PropertyMock, patch
 
 import pytest
+from pypdf import PdfReader
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 SOURCE = os.path.join(ROOT, "src")
@@ -89,6 +91,40 @@ class TestFormats:
 
 
 class TestPages:
+    def test_pdf_metadata_and_page_count_share_one_reader(self, extractor):
+        path = os.path.join(TESTDOCS, "Hedgehogs.pdf")
+        expected = extractor.extract(path, "pdf")
+        with patch(
+            "Strategies.Chunkers.DocumentMetadataExtractor.PdfReader",
+            wraps=PdfReader,
+        ) as reader:
+            assert extractor.extract(path, "pdf") == expected
+        reader.assert_called_once_with(path)
+
+    def test_pdf_page_count_survives_metadata_failure(self, extractor):
+        path = os.path.join(TESTDOCS, "Hedgehogs.pdf")
+        extractor._pretty = Mock()
+        with patch.object(PdfReader, "metadata", new_callable=PropertyMock) as metadata:
+            metadata.side_effect = ValueError("invalid metadata")
+            result = extractor.extract(path, "pdf")
+        assert result["Pages"] == len(PdfReader(path).pages)
+        extractor._pretty.write.assert_called_once()
+
+    def test_pdf_metadata_survives_page_count_failure(self, extractor):
+        path = os.path.join(TESTDOCS, "Hedgehogs.pdf")
+        expected = extractor.extract(path, "pdf")
+        expected.pop("Pages")
+        with patch.object(PdfReader, "pages", new_callable=PropertyMock) as pages:
+            pages.side_effect = ValueError("invalid page tree")
+            assert extractor.extract(path, "pdf") == expected
+
+    def test_pdf_open_failure_is_reported(self, extractor, tmp_path):
+        path = tmp_path / "broken.pdf"
+        path.write_bytes(b"not a pdf")
+        extractor._pretty = Mock()
+        assert extractor.extract(str(path), "pdf") == {}
+        extractor._pretty.write.assert_called_once()
+
     def test_pdf_has_pages(self, extractor):
         meta = extractor.extract(os.path.join(TESTDOCS, "Hedgehogs.pdf"), "pdf")
         assert isinstance(meta.get("Pages"), int)

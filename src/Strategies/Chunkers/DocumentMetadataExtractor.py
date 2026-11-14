@@ -19,6 +19,8 @@ from __future__ import annotations
 import os
 from typing import Any
 
+from pypdf import PdfReader
+
 from Commons.SingletonMixin import SingletonMixin
 from Config.Config import Config
 from Gui.PrettyWriter import PrettyWriter
@@ -93,8 +95,19 @@ class DocumentMetadataExtractor(SingletonMixin):
         if not file_path or not os.path.isfile(file_path):
             return {}
         file_type = (file_type or "").lower()
+        pdf_reader: PdfReader | None = None
+        if file_type == "pdf":
+            try:
+                pdf_reader = PdfReader(file_path)
+            except Exception as exc:
+                self._pretty.write(
+                    "W",
+                    "MetadataExtract",
+                    f"Metadata extraction failed ({exc}). File: {file_path}",
+                )
+                return {}
         if file_type in _DOC_INFO_TYPES:
-            raw = self._read_raw(file_type, file_path)
+            raw = self._read_raw(file_type, file_path, pdf_reader)
             result: dict[str, Any] = (
                 self._normalize(raw, "DOC_INFO_FIELDS") if raw else {}
             )
@@ -104,18 +117,22 @@ class DocumentMetadataExtractor(SingletonMixin):
             result = self._normalize(raw, "GENERIC_FIELDS") if raw else {}
         # Total page count — only attach when the format has pages (default 0
         # for images/text/etc. is left off entirely so it is never displayed).
-        pages = self._page_count(file_type, file_path)
+        pages = self._page_count(file_type, file_path, pdf_reader)
         if pages > 0:
             result["Pages"] = pages
         return result
 
-    def _page_count(self, file_type: str, file_path: str) -> int:
+    def _page_count(
+        self,
+        file_type: str,
+        file_path: str,
+        pdf_reader: PdfReader | None = None,
+    ) -> int:
         """Return the document's page/slide count, or 0 when not applicable."""
         try:
             if file_type == "pdf":
-                from pypdf import PdfReader
-
-                return len(PdfReader(file_path).pages)
+                reader = pdf_reader if pdf_reader is not None else PdfReader(file_path)
+                return len(reader.pages)
             if file_type == "pptx":
                 from pptx import Presentation
 
@@ -126,10 +143,15 @@ class DocumentMetadataExtractor(SingletonMixin):
 
     # -- Format dispatch ----------------------------------------------------
 
-    def _read_raw(self, file_type: str, file_path: str) -> dict[str, Any]:
+    def _read_raw(
+        self,
+        file_type: str,
+        file_path: str,
+        pdf_reader: PdfReader | None = None,
+    ) -> dict[str, Any]:
         try:
             if file_type == "pdf":
-                return self._read_pdf(file_path)
+                return self._read_pdf(file_path, pdf_reader)
             if file_type == "docx":
                 return self._read_docx(file_path)
             if file_type == "pptx":
@@ -159,10 +181,13 @@ class DocumentMetadataExtractor(SingletonMixin):
 
     # -- Per-format readers -------------------------------------------------
 
-    def _read_pdf(self, file_path: str) -> dict[str, Any]:
-        from pypdf import PdfReader
-
-        info = PdfReader(file_path).metadata
+    def _read_pdf(
+        self,
+        file_path: str,
+        pdf_reader: PdfReader | None = None,
+    ) -> dict[str, Any]:
+        reader = pdf_reader if pdf_reader is not None else PdfReader(file_path)
+        info = reader.metadata
         if info is None:
             return {}
         raw: dict[str, Any] = {}

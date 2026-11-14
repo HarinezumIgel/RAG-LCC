@@ -127,6 +127,19 @@ class HeadingChunker(ChunkerStrategy):
 
     # -- Parsers ------------------------------------------------------------
 
+    def chunk_prose(self, content: str, metadata: dict[str, Any]) -> ChunkResult:
+        """Retain heading context supplied by ordered Word/table extraction."""
+        breadcrumb = str(metadata.get("HeadingPath", ""))
+        if not content.strip():
+            return [], None
+        text = self._format_chunk(content, breadcrumb)
+        parts = (
+            self._split_oversized(content, breadcrumb)
+            if self._fileUtils.count_words(text) > self._max_chunk_size
+            else [text]
+        )
+        return self._to_docs([(part, breadcrumb) for part in parts], metadata), None
+
     def _parse_md(self, content: str) -> list[_Section]:
         """Split Markdown content on ``#``-style headings."""
         sections: list[_Section] = []
@@ -168,7 +181,7 @@ class HeadingChunker(ChunkerStrategy):
 
         for para in doc.paragraphs:
             style_name: str = (para.style.name or "") if para.style else ""
-            heading_level = _docx_heading_level(style_name)
+            heading_level = docx_heading_level(style_name)
 
             if heading_level > 0:
                 # Flush previous section
@@ -289,10 +302,13 @@ class HeadingChunker(ChunkerStrategy):
         return docs
 
 
-def _docx_heading_level(style_name: str) -> int:
+def docx_heading_level(style_name: str) -> int:
     """Extract heading level from a python-docx style name.
 
     Returns 1-9 for 'Heading 1' … 'Heading 9', 0 for non-heading styles.
     """
     m = re.match(r"Heading\s+(\d)", style_name)
     return int(m.group(1)) if m else 0
+
+
+_docx_heading_level = docx_heading_level

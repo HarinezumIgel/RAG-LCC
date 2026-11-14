@@ -476,11 +476,40 @@ class Accumulator(SingletonMixin):
         phrase_w: int = 30
         meta_w: int = 14
         col_w: int = 22
-        marker_w: int = 1
-        value_w: int = col_w - marker_w
+        value_w: int = col_w - 1  # 1 char reserved for the fail marker
 
+        header: str = self._summary_header(
+            user_order, remaining, all_algos, phrase_w, meta_w, col_w
+        )
+        level: str = "W" if warn_flag else "O"
+        self.pretty.write(level, "KeyWrdChk Summary", header, max_line_length=999)
+
+        for phrase in sorted(phrase_table.keys(), key=str.lower):
+            algo_map: dict[str, Any] = phrase_table[phrase]
+            meta_obj: PhraseMeta = algo_map.get("meta") or self._parse_legacy_meta(
+                algo_map.get("algos_matched", "-/-")
+            )
+            parts: list[str] = [
+                self._pad_display(phrase, phrase_w, align="left"),
+                self._format_colored_meta(meta_obj, meta_w),
+            ]
+            for algo in all_algos:
+                parts.append(self._summary_cell(algo_map.get(algo, "-/-"), value_w))
+            self.pretty.write(
+                "W", "KeyWrdChk Summary", " ".join(parts), max_line_length=999
+            )
+
+    def _summary_header(
+        self,
+        user_order: list[str],
+        remaining: list[str],
+        all_algos: list[str],
+        phrase_w: int,
+        meta_w: int,
+        col_w: int,
+    ) -> str:
+        """Build the header row for the phrase summary table."""
         last_algo: str | None = all_algos[-1] if all_algos else None
-
         header_parts: list[str] = [
             self._pad_display("Phrase", phrase_w, align="left"),
             self._pad_display("dpt / brth", meta_w, align="left"),
@@ -501,78 +530,44 @@ class Accumulator(SingletonMixin):
                 else f"{algo_alias} {Symbols.sym_fail()} "
             )
             header_parts.append(self._pad_display(label, col_w, align="left"))
+        return " ".join(header_parts)
 
-        header: str = " ".join(header_parts)
-        level: str = "W" if warn_flag else "O"
-        self.pretty.write(level, "KeyWrdChk Summary", header, max_line_length=999)
+    @staticmethod
+    def _parse_legacy_meta(raw_meta: str) -> PhraseMeta:
+        """Parse a legacy 'dpt/req  brth/req' string into a PhraseMeta."""
+        try:
+            tokens = [t for t in raw_meta.split() if t]
+            if len(tokens) >= 2:
+                d_token, b_token = tokens[0], tokens[1]
+            elif len(tokens) == 1:
+                d_token, b_token = tokens[0], "-/-"
+            else:
+                d_token, b_token = "-/-", "-/-"
+            d_count_s, d_req_s = d_token.split("/") if "/" in d_token else ("-", "-")
+            b_count_s, b_req_s = b_token.split("/") if "/" in b_token else ("-", "-")
+            return PhraseMeta(
+                depth_count=int(d_count_s) if d_count_s.isdigit() else 0,
+                depth_req=int(d_req_s) if d_req_s.isdigit() else 0,
+                breadth_count=int(b_count_s) if b_count_s.isdigit() else 0,
+                breadth_req=int(b_req_s) if b_req_s.isdigit() else 0,
+            )
+        except Exception:
+            return PhraseMeta(
+                depth_count=0, depth_req=0, breadth_count=0, breadth_req=0
+            )
 
-        for phrase in sorted(phrase_table.keys(), key=str.lower):
-            algo_map: dict[str, Any] = phrase_table[phrase]
-
-            # Prefer structured meta if present, otherwise try to parse legacy string
-            meta_obj: Optional[PhraseMeta] = algo_map.get("meta")
-            if meta_obj is None:
-                # fallback: try to parse legacy "algos_matched" string
-                raw_meta = algo_map.get("algos_matched", "-/-")
-                try:
-                    tokens = [t for t in raw_meta.split() if t]
-                    if len(tokens) >= 2:
-                        d_token, b_token = tokens[0], tokens[1]
-                    elif len(tokens) == 1:
-                        d_token, b_token = tokens[0], "-/-"
-                    else:
-                        d_token, b_token = "-/-", "-/-"
-                    d_count_s, d_req_s = (
-                        d_token.split("/") if "/" in d_token else ("-", "-")
-                    )
-                    b_count_s, b_req_s = (
-                        b_token.split("/") if "/" in b_token else ("-", "-")
-                    )
-                    d_count = int(d_count_s) if d_count_s.isdigit() else 0
-                    d_req = int(d_req_s) if d_req_s.isdigit() else 0
-                    b_count = int(b_count_s) if b_count_s.isdigit() else 0
-                    b_req = int(b_req_s) if b_req_s.isdigit() else 0
-                    meta_obj = PhraseMeta(
-                        depth_count=d_count,
-                        depth_req=d_req,
-                        breadth_count=b_count,
-                        breadth_req=b_req,
-                    )
-                except Exception:
-                    meta_obj = PhraseMeta(
-                        depth_count=0, depth_req=0, breadth_count=0, breadth_req=0
-                    )
-
-            meta_display: str = self._format_colored_meta(meta_obj, meta_w)
-
-            parts: list[str] = [
-                self._pad_display(phrase, phrase_w, align="left"),
-                meta_display,
-            ]
-
-            for algo in all_algos:
-                raw: ResultsForPrint | str = algo_map.get(algo, "-/-")
-                score_str: str = (
-                    raw.score_str if isinstance(raw, ResultsForPrint) else raw
-                )
-
-                if score_str.startswith("*"):
-                    marker = "*"
-                    value = score_str[1:]
-                    cell_color = BRIGHT_BLUE
-                else:
-                    marker = " "
-                    value = score_str
-                    if score_str == "Disabled":
-                        cell_color = CYAN
-                    else:
-                        cell_color = BRIGHT_RED if score_str != "-/-" else GREEN
-
-                cell = f"{cell_color}{marker}{self._pad_display(value, value_w, align='left')}{RESET}"
-                parts.append(cell)
-
-            row = " ".join(parts)
-            self.pretty.write("W", "KeyWrdChk Summary", row, max_line_length=999)
+    def _summary_cell(self, raw: ResultsForPrint | str, value_w: int) -> str:
+        """Build one colored per-algo cell for the phrase summary table."""
+        score_str: str = raw.score_str if isinstance(raw, ResultsForPrint) else raw
+        if score_str.startswith("*"):
+            marker, value, cell_color = "*", score_str[1:], BRIGHT_BLUE
+        else:
+            marker, value = " ", score_str
+            if score_str == "Disabled":
+                cell_color = CYAN
+            else:
+                cell_color = BRIGHT_RED if score_str != "-/-" else GREEN
+        return f"{cell_color}{marker}{self._pad_display(value, value_w, align='left')}{RESET}"
 
     # ----------------- helper 4 (messages) -----------------
     def _print_ensemble_messages(

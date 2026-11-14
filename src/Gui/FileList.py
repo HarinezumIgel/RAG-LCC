@@ -7,6 +7,7 @@ from InquirerPy.base.control import Choice  # type: ignore[attr-defined]
 
 inquirer: Any = _inquirer
 from Commons.SingletonMixin import SingletonMixin
+from Gui.Picker import RETURN_LABEL, PickerCancelled, pick_value
 
 
 # ——— record for each file entry, now scoped by store ———
@@ -100,11 +101,15 @@ class FileList(SingletonMixin):
         if not choices:
             print("⚠ No history for store", store)
             return None
-        return inquirer.select(
-            message=f"Select from history (store={store}):",
-            choices=choices,
-            instruction="Use ↑/↓ to navigate, Enter to pick",
-        ).execute()
+        try:
+            return pick_value(
+                inquirer,
+                message=f"Select from history (store={store}):",
+                choices=choices,
+                instruction="Use ↑/↓ to navigate, Enter to pick",
+            )
+        except PickerCancelled:
+            return None
 
     def _browse_and_select(
         self, store: Optional[str] = None, start_path: Optional[str] = None
@@ -117,16 +122,19 @@ class FileList(SingletonMixin):
 
         while True:
             actions = [
-                Choice("Select files here", "select"),
-                Choice("Go into subdirectory", "down"),
+                Choice("select", name="Select files here"),
+                Choice("down", name="Go into subdirectory"),
             ]
             if os.path.dirname(current) != current:
-                actions.append(Choice("Go up to parent", "up"))
-            actions.append(Choice("Finish", "done"))
+                actions.append(Choice("up", name="Go up to parent"))
+            actions.append(Choice("done", name="Finish"))
+            actions.append(Choice(None, name=RETURN_LABEL))
 
             action = inquirer.select(
                 message=f"📁 Current: {current}", choices=actions
             ).execute()
+            if action is None:
+                return []
 
             if action == "select":
                 files = [
@@ -139,19 +147,14 @@ class FileList(SingletonMixin):
                     print("  (no files here)")
                     continue
                 picks = inquirer.checkbox(
-                    message="Tick files to process:", choices=files
+                    message="Tick files to process:",
+                    choices=[*files, Choice(None, name=RETURN_LABEL)],
                 ).execute()
+                if None in picks:
+                    return []
                 for fname in picks:
                     fpath = os.path.join(current, fname)
                     entry = FileEntry(store, fname, fpath, "DocSelect")
-                    if not any(
-                        e.store == store
-                        and e.file == fname
-                        and e.path == fpath
-                        and e.usage == "DocSelect"
-                        for e in self.entries
-                    ):
-                        self.entries.append(entry)
                     selected.append(entry)
 
             elif action == "down":
@@ -163,9 +166,12 @@ class FileList(SingletonMixin):
                 if not dirs:
                     print("  (no subdirectories here)")
                     continue
-                choice = inquirer.select(
-                    message="Choose a subdirectory:", choices=dirs
-                ).execute()
+                try:
+                    choice = pick_value(
+                        inquirer, message="Choose a subdirectory:", choices=dirs
+                    )
+                except PickerCancelled:
+                    return []
                 current = os.path.join(current, choice)
 
             elif action == "up":
@@ -174,6 +180,9 @@ class FileList(SingletonMixin):
             else:  # done
                 break
 
+        for entry in selected:
+            if entry not in self.entries:
+                self.entries.append(entry)
         return selected
 
     def select(
@@ -182,16 +191,19 @@ class FileList(SingletonMixin):
         usage: Optional[str] = None,
         start_path: Optional[str] = None,
     ) -> Optional[List[FileEntry]]:
-        if store is not None:
-            self.current_store = store
-        if usage is not None:
-            self.set_usage(usage)
-
-        if self.usage == "File":
+        selected_usage = usage if usage is not None else self.usage
+        if selected_usage == "File":
             pick = self.select_filename_inline(store=store)
+            if pick:
+                self.current_store = store or self.current_store
+                self.set_usage(selected_usage)
             return [pick] if pick else None
 
-        if self.usage == "DocSelect":
-            return self._browse_and_select(store=store, start_path=start_path)
+        if selected_usage == "DocSelect":
+            picks = self._browse_and_select(store=store, start_path=start_path)
+            if picks:
+                self.current_store = store or self.current_store
+                self.set_usage(selected_usage)
+            return picks
 
-        raise ValueError(f"Unknown usage: {self.usage}")
+        raise ValueError(f"Unknown usage: {selected_usage}")

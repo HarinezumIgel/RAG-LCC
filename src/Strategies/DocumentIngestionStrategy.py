@@ -6,11 +6,13 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, cast
 
 from chromadb.api import Collection  # type: ignore[attr-defined]
+from chromadb.api.types import Metadata, PyEmbedding
 # langchain and related libraries
 from langchain_core.documents.base import Document as langchainDoc
 
 from AI.AIHelpers import AIHelpers
 from AI.ModelsCache import ModelsCache
+from Commons.Exceptions import DataProcessingError
 from Commons.SingletonMixin import SingletonMixin
 from Compliance.BannedPhraseCollector import BannedPhraseCollector
 from Compliance.Exclusions import Exclusions
@@ -39,6 +41,7 @@ from Strategies.Chunkers.SemanticChunker import SemanticChunker
 from Strategies.Chunkers.SentenceWindowChunker import SentenceWindowChunker
 from Strategies.Chunkers.SlideChunker import SlideChunker
 from Strategies.Chunkers.SlidingWindowChunker import SlidingWindowChunker
+from Strategies.Chunkers.TableChunker import DocumentBlock, TableChunker
 from Strategies.StrategyType import StrategyType
 
 # Third-party imports
@@ -85,7 +88,7 @@ class DocumentIngestionStrategy(SingletonMixin):
         self.perf_logger: PerfLogger = PerfLogger()
 
         _coll_name, _ = self.chromaDBHelper.change_chroma_collection(
-            self.cfg.get_str("COLLECTION"), False
+            self.helpers.embedder_collection_name(), False
         )
 
         # chunker — two-level strategy routing via _CHUNK_STRATEGY
@@ -113,6 +116,7 @@ class DocumentIngestionStrategy(SingletonMixin):
         self.language: str | None = None
         self.wordCount: int = 0
         self.fileHash: str | None = None
+        self._document_blocks: list[DocumentBlock] = []
         self.collection_name: str = ""
         self.client: Any = None
 
@@ -154,6 +158,7 @@ class DocumentIngestionStrategy(SingletonMixin):
         self.wordCount: int = 0
         self.fileHash: str | None = meta.get("FileHash")
         self.content = doc.get("content", "")
+        self._document_blocks = doc.get("blocks", [])
 
     def _make_doc(self) -> dict[str, Any]:
         self._reverse_doc()
@@ -185,6 +190,8 @@ class DocumentIngestionStrategy(SingletonMixin):
             "meta": meta,
             "content": self.content,
         }
+        if self._document_blocks:
+            self.doc["blocks"] = self._document_blocks
         return self.doc
 
     def _open_collection_for_ingestion(self) -> None:
@@ -240,9 +247,18 @@ class DocumentIngestionStrategy(SingletonMixin):
             f"start chunking chunker={chunker_label}",
         )
         _t_chunk = time.perf_counter()
-        doc_chunks, pre_embeddings = self.chunker.chunk(
+        tokenizer = (
+            self.models_cache.get_embedding_tokenizer(
+                self.helpers.get_model_args("_ACTIVE_EMBED")["hf_model_name"]
+            )
+            if self._document_blocks
+            else None
+        )
+        doc_chunks, pre_embeddings = self.chunker.chunk_document(
             self.content,
             self.doc.get("meta", {}),
+            self._document_blocks,
+            tokenizer,
         )
         self.perf_logger.log(
             "DocumentIngestionStrategy.ingest",
@@ -269,12 +285,40 @@ class DocumentIngestionStrategy(SingletonMixin):
         texts: list[str]
         raw_metas: list[dict[str, str | int | float | bool]]
         texts, raw_metas = self._extract_texts_and_metas(doc_chunks)
-        texts_trunc: list[str] = self.models_cache.truncate_texts(
-            texts,
-            model_name=self.helpers.get_model_args("_ACTIVE_EMBED")["MODEL"],
+        # Table fragments already fit the tokenizer budget. Preserve their
+        # original serialization rather than decoding away row boundaries.
+        prose_indices = [
+            i for i, d in enumerate(doc_chunks) if "TableIndex" not in d.metadata
+        ]
+        texts_trunc = list(texts)
+        prose_trunc = self.models_cache.truncate_texts(
+            [texts[i] for i in prose_indices],
+            model_name=self.helpers.get_model_args("_ACTIVE_EMBED")["hf_model_name"],
             max_length=self.chunker.chunk_size,
             padding=True,
         )
+        for i, text in zip(prose_indices, prose_trunc):
+            texts_trunc[i] = text
+        if len(prose_indices) != len(doc_chunks):
+            tokenizer = self.models_cache.get_embedding_tokenizer(
+                self.helpers.get_model_args("_ACTIVE_EMBED")["hf_model_name"]
+            )
+            table_chunker = TableChunker(
+                tokenizer,
+                self.cfg.get_int("_CHUNKERS.TABLE.MAX_CHUNK_TOKENS"),
+                pretty=self.pretty,
+            )
+            for i, doc in enumerate(doc_chunks):
+                if "TableIndex" in doc.metadata and not table_chunker.fits(texts[i]):
+                    raise DataProcessingError(
+                        f"Table {doc.metadata['TableIndex']} exceeds the final embedding token budget."
+                    )
+        if pre_embeddings is not None:
+            # A vector derived from another text must not be reused after truncation.
+            pre_embeddings = [
+                vector if texts[i] == texts_trunc[i] else None
+                for i, vector in enumerate(pre_embeddings)
+            ]
         embeddings: list[list[float]] = self._resolve_embeddings(
             texts_trunc,
             pre_embeddings,
@@ -332,10 +376,8 @@ class DocumentIngestionStrategy(SingletonMixin):
         # 4) Chunk current document
         doc_chunks, pre_embeddings = self._chunk_current_document()
 
-        # 5) Clear old chunks for this file
-        self._clear_old_chunks()
-
-        # 6) Preprocess texts and embed
+        # 5) Preprocess texts and embed before deleting existing chunks: an
+        # impossible table budget must not erase the last successful ingestion.
         #    If the chunker already provided embeddings we reuse them and
         #    only call the embedding model for entries marked None (e.g.
         #    oversized splits that couldn't reuse sentence vectors).
@@ -343,6 +385,7 @@ class DocumentIngestionStrategy(SingletonMixin):
             doc_chunks,
             pre_embeddings,
         )
+        self._clear_old_chunks()
 
         # 7) Filter by keyword and similarity checks
         #    Compliance checks run on the full (un-truncated) texts so that
@@ -536,22 +579,34 @@ class DocumentIngestionStrategy(SingletonMixin):
     ) -> None:
         file_name = metas[0].get("FileName") if metas else None
         file_name = file_name or self.file or "<unknown>"
+        discarded_percentage = skipped / total_chunks * 100 if total_chunks else 0.0
+        message = (
+            f"Upserted {len(ids)} of {total_chunks} chunks. "
+            f"Discarded: {skipped} ({discarded_percentage:.1f}%) for "
+            f"{file_name} to collection {self.collection_name}."
+        )
         if ids:
             assert self.collection is not None, "collection must be set"
-            self.collection.add(
-                ids=ids, embeddings=embeddings, metadatas=metas, documents=texts  # type: ignore[reportArgumentType]
-            )
-            self.pretty.write(
-                "O",
-                "Vector store",
-                f"Upserted {len(ids)} cleaned chunk(s) for {file_name} to collection {self.collection_name}. Skipped {skipped} due to banned similarity.",
-            )
+            batch_size: int = self.client.get_max_batch_size()
+            if batch_size <= 0:
+                raise DataProcessingError(
+                    "Chroma reported a non-positive maximum batch size."
+                )
+            for start in range(0, len(ids), batch_size):
+                stop = start + batch_size
+                batch_embeddings: list[PyEmbedding] = [
+                    embedding for embedding in embeddings[start:stop]
+                ]
+                batch_metas: list[Metadata] = [meta for meta in metas[start:stop]]
+                self.collection.add(
+                    ids=ids[start:stop],
+                    embeddings=batch_embeddings,
+                    metadatas=batch_metas,
+                    documents=texts[start:stop],
+                )
+            self.pretty.write("O", "Vector store", message)
         else:
-            self.pretty.write(
-                "W",
-                "Vector store",
-                f"No chunks inserted for {file_name} to collection {self.collection_name}. All {total_chunks} chunk(s) were skipped.",
-            )
+            self.pretty.write("W", "Vector store", message)
 
     def _finalize(
         self,

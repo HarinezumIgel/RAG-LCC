@@ -24,7 +24,9 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from Chat.Orchestrator import Orchestrator
+from Orchestrator.Orchestrator import Orchestrator
+from Commons.Exceptions import QueryTranslationError
+from Orchestrator import FlowConfig
 
 _RAG_IMPL_SRC = os.path.join(
     os.path.dirname(__file__), "..", "src", "Chat", "RAGChatImpl.py"
@@ -142,8 +144,8 @@ class StubSharedTranslate:
             "german": "de",
         }
 
-    def translate_text(
-        self, text: str, target_lang: str, source_lang: str = "auto"
+    def translate_query_text(
+        self, text: str, target_lang: str, source_lang: str
     ) -> str:
         self.calls.append((text, target_lang, source_lang))
         return self._mapping.get((text, target_lang, source_lang), text)
@@ -155,9 +157,16 @@ class StubPromptRewrite:
         self.strict = strict if strict is not None else normal
         self.calls: list[bool] = []
 
-    def rewrite(self, _session: StubSession, *, strict_english: bool = False) -> str:
-        self.calls.append(strict_english)
-        return self.strict if strict_english else self.normal
+    def rewrite(
+        self,
+        _session: StubSession,
+        *,
+        strict_english: bool = False,
+        strict_language: str | None = None,
+    ) -> str:
+        strict = bool(strict_english or strict_language)
+        self.calls.append(strict)
+        return self.strict if strict else self.normal
 
 
 class StubDoc:
@@ -240,15 +249,24 @@ class StubPerfLogger:
 
 
 def _extract_method(method_name: str) -> str:
-    with open(_RAG_IMPL_SRC, encoding="utf-8") as fh:
-        source = fh.read()
-    match = re.search(
-        rf"(    def {re.escape(method_name)}\(.*?)(?=\n    @|\n    def |\nclass |\Z)",
-        source,
-        re.DOTALL,
+    for filename in (
+        "RAGChatImpl.py",
+        "QueryNormalizer.py",
+        "LocalRetrieverExecutor.py",
+    ):
+        path = os.path.join(os.path.dirname(_RAG_IMPL_SRC), filename)
+        with open(path, encoding="utf-8") as fh:
+            source = fh.read()
+        match = re.search(
+            rf"(    def {re.escape(method_name)}\(.*?)(?=\n    @|\n    def |\nclass |\Z)",
+            source,
+            re.DOTALL,
+        )
+        if match:
+            return textwrap.dedent(match.group(1))
+    raise AssertionError(
+        f"Could not find {method_name}() in retrieval responsibility classes"
     )
-    assert match, f"Could not find {method_name}() in RAGChatImpl.py"
-    return textwrap.dedent(match.group(1))
 
 
 def _load_method(name: str) -> Any:
@@ -260,6 +278,8 @@ def _load_method(name: str) -> Any:
         "time": time,
         "DebugHelper": _DebugHelperStub,
         "BM25Retriever": StubBM25RetrieverClass,
+        "QueryTranslationError": QueryTranslationError,
+        "FlowConfig": FlowConfig,
     }
     exec(compile(_extract_method(name), _RAG_IMPL_SRC, "exec"), ns)
     return ns[name]
@@ -288,9 +308,11 @@ _log_query_language_drift = _load_method("_log_query_language_drift")
 _set_effective_query_metadata = _load_method("_set_effective_query_metadata")
 _translate_query_to_english = _load_method("_translate_query_to_english")
 _shape_graph_regex_stage_queries = _load_method("_shape_graph_regex_stage_queries")
+_is_native_retrieval = _load_method("_is_native_retrieval")
 
 
 class NormalizeShell:
+    _is_native_retrieval = staticmethod(_is_native_retrieval)
     _normalize_query = _normalize_query
     _resolve_turn_translation_backend = _resolve_turn_translation_backend
     _detect_raw_query_language = _detect_raw_query_language
@@ -330,6 +352,7 @@ class NormalizeShell:
 
 
 class FetchShell:
+    _is_native_retrieval = staticmethod(_is_native_retrieval)
     _fetch_local_docs = _fetch_local_docs
     _shape_graph_regex_stage_queries = _shape_graph_regex_stage_queries
     _normalize_language_bucket = _normalize_language_bucket
@@ -344,11 +367,31 @@ class FetchShell:
     _run_indexed_local_retrievers = _run_indexed_local_retrievers
     _store_guardrail_retrieval_topk = _store_guardrail_retrieval_topk
 
+    def _expand_indexed_query_with_synonyms(self, query: str) -> str:
+        return query
+
     def __init__(self, bm25_map: dict[str, list[StubDoc]]) -> None:
         self.pretty = StubPrettyWriter()
         self.persist_directory = "db"
         self.collection_name = "Test"
-        self.collection = object()
+
+        class _Collection:
+            def get(self, **kwargs: Any) -> dict[str, Any]:
+                return {"metadatas": [{"Language": "en"}]}
+
+        class _Config:
+            def get_list(self, key: str, default: Any, **kwargs: Any) -> list[str]:
+                return ["en"]
+
+            def indirect_dict(
+                self, key: str, default: Any, **kwargs: Any
+            ) -> dict[str, Any]:
+                return default
+
+            indirect_list = get_list
+
+        self.collection = _Collection()
+        self.cfg = _Config()
         self.perf_logger = StubPerfLogger()
         self.bm25_retriever = StubBM25Runtime(bm25_map)
         self.graph_retriever = StubGraphRuntime()
@@ -371,6 +414,72 @@ class FetchShell:
 
 
 class TestNormalizeQueryContract:
+    @pytest.mark.parametrize("debug", [0, 30])
+    def test_native_rewrite_precedes_alternative_generation(
+        self, monkeypatch, debug
+    ) -> None:
+        monkeypatch.setattr(
+            _DebugHelperStub,
+            "check_session",
+            staticmethod(
+                lambda session, level: level == 30 and session.debug_level == 30
+            ),
+        )
+        shell = NormalizeShell(
+            language_map={"raw": "german", "resolved": "german"},
+            translations={},
+            rewrite_normal="resolved",
+            rewrite_strict="resolved",
+        )
+        events = []
+        original_rewrite = shell.promptRewrite.rewrite
+
+        def rewrite(*args, **kwargs):
+            events.append("rewrite")
+            return original_rewrite(*args, **kwargs)
+
+        def alternatives(query, session):
+            events.append(("alternatives", query))
+            return ["alternative"]
+
+        shell.promptRewrite.rewrite = rewrite
+        shell._generate_alternate_queries = alternatives
+        session = StubSession("raw")
+        session.retrieval_language_mode = "NATIVE"
+        session.debug_level = debug
+        shell._normalize_query(session, "raw")
+        assert events == ["rewrite", ("alternatives", "resolved")]
+        steps = [args[2] for args, _ in shell.pretty.calls if args[1] == "QueryPlan"]
+        if debug == 30:
+            assert [message.split(":")[0] for message in steps] == [
+                "Step 1",
+                "Step 2",
+                "Step 3",
+            ]
+        else:
+            assert steps == []
+
+    def test_native_mode_keeps_query_language_without_translation(self) -> None:
+        raw = "was ist eine schenkung mit auflage"
+        rewritten = "was ist eine schenkung mit auflage im erbrecht"
+        shell = NormalizeShell(
+            language_map={raw: "german", rewritten: "german"},
+            translations={(raw, "german"): "What is a gift with circumstance"},
+            rewrite_normal=rewritten,
+            rewrite_strict="should not be used",
+        )
+        session = StubSession(raw)
+        session.retrieval_language_mode = "NATIVE"
+
+        final_query, _ = shell._normalize_query(session, user_query_original=raw)
+
+        assert final_query == rewritten
+        assert session.retrieval_language == "german"
+        assert session.orig_translated_query_en == raw
+        assert session.seed_retrieval_query == raw
+        assert shell._translator.calls == []
+        assert shell.promptRewrite.calls == [False]
+
     def test_tracks_user_and_retrieval_languages(self) -> None:
         raw = "was essen igel"
         orig_translated_query_en = "what do hedgehogs eat"
@@ -501,6 +610,37 @@ class TestDualQueryFusion:
 
 
 class TestGraphRegexStageQueryShaping:
+    def test_native_mode_translates_from_query_language_and_skips_same_bucket(
+        self,
+    ) -> None:
+        shell = FetchShell(bm25_map={})
+        shell._translation_backend = "argos"
+        shared = StubSharedTranslate({("Q2", "en", "de"): "Q2|en"})
+        shell._shared = shared
+        expanded: list[str] = []
+        shell._expand_indexed_query_with_synonyms = lambda q: expanded.append(q) or q
+        session = StubSession(query="Q2")
+        session.retrieval_language_mode = "NATIVE"
+        session.retrieval_language = "german"
+
+        same_primary, _ = shell._shape_graph_regex_stage_queries(
+            session,
+            language_bucket="german",
+            primary_query="Q2",
+            guardrail_query="Q2",
+        )
+        en_primary, _ = shell._shape_graph_regex_stage_queries(
+            session,
+            language_bucket="english",
+            primary_query="Q2",
+            guardrail_query="Q2",
+        )
+
+        assert same_primary == "Q2"
+        assert en_primary == "Q2|en"
+        assert shared.calls == [("Q2", "en", "de")]
+        assert expanded == []
+
     def test_translates_non_english_bucket_when_argos_enabled(self) -> None:
         shell = FetchShell(bm25_map={})
         shell._translation_backend = "argos"
@@ -548,7 +688,7 @@ class TestGraphRegexStageQueryShaping:
         assert guardrail_query == "Q1"
         assert shared.calls == []
 
-    def test_warns_once_when_translation_returns_unchanged_text(self) -> None:
+    def test_accepts_successful_unchanged_translation_for_identifiers(self) -> None:
         shell = FetchShell(bm25_map={})
         shell._translation_backend = "argos"
         shell._shared = StubSharedTranslate({})
@@ -581,16 +721,16 @@ class TestGraphRegexStageQueryShaping:
             for message in warning_messages
             if "Indexed query translation for en->de returned unchanged text" in message
         ]
-        assert len(unchanged_warnings) == 1
+        assert unchanged_warnings == []
 
-    def test_warns_when_translation_raises_exception(self) -> None:
+    def test_propagates_translation_failure_to_the_shared_policy(self) -> None:
         class _FailingShared:
             lang_name_to_code: dict[str, str] = {
                 "english": "en",
                 "german": "de",
             }
 
-            def translate_text(
+            def translate_query_text(
                 self,
                 _text: str,
                 _target_lang: str,
@@ -602,25 +742,13 @@ class TestGraphRegexStageQueryShaping:
         shell._translation_backend = "argos"
         shell._shared = _FailingShared()
 
-        primary_query, guardrail_query = shell._shape_graph_regex_stage_queries(
-            StubSession(query="Q2"),
-            language_bucket="german",
-            primary_query="Q2",
-            guardrail_query="Q1",
-        )
-
-        assert primary_query == "Q2"
-        assert guardrail_query == "Q1"
-
-        warning_messages = [
-            str(args[2])
-            for args, _kwargs in shell.pretty.calls
-            if len(args) >= 3 and args[1] == "Translate"
-        ]
-        assert any(
-            "Indexed query translation for en->de failed" in message
-            for message in warning_messages
-        )
+        with pytest.raises(QueryTranslationError, match="missing model files"):
+            shell._shape_graph_regex_stage_queries(
+                StubSession(query="Q2"),
+                language_bucket="german",
+                primary_query="Q2",
+                guardrail_query="Q1",
+            )
 
 
 class TestLocalRetrieverModeFlags:

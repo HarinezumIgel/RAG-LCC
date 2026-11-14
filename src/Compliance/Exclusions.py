@@ -29,7 +29,7 @@ class Exclusions(SingletonMixin):
         self.pretty: PrettyWriter = pretty or PrettyWriter(always_on=True)
         self.helpers: Helpers = helpers or Helpers()
 
-        self.collection: str = self.cfg.get_str("COLLECTION", "")
+        self.collection: str = self.helpers.embedder_collection_name()
 
         # lines preserves file order (comments and entries). Each element is the original line string.
         self.lines: List[str] = []

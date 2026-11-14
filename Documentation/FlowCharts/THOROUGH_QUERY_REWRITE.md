@@ -1,10 +1,16 @@
-# THOROUGH_QUERY_REWRITE Orchestration Flow
+# ENGLISH_ALL_MULTILEG Orchestration Flow
+
+Formerly named `THOROUGH_QUERY_REWRITE` (the old name is still accepted as an alias).
+The chart shows the configured profile before session overrides; runtime gates,
+backend availability and retrieval results can skip individual stages. See
+[`Config_Orchestrator.py`](../../src/Configuration/Config_Orchestrator.py) and
+[`Orchestrator.py`](../../src/Orchestrator/Orchestrator.py).
 
 ```mermaid
 %%{init: {'theme':'base','themeVariables':{'background':'#f5efe3','mainBkg':'#f5efe3','primaryColor':'#ffffff','secondaryColor':'#ffffff','tertiaryColor':'#ffffff','primaryTextColor':'#111111','lineColor':'#333333'}}}%%
 flowchart TD
     A["Orchestrator.run"] --> B["Resolve flow profile"]
-    B --> Cfg["THOROUGH_QUERY_REWRITE profile<br/>force_retrieve_mode=none<br/>use_secondary_query=on<br/>use_original_language_vector=on<br/>shape_indexed_queries=on<br/>use_vector_alternates=on<br/>use_query_rewrite=on<br/>use_pronoun_substitution=on<br/>run_vector=on<br/>run_bm25=on<br/>run_graph=on<br/>run_regex=on<br/>run_rerank=on<br/>run_low_score_fallback=on<br/>run_low_recall_rescue=on<br/>run_grounding=on"]
+    B --> Cfg["ENGLISH_ALL_MULTILEG profile<br/>force_retrieve_mode=none<br/>use_secondary_query=on<br/>use_original_language_vector=on<br/>shape_indexed_queries=on<br/>translate_indexed_queries=on<br/>use_vector_alternates=on<br/>use_query_rewrite=on<br/>use_pronoun_substitution=on<br/>run_vector=on<br/>run_bm25=on<br/>run_graph=on<br/>run_regex=on<br/>run_rerank=on<br/>run_low_score_fallback=on<br/>run_low_recall_rescue=on<br/>run_grounding=on"]
 
     Cfg --> C["Apply flow controls to session flags"]
     C --> D["Prepare session context"]
@@ -15,7 +21,7 @@ flowchart TD
     F -- no --> Abort["Abort retrieval<br/>return empty context and 0 chunks"]
     F -- yes --> G["Resolve effective retrieve_mode<br/>no override in flow profile"]
 
-    G --> H["Resolve flow query sources<br/>primary FINAL_QUERY<br/>secondary TRANSLATED_QUERY"]
+    G --> H["Resolve flow query sources<br/>primary REWRITTEN_QUERY<br/>secondary TRANSLATED_QUERY"]
     H --> I{"Secondary query differs from primary?"}
     I -- yes --> I1["Guardrail leg enabled"]
     I -- no --> I2["Guardrail leg disabled"]
@@ -28,16 +34,15 @@ flowchart TD
     K --> L{"Run local stage?"}
     K --> M{"Run web stage?"}
 
-    L -- yes --> L1["Vector retriever<br/>final query plus optional guardrail fusion"]
+    L -- yes --> L6["Indexed stage planning<br/>per-language iterations<br/>query shaping enabled"]
+    L6 --> L1["Vector retriever<br/>rewritten query plus optional guardrail fusion"]
     L1 --> L2["Vector alternates fanout"]
     L2 --> L3{"Original-language vector leg active?"}
     L3 -- yes --> L4["Run native-language vector leg<br/>and merge with Vector docs"]
     L3 -- no --> L5["Skip native vector leg"]
 
-    L4 --> L6["Run indexed retrievers<br/>BM25 plus Graph plus Regex"]
-    L5 --> L6
-
-    L6 --> L7["Indexed stage planning<br/>per-language iterations<br/>query shaping enabled"]
+    L4 --> L7["Run indexed retrievers<br/>BM25 plus Graph plus Regex"]
+    L5 --> L7
     L7 --> L8{"Original-language indexed leg active?"}
     L8 -- yes --> L9["Run native-language BM25 Graph Regex<br/>and merge"]
     L8 -- no --> L10["Use primary indexed results"]
@@ -68,13 +73,13 @@ flowchart TD
     N4 --> N5
 
     N5 --> N6{"Low-score fallback triggered?"}
-    N6 -- yes --> N7["Fallback action<br/>use retrieval-order ranking"]
+    N6 -- yes --> N7["Fallback action<br/>use retrieval-order ranking<br/>short-circuit rescue"]
     N6 -- no --> N8["Keep strict rerank thresholding"]
 
-    N7 --> N9{"Low-recall rescue enabled?"}
-    N8 --> N9
-    N9 -- yes --> N10["Rescue action<br/>add query-overlap local misses"]
-    N9 -- no --> O["Build context from selected chunks"]
+    N7 --> O["Build context from selected chunks"]
+    N8 --> N9{"Low-recall rescue enabled<br/>and triggered?"}
+    N9 -- yes --> N10["Rescue action<br/>add eligible local misses<br/>and reserve a table when needed"]
+    N9 -- no --> O
     N10 --> O
 
     O --> P["Return context and chunk count"]

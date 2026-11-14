@@ -7,6 +7,7 @@ from langchain_huggingface import HuggingFaceEmbeddings
 
 from AI.ModelsCache import ModelsCache
 from AI.TensorHelpers import TensorHelpers
+from AI.VllmClients import VllmEmbeddings
 from Algos.ComplianceAlgoResult import ComplianceAlgoResult, ScorerBase
 from Commons.SingletonMixin import SingletonMixin
 from Config.Config import Config
@@ -51,7 +52,7 @@ class KeyBertScorer(SingletonMixin, ScorerBase):
         # These are populated lazily by _ensure_ready() so that
         # AIHelpers.__init__ (which instantiates this scorer) does NOT
         # trigger a download before HFDownloader has run.
-        self.embedder: HuggingFaceEmbeddings | None = None
+        self.embedder: HuggingFaceEmbeddings | VllmEmbeddings | None = None
         self.device: torch.device | None = None
         self.device_type: str = ""
         self.target_dtype: Any = None

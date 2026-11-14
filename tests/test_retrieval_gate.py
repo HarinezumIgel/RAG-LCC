@@ -230,40 +230,40 @@ class TestCheck:
     def test_clean_query_passes_gate(self):
         gate = _make_gate()
         session = StubSession(query="do bees have stings?")
-        assert gate.check(session) is False
+        assert gate.check_pronouns_resolved(session) is False
         assert session.clarification_response == ""
 
     def test_unresolved_pronoun_blocks(self):
         gate = _make_gate()
         session = StubSession(query="can it fly?")
-        assert gate.check(session) is True
+        assert gate.check_pronouns_resolved(session) is True
         assert "it" in session.clarification_response
 
     def test_intra_query_noun_antecedent_passes(self):
         """The noun-fix: 'Can bees fly and how long they can do so?' must pass the gate."""
         gate = _make_gate()
         session = StubSession(query="Can bees fly and how long they can do so?")
-        assert gate.check(session) is False
+        assert gate.check_pronouns_resolved(session) is False
 
     def test_underspecified_flag_blocks(self):
         gate = _make_gate()
         session = StubSession(query="can fly", underspecified=True)
-        assert gate.check(session) is True
+        assert gate.check_pronouns_resolved(session) is True
         assert session.clarification_response != ""
 
     def test_clarification_message_mentions_pronoun(self):
         gate = _make_gate()
         session = StubSession(query="does it eat insects?")
-        gate.check(session)
+        gate.check_pronouns_resolved(session)
         assert '"it"' in session.clarification_response
 
     def test_clarification_message_for_they(self):
         gate = _make_gate()
         session = StubSession(query="can they migrate?")
-        gate.check(session)
+        gate.check_pronouns_resolved(session)
         assert '"they"' in session.clarification_response
 
     def test_proper_noun_query_passes_gate(self):
         gate = _make_gate()
         session = StubSession(query="does blazingfast have spines?")
-        assert gate.check(session) is False
+        assert gate.check_pronouns_resolved(session) is False

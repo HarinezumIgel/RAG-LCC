@@ -1,5 +1,3 @@
-from typing import Any
-
 from Gui.Colors import \
     MARKED_DOCS_ANSWER_ANSI_COLOR as _DEFAULT_ANSWER_ANSI_COLOR
 from Gui.Colors import \
@@ -33,17 +31,5 @@ _MARKED_DOCS_COLORS: dict[str, str] = {
     "answer_ansi": _DEFAULT_ANSWER_ANSI_COLOR,
 }
 
-# -----------------------------------------------------------------------------
-# Answer grounding sensitivity (applies to both RAGChat and RAGChatService)
-#
-# Grounding marks answer sentences as "effective" only when they overlap
-# retrieved chunk text. Tuning these values changes strictness:
-# - Lower min_sentence_tokens: more short sentences can be marked.
-# - Lower min_fragment_len: shorter chunk lines can anchor a match.
-# - Lower min_overlap_window: requires shorter contiguous overlap for paraphrases.
-# -----------------------------------------------------------------------------
-_MARKED_DOCS_GROUNDING: dict[str, Any] = {
-    "min_sentence_tokens": 5,
-    "min_fragment_len": 12,
-    "min_overlap_window": 5,  # Contiguous token window for paraphrase grounding
-}
+# Answer-grounding sensitivity and source-marking settings live in
+# Config_Grounder.py (_GROUNDING, _GROUNDING_MARKING).

@@ -36,10 +36,9 @@ class JaccardScorer(ScorerBase):
         # static config keys / tunables (language-independent)
         self.algo: str = self.cfg.get_str("_JACCARD")
 
-        # english banlist source (raw strings), expanded with WordNet synonyms
-        self.banlist_en: List[str] = Synonyms().expand(
-            self.helpers.get_banned_phrases_config_slot()
-        )
+        self.banlist_en: List[str] = self.helpers.get_banned_phrases_config_slot()
+        if self.cfg.get_bool("_WORDNET.SCORERS_ENABLED", False):
+            self.banlist_en = Synonyms().expand(self.banlist_en)
 
         # per-language cache:
         # lang -> list of dicts { phrase, toks, char_grams }

@@ -40,7 +40,7 @@ def _make_chunker(max_chunk_size: int = 100) -> PdfPageChunker:
 
     cfg.get_int.side_effect = get_int
     cfg.get_list.return_value = ["\n\n", "\n", " "]
-    # Metadata page-label capture off by default → prefix stays "Page N".
+    # Disable printed-label heuristics in isolated parsing tests.
     cfg.get_bool.return_value = False
     cfg.get_str.return_value = ""
     file_utils.count_words.side_effect = lambda t: len(t.split())
@@ -97,14 +97,14 @@ class TestInheritance:
 
 
 class TestPrefixFormat:
-    def test_format_prefix_uses_page_number_only(self):
+    def test_format_prefix_uses_only_printed_label_when_known(self):
         c = _make_chunker()
-        assert c._format_prefix(7, "Some Title") == "Page 7"
+        assert c._format_prefix(7, "iii") == "Page iii"
 
-    def test_format_prefix_ignores_title(self):
+    def test_format_prefix_without_printed_label(self):
         c = _make_chunker()
-        assert c._format_prefix(1, "") == "Page 1"
-        assert c._format_prefix(99, "Long Title That Should Be Ignored") == "Page 99"
+        assert c._format_prefix(1, "") == "PDF page 1"
+        assert c._format_prefix(99, "") == "PDF page 99"
 
 
 # ---------------------------------------------------------------------------
@@ -258,7 +258,7 @@ class TestPdfStructuredParsing:
         ):
             docs, _ = c.chunk("", meta)
 
-        assert docs[0].page_content.startswith("Page 5")
+        assert docs[0].page_content.startswith("PDF page 5")
 
     def test_mychunk_index_sequential_across_pages(self, tmp_path):
         pdf_file = tmp_path / "test.pdf"
@@ -339,7 +339,7 @@ class TestPdfStructuredParsing:
             docs, _ = c.chunk("", meta)
 
         for d in docs:
-            assert d.page_content.startswith("Page 1")
+            assert d.page_content.startswith("PDF page 1")
 
     def test_parse_pdf_exception_falls_back(self, tmp_path):
         """If _parse_pdf raises, chunk() must fall back to flat content."""
@@ -464,7 +464,7 @@ class TestRealPdfIntegration:
         meta = {**PDF_META, "FilePath": _HEDGEHOGS_PDF}
         docs, _ = c.chunk("", meta)
         for d in docs:
-            assert d.page_content.startswith("Page ")
+            assert d.page_content.startswith(("Page ", "PDF page "))
 
     def test_hedgehogs_mychunk_sequential(self):
         c = _make_chunker(max_chunk_size=400)

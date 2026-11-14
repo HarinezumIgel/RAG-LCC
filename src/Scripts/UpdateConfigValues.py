@@ -75,9 +75,22 @@ def _parse_args() -> argparse.Namespace:
 
 
 def _replace_simple_assignment(content: str, slot_name: str, value: str) -> str:
-    pattern = rf"(?m)^(\s*{re.escape(slot_name)}(?:\s*:\s*[\w\s,\[\]<>|]+?)?\s*=\s*).*$"
-    replacement = rf"\g<1>{value}"
-    new_content, count = re.subn(pattern, replacement, content, flags=re.MULTILINE)
+    pattern = (
+        rf"(?m)^(\s*{re.escape(slot_name)}"
+        rf"(?:\s*:\s*[\w\s,\[\]<>|]+?)?\s*=\s*)([^\r\n]*)"
+    )
+
+    def replace_line(match: re.Match[str]) -> str:
+        rest_of_line = match.group(2)
+        comment_start = rest_of_line.find("#")
+        if comment_start < 0:
+            return match.group(1) + value
+
+        before_comment = rest_of_line[:comment_start]
+        spacing = before_comment[len(before_comment.rstrip()) :]
+        return match.group(1) + value + spacing + rest_of_line[comment_start:]
+
+    new_content, count = re.subn(pattern, replace_line, content)
     if count == 0:
         raise ValueError(f"Slot '{slot_name}' not found in config file.")
     return new_content

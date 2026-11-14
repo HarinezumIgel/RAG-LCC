@@ -72,13 +72,30 @@ Run one follow-up query:
 ```
 
 With default flow/strategy, rewrite and context handling are active. Keep this baseline in mind for later comparisons.
+RAGChat repeats your original query in yellow immediately before each answer,
+regardless of the debug level, even when retrieval rewrites or translates it.
+
+If no relevant information or supporting evidence is found, the hint suggests:
+
+> Try starting a new topic with `new:`, switching to a different collection, or adjusting your session parameters.
+
+For example, start a fresh topic without carrying over the previous conversation:
+
+```text
+💬 Your actual query> new: where do hedgehogs live?
+```
+
+To try another collection or change session parameters, return to settings with
+`b:` and use `collection!` or `help?`. In OpenWebUI, select another collection
+from the model selector and review session parameters in **Controls**.
 
 ### Check confidence level and confidence log
 
 After each answer, RAGChat can append an `Answer confidence` block with a level
 (`HIGH`, `MEDIUM`, `LOW`) and a final score (`C_final` in `[0,1]`).
 
-To keep this visible and persisted, check `src/Configuration/Config_Global.py`:
+To configure logging, check
+[Config_Confidence.py](src/Configuration/Config_Confidence.py):
 
 - `_CONFIDENCE_LOGGING["enabled"] = True`
 - `_CONFIDENCE_LOGGING["emit_pretty"] = True`
@@ -86,12 +103,34 @@ To keep this visible and persisted, check `src/Configuration/Config_Global.py`:
 
 With defaults, one CSV file per run is written under:
 
-- `logs/RAGChat/RAGChat_CONFIDENCE_YYYYMMDD_HHMMSS.csv`
+- `logs/RAGChat/RAGChat_CONFIDENCE_FLAT_YYYYMMDD_HHMMSS.csv`
+
+The answer block has two sections:
+
+- `Heuristic Confidence:` contains retrieval evidence metrics and `C_final`.
+- `Quality Dimensions (judge model: <model>):` contains aligned accuracy,
+  completeness, reasoning, and provenance scores. The optional judge uses the
+  answer-generation model and is enabled in the current defaults.
+
+Set `_QUALITY_CONFIDENCE["llm_judge"]["enabled"] = False` to avoid the extra
+LLM call while retaining heuristics, or set
+`_QUALITY_CONFIDENCE["emit_in_answer_block"] = False` to hide the quality section.
+Set `_QUALITY_CONFIDENCE["enabled"] = False` to disable quality evaluation.
+Quality scores do not change `C_final`; neither score is a correctness guarantee.
+
+The CSV stores one turn per row, with individual metric/result columns rather
+than JSON blobs. Filter `step.<name>.<occurrence>.status` to find retries and
+fallbacks, compare `quality_<dimension>_heuristic`, `quality_<dimension>_llm`, and
+`quality_<dimension>_avg`, and inspect `quality_mode`, `quality_error`, and
+`quality_judge_model`. In `heuristic_only` mode the `llm` field mirrors the
+heuristic value; it does not represent a judge verdict.
+Older `CONFIDENCE` files are retained but not converted: truncated JSON and list
+placeholders in those files cannot recover their missing data.
 
 Quick check (PowerShell):
 
 ```Windows
-Get-ChildItem .\logs\RAGChat\*CONFIDENCE*.csv | Sort-Object LastWriteTime -Descending | Select-Object -First 3
+Get-ChildItem .\logs\RAGChat\*CONFIDENCE_FLAT*.csv | Sort-Object LastWriteTime -Descending | Select-Object -First 3
 ```
 
 ---
@@ -179,6 +218,128 @@ Clear metadata filters:
 🛠️  > metadata-
 ```
 
+### Summarize an indexed document
+
+`summary:` is an alias for `summarize:` in both CLI RAGChat and OpenWebUI.
+For example:
+
+```text
+summary: document.pdf
+summary: "D:\documents\document.pdf"
+summary:
+summary: cancel
+```
+
+Both command names follow the same selection and cancellation rules below.
+
+In CLI RAGChat, use `summarize:` to summarize the pinned file. If no file is
+pinned, RAGChat opens the same path picker as `path!` directly. Selecting a
+document pins it and continues the summary. Choose **Return - keep current
+setting** to leave the selection unchanged and skip the summary.
+All settings pickers offer this return option; returning never clears or
+resets a setting. For typed settings, submit an empty value to keep the current
+value. Use `key-` explicitly when you want to unset a setting.
+Alternatively, use `summarize: document.pdf` or
+`summarize: "D:\documents\document.pdf"` for a one-turn selection.
+The argument is detected automatically: a bare filename filters `FileName`;
+a document path filters both `FileName` and `FilePath`. Spaces are accepted
+with or without surrounding quotes. Only one matching pair of outer double
+quotes (`"..."`) or single quotes (`'...'`) is removed; unmatched quotes are
+preserved. An explicit argument overrides the pinned
+selection for this turn without changing it.
+In OpenWebUI, set `file` (indexed filename) or `path` (indexed document path)
+in Advanced Parameters to pin a document. These parameters restrict ordinary
+chat retrieval; they do **not** trigger summarization. Enter `summarize:` without
+an argument to summarize the pin, or `summarize: filename/path` to override it
+for one summary only. With no pin, RAGChatService uses indexed documents cited
+in the previous answer when grounded sources are available. If there are several,
+it presents a numbered list with a 👉 pick icon beside each file/path; reply with a number to select, or `cancel`/`0` to
+skip summarization. Any other message continues the chat without a queued
+summary.
+Set only one of `file` and `path`; an empty string clears the pin. OpenWebUI
+must resend these parameters with each request because service sessions are
+request-local. Terminal settings navigation (`b` / `b:`) and native pickers are
+unavailable in OpenWebUI.
+RAGChat shows the pinned document before the query prompt. Both RAGChat and
+RAGChatService confirm the resolved document at the start of each summary response;
+the API cannot add a pre-submission notice to the OpenWebUI query editor.
+When chat context is enabled, successful summaries are stored in conversation
+history with the `summarize:` command and file name/path (including the resolved
+path when using a pinned selection), together with the summary response.
+If literal path lookup fails, summarization checks same-name indexed files using
+normalized path separators (and case for Windows drive/UNC paths). It never
+falls back to a different directory; stored metadata remains unchanged.
+Summarization reads **all indexed chunks** matching the filename and, when
+specified, full path: no retrieval top-k, score threshold, reranking, web
+search, or additional metadata/language filter is applied. Ambiguous filenames
+require a full path. Only indexed content is available; reload the document if
+its index is incomplete or outdated.
+The command skips user-prompt checks. Generated summaries still undergo answer
+compliance checks, grounding against the selected document, and the configured
+confidence/quality evaluation. Unsupported summaries are replaced with a
+no-evidence message. The confidence block explicitly notes that unranked
+document retrieval has no relevance scores; its heuristic score is not a
+probability of factual accuracy.
+
+[Config_ContextSummarizer.py](src/Configuration/Config_ContextSummarizer.py) configures
+overlap in **whole indexed chunks** (default 5), prompts, and one shared
+`SUMMARY_TEMPERATURE` for chunk, reduction, and final summaries (default 0.3).
+The `SUMMARY_WORD_LIMITS` map in
+[Config_Grounder.py](src/Configuration/Config_Grounder.py) resolves each preset to
+separate maximum requested word counts for intermediate (chunk-batch and recursive
+reduction) summaries and the final document summary:
+
+| Preset | Intermediate words per call | Final words |
+| --- | ---: | ---: |
+| `short` | 150 | 400 |
+| `medium` | 300 | 1000 |
+| `long` | 600 | 2000 |
+| `very_long` | 1000 | 4000 |
+
+Both budgets must be positive integers. The summarizer substitutes the applicable
+value for `{max_words}` in the prompt templates; custom templates without that
+placeholder receive an appended word-limit instruction. These are LLM instructions,
+not enforced word counts or token ceilings; existing model/context token limits
+still apply, and output is not truncated or retried to enforce a word count.
+
+Summary source-document highlighting defaults to matching support passages only
+(orange), rather than highlighting every input chunk. In
+[Config_Grounder.py](src/Configuration/Config_Grounder.py), set
+`_GROUNDING_MARKING["summary_support_only"] = False` to restore yellow highlights
+for all input chunks alongside orange support passages. With the default `True`,
+no marked document is produced when no matching local support passages are found.
+This setting does not change normal question-answer highlighting or grounding checks.
+
+The **Summarize settings** section displays effective values. Set
+`summary_length=short|medium|long|very_long` (default `medium`),
+`summary_temperature=0.3` (0 to 1), or `chunk_overlap=5` (non-negative integer).
+Use `summary_length!` to pick a detail level, or the temperature/overlap `!`
+commands to enter values. Clear any override with `key-` to inherit configuration.
+Document summaries automatically use the collection selected in settings (or the
+configured default), loading it if necessary; no extra `collection!` selection or
+preliminary query is needed.
+The same names are supported as API parameters. Detail instructions apply to
+intermediate and final summaries; lengths are not guaranteed and remain bounded
+by the active model's output/context budget.
+Batches retain as much overlap as fits while always advancing. TokenBudget
+supplies the active `_ACTIVE_LLM` context limit and system/output reserves;
+oversized chunks are split and intermediate summaries are recursively reduced
+before the final summary. Every map/reduce/final request counts the full prompt
+(instructions and separators included), reserves system and output tokens, and
+honors the smaller of backend context metadata, the configured model cap, and
+any session override. Summarization uses UTF-8 byte length as a conservative
+token bound, rather than relying only on words times 1.3, which undercounts
+code, hex dumps, and dense PDF text. This can produce smaller batches than an
+exact tokenizer. Text without whitespace is split too; source text is not
+truncated. Prompt templates that cannot fit fail before calling the model.
+The terminal shows one introductory message followed by progress bars with
+completed/total batches for summarization, each reduction pass, and the final
+merge. Counts advance after successful model calls; reduction totals are
+determined per pass rather than estimated for the entire operation.
+The first model call shows its diagnostics before the bar starts. Subsequent
+summary calls suppress informational diagnostics so the bars remain readable;
+warnings and errors remain visible.
+
 ---
 
 ## 4) Compare Retrieval Strategies
@@ -219,6 +380,9 @@ Tip: `strategy!` opens a picker. `strategy*DEFAULT` applies preset defaults quic
 ## 5) Compare Orchestration Flows
 
 Flow profiles change how retrieval stages are orchestrated.
+New to flows? [ORCHESTRATION_FLOWS.md](ORCHESTRATION_FLOWS.md) explains query
+versions, legs and every shipped flow in plain language, and shows which flows
+to compare for which question.
 
 ### Inspect current flow
 
@@ -232,12 +396,15 @@ Flow profiles change how retrieval stages are orchestrated.
 🛠️  > orchestrator_flow!
 ```
 
-Try at least these:
+Try at least these (each one is explained step by step in `src/Configuration/Config_Orchestrator.py`):
 
-- `THOROUGH_QUERY_REWRITE`
-- `TRANSLATION_FOCUSED`
-- `ORIGINAL_LANGUAGE_VECTOR_ONLY`
-- `ORIGINAL_LANGUAGE_ALL_RETRIEVERS`
+- `NATIVE_ALL` (default: stays in the user's language)
+- `ENGLISH_ALL` (baseline: translates to English first)
+- `ENGLISH_ALL_MULTILEG` (baseline + extra retrieval legs)
+- `ENGLISH_ALL_NO_RERANK` (baseline without the reranker)
+- `ORIGINAL_VECTOR` (vector search on the untranslated question)
+
+Old names such as `THOROUGH_QUERY_REWRITE` are still accepted and mapped to the new name.
 
 Then run the same query for each flow:
 
@@ -251,13 +418,21 @@ Optional advanced override:
 🛠️  > force_retrieve_mode=VECTOR
 ```
 
-Clear override back to flow behavior:
+`force_retrieve_mode=VECTOR` runs only the vector retriever for the next turns
+(the other local retrievers are switched off). Clear override back to flow behavior:
 
 ```text
 🛠️  > force_retrieve_mode-
 ```
 
-Tip: `orchestrator_flow*THOROUGH_QUERY_REWRITE` resets to baseline flow defaults.
+Two more flow overrides are available the same way:
+
+```text
+🛠️  > retrieval_language=native
+🛠️  > rerank_query_source=ORIGINAL_QUERY
+```
+
+Tip: `orchestrator_flow*ENGLISH_ALL` resets to baseline flow defaults.
 
 ---
 
@@ -314,6 +489,11 @@ Edit `src/Configuration/Config_Load_Retrievers.py` and set:
 COLLECTION = "Test_Second"
 ```
 
+`COLLECTION` is a base name: RAG-LCC appends the active embedder
+(`_ACTIVE_EMBED` in `Config_Models.py`), so with `snowflake` the data lands in
+`Test_Second_snowflake`. A collection only works with the embedder that built
+it, so the suffix keeps collections of different embedders apart.
+
 ### Step B: Load documents into second collection
 
 ```Windows
@@ -328,7 +508,9 @@ python ./src/Apps/RAGLoad.py --doc-dir TestDocs
 🛠️  > collection!
 ```
 
-Pick between your original collection (for example `Test`) and `Test_Second`.
+Pick between your original collection (for example `Test_embedder_snowflake`) and
+`Test_Second_snowflake`. The picker shows only collections created with the
+active embedder; switch `_ACTIVE_EMBED` to see the others.
 
 Run the same query after each switch:
 
@@ -392,7 +574,7 @@ Use this reset sequence at the end of experiments:
 
 ```text
 🛠️  > strategy*DEFAULT
-🛠️  > orchestrator_flow*THOROUGH_QUERY_REWRITE
+🛠️  > orchestrator_flow*NATIVE_ALL
 🛠️  > force_retrieve_mode-
 🛠️  > file-
 🛠️  > path-
@@ -406,7 +588,7 @@ Use this reset sequence at the end of experiments:
 Important:
 
 - `strategy*DEFAULT` resets strategy slots (weights, thresholds, limits).
-- `orchestrator_flow*THOROUGH_QUERY_REWRITE` resets flow profile slots (query source, guardrail/rewrite/rerank/retriever switches).
+- `orchestrator_flow*NATIVE_ALL` resets flow profile slots (query sources, retrieval language, secondary leg/rewrite/rerank/retriever switches) to the default flow.
 - These defaults do **not** reset session web knobs: `web_search`, `web_fetch_k`, and `fetch_page_content`.
 - Keep `web_search=local_only` in the reset path for a local-only baseline.
 - If you previously used `web_search=web_only`, setting `web_search=local_only` also clears the implicit `retrieve_mode=WEB`.
@@ -602,9 +784,10 @@ Run: ask the same 5 questions each time.
 Observe: trade-off between precision and recall, plus answer confidence changes.
 
 2. Flow comparison on multilingual prompts
-Change: switch `orchestrator_flow` between `THOROUGH_QUERY_REWRITE`, `TRANSLATION_FOCUSED`, and `ORIGINAL_LANGUAGE_VECTOR_ONLY`.
+Change: switch `orchestrator_flow` between `NATIVE_ALL`, `ENGLISH_ALL`, `ENGLISH_ALL_MULTILEG`, and `ORIGINAL_VECTOR`.
 Run: use mixed-language prompts like `Was fressen Igel?` and an English follow-up.
 Observe: rewrite behavior, retrieval source changes, and grounding differences.
+More flow pairs and what each comparison measures: [How to experiment](ORCHESTRATION_FLOWS.md#how-to-experiment).
 
 3. Local vs web retrieval modes
 Change: set `web_search` to `local_only`, `local_and_web`, and `web_only`; vary `web_weight` and `web_fetch_k`.

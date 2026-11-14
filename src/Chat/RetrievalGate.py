@@ -71,7 +71,7 @@ class RetrievalGate:
     # Public API
     # ------------------------------------------------------------------
 
-    def check(self, session: "Session") -> bool:
+    def check_pronouns_resolved(self, session: "Session") -> bool:
         """Evaluate the gate for the current turn.
 
         Returns ``True`` when retrieval should be blocked and
