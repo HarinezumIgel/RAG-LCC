@@ -34,10 +34,6 @@ Instead of pushing ever‑larger context sizes, RAG‑LCC treats **classificatio
 
 ---
 
-## 🎬 Demo
-
-![Demo](Documentation/Pics/RAG-LCC-Screenshots.gif)
-
 ### Tabular answer with source grounding
 
 A single query can retrieve information and request a table. This example shows an animal classification table alongside highlighted passages in the source documents.
