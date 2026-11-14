@@ -6,7 +6,7 @@
 </p>
 
 <p align="center">
-  <img src="Documentation/Pics/RAG-LCC-Overview.png" alt="RAG-LCC Overview Diagram" width="95%" />
+  <img src="Documentation/Presentations/RAG-LCC_Presentation.gif" alt="Animated RAG-LCC presentation" width="95%" />
 </p>
 
 ## 🎯 Who this is for
@@ -411,7 +411,6 @@ Full slot-level details: [CONFIGURATION_REFERENCE.md](CONFIGURATION_REFERENCE.md
 | 📘 [README.md](README.md) | Project overview · feature summary · quick-start |
 | 🚀 [INSTALL.md](INSTALL.md) | Prerequisites · cloning · dependencies · Ollama / OpenWebUI / Argos / NLTK / Tesseract / spaCy / GPU setup · first-run walkthrough |
 | 📚 [CONFIGURATION_REFERENCE.md](CONFIGURATION_REFERENCE.md) | Per-file reference for every `Config_*.py` · CLI overrides · translation config · troubleshooting |
-| 📸 [EXAMPLES.md](EXAMPLES.md) | End-to-end terminal sessions for `RAGLoad`, `RAGChat`, `DocClassify`, `RAGChatService` |
 | 🏗️ [ARCHITECTURE.md](ARCHITECTURE.md) | Pipeline internals · compliance chain · chunking · query rewrite · graph index |
 | 🧭 [HANDS_ON_TOUR.md](HANDS_ON_TOUR.md) | Curated hands-on session and suggested experiments |
 | 🔀 [ORCHESTRATION_FLOWS.md](ORCHESTRATION_FLOWS.md) | Retrieval flows explained: query versions · legs · every shipped flow · experiment recipes · multilingual runs |

@@ -823,7 +823,6 @@ Observe: source narrowing effects and confidence stability.
 
 ## Optional Next Step
 
-For more end-to-end examples and slot-level details, see:
+For slot-level configuration details, see:
 
-- [EXAMPLES.md](EXAMPLES.md)
 - [CONFIGURATION_REFERENCE.md](CONFIGURATION_REFERENCE.md)

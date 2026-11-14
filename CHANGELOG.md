@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed - Documentation
+
+- Removed the standalone examples document from the project and deployment.
+
 ### Changed - Direct calls to known APIs
 
 - Language/flow configuration, indexed query planning, shared tokenization, and
@@ -834,7 +838,7 @@ written per turn with confidence signals and relevant session-state values.
 
 ### 🧾 Documentation
 
-- Updated directory structure charts in `ARCHITECTURE.md` and `EXAMPLES.md`
+- Updated directory structure charts in `ARCHITECTURE.md`
   to show `src/Retrievers/` as a top-level package and keep `Strategies/`
   focused on processing strategies/chunkers.
 - Updated architecture retriever section headings to the new paths:
@@ -1201,8 +1205,7 @@ orders them by retrieval (RRF) score instead of the logit.
 - **CONFIGURATION_REFERENCE.md** (new) — merged `CONFIGURATION.md` into a single
   reference document; adds topic-organised quick-reference tables (what to configure
   and where) as a navigation aid above the per-file deep reference.  `CONFIGURATION.md`
-  deleted; all inbound links updated across `ARCHITECTURE.md`, `INSTALL.md`,
-  `EXAMPLES.md`, `CHANGELOG.md`.
+  deleted; inbound links were updated across the documentation.
 - **ARCHITECTURE.md** — Component Hierarchy rewritten as a full `src/` directory tree
   with per-file descriptions; seven previously undocumented modules added (`Api/`,
   `VisualMarkers/`, `Commons/`, `Gui/`, `Config/`, `Scripts/`, `AI/`).
@@ -1531,8 +1534,7 @@ files against `CONFIGURATION_REFERENCE.md` section 8.
 
 **File structure updated:**
 
-- `src/VisualMarkers/` added to project structure in `EXAMPLES.md` and to the
-  Source Tree in `ARCHITECTURE.md` (was omitted).
+- `src/VisualMarkers/` added to the Source Tree in `ARCHITECTURE.md` (was omitted).
 - `src/Api/` expanded with `MarkedDocsService.py` and `MarkedDocsStore.py`.
 - `src/Scripts/` expanded from 1 entry to all 10 scripts.
 
@@ -2475,16 +2477,14 @@ from `StubSession`. All 37 prompt-rewrite tests pass.
 ### 📚 Docs — README split into focused documents
 
 - `README.md` reduced from ~2 650 lines to ~625 lines and now serves as a
-  landing page only. Detailed material moved into three new top-level
-  documents linked from the README's *Documentation Map*:
+  landing page only. Detailed material moved into focused top-level
+  documents, including:
   - `INSTALL.md` — prerequisites, cloning, dependencies, Ollama / Open WebUI /
     Argos / NLTK / Tesseract / spaCy / GPU setup, running the test suite,
     first-run walkthrough.
   - `CONFIGURATION_REFERENCE.md` — per-file reference for every `Config_*.py`
     (Global, Models, RAGChat, RAGLoad, DocClassify, Banned, Internet),
     CLI overrides, translation config, troubleshooting, performance tuning.
-  - `EXAMPLES.md` — end-to-end terminal sessions for `RAGLoad`, `RAGChat`,
-    `DocClassify`, `RAGChatService`, class diagrams and project structure.
 - All cross-document anchors fixed; image-path casing normalised
   (`pics` → `Pics`) across 15 references; trailing-blank-line MD012 lint
   violations eliminated.

@@ -1,7 +1,7 @@
 <!-- markdownlint-disable MD033 -->
 # 🚀 RAG‑LCC — Installation & First Run
 
-← Back to [README](README.md) · See also: [EXAMPLES.md](EXAMPLES.md) · [CONFIGURATION_REFERENCE.md](CONFIGURATION_REFERENCE.md) · [HANDS_ON_TOUR.md](HANDS_ON_TOUR.md)
+← Back to [README](README.md) · See also: [CONFIGURATION_REFERENCE.md](CONFIGURATION_REFERENCE.md) · [HANDS_ON_TOUR.md](HANDS_ON_TOUR.md)
 
 This guide helps you set up RAG-LCC, an **experimental lab environment**.
 
@@ -39,7 +39,6 @@ Before performing an action, the script requires 3rd party license consents.
 Use the other docs for detail after (or during) setup:
 
 - [CONFIGURATION_REFERENCE.md](CONFIGURATION_REFERENCE.md) for all config keys and tuning
-- [EXAMPLES.md](EXAMPLES.md) for end-to-end usage examples
 - [HANDS_ON_TOUR.md](HANDS_ON_TOUR.md) for guided walkthrough scenarios
 
 Most-used configuration shortcuts:

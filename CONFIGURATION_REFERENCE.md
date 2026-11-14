@@ -1,7 +1,7 @@
 <!-- markdownlint-disable MD033 MD060 MD024 MD022 MD031 -->
 # 📚 RAG‑LCC — Configuration Reference
 
-← Back to [README](README.md) · See also: [INSTALL.md](INSTALL.md) · [EXAMPLES.md](EXAMPLES.md) · [ARCHITECTURE.md](ARCHITECTURE.md)
+← Back to [README](README.md) · See also: [INSTALL.md](INSTALL.md) · [ARCHITECTURE.md](ARCHITECTURE.md)
 
 All settings live under [`src/Configuration/`](src/Configuration/).
 This reference covers both a **quick-scan overview** (tables by topic and by config file) and the
