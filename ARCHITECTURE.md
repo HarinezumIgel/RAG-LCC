@@ -2850,6 +2850,142 @@ For class-level design and relationships, see:
 
 - `Documentation/ClassGraphs/`
 
+## ⚠️ Error Handling
+
+Critical exceptions are raised on compliance violations and infrastructure failures; see [src/Commons/Exceptions.py](src/Commons/Exceptions.py) for full reference. All custom exceptions inherit from `RAGLCCException`.
+
+**Compliance-related** (fail-fast):
+
+- `ComplianceViolationError` - Base compliance failure (stops execution)
+- `PromptComplianceError` - User prompt or LLM response fails compliance check
+- `LLMComplianceCheckError` - LLM-based validation returned non-compliant result
+- `ArgosConsentMissingError` - Argos Translate stanza download enabled but license not yet accepted via `ArgosTranslatePackages.py`
+
+**Infrastructure / Configuration** (fail-fast):
+
+- `DeviceConfigurationError` - Invalid device settings (e.g., CPU + 16-bit incompatible)
+- `ConfigurationError` - Missing or invalid config values
+- `ConfigPathError` - Configuration key path cannot be resolved
+- `ModelLoadError` - LLM or embedding model fails to load
+- `CollectionNotFoundError` - ChromaDB collection does not exist at expected path
+- `InvalidCollectionName` - Collection name contains path separators or invalid characters
+- `ChromaInstallCurrentEmbeddingsMismatch` - ChromaDB refuses metadata update (e.g. distance function mismatch); delete the collection and re-run RAGLoad
+- `EmbedModelMismatch` - Embedding model or quantization bits differ from what is stored in the collection; re-run RAGLoad with `RETRIEVAL_STORES_KEEP = False`
+- `OllamaNotRunning` - Ollama server not reachable
+- `PersistDirError` - Persistence directory missing or inaccessible
+- `NoVirtualEnvError` - Python virtual environment not detected
+
+**Data / Processing**:
+
+- `DataProcessingError` - Document extraction or critical processing fails
+- `LLMResultError` - LLM result is invalid or cannot be parsed
+- `RerankError` - Cross-encoder reranking fails or is not possible
+- `ExclusionsError` - Exclusions file or exclusion logic fails
+- `DocumentsDirError` - Documents directory missing or inaccessible
+- `ClassifyCSVNotFoundError` - Required DocClassify CSV log file not found (e.g. wrong run stamp or missing OK CSV)
+- `UnsupportedLanguageError` - Document language not installed in Argos Translate and `UNSUPPORTED_LANGUAGE_ACTION` is `NOT_OK`
+
+**Network / Downloads**:
+
+- `InternetConnectionDisabledError` - Internet access required but not available
+- `HFDownloaderError` - Hugging Face model download fails
+- `HfHubHTTPError` - Hugging Face Hub returns an HTTP error during model download
+- `UserNoDownLoadAccept` - User declined model download consent
+
+**Strategy**:
+
+- Fail-fast on compliance violations; downstream finally-blocks execute for cleanup
+- Explicit error messages intended to assist debugging
+- Debug-level detailed context in logs
+- Graceful degradation where safe
+
+## 📝 Logging Architecture
+
+Three-tier logging:
+
+1. **User-Facing** - `PrettyWriter` with colored output
+2. **Operational** - Standard Python logging module
+3. **Debug** - Conditional `DEBUG_LEVEL` output via `DebugHelper` (see [Debug Levels in CONFIGURATION_REFERENCE.md](CONFIGURATION_REFERENCE.md#-debug-levels) for the full level table and string format)
+
+RAG-LCC does not log raw user queries or LLM responses **unless** `DEBUG_LEVEL` is set to show the network traffic (100).
+
+## 🔄 Session Management
+
+`Session` object maintains per-conversation state:
+
+- User context
+- Collection selection (collections can be switched on the fly)
+- Query parameters  (tokens, use chat context, thresholds, temperature etc.)
+- Chat name (chats can be switched on the fly)
+- Conversation history reference
+- `mark_text: bool` — whether visual marking is active for this session
+- `marked_documents: list[tuple[str, bytes]]` — in-memory `(source_path, highlighted_bytes)` pairs produced by `_mark_sources()`
+- `chunk_texts_for_grounding: list[str]` — raw chunk texts used by `Grounder.ground_answer_cli()` to highlight grounded answer sentences
+- `grounding_proxy_text` / `grounding_proxy_sentences` — translated answer proxy used for grounding when answer and evidence languages differ
+- `summary_statements` — structured summary statements with `context_chunk_ids` for summary grounding
+- `answer_confidence_result` — the turn's `AnswerConfidenceResult` (retrieval confidence plus quality review); cleared on turn reset
+
+## ⚡ Performance Considerations
+
+Optimize memory and throughput via [batch processing](#-batch-processing), [caching](#-caching), and [quantization](#-quantization).
+
+### 📦 Batch Processing
+
+- Documents processed in batches for memory efficiency
+- Embedding batched to minimize model overhead
+- Configurable batch sizes via `BATCH_SIZE` parameters
+
+### 💾 Caching
+
+Caching is used throughout RAG-LCC to improve performance and reduce redundant computation:
+
+- **Phrase Embeddings**: Embeddings for phrases and banned keywords are cached in memory to avoid repeated model inference
+- **Algorithm Artifacts**: Cosine, KeyBERT, BM25, and Regex algorithms cache intermediate results (such as token frequencies, IDF values, and extracted keyword matrices)
+- **Model and Transformer Caching**: Loaded embedding models and sentence transformers are cached locally
+- **Configuration**: Configuration files are parsed and cached once at startup
+
+These caching strategies are intended to reduce redundant computation and may improve performance depending on workload and environment.
+
+### 📊 Quantization
+
+- Optional INT8 or FP16 model quantization
+- Reduces memory and improves inference speed
+- Configurable via `EMBEDDER_BITS` and `USE_CPU`
+
+## 🔌 Extension Points
+
+**New Detection Algorithms**: Take one of the existing algos as reference.
+Subclass `ScorerBase`, implement `_verify_impl()` (called through the timing wrapper `verify()`) and `return_algo_result()`, and return a list of `ComplianceAlgoResult`
+
+```Python
+@dataclass
+class ComplianceAlgoResult:
+    algo: str | None
+    phrase: str
+    score: float | None
+    threshold: float | None
+    detail: str | None = None
+    meta: Dict[str, Any] | None = None
+
+class ScorerBase(ABC):
+    @abstractmethod
+    def return_algo_result(self) -> List[ComplianceAlgoResult]:
+        """Return detection results as a list of ComplianceAlgoResult."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def _verify_impl(self, *args: Any, **kwargs: Any) -> List[ComplianceAlgoResult]:
+        """Scorer logic — implement in each subclass."""
+        raise NotImplementedError
+```
+
+- Add new algorithm to `AIHelpers.run_ensemble_checks()`
+- Add new algorithm to `Config_Banned_Detection.py`
+
+**New Configuration**: Add to appropriate `Config_*.py`
+**Custom Helpers**: Add utilities to `Helpers/`
+**New Document Formats**: Extend `ValidExtensions.py`, `Pipeline/LoadAndClassifyProcessor.py`
+
 ## 🌳 Source Tree
 
 ```text
@@ -3083,142 +3219,6 @@ src/
     └── VisualMarkerFactory.py          Format-dispatch factory
 ```
 
-## ⚠️ Error Handling
-
-Critical exceptions are raised on compliance violations and infrastructure failures; see [src/Commons/Exceptions.py](src/Commons/Exceptions.py) for full reference. All custom exceptions inherit from `RAGLCCException`.
-
-**Compliance-related** (fail-fast):
-
-- `ComplianceViolationError` - Base compliance failure (stops execution)
-- `PromptComplianceError` - User prompt or LLM response fails compliance check
-- `LLMComplianceCheckError` - LLM-based validation returned non-compliant result
-- `ArgosConsentMissingError` - Argos Translate stanza download enabled but license not yet accepted via `ArgosTranslatePackages.py`
-
-**Infrastructure / Configuration** (fail-fast):
-
-- `DeviceConfigurationError` - Invalid device settings (e.g., CPU + 16-bit incompatible)
-- `ConfigurationError` - Missing or invalid config values
-- `ConfigPathError` - Configuration key path cannot be resolved
-- `ModelLoadError` - LLM or embedding model fails to load
-- `CollectionNotFoundError` - ChromaDB collection does not exist at expected path
-- `InvalidCollectionName` - Collection name contains path separators or invalid characters
-- `ChromaInstallCurrentEmbeddingsMismatch` - ChromaDB refuses metadata update (e.g. distance function mismatch); delete the collection and re-run RAGLoad
-- `EmbedModelMismatch` - Embedding model or quantization bits differ from what is stored in the collection; re-run RAGLoad with `RETRIEVAL_STORES_KEEP = False`
-- `OllamaNotRunning` - Ollama server not reachable
-- `PersistDirError` - Persistence directory missing or inaccessible
-- `NoVirtualEnvError` - Python virtual environment not detected
-
-**Data / Processing**:
-
-- `DataProcessingError` - Document extraction or critical processing fails
-- `LLMResultError` - LLM result is invalid or cannot be parsed
-- `RerankError` - Cross-encoder reranking fails or is not possible
-- `ExclusionsError` - Exclusions file or exclusion logic fails
-- `DocumentsDirError` - Documents directory missing or inaccessible
-- `ClassifyCSVNotFoundError` - Required DocClassify CSV log file not found (e.g. wrong run stamp or missing OK CSV)
-- `UnsupportedLanguageError` - Document language not installed in Argos Translate and `UNSUPPORTED_LANGUAGE_ACTION` is `NOT_OK`
-
-**Network / Downloads**:
-
-- `InternetConnectionDisabledError` - Internet access required but not available
-- `HFDownloaderError` - Hugging Face model download fails
-- `HfHubHTTPError` - Hugging Face Hub returns an HTTP error during model download
-- `UserNoDownLoadAccept` - User declined model download consent
-
-**Strategy**:
-
-- Fail-fast on compliance violations; downstream finally-blocks execute for cleanup
-- Explicit error messages intended to assist debugging
-- Debug-level detailed context in logs
-- Graceful degradation where safe
-
-## 📝 Logging Architecture
-
-Three-tier logging:
-
-1. **User-Facing** - `PrettyWriter` with colored output
-2. **Operational** - Standard Python logging module
-3. **Debug** - Conditional `DEBUG_LEVEL` output via `DebugHelper` (see [Debug Levels in CONFIGURATION_REFERENCE.md](CONFIGURATION_REFERENCE.md#-debug-levels) for the full level table and string format)
-
-RAG-LCC does not log raw user queries or LLM responses **unless** `DEBUG_LEVEL` is set to show the network traffic (100).
-
-## 🔄 Session Management
-
-`Session` object maintains per-conversation state:
-
-- User context
-- Collection selection (collections can be switched on the fly)
-- Query parameters  (tokens, use chat context, thresholds, temperature etc.)
-- Chat name (chats can be switched on the fly)
-- Conversation history reference
-- `mark_text: bool` — whether visual marking is active for this session
-- `marked_documents: list[tuple[str, bytes]]` — in-memory `(source_path, highlighted_bytes)` pairs produced by `_mark_sources()`
-- `chunk_texts_for_grounding: list[str]` — raw chunk texts used by `Grounder.ground_answer_cli()` to highlight grounded answer sentences
-- `grounding_proxy_text` / `grounding_proxy_sentences` — translated answer proxy used for grounding when answer and evidence languages differ
-- `summary_statements` — structured summary statements with `context_chunk_ids` for summary grounding
-- `answer_confidence_result` — the turn's `AnswerConfidenceResult` (retrieval confidence plus quality review); cleared on turn reset
-
-## ⚡ Performance Considerations
-
-Optimize memory and throughput via [batch processing](#-batch-processing), [caching](#-caching), and [quantization](#-quantization).
-
-### 📦 Batch Processing
-
-- Documents processed in batches for memory efficiency
-- Embedding batched to minimize model overhead
-- Configurable batch sizes via `BATCH_SIZE` parameters
-
-### 💾 Caching
-
-Caching is used throughout RAG-LCC to improve performance and reduce redundant computation:
-
-- **Phrase Embeddings**: Embeddings for phrases and banned keywords are cached in memory to avoid repeated model inference
-- **Algorithm Artifacts**: Cosine, KeyBERT, BM25, and Regex algorithms cache intermediate results (such as token frequencies, IDF values, and extracted keyword matrices)
-- **Model and Transformer Caching**: Loaded embedding models and sentence transformers are cached locally
-- **Configuration**: Configuration files are parsed and cached once at startup
-
-These caching strategies are intended to reduce redundant computation and may improve performance depending on workload and environment.
-
-### 📊 Quantization
-
-- Optional INT8 or FP16 model quantization
-- Reduces memory and improves inference speed
-- Configurable via `EMBEDDER_BITS` and `USE_CPU`
-
-## 🔌 Extension Points
-
-**New Detection Algorithms**: Take one of the existing algos as reference.
-Subclass `ScorerBase`, implement `_verify_impl()` (called through the timing wrapper `verify()`) and `return_algo_result()`, and return a list of `ComplianceAlgoResult`
-
-```Python
-@dataclass
-class ComplianceAlgoResult:
-    algo: str | None
-    phrase: str
-    score: float | None
-    threshold: float | None
-    detail: str | None = None
-    meta: Dict[str, Any] | None = None
-
-class ScorerBase(ABC):
-    @abstractmethod
-    def return_algo_result(self) -> List[ComplianceAlgoResult]:
-        """Return detection results as a list of ComplianceAlgoResult."""
-        raise NotImplementedError
-
-    @abstractmethod
-    def _verify_impl(self, *args: Any, **kwargs: Any) -> List[ComplianceAlgoResult]:
-        """Scorer logic — implement in each subclass."""
-        raise NotImplementedError
-```
-
-- Add new algorithm to `AIHelpers.run_ensemble_checks()`
-- Add new algorithm to `Config_Banned_Detection.py`
-
-**New Configuration**: Add to appropriate `Config_*.py`
-**Custom Helpers**: Add utilities to `Helpers/`
-**New Document Formats**: Extend `ValidExtensions.py`, `Pipeline/LoadAndClassifyProcessor.py`
-
 ## 🧵 Thread Safety
 
 RAG-LCC is intended to run by a **single user**. There is no locking implemented.
@@ -3231,7 +3231,7 @@ Chroma is thread‑safe, but not process‑safe [Reference](https://cookbook.chr
 
 - All models local
 - File-based persistence
-- DEBUG_LEVEL >= 3 for development
+- DEBUG_LEVEL "Standard" or higher for development
 
 ---
 

@@ -15,6 +15,9 @@ RAG‑LCC is an **experimental lab framework** intended for evaluation and
 experimentation. It has **not undergone a formal security audit** and must not be relied
 upon for production use, regulated processing, or security‑critical workloads.
 
+RAG‑LCC is intended to run by a **single user**. See [Thread Safety in
+ARCHITECTURE.md](ARCHITECTURE.md#-thread-safety).
+
 All security decisions, risk assessments, and mitigations remain the responsibility of
 the operator.
 
