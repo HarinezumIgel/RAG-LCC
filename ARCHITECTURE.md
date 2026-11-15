@@ -554,24 +554,22 @@ Persistence and output:
   Summaries, raw judge JSON, and duplicate session copies are omitted; large
   document/chunk payloads are represented by counts.
 
-3. Answer quality dimensions
+3. Retrieval diagnostics and answer-text review
 
-- `QualityDimensionEvaluator` computes accuracy, completeness, reasoning, and
-  provenance heuristics after answer generation.
-- When enabled, the LLM judge evaluates the answer using the generation model.
-  Its prompt and settings are obtained through the merged `Config` lookup from
-  [Config_Confidence.py](src/Configuration/Config_Confidence.py), not direct
-  constant imports. Valid judge results produce `hybrid` mode; otherwise
-  evaluation remains `heuristic_only`.
-- Quality scores appear after the retrieval metrics under
-  `Quality Dimensions (judge model: <model>):`, with aligned labels and
-  `heuristic`, `llm`, and `avg` values. Without a judge call, the model annotation
-  is omitted. Judge call errors are logged and stored on the result.
-- These quality scores do not modify retrieval `C_final` or its confidence band.
-  The current judge prompt receives the answer, not the original query and
-  retrieved evidence, so its scores are not an independent grounding check.
+- The static diagnostics describe evidence relevance, retrieval coverage and
+  evidence availability, not answer accuracy, completeness or reasoning.
+- The optional judge uses the dedicated `_ACTIVE_LLM_JUDGE` model to assess
+  internal consistency and explanation clarity. Its prompt and settings come
+  through the merged `Config` lookup from
+  [Config_Confidence.py](src/Configuration/Config_Confidence.py).
+- Flow/session `confidence_evaluation` selects `off`, `heuristic`, `llm` or
+  `both`. Diagnostics and judge ratings are separate and are not averaged.
+  Judge errors are logged and stored on the result.
+- These values do not modify retrieval `C_final` or its confidence band.
+  The judge receives the answer, not the question or source evidence; its
+  ratings do not establish factual accuracy or grounding.
 
-See [confidence settings and CSV schema](CONFIGURATION_REFERENCE.md#answer-quality-confidence).
+See [confidence settings and CSV schema](CONFIGURATION_REFERENCE.md#retrieval-diagnostics).
 
 Using the metrics to tune ingestion and retrieval:
 
@@ -590,12 +588,13 @@ Using the metrics to tune ingestion and retrieval:
 
 All default values referenced in this document reflect the state of this repository and are not recommendations or guarantees of suitability.
 
-Configuration is hierarchically resolved:
-
-1. **Defaults** - Default used in this repository
-2. **Configuration Files** - `Configuration/Config_*.py` files
-3. **Environment Variables** - Override via ENV
-4. **CLI Flags** - Command-line argument override (applies only to `Config_Global.py`, the active app config and, for RAGLoad/RAGChat/RAGChatService, `Config_Load_Retrievers.py`; UPPERCASE non-dict keys only, not starting with `_`, `$` or `INTERNAL_`)
+`Config()` merges Python constants in the order below and checks eligible CLI
+overrides at lookup time. The active application is selected from the entry
+script name. Environment settings in `Config_Internet_Env.py` are separate
+from this merge: most are assigned on import, while `TESSERACT_PATH` and
+`TOKENIZERS_PARALLELISM` use `setdefault`. They are not a general override
+layer for Python configuration. A supplied JSON source replaces the constants
+merge; see `src/Config/Config.py`.
 
 Each application loads from:
 
@@ -626,7 +625,7 @@ Parameters are accessible via `Config().get(key_path)` using dot notation.
 **Notes:**
 
 - CLI overrides apply **only** to `Config_Global.py`, the app-specific config files (`Config_RAGChat.py`, `Config_RAGLoad.py`, `Config_DocClassify.py`, `Config_RAGChatService.py`), and `Config_Load_Retrievers.py` for RAGLoad/RAGChat/RAGChatService (`src/Config/CliOverridePolicy.py`). Dict-valued keys are never exposed.
-- Keys in `Config_Confidence.py`, `Config_Load_Chunkers.py`, `Config_ContextSummarizer.py`, `Config_Grounder.py`, `Config_ConfidenceEvaluator.py`, `Config_Languages*.py`, `Config_Orchestrator.py`, `Config_KeywordActionSplitter.py`, `Config_RAGChat_*.py`, `Config_Models.py`, `Config_Banned_Detection.py`, `Config_Banned_Content.py`, `Config_Banned_Prompts.py`, `Config_WebSearch.py`, and `Config_Internet_Env.py` are **not** exposed as CLI arguments — edit these files directly to change their values. Interactive session settings such as `keyword_action_splitter` are a separate interface.
+- Keys in `Config_Confidence.py`, `Config_Load_Chunkers.py`, `Config_ContextSummarizer.py`, `Config_Grounder.py`, `Config_ConfidenceEvaluator.py`, the language child modules, `Config_Orchestrator.py`, `Config_KeywordActionSplitter.py`, `Config_RAGChat_*.py`, `Config_Models.py`, `Config_Banned_*.py`, `Config_WebSearch.py`, and `Config_Internet_Env.py` are **not** exposed as CLI arguments. Edit the owning files identified in the [field inventory](#configuration-field-inventory). Interactive session settings such as `keyword_action_splitter` are a separate interface.
 - Keys starting with `_` are internal and cannot be overridden via CLI arguments.
 - Keys starting with `$` are indirect lookups (the value names another config key).
 
@@ -639,29 +638,607 @@ Parameters are accessible via `Config().get(key_path)` using dot notation.
 | Summarizer | `Config_ContextSummarizer.py` | Summary length, overlap, prompts, temperature | ❌ No |
 | Grounding | `Config_Grounder.py` | `_GROUNDING`, `_GROUNDING_MARKING`, `SUMMARY_WORD_LIMITS` | ❌ No |
 | Answer confidence | `Config_ConfidenceEvaluator.py` | Confidence weights and HIGH/MEDIUM bands | ❌ No |
-| Languages | `Config_Languages.py` | Active languages, Argos pairs, WordNet/leet/confusables, BM25/Graph/Regex language-aware slots | ❌ No |
+| Languages | `Config_Languages_*.py` (via `Config_Languages.py` facade) | Active languages, Argos pairs, normalization, language-aware indexes | ❌ No |
 | Models | `Config_Models.py` | Embedding, cross-encoder, LLM | ❌ No |
-| RAGLoad | `Config_RAGLoad.py` | Chunking, batch sizes | ✅ Yes |
-| RAGChat | `Config_RAGChat.py` | Retrieval thresholds, re-ranking | ✅ Yes |
-| RAGChatService | `Config_RAGChatService.py` | HTTP listener, API key, thread pool, CLI-like algo results toggle (plus direct lookup of RAGChat split modules) | ✅ Yes |
+| RAGLoad | `Config_RAGLoad.py` | Ingestion filtering and reprocessing; chunking is in `Config_Load_Chunkers.py` | ✅ Yes |
+| RAGChat | `Config_RAGChat.py` and split modules | Chat defaults, strategy thresholds and prompts | ✅ Eligible app keys only |
+| RAGChatService | `Config_RAGChatService.py` | Thread pool, document serving and service overrides; listener and API key are in `Config_Models.py` | ✅ Eligible app keys only |
 | DocClassify | `Config_DocClassify.py` | Classification settings, `REVERSE_STEMMING` | ✅ Yes |
 | Compliance | `Config_Banned_Detection.py`, `Config_Banned_Content.py`, `Config_Banned_Prompts.py` | Detection pipelines, keyword/phrase lists, masking rules, prompt-check templates | ❌ No |
-| Web Search | `Config_WebSearch.py` | Web search mode, backend, query compliance gates | ❌ No |
+| Web Search | `Config_WebSearch.py` | Backend and filters; master switch is in `Config_Internet_Env.py` | ❌ No |
 | Orchestrator | `Config_Orchestrator.py` | Orchestrator flow definitions | ❌ No |
 | Query splitter | `Config_KeywordActionSplitter.py` | Default switch, query/keyword limits, sampling, decomposition prompt | ❌ No (session/API switch available) |
 | Network | `Config_Internet_Env.py` | Network connection, network trace | ❌ No |
 
+### Configuration field inventory
+
+The owning Python files in [`src/Configuration`](src/Configuration/) are
+authoritative for defaults and exact values. Each row is a separate setting;
+`[profile]`, `[app]`, `[impl]`, `[role]` and `[name]` denote dictionary keys,
+not literal field names. Large value catalogs (phrases, language codes, model
+implementations, regexes and extension maps) are listed as editable collections,
+not enumerated as individual settings. See the [task-oriented configuration
+reference](CONFIGURATION_REFERENCE.md#configuration-by-task) for examples.
+
+#### Config_Banned_Content.py
+
+| Field / lookup key | Purpose |
+| --- | --- |
+| `_ACTIVE_BANNED_CONFIG` | Select banned-content profile. |
+| `_STRICT_BANNED.BANNED` | Phrases in the strict banned-content list. |
+| `_ACTIVE_MASKING_CONFIG` | Select masking profile. |
+| `_STRICT_MASKING_REGEXES.MASKING_REGEXES` | Named patterns used for masking. |
+| `HARDBLOCK_PATTERNS` | High-risk hard-block expressions. |
+| `INJECTION_PATTERNS` | Prompt-injection expressions. |
+
+#### Config_Banned_Detection.py
+
+| Field / lookup key | Purpose |
+| --- | --- |
+| `_COSINE` | Cosine algorithm identifier. |
+| `_JACCARD` | Jaccard algorithm identifier. |
+| `_REGEX` | Regex algorithm identifier. |
+| `_KEYBERT` | KeyBERT algorithm identifier. |
+| `_LEVENSHTEIN` | Levenshtein algorithm identifier. |
+| `_BM25` | BM25 algorithm identifier. |
+| `_DEFAULT_ALGOS` | Default detection algorithm selection. |
+| `_ACTIVE_DETECTION_CONFIG` | Select detection profile. |
+| `_BANNED_DETECT[profile][app]` | App-specific masking, prompt checks, pipeline checks, algorithms and consensus thresholds. |
+| `_BANNED_DETECT[profile][app].MASKING.APPLY_MASKING` | Enable masking. |
+| `_BANNED_DETECT[profile][app].PROMPT_CHECK.Check` | Enable prompt guard. |
+| `_BANNED_DETECT[profile][app].PROMPT_CHECK.LLM_PARAM` | Guard sampling parameters, where configured. |
+| `_BANNED_DETECT[profile][app].PIPELINE_CHECK.Check` | Enable algorithm pipeline. |
+| `_BANNED_DETECT[profile][app].PIPELINE_CHECK.PIPELINE.ALGOS_TO_PROCESS` | Select pipeline algorithms. |
+| `_BANNED_DETECT[profile][app].PIPELINE_CHECK.PIPELINE.REQUIRED_ALGOS_ABOVE_THRESHOLD` | Required above-threshold agreement. |
+| `_BANNED_DETECT[profile][app].PIPELINE_CHECK.PIPELINE.REQUIRED_DIFFERENT_ALGOS_HAVE_A_SCORE` | Required breadth of scored algorithms. |
+| `_BANNED_DETECT[profile][app].PIPELINE_CHECK.PIPELINE[algo].THRESHOLD` | Algorithm-specific score threshold. |
+| `_BANNED_DETECT[profile][app][check].PIPELINE[algo].THRESHOLD_MIN` | Minimum algorithm score for consideration. |
+| `_BANNED_DETECT[profile][app][check].PIPELINE.Jaccard.CHAR_NGRAM_RANGE` | Jaccard character n-gram range. |
+| `_BANNED_DETECT[profile][app][check].PIPELINE.Keybert.TOP_K` | KeyBERT keyword count. |
+| `_BANNED_DETECT[profile][app][check].PIPELINE.BM25.TERM_FREQ_SATURATION` | BM25 term-frequency saturation. |
+| `_BANNED_DETECT[profile][app][check].PIPELINE.BM25.LENGTH_NORMALIZATION` | BM25 length normalization. |
+| `_BANNED_DETECT[profile][app][check].PIPELINE.BM25.MIN_OVERLAP` | Minimum overlapping terms. |
+| `_BANNED_DETECT[profile][app][check].PIPELINE.BM25.MIN_RAW_SCORE` | BM25 raw-score floor. |
+| `_BANNED_DETECT[profile][app][check].PIPELINE.BM25.NORM_PERCENTILE` | BM25 score normalization percentile. |
+| `_BANNED_DETECT[profile][app][check].PIPELINE.Regex.WINDOW_MAX_CHARS` | Fuzzy regex anchor window. |
+| `_BANNED_DETECT[profile][app][check].PIPELINE.Regex.PREFIX_SUFFIX_LEN` | Fuzzy regex anchor length. |
+| `_BANNED_DETECT[profile][app][check].PIPELINE.Regex.SEPARATOR_CLASS` | Regex anchor separator class. |
+| `_BANNED_DETECT[profile][app][check].PIPELINE.Regex.SOFT_SCORE_HARD` | Score for strict regex match. |
+| `_BANNED_DETECT[profile][app][check].PIPELINE.Regex.SOFT_SCORE_FUZZY` | Score for fuzzy regex match. |
+| `_BANNED_DETECT[profile][app][check].PIPELINE.Regex.FUZZY_REGEX_EVAL_AFTER_HARD` | Fuzzy evaluation after a strict miss. |
+| `_BANNED_DETECT[profile][app][check].PIPELINE.Regex.Levenshtein.THRESHOLD` | Fuzzy edit-distance threshold. |
+
+Here `[check]` is `PROMPT_CHECK` or `PIPELINE_CHECK` when that check has a
+pipeline. See [detection configuration](CONFIGURATION_REFERENCE.md#-detection-configuration)
+for app-specific differences.
+
+#### Config_Banned_HumanReview_CSV.py
+
+| Field / lookup key | Purpose |
+| --- | --- |
+| `_LABEL_ALIAS` | Human-readable algorithm label aliases. |
+| `_HUMAN_REVIEW_PREFIX_COLUMNS` | Leading review CSV columns. |
+| `_HUMAN_REVIEW_ALGO_BASE_COLUMNS` | Per-algorithm review CSV columns. |
+| `_HUMAN_REVIEW_SUFFIX_COLUMNS` | Trailing review CSV columns. |
+| `_KEYS_FOR_HUMAN_REVIEW_CSV` | Optional explicit review column order. |
+
+#### Config_Banned_Prompts.py
+
+| Field / lookup key | Purpose |
+| --- | --- |
+| `_PROMPT_CHECK_CHAT_MISTRAL` | Mistral chat compliance template. |
+| `_PROMPT_CHECK_CHAT_LLAMA_GUARD` | Llama Guard chat compliance template. |
+| `_PROMPT_CHECK_CLASSIFY_MISTRAL` | Mistral classification compliance template. |
+| `_PROMPT_CHECK_CLASSIFY_LLAMA_GUARD` | Llama Guard classification compliance template. |
+
+#### Config_Confidence.py
+
+| Field / lookup key | Purpose |
+| --- | --- |
+| `_CONFIDENCE_LOGGING.enabled` | Enable confidence event logging. |
+| `_CONFIDENCE_LOGGING.emit_pretty` | Print formatted confidence events. |
+| `_CONFIDENCE_LOGGING.csv_enabled` | Write confidence CSV events. |
+| `_QUALITY_CONFIDENCE.emit_in_answer_block` | Display quality diagnostics in answer block. |
+| `_QUALITY_CONFIDENCE.judge_temperature` | Judge sampling temperature. |
+| `_PROMPT_QUALITY_DIMENSION_JUDGE` | Answer-quality judge template. |
+
+#### Config_ConfidenceEvaluator.py
+
+| Field / lookup key | Purpose |
+| --- | --- |
+| `_CONFIDENCE_EVALUATOR.weight_top` | Weight of best retrieval score. |
+| `_CONFIDENCE_EVALUATOR.weight_mean_top` | Weight of mean top scores. |
+| `_CONFIDENCE_EVALUATOR.weight_coverage` | Weight of evidence coverage. |
+| `_CONFIDENCE_EVALUATOR.weight_local` | Weight of local evidence. |
+| `_CONFIDENCE_EVALUATOR.fallback_penalty` | Penalty for fallback. |
+| `_CONFIDENCE_EVALUATOR.level_high` | High-band threshold. |
+| `_CONFIDENCE_EVALUATOR.level_medium` | Medium-band threshold. |
+| `_CONFIDENCE_EVALUATOR.unknown_scale_score` | Score for unknown score scale. |
+
+#### Config_ContextSummarizer.py
+
+| Field / lookup key | Purpose |
+| --- | --- |
+| `CHUNK_OVERLAP` | Summary-batch overlap. |
+| `SUMMARY_LENGTH` | Selected summary length. |
+| `SUMMARY_PROMPT_TEMPLATE` | Intermediate summary prompt. |
+| `_PROMPT_FINAL_SUMMARY_PROMPT_TEMPLATE` | Final reduction prompt. |
+| `SUMMARY_TEMPERATURE` | Summary sampling temperature. |
+
+#### Config_DocClassify.py
+
+| Field / lookup key | Purpose |
+| --- | --- |
+| `_FRIENDLY_NAME` | Application name for configuration and compliance. |
+| `_LOG_DIRECTORY` | Classification log directory. |
+| `_ACTIVE_EXTRACTION_CONFIG` | Select extraction profile. |
+| `_EXTRACTION_MODEL_PARAMS[profile].TEMPERATURE_EXT` | Classification sampling temperature. |
+| `_EXTRACTION_MODEL_PARAMS[profile].TOP_K_EXT` | Classification top-k sampling. |
+| `_EXTRACTION_MODEL_PARAMS[profile].TOP_P_EXT` | Classification nucleus sampling. |
+| `_ACTIVE_KEYBERT_CONFIG` | Select classification keyword profile. |
+| `_KEY_BERT[profile].TOP_N_FIRST` | First-pass keyword count. |
+| `_KEY_BERT[profile].TOP_N_SECOND` | Second-pass keyword count. |
+| `_KEY_BERT[profile].NGRAM_PASS1` | First-pass n-gram range. |
+| `_KEY_BERT[profile].NGRAM_PASS2` | Second-pass n-gram range. |
+| `REVERSE_STEMMING` | Restore stemmed terms to surface forms. |
+| `_UNWANTED_CHAR_MAP` | Output character replacements. |
+| `_YOUR_CLASSIFICATION_KEYS` | User-defined classification fields. |
+| `_CLASSIFICATION_KEYS` | Complete classification output fields. |
+| `CLASSIFICATION_WORD_CNT` | Classification input word limit. |
+| `SUMMARY_SENTENCE_CNT` | Classification summary sentence count. |
+| `_PROMPT_CLASSIFY_MISTRAL` | Mistral classification template. |
+| `_PROMPT_CLASSIFY_LLAMA` | Llama classification template. |
+
+#### Config_Global.py
+
+| Field / lookup key | Purpose |
+| --- | --- |
+| `_VERSION` | Application version. |
+| `_CRITICAL_CONFIG_HASHES` | Expected hashes of integrity-checked files. |
+| `USE_CPU` | CPU-only preference. |
+| `EMBEDDER_BITS` | Embedding precision. |
+| `_ABSOLUTE_PATH` | Project root. |
+| `_CACHE_PATH` | Cache root. |
+| `_CACHE_PATH_ABSOLUTE` | Resolved absolute cache path. |
+| `DOC_DIR` | Input document directory. |
+| `_EXCLUSIONS_DIR` | Exclusion CSV directory. |
+| `USE_EXCLUSIONS` | Enable exclusion handling. |
+| `_HF_HOME` | Hugging Face home directory. |
+| `_HF_HUB_CACHE` | Hugging Face Hub cache directory. |
+| `UNSUPPORTED_LANGUAGE_ACTION` | Unsupported-document-language handling. |
+| `_OFFICE_DOC_EXTRACTION.Word` | Enable Word extraction. |
+| `_OFFICE_DOC_EXTRACTION["Power Point"]` | Enable PowerPoint extraction. |
+| `_OFFICE_DOC_EXTRACTION.Excel` | Enable Excel extraction. |
+| `_CONSIDER_AS_TEXT_FILE` | Extensions treated as text. |
+| `_ALLOWED_DEBUG_LEVELS` | Named debug levels. |
+| `DEBUG_LEVEL` | Active debug level. |
+| `URL_DEBUG` | HTTP debug output. |
+| `HF_DEBUG` | Hugging Face debug output. |
+| `TRY_FIX_JSON_LLM_REPLY` | Attempt JSON reply repair. |
+| `LOG_FILE` | Compliance log filename. |
+| `PERFORMANCE_LOGGING` | Performance event logging. |
+| `_LOG_DIRECTORY` | Default log directory. |
+| `CSV_DELIMITER` | CSV separator. |
+| `REQUEST_TIMEOUT` | Legacy global timeout; model calls use provider/model timeouts. |
+| `_LANGUAGE_DETECTION.MIN_WORDS` | Minimum words for language detection. |
+| `_LANGUAGE_DETECTION.MIN_CONFIDENCE` | Detection confidence floor. |
+| `_LANGUAGE_DETECTION.CONF_FULL_WORDS` | Word count for unscaled confidence floor. |
+| `TERMINAL_LINE_SIZE` | Default terminal width. |
+| `ANSWER_DISPLAY.bg` | Answer background color. |
+| `ANSWER_DISPLAY.fg` | Answer foreground color. |
+
+#### Config_Grounder.py
+
+| Field / lookup key | Purpose |
+| --- | --- |
+| `SUMMARY_WORD_LIMITS[length].intermediate` | Intermediate summary word limit. |
+| `SUMMARY_WORD_LIMITS[length].final` | Final summary word limit. |
+| `_GROUNDING.min_sentence_tokens` | Minimum sentence length for grounding. |
+| `_GROUNDING.min_fragment_len` | Minimum matching fragment length. |
+| `_GROUNDING.min_overlap_window` | Minimum overlap window. |
+| `_GROUNDING.relaxed_min_sentence_tokens` | Relaxed sentence-token minimum. |
+| `_GROUNDING.relaxed_min_shared_tokens` | Relaxed shared-token minimum. |
+| `_GROUNDING.relaxed_min_token_len` | Relaxed minimum token length. |
+| `_GROUNDING.relaxed_substantive_token_len` | Substantive-token length threshold. |
+| `_GROUNDING.relaxed_min_containment` | Relaxed containment threshold. |
+| `_GROUNDING.index_cache_max_tokens` | Grounding index cache limit. |
+| `_GROUNDING_MARKING.passage_tokens` | Marked passage window. |
+| `_GROUNDING_MARKING.relaxed_min_shared_tokens` | Shared tokens for relaxed marking. |
+| `_GROUNDING_MARKING.relaxed_min_answer_coverage` | Minimum answer coverage for relaxed marking. |
+| `_GROUNDING_MARKING.summary_support_only` | Limit summary marking to supporting passages. |
+| `_GROUNDING_MARKING.max_workers` | Maximum PDF marking workers. |
+| `_GROUNDING_MARKING.min_scan_pages` | Minimum pages for parallel scan. |
+| `_GROUNDING_MARKING.worker_timeout_s` | Marking worker timeout. |
+
+#### Config_Internet_Env.py
+
+These are environment assignments, **not** `Config().get()` slots. Most overwrite
+an existing environment value on import; `TESSERACT_PATH` and
+`TOKENIZERS_PARALLELISM` instead preserve an existing value.
+
+| Field / lookup key | Purpose |
+| --- | --- |
+| `LICENSE_DOWNLOAD` | License download policy. |
+| `RAG_LCC_NW_TRACE` | Socket tracing. |
+| `RAG_LCC_STACK_TRACE` | Error stack traces. |
+| `WEB_SEARCH_MODE` | Web-search master gate. |
+| `TESSERACT_PATH` | Platform-specific OCR executable paths. |
+| `HF_HUB_OFFLINE` | Hugging Face Hub offline mode. |
+| `TRANSFORMERS_OFFLINE` | Transformers offline mode. |
+| `HF_DATASETS_OFFLINE` | Datasets offline mode. |
+| `HF_XET_HIGH_PERFORMANCE` | Xet transfer setting. |
+| `ARGOS_MODEL_PROVIDER` | Argos translation provider. |
+| `HF_HUB_DISABLE_PROGRESS_BARS` | Hugging Face progress-bar display. |
+| `TOKENIZERS_PARALLELISM` | Tokenizer parallelism. |
+| `SERVE_OPENWEBUI_CHAT` | Enable service startup. |
+| `SERVE_IN_MEMORY_DOCS_HTTP` | Enable in-memory document HTTP serving. |
+
+#### Config_KeywordActionSplitter.py
+
+| Field / lookup key | Purpose |
+| --- | --- |
+| `_KEYWORD_ACTION_SPLITTER.max_retrieval_queries` | Maximum decomposed retrieval needs. |
+| `_KEYWORD_ACTION_SPLITTER.min_keywords` | Minimum keyword count. |
+| `_KEYWORD_ACTION_SPLITTER.max_keywords` | Maximum keyword count. |
+| `_KEYWORD_ACTION_SPLITTER.LLM_PARAM.temperature` | Splitter sampling temperature. |
+| `_KEYWORD_ACTION_SPLITTER.LLM_PARAM.top_k` | Splitter top-k sampling. |
+| `_KEYWORD_ACTION_SPLITTER.LLM_PARAM.top_p` | Splitter nucleus sampling. |
+| `_KEYWORD_ACTION_SPLITTER.LLM_PARAM.num_predict` | Splitter output-token limit. |
+| `_KEYWORD_ACTION_SPLITTER.LLM_PARAM.use_ollama_gpu` | Ollama GPU use for splitting. |
+| `_PROMPT_KEYWORD_ACTION_SPLITTER` | Decomposition prompt. |
+
+#### Config_Languages.py
+
+This facade re-exports uppercase values from
+[`Config_Languages_Catalog.py`](src/Configuration/Config_Languages_Catalog.py),
+[`Config_Languages_Retrievers.py`](src/Configuration/Config_Languages_Retrievers.py)
+and [`Config_Languages_Normalization.py`](src/Configuration/Config_Languages_Normalization.py).
+It declares no independent user settings: edit the child that owns the field,
+not the facade.
+
+#### Config_Languages_Catalog.py
+
+| Field / lookup key | Purpose |
+| --- | --- |
+| `_LANG_CODE_TO_NAME` | Language code/name catalog. |
+| `_ACTIVE_LANGUAGES` | Enabled language list. |
+| `_ARGOS_DEFINITIONS.ACTIVE_LANGUAGES` | Indirect alias to active languages. |
+| `_ARGOS_DEFINITIONS.LANG_CODE_TO_NAME` | Indirect alias to language names. |
+| `_ARGOS_DEFINITIONS.ARGOS_LANGUAGES` | Installed translation-pair catalog. |
+
+#### Config_Languages_Normalization.py
+
+| Field / lookup key | Purpose |
+| --- | --- |
+| `_WORDNET.ENABLED` | Enable WordNet expansion. |
+| `_WORDNET.SCORERS_ENABLED` | Enable expansion for compliance scorers. |
+| `_WORDNET.DEPTH` | Synonym expansion depth. |
+| `_WORDNET.MAX_SYNONYMS_PER_PHRASE` | Synonym limit per phrase. |
+| `_WORDNET.POS_FILTER` | Allowed synonym parts of speech. |
+| `_WORDNET.STOPLIST` | Excluded generic words. |
+| `_LEET_MAP` | Leet-character normalization mapping. |
+| `_CONFUSABLES` | Unicode-confusable normalization mapping. |
+
+#### Config_Languages_Retrievers.py
+
+| Field / lookup key | Purpose |
+| --- | --- |
+| `_SPACY_MODELS_BY_ACTIVE_LANGUAGE` | spaCy model package by language. |
+| `_SPACY[role].spacy_model` | Default spaCy model for BM25, GRAPH or REGEX. |
+| `_SPACY[role].spacy_models_by_language` | Language-specific model aliases for that role. |
+| `_BM25_INDEX.BM25_INDEX_DIR` | BM25 index directory. |
+| `_BM25_INDEX.k1` | Term-frequency saturation. |
+| `_BM25_INDEX.b` | Document-length normalization. |
+| `_BM25_INDEX.rrf_k` | Reciprocal-rank fusion constant. |
+| `_BM25_INDEX.spacy_model` | Default BM25 spaCy model alias. |
+| `_BM25_INDEX.spacy_models_by_language` | BM25 per-language model alias. |
+| `_GRAPH_INDEX.GRAPH_INDEX_DIR` | Graph index directory. |
+| `_GRAPH_INDEX.entity_types` | Indexed entity types. |
+| `_GRAPH_INDEX.max_hops` | Graph traversal depth. |
+| `_GRAPH_INDEX.max_candidates` | Graph candidate cap. |
+| `_GRAPH_INDEX.min_edge_weight` | Minimum graph edge weight. |
+| `_GRAPH_INDEX.spacy_model` | Default graph spaCy model alias. |
+| `_GRAPH_INDEX.spacy_models_by_language` | Graph per-language model alias. |
+| `_GRAPH_INDEX.noun_chunk_min_chars` | Minimum noun-chunk length. |
+| `_GRAPH_INDEX.noun_chunk_drop_leading` | Leading noun-chunk tokens to drop. |
+| `_REGEX_INDEX.REGEX_INDEX_DIR` | Regex index directory. |
+| `_REGEX_INDEX.spacy_model` | Default regex spaCy model alias. |
+| `_REGEX_INDEX.spacy_models_by_language` | Regex per-language model alias. |
+| `_REGEX_INDEX.max_candidates` | Regex candidate cap. |
+| `_REGEX_INDEX.min_token_chars` | Minimum token length. |
+| `_REGEX_INDEX.noun_pos_tags` | Noun part-of-speech tags. |
+| `_REGEX_INDEX.exclude_auxiliaries` | Exclude auxiliary verbs. |
+| `_REGEX_INDEX.aux_lemmas` | Auxiliary verb lemmas. |
+| `_REGEX_INDEX.require_both_when_available` | Require noun and verb matches where available. |
+| `_REGEX_INDEX.min_verb_hits` | Minimum verb hits. |
+| `_REGEX_INDEX.min_noun_hits` | Minimum noun hits. |
+| `_REGEX_INDEX.fallback_to_verb_only` | Enable verb-only fallback. |
+| `_REGEX_INDEX.fallback_min_verb_hits` | Minimum fallback verb hits. |
+| `_REGEX_INDEX.verb_weight` | Verb-match score weight. |
+| `_REGEX_INDEX.noun_weight` | Noun-match score weight. |
+| `_REGEX_INDEX.both_match_bonus` | Bonus for both match types. |
+| `_REGEX_INDEX.fallback_score_scale` | Verb-only fallback score scaling. |
+
+#### Config_Load_Chunkers.py
+
+| Field / lookup key | Purpose |
+| --- | --- |
+| `_ACTIVE_CHUNKER_CONFIG` | Select chunk routing profile. |
+| `_CHUNK_STRATEGY[profile][extension]` | Route file type to chunker. |
+| `_CHUNKERS.TABLE.MAX_CHUNK_TOKENS` | Table chunk token budget. |
+| `_CHUNKERS.RECURSIVE.CHUNK_SIZE` | Recursive chunk word limit. |
+| `_CHUNKERS.RECURSIVE.CHUNK_OVERLAP` | Recursive chunk overlap. |
+| `_CHUNKERS[chunker].PRESERVE_NEWLINES` | Preserve newlines for chunkers that declare it. |
+| `_CHUNKERS[chunker].MAX_CHUNK_SIZE` | Word limit for chunkers that declare it. |
+| `_CHUNKERS.SEMANTIC.BREAKPOINT_PERCENTILE` | Semantic boundary percentile. |
+| `_CHUNKERS.SEMANTIC.EMBED_BATCH_SIZE` | Semantic embedding batch size. |
+| `_CHUNKERS.SEMANTIC.MIN_SENTENCE_WORDS` | Merge short fragments before embedding. |
+| `_CHUNKERS.SLIDING_WINDOW.OVERLAP_SENTENCES` | Sliding-window sentence overlap. |
+| `_CHUNKERS.HEADING.BREADCRUMB_MODE` | Heading breadcrumb placement. |
+| `_CHUNKERS.PDF_PAGE.DETECT_PRINTED_LABEL` | Detect printed PDF page labels. |
+| `_METADATA_EXTRACTION.ENABLED` | Enable document metadata extraction. |
+| `_METADATA_EXTRACTION.DOC_INFO_FIELDS` | Document property mappings. |
+| `_METADATA_EXTRACTION.GENERIC_FIELDS` | Filesystem fallback mappings. |
+| `_METADATA_EXTRACTION.SHOW_IN_ANSWER` | Show metadata in answers. |
+
+#### Config_Load_Retrievers.py
+
+| Field / lookup key | Purpose |
+| --- | --- |
+| `RETRIEVAL_STORES_KEEP` | Preserve or rebuild ingestion stores. |
+| `_CHROMA_DB_DIR` | Chroma persistent-store directory. |
+| `COLLECTION` | Base collection name. |
+| `_ACTIVE_CHROMA_EMBED_AND_RETRIEVE_PARAMS_CONFIG` | Select HNSW profile. |
+| `_CHROMA_EMBED_AND_RETRIEVE_PARAMS[profile].NEIGHBORS_ON_LOAD` | Index-time neighbor count. |
+| `_CHROMA_EMBED_AND_RETRIEVE_PARAMS[profile].NEIGHBORS_RETRIEVE` | Query-time neighbor count. |
+
+#### Config_Models.py
+
+| Field / lookup key | Purpose |
+| --- | --- |
+| `_ACTIVE_LLM` | Select answer-generation model implementation. |
+| `_ACTIVE_LLM_CHK` | Select compliance-check model implementation. |
+| `_ACTIVE_LLM_REWRITE_PROMPT` | Select rewrite/split model implementation. |
+| `_ACTIVE_LLM_JUDGE` | Select answer-quality judge implementation. |
+| `_ACTIVE_EMBED` | Select embedder implementation. |
+| `_ACTIVE_CROSS` | Select reranker implementation. |
+| `_ACTIVE_ENDPOINT` | Select inference provider. |
+| `_HF_API_KEY` | Default Hugging Face token. |
+| `_MODELS[impl][role]` | Model metadata, provider-specific settings, prompts and token budgets. |
+| `_MODELS[impl][role].MODEL` | Model identifier for embedding or reranking roles. |
+| `_MODELS[impl][role].OLLAMA.MODEL` | Model identifier for the Ollama provider. |
+| `_MODELS[impl][role].VLLM.MODEL` | Model identifier for the vLLM provider. |
+| `_MODELS[impl][role].TOKEN_BUDGET_CONTEXT_CAP` | Role context cap. |
+| `_MODELS[impl][role].TOKEN_BUDGET_RESERVED_OUTPUT` | Role output-token reserve. |
+| `_MODELS[impl][role].TOKEN_BUDGET_RESERVED_SYSTEM` | Role system-token reserve. |
+| `_MODELS[impl][role].PROMPT_CHAT` | Answer or guard prompt lookup key. |
+| `_MODELS[impl][role].PROMPT_CLASSIFY` | Classification prompt lookup key. |
+| `_MODELS[impl][role].PROMPT_TOPIC_DETECT` | Rewrite topic prompt lookup key. |
+| `_MODELS[impl][role].PROMPT_QUERY_EXPAND` | Rewrite expansion prompt lookup key. |
+| `_MODELS[impl][role].HF_API_KEY` | Model-specific Hugging Face token. |
+| `_MODELS[impl][role].FRIENDLY_NAME` | Human-readable model name. |
+| `_MODELS[impl][role].REVISION` | Hugging Face model revision, where specified. |
+| `_MODELS[impl][role].SOURCE` | Model source. |
+| `_MODELS[impl][role].UPSTREAM_SOURCE` | Upstream source, where specified. |
+| `_MODELS[impl][role].LICENSE` | License identifier. |
+| `_MODELS[impl][role].LICENSE_URL` | License document URL. |
+| `_MODELS[impl][role].COMPLIANCE_MSG` | License/consent message. |
+| `_MODELS[impl][role].MODEL_CARD` | Model card URL. |
+| `_MODELS[impl][role].USED_BY` | Applications using the role. |
+| `_MODELS[impl][role].TAG` | Model tag, where specified. |
+| `_MODELS[impl]["_CROSS"].QUERY_INSTRUCTION` | Optional reranker query prefix. |
+| `_MODELS[impl]["_CROSS"].VLLM.API_STYLE` | vLLM reranker endpoint style. |
+| `_MODELS["ollama"]["_OLLAMA"]` | Ollama endpoint defaults. |
+| `_MODELS["vllm"]["_VLLM"]` | vLLM endpoint defaults. |
+| `_MODELS["openwebui"]["_OPENWEBUI"]` | OpenWebUI endpoint metadata. |
+| `_MODELS["ragchatservice"]["_RAGCHATSERVICE"]` | Service listener, authentication and endpoint metadata. |
+| `_MODELS["ragchatservice"]["_RAGCHATSERVICE"].HOST` | Service bind address. |
+| `_MODELS["ragchatservice"]["_RAGCHATSERVICE"].PORT` | Service listener port. |
+| `_MODELS["ragchatservice"]["_RAGCHATSERVICE"].API_KEY` | Optional service bearer token. |
+| `_MODELS[provider][role].BASE_URL` | Endpoint base URL. |
+| `_MODELS[provider][role].API_KEY` | Endpoint authentication key where supported. |
+| `_MODELS[provider][role].REQUEST_TIMEOUT` | Provider request timeout. |
+| `_MODELS[provider][role].STREAMING_REQ` | Provider streaming default. |
+| `_MODELS[provider][role].TRY_FALLBACK_URLS` | Probe fallback endpoint URLs. |
+| `_MODELS[provider][role].USE_GPU` | Provider GPU setting. |
+
+Model role and endpoint fields are detailed in the [model reference](CONFIGURATION_REFERENCE.md#-2-config_modelspy--model-definitions).
+
+#### Config_Orchestrator.py
+
+| Field / lookup key | Purpose |
+| --- | --- |
+| `_ALLOWED_ORCHESTRATION_FLOWS` | Selectable flow names. |
+| `_DEFAULT_ORCHESTRATION_FLOW` | Default flow. |
+| `_ORCHESTRATION_FLOW_ALIASES` | Legacy flow-name aliases. |
+| `_INDEXED_QUERY.language_detection_limit` | Indexed-query language detection limit. |
+| `_INDEXED_QUERY.translation_failure_policy` | Indexed-query translation failure handling. |
+| `_INDEXED_QUERY.use_alternates` | Enable indexed-query alternates. |
+| `_ALLOWED_ORCHESTRATION_QUERY_SOURCES` | Allowed query-source selectors. |
+| `_ORCHESTRATION_FLOWS[flow]` | Per-flow query selection, translation, retrieval, reranking, grounding and confidence switches. |
+| `_ORCHESTRATION_FLOWS[flow].retrieval_language` | Language of retrieval queries. |
+| `_ORCHESTRATION_FLOWS[flow].force_retrieve_mode` | Optional internal retrieval mode restriction. |
+| `_ORCHESTRATION_FLOWS[flow].main_query_source` | Main leg query source. |
+| `_ORCHESTRATION_FLOWS[flow].secondary_query_source` | Secondary leg query source. |
+| `_ORCHESTRATION_FLOWS[flow].use_secondary_query` | Enable secondary retrieval leg. |
+| `_ORCHESTRATION_FLOWS[flow].use_original_language_vector` | Enable original-language vector leg. |
+| `_ORCHESTRATION_FLOWS[flow].shape_indexed_queries` | Shape queries for indexed retrievers. |
+| `_ORCHESTRATION_FLOWS[flow].translate_indexed_queries` | Translate indexed queries per language bucket. |
+| `_ORCHESTRATION_FLOWS[flow].expand_indexed_queries_with_wordnet` | Expand indexed queries with WordNet. |
+| `_ORCHESTRATION_FLOWS[flow].use_vector_alternates` | Use alternate queries for vector retrieval. |
+| `_ORCHESTRATION_FLOWS[flow].use_query_rewrite` | Enable query rewriting. |
+| `_ORCHESTRATION_FLOWS[flow].use_keyword_action_splitter` | Splitter default for a flow. |
+| `_ORCHESTRATION_FLOWS[flow].use_pronoun_substitution` | Enable pronoun substitution. |
+| `_ORCHESTRATION_FLOWS[flow].run_vector` | Enable vector retrieval. |
+| `_ORCHESTRATION_FLOWS[flow].run_bm25` | Enable BM25 retrieval. |
+| `_ORCHESTRATION_FLOWS[flow].run_graph` | Enable graph retrieval. |
+| `_ORCHESTRATION_FLOWS[flow].run_regex` | Enable regex retrieval. |
+| `_ORCHESTRATION_FLOWS[flow].run_rerank` | Reranking default for a flow. |
+| `_ORCHESTRATION_FLOWS[flow].rerank_query_source` | Query source for reranking. |
+| `_ORCHESTRATION_FLOWS[flow].run_low_score_fallback` | Enable low-score fallback. |
+| `_ORCHESTRATION_FLOWS[flow].run_low_recall_rescue` | Enable low-recall rescue. |
+| `_ORCHESTRATION_FLOWS[flow].run_grounding` | Enable answer grounding. |
+| `_ORCHESTRATION_FLOWS[flow].confidence_evaluation` | Confidence diagnostics mode. |
+
+See [flow settings](CONFIGURATION_REFERENCE.md#-orchestration-flows-config_orchestratorpy) for the other per-flow fields.
+
+#### Config_RAGChat.py
+
+| Field / lookup key | Purpose |
+| --- | --- |
+| `_FRIENDLY_NAME` | Chat application identity. |
+| `_LOG_DIRECTORY` | Chat log directory. |
+| `_QUERY_LOG` | Web query audit log. |
+| `_INTENT_FILTER_LOG` | Intent-filter audit log. |
+| `_HISTORY_DIRECTORY` | Chat history directory. |
+| `_KEY_BERT.TOP_N_FIRST` | First-pass query keyword count. |
+| `_KEY_BERT.TOP_N_SECOND` | Second-pass query keyword count. |
+| `_CLASSIFICATION_KEYS` | Classification fields used by chat. |
+| `_DEFAULT_CHAT_NAME` | Default chat name. |
+
+#### Config_RAGChat_Display.py
+
+| Field / lookup key | Purpose |
+| --- | --- |
+| `TERMINAL_LINE_SIZE.debug` | Terminal width with debug. |
+| `TERMINAL_LINE_SIZE.no_debug` | Terminal width without debug. |
+| `SINGLE_CHUNK_SCORE_BOOST` | Single-file score multiplier. |
+| `_MARKED_DOCS_COLORS.highlight` | Marked document highlight color. |
+| `_MARKED_DOCS_COLORS.answer_mark` | Marked answer color. |
+| `_MARKED_DOCS_COLORS.answer_ansi` | Terminal answer marker color. |
+
+#### Config_RAGChat_Prompts.py
+
+| Field / lookup key | Purpose |
+| --- | --- |
+| `_PROMPT_CHAT` | General answer prompt. |
+| `_PROMPT_CHAT_MISTRAL` | Mistral answer prompt. |
+| `_PROMPT_CHAT_LLAMA` | Llama answer prompt. |
+| `_PROMPT_KEYWORD_ACTION_ANSWER` | Split-answer instruction template. |
+| `_PROMPT_KEYWORD_ACTION_OPERATION` | Split-operation instruction template. |
+| `_PROMPT_TOPIC_DETECT` | Topic and rewrite prompt. |
+
+#### Config_RAGChat_Rewrite.py
+
+| Field / lookup key | Purpose |
+| --- | --- |
+| `_QUERY_REWRITE.enabled` | Enable query rewriting. |
+| `_QUERY_REWRITE.topic_confidence_threshold` | Topic confidence gate. |
+| `_QUERY_REWRITE.TOPIC_SUMMARY_MODE` | Topic summary mode. |
+| `_QUERY_REWRITE.meta_descriptors` | Clarification guard terms. |
+| `_QUERY_REWRITE.TRANSLATION_BACKEND` | Query translation backend. |
+| `_QUERY_REWRITE.LLM_PARAM` | Rewrite model sampling, token and streaming options. |
+| `_QUERY_REWRITE.LLM_PARAM.temperature` | Rewrite sampling temperature. |
+| `_QUERY_REWRITE.LLM_PARAM.top_k` | Rewrite top-k sampling. |
+| `_QUERY_REWRITE.LLM_PARAM.top_p` | Rewrite nucleus sampling. |
+| `_QUERY_REWRITE.LLM_PARAM.num_predict` | Rewrite output-token limit. |
+| `_QUERY_REWRITE.LLM_PARAM.use_ollama_gpu` | Ollama GPU use for rewriting. |
+| `_QUERY_REWRITE.LLM_PARAM.streaming` | Rewrite streaming. |
+| `_PROMPT_QUERY_EXPAND` | Multi-query expansion prompt. |
+| `_MULTI_QUERY.enabled` | Enable multi-query expansion. |
+| `_MULTI_QUERY.num_variants` | Alternate-query count. |
+| `_MULTI_QUERY.LLM_PARAM` | Expansion model sampling, token and streaming options. |
+| `_MULTI_QUERY.LLM_PARAM.temperature` | Expansion sampling temperature. |
+| `_MULTI_QUERY.LLM_PARAM.top_k` | Expansion top-k sampling. |
+| `_MULTI_QUERY.LLM_PARAM.top_p` | Expansion nucleus sampling. |
+| `_MULTI_QUERY.LLM_PARAM.num_predict` | Expansion output-token limit. |
+| `_MULTI_QUERY.LLM_PARAM.use_ollama_gpu` | Ollama GPU use for expansion. |
+| `_MULTI_QUERY.LLM_PARAM.streaming` | Expansion streaming. |
+| `_CHUNK_DEDUP.enabled` | Enable near-duplicate removal. |
+| `_CHUNK_DEDUP.threshold` | Near-duplicate similarity threshold. |
+| `_CHUNK_DEDUP.include_web_chunks` | Include web chunks in deduplication. |
+| `_RERANK_LOW_SCORE_FALLBACK.enabled` | Enable fallback when reranking finds no qualifying local chunks. |
+
+#### Config_RAGChat_Strategies.py
+
+| Field / lookup key | Purpose |
+| --- | --- |
+| `_ALLOWED_STRATEGIES` | Selectable retrieval strategies. |
+| `_ACTIVE_CHUNK_SELECT_STRATEGY` | Default strategy. |
+| `_ALLOWED_RETRIEVE_MODES` | Valid internal retrieval modes. |
+| `_STRATEGIES[strategy].final_chunks_to_llm` | Maximum selected context chunks. |
+| `_STRATEGIES[strategy].retriever_k` | Candidate count per retriever. |
+| `_STRATEGIES[strategy].threshold` | Rerank score floor. |
+| `_STRATEGIES[strategy].max_output_tokens` | Generation output limit. |
+| `_STRATEGIES[strategy].temperature` | Generation temperature. |
+| `_STRATEGIES[strategy].top_k` | Generation top-k sampling. |
+| `_STRATEGIES[strategy].top_p` | Generation nucleus sampling. |
+| `_STRATEGIES[strategy].vector_weight` | Vector fusion weight. |
+| `_STRATEGIES[strategy].bm25_weight` | BM25 fusion weight. |
+| `_STRATEGIES[strategy].graph_weight` | Graph fusion weight. |
+| `_STRATEGIES[strategy].regex_weight` | Regex fusion weight. |
+| `_STRATEGIES[strategy].web_weight` | Web fusion weight. |
+| `_STRATEGIES[strategy].filelim` | Per-file chunk cap. |
+| `_STRATEGIES[strategy].use_chat_context` | Include chat history. |
+| `_STRATEGIES[strategy].turns` | Stored turns before pruning. |
+| `_STRATEGIES[strategy].prune_batch` | Turns summarized per prune. |
+| `_STRATEGIES[strategy].max_history_turns` | Recent turns sent to rewriter. |
+| `_STRATEGIES[strategy].TOPIC_SUMMARY_MODE` | Topic summary history mode. |
+
+#### Config_RAGChatService.py
+
+| Field / lookup key | Purpose |
+| --- | --- |
+| `_FRIENDLY_NAME` | Service application identity. |
+| `_LOG_DIRECTORY` | Service log directory. |
+| `_QUERY_LOG` | Web query audit log. |
+| `_INTENT_FILTER_LOG` | Intent-filter audit log. |
+| `_PROMPT_CHAT` | Service answer prompt override. |
+| `_PROMPT_CHAT_MISTRAL` | Service Mistral answer prompt override. |
+| `_PROMPT_CHAT_LLAMA` | Service Llama answer prompt override. |
+| `_SERVICE_RESOURCES_DIR` | Static service assets directory. |
+| `OPENWEBUI_THREAD_POOL_WORKERS` | Service worker pool size. |
+| `SHOW_CLI_LIKE_ALGO_RESULTS` | Append algorithm results to service answers. |
+| `_SERVE_DOCS.cors_origins` | Allowed document-serving origins. |
+| `_SERVE_DOCS.ttl_seconds` | Document token lifetime. |
+| `_SERVE_DOCS.max_total_mb` | In-memory document store limit. |
+| `_SERVE_DOCS.single_use` | Single-use document tokens. |
+| `_SERVE_DOCS.public_base_url` | Public document link base URL. |
+
+#### Config_RAGLoad.py
+
+| Field / lookup key | Purpose |
+| --- | --- |
+| `_FRIENDLY_NAME` | Ingestion application identity. |
+| `_LOG_DIRECTORY` | Ingestion log directory. |
+| `LOAD_FROM_CLASSIFY_CSV` | Load only documents selected from classification CSV. |
+| `CLASSIFY_CSV_QUERY` | Classification CSV filter query. |
+| `PROCESS_IF_UNCHANGED` | Reprocess unchanged documents. |
+| `SHOW_EXTRACTED_METADATA` | Display extracted metadata. |
+| `_SEPARATORS` | Recursive text separators. |
+| `_CLASSIFICATION_KEYS` | Classification fields for ingestion. |
+| `_KEY_BERT.TOP_N_FIRST` | First-pass indexing keyword count. |
+| `_KEY_BERT.TOP_N_SECOND` | Second-pass indexing keyword count. |
+
+#### Config_WebSearch.py
+
+| Field / lookup key | Purpose |
+| --- | --- |
+| `_OPENWEB_UI_WEBSEARCH` | Default OpenWebUI web-search opt-in. |
+| `_WEB_SEARCH.backend` | Search provider. |
+| `_WEB_SEARCH.api_key` | Provider API key. |
+| `_WEB_SEARCH.max_results` | Default result limit. |
+| `_WEB_SEARCH.max_query_length` | Maximum search query length. |
+| `_WEB_SEARCH.block_on_injection` | Block detected injection patterns. |
+| `_WEB_SEARCH.default_web_weight` | Default web fusion weight. |
+| `_WEB_SEARCH.bm25_pre_filter` | BM25 prefilter settings. |
+| `_WEB_SEARCH.cosine_pre_filter` | Cosine prefilter settings. |
+| `_WEB_SEARCH.rerank_threshold` | Web rerank threshold. |
+| `WEB_SEARCH_INTENT_EXTENSIONS.entity_extensions` | Entity keyword extensions. |
+| `WEB_SEARCH_INTENT_EXTENSIONS.entity_categories_extra` | Additional intent categories. |
+| `WEB_SEARCH_INTENT_EXTENSIONS.threshold_overrides` | Intent threshold overrides. |
+
 ### 🌍 Add and install a new language
 
-Language behavior is centralized in `src/Configuration/Config_Languages.py`: `_ACTIVE_LANGUAGES` defines what is enabled, `_ARGOS_DEFINITIONS.ARGOS_LANGUAGES` defines available translation pairs, and `_SPACY_MODELS_BY_ACTIVE_LANGUAGE` defines per-language spaCy package routing. For local indexed retrieval, orchestration discovers corpus language buckets and routes BM25/Graph/Regex across active-and-present buckets (query-relevant first) to preserve multilingual coverage. Unsupported document languages follow `UNSUPPORTED_LANGUAGE_ACTION` in `Config_Global.py`.
+`Config_Languages.py` is a re-export facade, not the file to edit. `Config_Languages_Catalog.py` owns `_ACTIVE_LANGUAGES` and `_ARGOS_DEFINITIONS.ARGOS_LANGUAGES`; `Config_Languages_Retrievers.py` owns `_SPACY_MODELS_BY_ACTIVE_LANGUAGE`. For local indexed retrieval, orchestration discovers corpus language buckets and routes BM25/Graph/Regex across active-and-present buckets (query-relevant first) to preserve multilingual coverage. Unsupported document languages follow `UNSUPPORTED_LANGUAGE_ACTION` in `Config_Global.py`.
 
 Use the strict script-managed flow below.
 
-1. Edit `src/Configuration/Config_Languages.py` and add the language code to `_ACTIVE_LANGUAGES`.
+1. Edit `src/Configuration/Config_Languages_Catalog.py` and add the language code to `_ACTIVE_LANGUAGES`.
 
 2. In the same file, add matching Argos pairs in `_ARGOS_DEFINITIONS["ARGOS_LANGUAGES"]`. Argos packages are one-way, so in most cases you need both `X -> en` (query normalization) and `en -> X` (banlist localization).
 
-3. Add the spaCy model package for the same language code in `_SPACY_MODELS_BY_ACTIVE_LANGUAGE`.
+3. In `src/Configuration/Config_Languages_Retrievers.py`, add the spaCy model package for the same language code in `_SPACY_MODELS_BY_ACTIVE_LANGUAGE`.
 
 4. Install/update runtime resources:
 
@@ -889,7 +1466,7 @@ Given a configured `BASE_URL` (e.g., `http://host.docker.internal:11434/api/gene
 - **Timeout:** Hard-coded 2-second timeout per candidate
 - **Headers:** Authentication headers are forwarded to the probe request when applicable
 
-See also: [CONFIGURATION_REFERENCE.md § Inference Endpoint Provider Metadata](CONFIGURATION_REFERENCE.md#%EF%B8%8F-inference-endpoint-provider-metadata) for BASE_URL configuration examples.
+See also: [Inference Endpoint Provider Metadata](CONFIGURATION_REFERENCE.md#ℹ%EF%B8%8F-inference-endpoint-provider-metadata) for BASE_URL configuration examples.
 
 ## �🛡️ Compliance Chain
 
@@ -1009,7 +1586,7 @@ The expanded list is then passed through the existing translation pipeline (`Sha
 
 **Graceful degradation:** If NLTK or the WordNet corpus is not installed, an orange warning is printed and the original (unexpanded) list is used — no functionality is lost.
 
-For installation and configuration details see [README § 8a](INSTALL.md#-8a-nltk-wordnet-synonyms-optional--banned-word-expansion).
+For installation and configuration details see [INSTALL § 8a](INSTALL.md#-8a-nltk-wordnet-synonyms-optional--bannedword-expansion).
 
 ## 🧮 Detection Algorithm Architecture
 
@@ -1355,7 +1932,7 @@ See [Internet Access in INSTALL.md](INSTALL.md#-internet-access) for the full en
 RAG‑LCC uses [Argos Translate](https://github.com/argosopentech/argos-translate) to translate the English banned-word list into the detected document language so that compliance checks work across languages. The same Argos runtime also normalises non-English user queries to English before retrieval.
 
 - **Environment variables** — `ARGOS_MODEL_PROVIDER` controls provider selection for local package-based translation.
-- **Language pairs & code mapping** — configured via the `_ARGOS_DEFINITIONS` slot in `Config_Languages.py` and filtered through `_ACTIVE_LANGUAGES`. For query normalization, install source→English pairs for active user languages. Keep EN→X pairs for compliance banlist localization. See [Translation configuration (Argos) in CONFIGURATION_REFERENCE.md](CONFIGURATION_REFERENCE.md#-translation-configuration-argos) for the full reference, available pairs, and install/remove commands.
+- **Language pairs & code mapping** — configured via the `_ARGOS_DEFINITIONS` slot in `Config_Languages_Catalog.py`, re-exported by the facade and filtered through `_ACTIVE_LANGUAGES`. For query normalization, install source→English pairs for active user languages. Keep EN→X pairs for compliance banlist localization. See [Translation configuration (Argos) in CONFIGURATION_REFERENCE.md](CONFIGURATION_REFERENCE.md#-translation-configuration-argos) for the full reference, available pairs, and install/remove commands.
 - **Language-detection minimum length** — `_LANGUAGE_DETECTION.MIN_WORDS` (default `3`) sets the minimum word count a text must have before language detection is attempted; shorter texts skip detection and fall back to English, preventing single words from being misclassified.
 - **Language-detection confidence** — `_LANGUAGE_DETECTION.MIN_CONFIDENCE` (default `0.60`) and `_LANGUAGE_DETECTION.CONF_FULL_WORDS` (default `10`) control a word-count-scaled threshold: confidence required starts at 0.90 for short text and decreases linearly to `MIN_CONFIDENCE` at `CONF_FULL_WORDS` words; results below the effective threshold fall back to English, avoiding spurious translation warnings for short queries.
 - **Package management** — `python src/Scripts/ArgosTranslatePackages.py install | remove | status`
@@ -1814,7 +2391,7 @@ The graph retriever builds an **entity co-occurrence graph** over all chunks in 
 | `noun_chunk_min_chars` | `3` | Discard noun chunks shorter than N characters |
 | `noun_chunk_drop_leading` | `"[({<"` | Discard chunks whose first character is one of these (filters heading-breadcrumb artefacts like `[section`) |
 
-**Key configuration keys** (`_GRAPH_INDEX` in `Config_Languages.py`):
+**Key configuration keys** (`_GRAPH_INDEX` in `Config_Languages_Retrievers.py`, re-exported by `Config_Languages.py`):
 
 | Key | Default | Purpose |
 | --- | --- | --- |
@@ -1861,7 +2438,7 @@ runtime falls back to `_WEB_SEARCH.max_results`.
 
 | Key | Location | Default | Purpose |
 | --- | --- | --- | --- |
-| `WEB_SEARCH_MODE` (environment variable) | `Config_Internet_Env.py` | `"0"` | Master switch — `"0"` blocks all web queries, `"1"` enables live web search |
+| `WEB_SEARCH_MODE` (environment variable) | `Config_Internet_Env.py` | `"1"` in this workspace | Master switch — `"0"` blocks all web queries, `"1"` enables live web search; deployment may differ |
 | `_WEB_SEARCH.backend` | `Config_WebSearch.py` | `"duckduckgo"` | Search backend (`"duckduckgo"` needs no API key) |
 | `_WEB_SEARCH.max_results` | `Config_WebSearch.py` | `10` | Default maximum results fetched per query (used when `web_fetch_k` is unset) |
 | `_WEB_SEARCH.max_query_length` | `Config_WebSearch.py` | `500` | Query truncation limit |
@@ -1888,7 +2465,7 @@ runtime falls back to `_WEB_SEARCH.max_results`.
 After chunks are stored in ChromaDB, the **retrieval pipeline** decides which
 chunks are sent to the LLM as context.  Three selector classes in
 `Strategies/HomeBrewChunkSelector.py` implement this logic, and the
-`_STRATEGIES` profiles in `Config_RAGChat.py` control their behaviour.
+`_STRATEGIES` profiles in `Config_RAGChat_Strategies.py` control their behaviour.
 
 | Selector class | Strategies | Description |
 | --- | --- | --- |
@@ -2154,7 +2731,7 @@ the active `file=` filter at the time the turn was recorded; it is `""`
 
 #### Prompt rules
 
-The topic-detect prompt (`_PROMPT_TOPIC_DETECT` in `Config_RAGChat.py`)
+The topic-detect prompt (`_PROMPT_TOPIC_DETECT` in `Config_RAGChat_Prompts.py`)
 enforces strict rewrite constraints: resolve pronouns from recent context,
 avoid adding new facts or retrieval metadata, preserve intent and language,
 and return JSON-only output fields used by the post-parser decision logic.
@@ -2162,7 +2739,7 @@ and return JSON-only output fields used by the post-parser decision logic.
 #### Rewrite model and configuration
 
 The rewrite model is selected independently via `_ACTIVE_LLM_REWRITE_PROMPT`
-(`mistral` default; `llama` also available). Rewrite-specific LLM
+(`Config_Models.py` selects the active implementation). Rewrite-specific LLM
 parameters are configured in `_QUERY_REWRITE` in `Config_RAGChat_Rewrite.py`,
 separate from the main chat LLM parameters.
 
@@ -2183,18 +2760,16 @@ separate from the main chat LLM parameters.
 
 ### User-Query Translation
 
-When the detected language of the incoming user query is not English (and again
-after the rewrite step, in case the rewriter pulled foreign-language entities out
-of chat history) RAG-LCC normalises the query to English so both vector and BM25
-retrieval see the same query and HYBRID RRF fusion stays consistent. The LLM is
-**not** instructed to reply in a specific language — it responds naturally based
-on the language of its context.
+The orchestration flow selects the retrieval language. English flows can
+normalize non-English queries to English; native flows preserve the query
+language. Language-aware indexed retrievers may additionally shape or translate
+queries for individual corpus-language buckets, according to flow settings.
 
 Translation is performed by `Compliance.SharedHelpers` using Argos Translate.
 The engine runs offline with locally installed Argos language packages.
 
 The backend is configurable globally via `_QUERY_REWRITE.TRANSLATION_BACKEND`
-in [Config_RAGChat.py](src/Configuration/Config_RAGChat.py) or per-turn via the
+in [Config_RAGChat_Rewrite.py](src/Configuration/Config_RAGChat_Rewrite.py) or per-turn via the
 `translation_backend` session key:
 
 | Value | Engine | Notes |
