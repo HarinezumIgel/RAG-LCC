@@ -536,6 +536,20 @@ class StartupCommons:
                 color=(ORANGE if web_mode_env == "1" else BRIGHT_BLUE),
             )
 
+        if friendly_name == "RAGChat":
+            local_docs_http = os.environ.get("SERVE_RAGCHAT_GROUNDED_DOCS", "0")
+            if local_docs_http not in ("0", "1"):
+                raise ConfigurationError(
+                    'SERVE_RAGCHAT_GROUNDED_DOCS must be "0" or "1" '
+                    "in Config_Internet_Env.py."
+                )
+            pretty.write(
+                "I",
+                "Environment variable",
+                f"SERVE_RAGCHAT_GROUNDED_DOCS={local_docs_http}",
+                color=(ORANGE if local_docs_http == "1" else BRIGHT_BLUE),
+            )
+
         if friendly_name == "RAGChatService":
             # SERVE_OPENWEBUI_CHAT is an inbound-service flag, not outbound risk.
             owui = os.environ.get("SERVE_OPENWEBUI_CHAT", "0")
@@ -545,11 +559,11 @@ class StartupCommons:
                 f"SERVE_OPENWEBUI_CHAT={owui}",
                 color=(ORANGE if owui == "1" else BRIGHT_BLUE),
             )
-            docs_http = os.environ.get("SERVE_IN_MEMORY_DOCS_HTTP", "0")
+            docs_http = os.environ.get("SERVE_RAGCHATSERVICE_GROUNDED_DOCS", "0")
             pretty.write(
                 "I",
                 "Environment variable",
-                f"SERVE_IN_MEMORY_DOCS_HTTP={docs_http}",
+                f"SERVE_RAGCHATSERVICE_GROUNDED_DOCS={docs_http}",
                 color=(ORANGE if docs_http == "1" else BRIGHT_BLUE),
             )
 
@@ -610,7 +624,9 @@ class StartupCommons:
 
         if friendly_name == "RAGChatService":
             docs_block: dict[str, Any] = cfg.get_dict("_SERVE_DOCS", {}, silent=True)
-            docs_http_enabled = os.environ.get("SERVE_IN_MEMORY_DOCS_HTTP", "0") == "1"
+            docs_http_enabled = (
+                os.environ.get("SERVE_RAGCHATSERVICE_GROUNDED_DOCS", "0") == "1"
+            )
             pretty.write("N", "", "")
             if docs_http_enabled:
                 md_host = cfg.get_str("_MODELS.ragchatservice._RAGCHATSERVICE.HOST")
@@ -623,7 +639,7 @@ class StartupCommons:
                     "W",
                     "Serve docs",
                     f"In-memory document-serving service active — "
-                    f"endpoint: {md_base}/marked/<token>  "
+                    f"endpoint: {md_base}/marked/<document-token>?token=<session-token>  "
                     f"(TTL {docs_block.get('ttl_seconds', 1800)} s, "
                     f"max {docs_block.get('max_total_mb', 200)} MB)",
                     color=BRIGHT_ORANGE,
@@ -633,7 +649,7 @@ class StartupCommons:
                     "I",
                     "Serve docs",
                     "In-memory document-serving service is DISABLED "
-                    '(SERVE_IN_MEMORY_DOCS_HTTP="0" in Config_Internet_Env.py).',
+                    '(SERVE_RAGCHATSERVICE_GROUNDED_DOCS="0" in Config_Internet_Env.py).',
                     color=BRIGHT_BLUE,
                 )
 

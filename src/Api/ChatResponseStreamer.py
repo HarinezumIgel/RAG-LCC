@@ -7,7 +7,8 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import AsyncGenerator
 
-from Api.MarkedDocsService import register_marked_documents
+from Api.MarkedDocsService import (register_grounded_answer,
+                                   register_marked_documents)
 from Api.MarkedDocsStore import get_default as get_marked_docs_store
 from Chat.Chatter import Chatter
 from Commons.Exceptions import OllamaNotRunning, VllmNotRunning
@@ -204,6 +205,13 @@ class ChatResponseStreamer:
                 marked_block = register_marked_documents(
                     session, get_marked_docs_store(), marked_docs_base_url
                 )
+                grounded_answer_block = register_grounded_answer(
+                    session,
+                    getattr(chatter, "grounder", None),
+                    str(getattr(session, "last_answer_content", "") or ""),
+                    get_marked_docs_store(),
+                    marked_docs_base_url,
+                )
                 if marked_block:
                     marked_chunk = (
                         f'{{"id":"{req_id}","object":"chat.completion.chunk","created":{created},'
@@ -214,6 +222,17 @@ class ChatResponseStreamer:
                     if emit_cli_blocks:
                         chatter.print_llm_answer(
                             marked_block, chatter.terminal_line_size
+                        )
+                if grounded_answer_block:
+                    grounded_answer_chunk = (
+                        f'{{"id":"{req_id}","object":"chat.completion.chunk","created":{created},'
+                        f'"model":"{model}","choices":[{{"index":0,"delta":{{"content":{_json_str(grounded_answer_block)}}},'
+                        f'"finish_reason":null}}]}}'
+                    )
+                    yield f"data: {grounded_answer_chunk}\n\n"
+                    if emit_cli_blocks:
+                        chatter.print_llm_answer(
+                            grounded_answer_block, chatter.terminal_line_size
                         )
                 metadata_helper = getattr(chatter, "helpers", None)
                 metadata_block = (

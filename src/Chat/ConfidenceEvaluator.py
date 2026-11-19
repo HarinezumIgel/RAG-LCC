@@ -274,6 +274,7 @@ class ConfidenceEvaluator:
         *,
         note: str = "",
         emit: bool = True,
+        grounding_failed: bool = False,
     ) -> AnswerConfidenceResult:
         """Compute and persist final answer confidence from selected evidence."""
         if not chosen:
@@ -361,7 +362,7 @@ class ConfidenceEvaluator:
         score = self._clamp_probability(max(0.0, c_raw_sum - c_fallback_penalty))
 
         # Use the base score (no quality dimension enhancement in this method)
-        final_score = score
+        final_score = 0.0 if grounding_failed else score
 
         level = self._confidence_level_from_score(final_score)
         components = {

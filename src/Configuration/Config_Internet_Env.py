@@ -136,10 +136,24 @@ os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 #   .venv\Scripts\python.exe src/Apps/RAGChatService.py
 os.environ["SERVE_OPENWEBUI_CHAT"] = "0"
 
-# SERVE_IN_MEMORY_DOCS_HTTP: Gate for the in-memory document HTTP server used
-# by RAGChatService (serves both marked and non-marked document bytes via
-# short-lived /marked/<token> links).
+# SERVE_RAGCHATSERVICE_GROUNDED_DOCS: Gate for the in-memory document and grounded
+# answer server used by RAGChatService. It serves marked documents and
+# grounded HTML answer pages via short-lived
+# /marked/<document-token>.<ext>?token=<session-token> links.
+# Routes share the API listener (default HOST 127.0.0.1 in Config_Models.py).
+# Remote browsers need a tunnel or an explicit reachable bind/public_base_url.
 #
 # "0" = disabled (safe default) — no in-memory docs store; mark_text is forced off
 # "1" = enabled — in-memory docs store and /marked links are active
-os.environ["SERVE_IN_MEMORY_DOCS_HTTP"] = "0"
+os.environ["SERVE_RAGCHATSERVICE_GROUNDED_DOCS"] = "0"
+
+# SERVE_RAGCHAT_GROUNDED_DOCS: RAGChat CLI HTML links via a loopback-only
+# listener on port 11436 by default, independent of RAGChatService.
+# "0" = no HTML links; "1" = expiring HTTP HTML links (no automatic browser launch).
+# summarize: stays in the terminal without a grounded-answer HTTP preview;
+# marked source documents remain available through their normal file links.
+# RAGChatService continues serving remote grounded documents through its own switch.
+# Other document formats retain their file links/picker. Deployment forces "0".
+# Port, cache TTL and size limits: _LOCAL_SERVE_DOCS in Config_RAGChat.py.
+# Links include an automatically generated per-startup session capability.
+os.environ["SERVE_RAGCHAT_GROUNDED_DOCS"] = "0"

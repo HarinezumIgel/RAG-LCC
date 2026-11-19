@@ -50,6 +50,9 @@ def _configuration_project(tmp_path: Path) -> tuple[Path, Path, Path]:
     for slot in slots:
         (config / f"{slot}.py").write_bytes(b"# original config\r\n")
     (config / "Config_WebSearch.py").write_bytes(b"_OPENWEB_UI_WEBSEARCH = True\r\n")
+    (config / "Config_Internet_Env.py").write_bytes(
+        b'os.environ["SERVE_RAGCHAT_GROUNDED_DOCS"] = "1"\r\n'
+    )
     (config / "Config_Global.py").write_bytes(
         f"_CRITICAL_CONFIG_HASHES = {dict.fromkeys(slots, 'source-hash')!r}\r\n".replace(
             "'", '"'
@@ -238,6 +241,8 @@ def test_main_packages_configuration_without_examples(
     project, source, destination = _configuration_project(tmp_path)
     original = (source / "Config_WebSearch.py").read_bytes()
     target = destination.parents[1]
+    (project / "EXAMPLES.md").write_text("obsolete", encoding="utf-8")
+    (project / "README.md").write_text("documentation", encoding="utf-8")
     monkeypatch.setattr(
         deploy,
         "parse_args",
@@ -273,6 +278,8 @@ def test_main_packages_configuration_without_examples(
     assert (source / "Config_WebSearch.py").read_bytes() == original
     assert (destination / "Config_WebSearch.py").read_text() == "DEPLOYMENT = True\n"
     assert not (target / "Examples").exists()
+    assert not (target / "EXAMPLES.md").exists()
+    assert (target / "README.md").read_text(encoding="utf-8") == "documentation"
 
 
 @pytest.mark.parametrize("failure_stage", [None, "sign", "verify"])
@@ -314,9 +321,15 @@ def test_main_ships_clean_signed_configs_before_restoring_development(
             "keyname": "_OPENWEB_UI_WEBSEARCH",
             "value": "False",
         },
+        {
+            "conf": "Config_Internet_Env.py",
+            "keyname": 'os.environ["SERVE_RAGCHAT_GROUNDED_DOCS"]',
+            "value": '"0"',
+        },
     ]
 
     def update_config(config: Path, defaults: list[dict[str, str]]) -> None:
+        assert updates[1] in defaults
         update(config, updates)
 
     monkeypatch.setattr(deploy, "update_config_values", update_config)
@@ -358,6 +371,9 @@ def test_main_ships_clean_signed_configs_before_restoring_development(
         _assert_empty_configuration_hashes(destination)
         assert "_OPENWEB_UI_WEBSEARCH = False" in (
             destination / "Config_WebSearch.py"
+        ).read_text(encoding="utf-8")
+        assert 'os.environ["SERVE_RAGCHAT_GROUNDED_DOCS"] = "0"' in (
+            destination / "Config_Internet_Env.py"
         ).read_text(encoding="utf-8")
         stages.append("sign")
         sign(root, development)

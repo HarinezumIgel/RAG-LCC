@@ -183,6 +183,8 @@ heuristic fallback. Resetting turn state clears the
 entire result.
 Retrieval metrics appear under the `Heuristic Confidence:` header.
 The LLM review header identifies the judge model when ratings are available.
+In the CLI, only the confidence status line is coloured by level; the diagnostic
+details below it use the normal answer foreground.
 
 #### What the diagnostics mean
 
@@ -495,7 +497,7 @@ The per-module, individual-field inventory is in [ARCHITECTURE.md: Configuration
 
 | **Component** | **Config File** | **Slot Name / Path** | **Notes** |
 |---------------|----------------|----------------------|-----------|
-| **Chat Prompt Template** | `Config_RAGChat_Prompts.py` | `_PROMPT_CHAT` | Main answer generation prompt (fully replaceable per model; service mode can override in `Config_RAGChatService.py`) |
+| **Chat Prompt Template** | `Config_RAGChat_Prompts.py` | `_PROMPT_CHAT` | Shared answer generation prompt for CLI and service (fully replaceable per model) |
 | **Topic-Detection Prompt** | `Config_RAGChat_Prompts.py` | `_PROMPT_TOPIC_DETECT` | Conversation-context analysis |
 | **Multi-Query Expansion Prompt** | `Config_RAGChat_Rewrite.py` | `_PROMPT_QUERY_EXPAND` | Generate alternate retrieval phrasings |
 | **Query Split Limits and Sampling** | `Config_KeywordActionSplitter.py` | `_KEYWORD_ACTION_SPLITTER` | Max 8 needs, 3–8 distinct keywords; separate JSON-call parameters |
@@ -632,8 +634,6 @@ configs and are part of the effective configuration surface.
 | `Config_RAGChat_Rewrite.py` | `_RERANK_LOW_SCORE_FALLBACK` | Toggle for low-score rerank fallback behavior. |
 | `Config_RAGChat_Strategies.py` | `_ALLOWED_STRATEGIES` | Allow-list of selectable retrieval strategies. |
 | `Config_RAGChat.py` | `_HISTORY_DIRECTORY` | Base directory for chat query/settings history files. |
-| `Config_RAGChatService.py` | `_PROMPT_CHAT_MISTRAL` | Service prompt alias for mistral role (service-specific prompt text). |
-| `Config_RAGChatService.py` | `_PROMPT_CHAT_LLAMA` | Service prompt alias for llama role (service-specific prompt text). |
 | `Config_RAGChatService.py` | `_SERVICE_RESOURCES_DIR` | Static assets directory for service resources (for example favicon). |
 
 ---
@@ -1617,7 +1617,7 @@ Records the RAGChatService listener configuration (host, port, API key). Fixed s
 
 | Key | Default used in this repository | Purpose |
 | --- | --- | --- |
-| `HOST` | `"localhost"` | Bind address for the HTTP listener. `0.0.0.0` binds all interfaces (required for Docker port forwarding). Use `localhost`/`127.0.0.1` for local-only host mode. `Setup.py` requires a non-empty value. |
+| `HOST` | `"127.0.0.1"` | Bind address for the HTTP listener. Loopback still accepts requests from reachable local clients/relays. `0.0.0.0` binds all interfaces; standard Docker publishing needs a non-loopback container bind, but VS Code forwarding can reach loopback. `Setup.py` requires a non-empty value. |
 | `PORT` | `11435` | Port for the HTTP listener. |
 | `BASE_URL` | `"http://localhost:11435"` | Full service URL (derived from HOST and PORT). |
 | `API_KEY` | `""` | Bearer token for authenticating incoming requests from OpenWebUI. Must match the API key configured in OpenWebUI. |
@@ -2062,7 +2062,7 @@ and read through the merged `Config` lookups:
 
 | Key | Default | Purpose |
 | --- | --- | --- |
-| `_GROUNDING.min_sentence_tokens` | `5` | Minimum token count a sentence must have to be considered for grounding. Lower values increase matches. |
+| `_GROUNDING.min_sentence_tokens` | `5` | Minimum token count for sentence highlighting. Shorter prose and list claims are still validated using their full token sequence. |
 | `_GROUNDING.min_fragment_len` | `12` | Minimum fragment length extracted from chunks for overlap matching. Lower values increase matches. |
 | `_GROUNDING.min_overlap_window` | `5` | Contiguous token window size for lexical grounding. |
 | `_GROUNDING.relaxed_min_sentence_tokens` | `4` | Second pass (paraphrased/translated answers): minimum unique tokens a sentence needs. |
@@ -2174,13 +2174,89 @@ Streaming is restored automatically as soon as `mark_text` is disabled.
 
 #### CLI delivery
 
-In CLI mode the highlighted bytes stay in memory. When the user selects a document from the numbered picker, **only that file** is written to a short-lived temp directory; other documents remain in RAM. If the user skips the prompt entirely, no file is written at all. Temp files are deleted when the process exits.
+Before enabling document links, review
+[in-memory document-server risks](SECURITY.md#in-memory-document-servers-risks-and-safe-operation),
+including capability-URL leakage and port-forwarding exposure.
+
+Set `SERVE_RAGCHAT_GROUNDED_DOCS="1"` in `Config_Internet_Env.py` (or enable it in
+`Setup.py`) to serve RAGChat's highlighted HTML sources and verified grounded
+HTML answers for normal chat turns through a loopback-only listener on
+`127.0.0.1`, using port `11436` by default. `summarize:` keeps its grounded
+summary in the terminal without a grounded-answer HTTP preview; marked source
+documents remain available through their normal file links.
+Clicking a link opens the browser; generating an answer never launches it.
+The switch is shown at startup, in orange when enabled, and is independent of
+RAGChatService's `SERVE_RAGCHATSERVICE_GROUNDED_DOCS`. Deployment forces it to `"0"`.
+RAGChatService continues serving grounded documents and answers over its own
+listener for remote clients.
+
+This mode reuses RAGChatService's bounded, unguessable-token `MarkedDocsStore` and
+HTTP responses. No HTML temp files are written: HTML remains in memory, expired
+entries are periodically removed even without requests, and shutdown stops the
+listener and clears all entries. `_LOCAL_SERVE_DOCS` in `Config_RAGChat.py`
+configures `port` (11436), `ttl_seconds` (1800), `max_total_mb` (200), and
+`single_use` (False). Setup offers `11436` as the default port and persists the
+chosen value, including when correcting answers. An occupied port causes startup
+to fail explicitly rather than silently switching to an unforwarded port.
+Expiry is measured from document creation, not the last click. Links may also
+expire earlier through capacity eviction or single-use consumption. In VS Code,
+disable `workbench.browser.openLocalhostLinks` if localhost links open in the
+integrated browser rather than your external default browser. Remote/SSH and
+dev-container terminals require forwarding the configured listener port to the
+same local port. The Dev Container configuration forwards `11435` for
+RAGChatService and `11436` for CLI document links; `requireLocalPort` on `11436`
+prevents silent remapping that would break generated links. If the CLI port is
+changed in Setup, update `forwardPorts` and the matching `portsAttributes` entry
+in `.devcontainer/devcontainer.json`, retaining `requireLocalPort: true`, then
+rebuild/reopen the container (or forward the same port manually for immediate use).
+Every link also carries a random per-listener session capability in `?token=`.
+Requests missing either capability return 404; restarting invalidates all links.
+
+Non-HTML documents (`.md`, `.txt`, `.docx`, PDF, etc.) retain their file links or
+picker regardless of the listener setting, so VS Code/OS associations can handle
+them as before. When the user selects a document from the numbered picker,
+**only that file** is written to a short-lived temp directory; other documents
+remain in RAM. If the user skips the prompt entirely, no file is written at all.
+Temp files are deleted when the process exits.
 
 Terminals that support OSC 8 hyperlinks (Windows Terminal, VS Code, iTerm2, Kitty, WezTerm, …) display clickable links instead of a picker; all files are written up-front in that case so the links are ready to click.
 
+HTML is never offered as a `file://` link. When the listener is disabled,
+RAGChat reports how to enable it rather than printing a non-working HTML link.
+Development configuration enables the listener; Setup defaults to disabled and
+deployment always forces it off. Restart RAGChat after changing the setting.
+
+Browser previews retain evidence-supported highlights even when whole-answer
+grounding fails, matching the CLI's partial marking. The page title and heading
+say **Not fully grounded**, with an explicit unverified-answer warning; supported
+spans or diagram elements may be orange while unsupported claims stay unmarked.
+Highlights do not promote the answer to verified status or validate source
+references. If grounding is disabled or skipped, the preview remains unmarked.
+
 #### Service delivery (`RAGChatService`)
 
-In service mode, highlighted bytes are stored in the `MarkedDocsStore` in-memory cache and served as short-lived URLs (`GET /marked/<token>.<ext>`). The link block is appended to the LLM answer. Runtime behavior is configured in `_SERVE_DOCS` in `Config_RAGChatService.py` and gated by `SERVE_IN_MEMORY_DOCS_HTTP` in `Config_Internet_Env.py`.
+**Security:** A remote proxy or forwarded port can expose documents even when
+RAGChatService binds to loopback. `/marked` uses capability links, not the
+OpenWebUI login or `/v1/` API key. See
+[in-memory document-server risks](SECURITY.md#in-memory-document-servers-risks-and-safe-operation).
+
+In service mode, highlighted bytes are stored in the `MarkedDocsStore` in-memory cache and served as short-lived URLs (`GET /marked/<document-token>.<ext>?token=<session-token>`). The link block is appended to the LLM answer. Runtime behavior is configured in `_SERVE_DOCS` in `Config_RAGChatService.py` and gated by `SERVE_RAGCHATSERVICE_GROUNDED_DOCS` in `Config_Internet_Env.py`.
+
+The document HTTP routes are encapsulated by `DocumentServing.MarkedDocsServer`
+and share the existing API listener (default `127.0.0.1:11435`), not a second
+port. See [INSTALL.md](INSTALL.md) for listener host/port choices, Docker port
+publishing, and Dev Container forwarding. For exposure risks and safe operation,
+see [SECURITY.md](SECURITY.md#in-memory-document-servers-risks-and-safe-operation).
+
+The session capability is generated with `secrets.token_urlsafe(24)` at service
+startup; document tokens remain independently random and TTL-limited. Both are
+added automatically, so browsers need no login or manual token configuration.
+Missing, invalid, duplicate, or previous-startup session capabilities return 404
+without consuming single-use documents. Links are bearer credentials: anyone
+with a complete link can access its document until expiry. Responses use
+`Referrer-Policy: no-referrer` and `Cache-Control: private, no-store`; the built-in
+listeners avoid logging document credentials. Configure reverse-proxy access
+logs to redact the entire document path and query too.
 
 ### 🎨 Answer Display Style (`ANSWER_DISPLAY`)
 
@@ -2193,10 +2269,10 @@ ANSWER_DISPLAY = {
 }
 ```
 
-`ANSWER_BG` and `ANSWER_FG` are resolved from `Gui/Colors.py` at import time. The module auto-detects truecolor support:
-
-- **Truecolor** (`COLORTERM=truecolor` / `COLORTERM=24bit` / `WT_SESSION` set): 24-bit RGB sequences — dark gray background, near-white text.
-- **Fallback**: 256-color equivalents (`48;5;238` / `38;5;252`) used on terminals without truecolor support (plain PowerShell, cmd, older Linux terminals).
+`ANSWER_BG` and `ANSWER_FG` are resolved from `Gui/Colors.py`. They use fixed
+256-color sequences (`48;5;238` / `38;5;252`) for a dark gray background and
+light gray text, without terminal capability detection. The answer body and
+confidence/diagnostics section use the same background.
 
 Set either key to `""` to disable that colour component.
 
@@ -2583,12 +2659,20 @@ This file controls all internet connectivity and diagnostic toggles. It is descr
 | `TRANSFORMERS_OFFLINE` | `"1"` | Disable transformers library hub access when `"1"`. |
 | `HF_DATASETS_OFFLINE` | `"1"` | Disable HF datasets hub access when `"1"`. |
 | `ARGOS_MODEL_PROVIDER` | `"OPENNMT"` | Force Argos Translate to use local packages only. |
-| `SERVE_OPENWEBUI_CHAT` | varies by deployment | When `"1"`, RAGChatService accepts connections from OpenWebUI (inbound only). Printed as an info banner at startup. |
-| `SERVE_IN_MEMORY_DOCS_HTTP` | `"0"` in deployment | Enable the in-memory document HTTP server used by RAGChatService for `/marked/<token>` links. `"0"` = disabled (no in-memory docs store). `"1"` = enabled. Development settings may differ. See `_SERVE_DOCS` in `Config_RAGChatService.py` for TTL and size limits. |
+| `SERVE_OPENWEBUI_CHAT` | `"1"` in development; `"0"` in Setup/deployment | Permit RAGChatService startup, binding its configured host/port and accepting incoming API requests (default port `11435`). Turning off document delivery does not stop this listener. |
+| `SERVE_RAGCHATSERVICE_GROUNDED_DOCS` | `"1"` in development; `"0"` in Setup/deployment | Enable `/marked/<document-token>.<ext>?token=<session-token>` document requests on RAGChatService's existing API listener. `"0"` disables document delivery, not the API. See `_SERVE_DOCS` in `Config_RAGChatService.py` for TTL and size limits. Review [security risks and mitigations](SECURITY.md#in-memory-document-servers-risks-and-safe-operation) before enabling. |
+| `SERVE_RAGCHAT_GROUNDED_DOCS` | `"1"` in development; `"0"` in Setup/deployment | Running RAGChat opens a separate loopback-only HTTP listener accepting HTML document/answer requests. Other formats keep file links; no automatic browser launch. `_LOCAL_SERVE_DOCS` in `Config_RAGChat.py` controls the port (default `11436`), TTL and cache size. Independent of both service switches. Review [security risks and mitigations](SECURITY.md#in-memory-document-servers-risks-and-safe-operation) before enabling. |
 | `HF_HUB_DISABLE_PROGRESS_BARS` | `"0"` | Show Hugging Face Hub progress bars during model downloads. Set to `"1"` to suppress progress bar output for cleaner log output. |
 | `TOKENIZERS_PARALLELISM` | `"false"` | Prevent tokenizer parallelism warnings from HuggingFace tokenizers. Set via `os.environ.setdefault` (only applied when not already set). |
 
 NLTK stopwords corpora are script-managed via `python src/Scripts/NLTK_Stopwords_WordNet.py install`; there is no runtime auto-download toggle.
+
+**Inbound and outbound settings are independent.** Disabling downloads or web
+search does not prevent either application from binding and accepting HTTP
+requests. Loopback binding limits direct reachability; it does not mean that no
+listener exists. The three `SERVE_*` flags above apply when the corresponding
+application starts; changing configuration does not stop an existing listener.
+See [document-server risks](SECURITY.md#in-memory-document-servers-risks-and-safe-operation).
 
 ## 💻 CLI Parameter Override
 

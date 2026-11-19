@@ -71,6 +71,17 @@ web-search master switch, but development settings may differ, Hugging Face Hub 
 be allowed, and model endpoints may be remote. Operators should review all settings and data
 flows before use.
 
+RAG-LCC can also bind sockets and accept incoming HTTP requests. Running RAGChat
+with `SERVE_RAGCHAT_GROUNDED_DOCS="1"` starts a loopback-only document listener
+(default port `11436`). Running RAGChatService with `SERVE_OPENWEBUI_CHAT="1"`
+opens its API listener (default port `11435`);
+`SERVE_RAGCHATSERVICE_GROUNDED_DOCS="1"` enables document delivery on that same
+listener. The development configuration currently enables all three switches.
+Offline settings do not disable inbound serving, and proxies or forwarding can
+expose local listeners remotely. Operators are responsible for disclosure of
+document content through responses and capability links; see
+[document-server risks](SECURITY.md#in-memory-document-servers-risks-and-safe-operation).
+
 ---
 
 ## 🌐 Web / Internet Search — Privacy Warning

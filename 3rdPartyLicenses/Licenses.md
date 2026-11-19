@@ -19,7 +19,7 @@ This overview is provided for informational purposes only. Signing attests only 
 | aiohttp | 3.14.5 | Apache-2.0 AND MIT | UNKNOWN |
 | aiohttp-retry | 2.9.1 | MIT License | Dmitry Inyutin |
 | aiosignal | 1.4.0 | Apache Software License | UNKNOWN |
-| annotated-doc | 0.0.6 | MIT | Sebastián Ramírez <tiangolo@gmail.com> |
+| annotated-doc | 0.0.7 | MIT | Sebastián Ramírez <tiangolo@gmail.com> |
 | annotated-types | 0.8.0 | MIT | Adrian Garcia Badaracco <1755071+adriangb@users.noreply.github.com>, Samuel Colvin <s@muelcolvin.com>, Zac Hatfield-Dodds <zac@zhd.dev> |
 | anyio | 4.16.0 | MIT | Alex Grönholm <alex.gronholm@nextday.fi> |
 | argostranslate | 1.11.0 | MIT License | Argos Open Technologies, LLC |
@@ -36,7 +36,7 @@ This overview is provided for informational purposes only. Signing attests only 
 | chromadb | 1.5.9 | Apache Software License | Jeff Huber <jeff@trychroma.com>, Anton Troynikov <anton@trychroma.com> |
 | click | 8.5.1 | BSD-3-Clause | UNKNOWN |
 | cloudpathlib | 0.26.0 | MIT License | DrivenData <info@drivendata.org> |
-| cloudpickle | 3.1.2 | BSD License | The cloudpickle developer team |
+| cloudpickle | 3.1.3 | BSD-3-Clause | The cloudpickle developer team <cloudpipe@googlegroups.com> |
 | colorama | 0.4.6 | BSD License | Jonathan Hartley <tartley@tartley.com> |
 | confection | 1.3.4 | MIT License | Explosion |
 | cryptography | 50.0.2 | Apache-2.0 OR BSD-3-Clause | The Python Cryptographic Authority and individual contributors <cryptography-dev@python.org> |
@@ -48,22 +48,22 @@ This overview is provided for informational purposes only. Signing attests only 
 | durationpy | 0.11 | MIT | Ilia Choly |
 | emoji | 2.16.0 | BSD License | Taehoon Kim <carpedm20@gmail.com>, Kevin Wurster <wursterk@gmail.com> |
 | et_xmlfile | 2.0.0 | MIT License | See AUTHORS.txt |
-| fastapi | 0.163.0 | MIT | Sebastián Ramírez <tiangolo@gmail.com> |
-| filelock | 4.2.10 | MIT | UNKNOWN |
+| fastapi | 0.165.0 | MIT | Sebastián Ramírez <tiangolo@gmail.com> |
+| filelock | 4.2.12 | MIT | UNKNOWN |
 | flatbuffers | 25.12.19 | Apache Software License | Derek Bailey |
 | frozenlist | 1.8.0 | Apache-2.0 | UNKNOWN |
 | fsspec | 2026.9.0 | BSD-3-Clause | UNKNOWN |
 | googleapis-common-protos | 1.76.0 | Apache-2.0 | Google LLC <googleapis-packages@google.com> |
 | graphviz | 0.21 | MIT | Sebastian Bank <sebastian.bank@uni-leipzig.de> |
-| grpcio | 1.85.1 | Apache-2.0 | The gRPC Authors <grpc-io@googlegroups.com> |
+| grpcio | 1.85.3 | Apache-2.0 | The gRPC Authors <grpc-io@googlegroups.com> |
 | h11 | 0.16.0 | MIT License | Nathaniel J. Smith |
 | hf-xet | 1.8.0 | Apache-2.0 | UNKNOWN |
 | html2text | 2025.4.15 | GPL-3.0-or-later | Aaron Swartz <me@aaronsw.com> |
 | httpcore | 1.0.9 | BSD-3-Clause | Tom Christie <tom@tomchristie.com> |
-| httpcore2 | 2.16.0 | BSD-3-Clause | Tom Christie <tom@tomchristie.com> |
+| httpcore2 | 2.16.2 | BSD-3-Clause | Tom Christie <tom@tomchristie.com> |
 | httptools | 0.9.0 | MIT | Yury Selivanov <yury@magic.io> |
 | httpx | 0.28.1 | BSD License | Tom Christie <tom@tomchristie.com> |
-| httpx2 | 2.16.0 | BSD-3-Clause | Tom Christie <tom@tomchristie.com> |
+| httpx2 | 2.16.2 | BSD-3-Clause | Tom Christie <tom@tomchristie.com> |
 | huggingface_hub | 1.33.0 | Apache Software License | Hugging Face, Inc. |
 | idna | 3.20 | BSD-3-Clause | Kim Davies <kim+pypi@gumleaf.org> |
 | importlib_resources | 7.1.0 | Apache-2.0 | Barry Warsaw <barry@python.org> |
@@ -76,14 +76,14 @@ This overview is provided for informational purposes only. Signing attests only 
 | jsonschema | 4.26.0 | MIT | Julian Berman <Julian+jsonschema@GrayVines.com> |
 | jsonschema-specifications | 2025.9.1 | MIT | Julian Berman <Julian+jsonschema-specifications@GrayVines.com> |
 | keybert | 0.9.0 | MIT License | Maarten Grootendorst <maartengrootendorst@gmail.com> |
-| kubernetes | 37.0.2 | Apache-2.0 | Kubernetes |
+| kubernetes | 37.0.3 | Apache-2.0 | Kubernetes |
 | langchain-chroma | 1.1.0 | MIT | UNKNOWN |
-| langchain-core | 1.8.0 | MIT License | UNKNOWN |
+| langchain-core | 1.8.3 | MIT License | UNKNOWN |
 | langchain-huggingface | 1.2.3 | MIT License | UNKNOWN |
 | langchain-protocol | 0.0.21 | MIT License | UNKNOWN |
 | langchain-text-splitters | 1.1.3 | MIT License | UNKNOWN |
 | langdetect | 1.0.9 | Apache Software License | Michal Mimino Danilak |
-| langsmith | 0.14.17 | MIT License | LangChain |
+| langsmith | 0.15.0 | MIT | LangChain |
 | lingua-language-detector | 2.2.0 | Apache Software License | "Peter M. Stahl" <pemistahl@gmail.com> |
 | lxml | 6.1.3 | BSD-3-Clause | lxml dev team |
 | markdown-it-py | 4.3.0 | MIT License | Chris Sewell <chrisj_sewell@hotmail.com> |
@@ -93,10 +93,10 @@ This overview is provided for informational purposes only. Signing attests only 
 | mpmath | 1.3.0 | BSD License | Fredrik Johansson |
 | multidict | 7.2.1 | Apache-2.0 | Andrew Svetlov <andrew.svetlov@gmail.com> |
 | murmurhash | 1.0.16 | MIT License | Explosion |
-| narwhals | 2.28.0 | MIT | Marco Gorelli |
+| narwhals | 2.29.0 | MIT | Marco Gorelli |
 | networkx | 3.7 | BSD-3-Clause | Aric Hagberg <hagberg@lanl.gov> |
 | nltk | 3.9.2 | Apache Software License | NLTK Team |
-| numpy | 2.5.4 | BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0 | Travis E. Oliphant et al. |
+| numpy | 2.5.5 | BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0 | Travis E. Oliphant et al. |
 | oauthlib | 4.0.1 | BSD-3-Clause | The OAuthlib Community |
 | onnxruntime | 1.32.0 | MIT License | Microsoft Corporation |
 | openpyxl | 3.1.5 | MIT License | See AUTHORS |
@@ -122,17 +122,17 @@ This overview is provided for informational purposes only. Signing attests only 
 | pipreqs | 0.4.13 | Apache Software License | Vadim Kravcenko |
 | pluggy | 1.7.0 | MIT License | Holger Krekel |
 | preshed | 3.0.15 | MIT License | Explosion |
-| prettytable | 3.18.0 | BSD-3-Clause | Luke Maurits <luke@maurits.id.au> |
+| prettytable | 3.19.0 | BSD-3-Clause | Luke Maurits <luke@maurits.id.au> |
 | primp | 2.0.1 | MIT License | deedy5 |
 | prompt_toolkit | 3.0.53 | BSD License | Jonathan Slenders |
 | propcache | 0.5.4 | Apache-2.0 | Andrew Svetlov |
 | protobuf | 7.36.2 | 3-Clause BSD License | protobuf@googlegroups.com |
 | pybase64 | 1.5.2 | BSD-2-Clause | Matthieu Darbois |
 | pycparser | 3.12 | BSD-3-Clause | Eli Bendersky <eliben@gmail.com> |
-| pydantic | 2.14.3 | MIT | Samuel Colvin <s@muelcolvin.com>, Eric Jolibois <em.jolibois@gmail.com>, Hasan Ramezani <hasan.r67@gmail.com>, Adrian Garcia Badaracco <1755071+adriangb@users.noreply.github.com>, Terrence Dorsey <terry@pydantic.dev>, David Montague <david@pydantic.dev>, Serge Matveenko <lig@countzero.co>, Marcelo Trylesinski <marcelotryle@gmail.com>, Sydney Runkle <sydneymarierunkle@gmail.com>, David Hewitt <mail@davidhewitt.dev>, Alex Hall <alex.mojaki@gmail.com>, Victorien Plot <contact@vctrn.dev> |
+| pydantic | 2.14.4 | MIT | Samuel Colvin <s@muelcolvin.com>, Eric Jolibois <em.jolibois@gmail.com>, Hasan Ramezani <hasan.r67@gmail.com>, Adrian Garcia Badaracco <1755071+adriangb@users.noreply.github.com>, Terrence Dorsey <terry@pydantic.dev>, David Montague <david@pydantic.dev>, Serge Matveenko <lig@countzero.co>, Marcelo Trylesinski <marcelotryle@gmail.com>, Sydney Runkle <sydneymarierunkle@gmail.com>, David Hewitt <mail@davidhewitt.dev>, Alex Hall <alex.mojaki@gmail.com>, Victorien Plot <contact@vctrn.dev> |
 | pydantic-settings | 2.16.3 | MIT | Samuel Colvin <s@muelcolvin.com>, Eric Jolibois <em.jolibois@gmail.com>, Hasan Ramezani <hasan.r67@gmail.com> |
-| pydantic_core | 2.50.4 | MIT | Samuel Colvin <s@muelcolvin.com>, Adrian Garcia Badaracco <1755071+adriangb@users.noreply.github.com>, David Montague <david@pydantic.dev>, David Hewitt <mail@davidhewitt.dev>, Sydney Runkle <sydneymarierunkle@gmail.com>, Victorien Plot <contact@vctrn.dev> |
-| pypdf | 7.1.0 | BSD-3-Clause | Mathieu Fenniak <biziqe@mathieu.fenniak.net> |
+| pydantic_core | 2.50.5 | MIT | Samuel Colvin <s@muelcolvin.com>, Adrian Garcia Badaracco <1755071+adriangb@users.noreply.github.com>, David Montague <david@pydantic.dev>, David Hewitt <mail@davidhewitt.dev>, Sydney Runkle <sydneymarierunkle@gmail.com>, Victorien Plot <contact@vctrn.dev> |
+| pypdf | 7.1.1 | BSD-3-Clause | Mathieu Fenniak <biziqe@mathieu.fenniak.net> |
 | pypdfium2 | 5.15.2 | BSD-3-Clause, Apache-2.0, dependency licenses | pypdfium2-team |
 | pyproject_hooks | 1.3.3 | MIT | Thomas Kluyver <thomas@kluyver.me.uk> |
 | pytesseract | 0.3.13 | Apache Software License | Samuel Hoffstaetter |
@@ -143,7 +143,7 @@ This overview is provided for informational purposes only. Signing attests only 
 | python-pptx | 1.0.2 | MIT License | Steve Canny <stcanny@gmail.com> |
 | pywin32 | 312 | Python Software Foundation License | Mark Hammond (et al) |
 | referencing | 0.37.0 | MIT | Julian Berman <Julian+referencing@GrayVines.com> |
-| regex | 2026.11.9 | Apache-2.0 AND CNRI-Python | Matthew Barnett <regex@mrabarnett.plus.com> |
+| regex | 2026.11.19 | Apache-2.0 AND CNRI-Python | Matthew Barnett <regex@mrabarnett.plus.com> |
 | requests | 2.34.2 | Apache Software License | Kenneth Reitz <me@kennethreitz.org> |
 | requests-oauthlib | 2.0.0 | BSD License | Kenneth Reitz |
 | requests-toolbelt | 1.0.0 | Apache Software License | Ian Cordasco, Cory Benfield |
@@ -158,7 +158,7 @@ This overview is provided for informational purposes only. Signing attests only 
 | setuptools | 81.0.0 | MIT | Python Packaging Authority <distutils-sig@python.org> |
 | shellingham | 1.5.4 | ISC License (ISCL) | Tzu-ping Chung |
 | six | 1.17.0 | MIT License | Benjamin Peterson |
-| smart_open | 9.0.4 | MIT | Radim Rehurek <me@radimrehurek.com> |
+| smart_open | 9.0.5 | MIT | Radim Rehurek <me@radimrehurek.com> |
 | sniffio | 1.3.1 | Apache Software License; MIT License | "Nathaniel J. Smith" <njs@pobox.com> |
 | spacy | 3.8.18 | MIT License | Explosion |
 | spacy-legacy | 3.0.12 | MIT License | Explosion |
@@ -175,7 +175,7 @@ This overview is provided for informational purposes only. Signing attests only 
 | tqdm | 4.70.1 | MPL-2.0 AND MIT | UNKNOWN |
 | transformers | 5.23.0 | Apache 2.0 License | The Hugging Face team (past and future) with the help of all our contributors (https://github.com/huggingface/transformers/graphs/contributors) |
 | truststore | 0.10.5 | MIT | Seth Michael Larson <sethmichaellarson@gmail.com>, David Glick <david@glicksoftware.com> |
-| typer | 0.29.1 | MIT | Sebastián Ramírez <tiangolo@gmail.com> |
+| typer | 0.29.2 | MIT | Sebastián Ramírez <tiangolo@gmail.com> |
 | typing-inspection | 0.4.5 | MIT | Victorien Plot <contact@vctrn.dev> |
 | typing_extensions | 4.16.0 | PSF-2.0 | "Guido van Rossum, Jukka Lehtosalo, Łukasz Langa, Michael Lee" <levkivskyi@gmail.com> |
 | tzdata | 2026.6 | Apache-2.0 | Python Software Foundation |
@@ -1278,7 +1278,7 @@ Apache License
 
 ```
 
-### annotated-doc 0.0.6
+### annotated-doc 0.0.7
 
 **License:** MIT
 
@@ -2185,11 +2185,11 @@ SOFTWARE.
 
 ```
 
-### cloudpickle 3.1.2
+### cloudpickle 3.1.3
 
-**License:** BSD License
+**License:** BSD-3-Clause
 
-**Author:** The cloudpickle developer team
+**Author:** The cloudpickle developer team <cloudpipe@googlegroups.com>
 
 ```text
 This module was extracted from the `cloud` package, developed by
@@ -2984,7 +2984,7 @@ PERFORMANCE OF THIS SOFTWARE.
 
 ```
 
-### fastapi 0.163.0
+### fastapi 0.165.0
 
 **License:** MIT
 
@@ -3015,7 +3015,7 @@ THE SOFTWARE.
 
 ```
 
-### filelock 4.2.10
+### filelock 4.2.12
 
 **License:** MIT
 
@@ -3549,7 +3549,7 @@ THE SOFTWARE.
 
 ```
 
-### grpcio 1.85.1
+### grpcio 1.85.3
 
 **License:** Apache-2.0
 
@@ -5146,7 +5146,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ```
 
-### httpcore2 2.16.0
+### httpcore2 2.16.2
 
 **License:** BSD-3-Clause
 
@@ -5237,7 +5237,7 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 
 ```
 
-### httpx2 2.16.0
+### httpx2 2.16.2
 
 **License:** BSD-3-Clause
 
@@ -6133,7 +6133,7 @@ SOFTWARE.
 
 ```
 
-### kubernetes 37.0.2
+### kubernetes 37.0.3
 
 **License:** Apache-2.0
 
@@ -6376,7 +6376,7 @@ SOFTWARE.
 
 ```
 
-### langchain-core 1.8.0
+### langchain-core 1.8.3
 
 **License:** MIT License
 
@@ -6523,9 +6523,9 @@ SOFTWARE.
 
 ```
 
-### langsmith 0.14.17
+### langsmith 0.15.0
 
-**License:** MIT License
+**License:** MIT
 
 **Author:** LangChain
 
@@ -7858,7 +7858,7 @@ THE SOFTWARE.
 
 ```
 
-### narwhals 2.28.0
+### narwhals 2.29.0
 
 **License:** MIT
 
@@ -8148,7 +8148,7 @@ NetworkX is distributed with the 3-clause BSD license.
 
 ```
 
-### numpy 2.5.4
+### numpy 2.5.5
 
 **License:** BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0
 
@@ -13236,7 +13236,7 @@ THE SOFTWARE.
 
 ```
 
-### prettytable 3.18.0
+### prettytable 3.19.0
 
 **License:** BSD-3-Clause
 
@@ -13649,7 +13649,7 @@ OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ```
 
-### pydantic 2.14.3
+### pydantic 2.14.4
 
 **License:** MIT
 
@@ -13711,7 +13711,7 @@ SOFTWARE.
 
 ```
 
-### pydantic_core 2.50.4
+### pydantic_core 2.50.5
 
 **License:** MIT
 
@@ -13742,7 +13742,7 @@ SOFTWARE.
 
 ```
 
-### pypdf 7.1.0
+### pypdf 7.1.1
 
 **License:** BSD-3-Clause
 
@@ -14768,7 +14768,7 @@ THE SOFTWARE.
 
 ```
 
-### regex 2026.11.9
+### regex 2026.11.19
 
 **License:** Apache-2.0 AND CNRI-Python
 
@@ -16810,7 +16810,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ```
 
-### smart_open 9.0.4
+### smart_open 9.0.5
 
 **License:** MIT
 
@@ -17884,7 +17884,7 @@ THE SOFTWARE.
 
 ```
 
-### typer 0.29.1
+### typer 0.29.2
 
 **License:** MIT
 

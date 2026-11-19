@@ -41,6 +41,15 @@ class TestSessionDefaults:
         assert session.indexed_query_error is None
         assert session.indexed_query_warning_keys == set()
 
+    def test_retrieval_language_initial_and_reset_defaults(self):
+        session = Session()
+        assert session.retrieval_language is None
+        assert session.keyword_action_status == "not_run"
+
+        session.reset_turn_state()
+        assert session.retrieval_language == "english"
+        assert session.keyword_action_status == "not_run"
+
     def test_effective_query_reason_defaults_to_none(self):
         s = Session()
         assert s.effective_query_reason is None

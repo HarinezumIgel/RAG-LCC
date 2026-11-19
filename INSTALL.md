@@ -803,8 +803,16 @@ settings are added specifically for the HTTP listener:
 | --- | --- | --- |
 | `OPENWEBUI_THREAD_POOL_WORKERS` | `2` | `ThreadPoolExecutor` max workers for `chatter.run()`. |
 | `SHOW_CLI_LIKE_ALGO_RESULTS` | `True` | When enabled, filter chain algo results (depth/breadth table and ensemble summary) are appended to the LLM answer in Markdown format, mirroring the terminal output of the CLI version. |
-| `SERVE_IN_MEMORY_DOCS_HTTP` (env var) | `"0"` | Master switch in `Config_Internet_Env.py` for the `/marked` in-memory highlighted-document endpoint. Set to `"1"` to enable serving highlighted bytes over short-lived token URLs. |
-| `_SERVE_DOCS` | see `Config_RAGChatService.py` | Runtime controls for marked-document serving (`ttl_seconds`, `max_total_mb`, `single_use`, `public_base_url`, `cors_origins`). See [SECURITY.md](SECURITY.md#-architecture-security-relevant-characteristics) for the token security model. |
+| `SERVE_RAGCHATSERVICE_GROUNDED_DOCS` (env var) | `"0"` in Setup/deployment; `"1"` in development | Master switch in `Config_Internet_Env.py` for the `/marked` in-memory document endpoint on the existing service port. Complete capability URLs grant access without `/v1/` Bearer authentication. |
+| `_SERVE_DOCS` | see `Config_RAGChatService.py` | Runtime controls for marked-document serving (`ttl_seconds`, `max_total_mb`, `single_use`, `public_base_url`, `cors_origins`). See [in-memory document-server risks](SECURITY.md#in-memory-document-servers-risks-and-safe-operation) before enabling. |
+
+The independent `SERVE_RAGCHAT_GROUNDED_DOCS` switch controls the standalone
+RAGChat CLI's loopback-only HTML listener, default port `11436`, configured by
+`_LOCAL_SERVE_DOCS` in `Config_RAGChat.py`. Setup defaults it to `"0"` and deployment
+disables it, but the development configuration enables it. Both document servers
+can disclose sensitive source content to anyone who can reach them and has a
+complete link. Proxying/forwarding can expose even a loopback-only listener;
+review the [security guidance](SECURITY.md#in-memory-document-servers-risks-and-safe-operation).
 
 **RAGChatService Listener Configuration:**
 
@@ -816,24 +824,27 @@ The listener host, port, and API key are configured in `Config_Models.py` under 
 | `PORT` | `11435` | Port for the uvicorn server. **Configurable during setup** to avoid port conflicts. |
 | `API_KEY` | `""` | Shared secret for Bearer token authentication. Must match the API key configured in OpenWebUI. |
 
-> **VS Code Dev Containers:** The configured port is **automatically added** to `.devcontainer/devcontainer.json` for port forwarding. Set `HOST = "0.0.0.0"` to make RAGChatService accessible from the host.
+> **VS Code Dev Containers:** `.devcontainer/devcontainer.json` forwards `11435`
+> (RAGChatService) and `11436` (CLI HTML links). VS Code forwarding can reach
+> container-loopback listeners; a `0.0.0.0` bind is not required for that mode.
+> Setup does not automatically rewrite forwarding for custom ports: update
+> `forwardPorts` and `portsAttributes` and rebuild/reopen the container, or forward
+> the same local port manually. Keep host-side forwarding local/private.
 
 When configuring where RAGChatService listens, set the appropriate hostname or IP address based on your deployment:
 
 | Scenario | Use as `HOST` |
 | --- | --- |
 | **RAGChatService on host, OpenWebUI on same machine** | `localhost` or `127.0.0.1` |
-| **RAGChatService in Docker/Dev Container, OpenWebUI on host** | `0.0.0.0` (listens on all interfaces) |
-| **OpenWebUI on another machine** | `0.0.0.0` or specific network interface IP |
+| **RAGChatService in a VS Code Dev Container, with port forwarding** | `127.0.0.1`; keep forwarding local/private |
+| **RAGChatService in Docker with standard published ports** | A specific container IP or `0.0.0.0`; restrict host-side publishing, e.g. `-p 127.0.0.1:11435:11435` |
+| **OpenWebUI/browser on another machine** | Prefer `127.0.0.1` behind a controlled tunnel or HTTPS reverse proxy that also protects `/marked` |
 
-**Legacy scenarios** (when OpenWebUI runs in Docker and RAGChatService on host):
-
-| Scenario | Use as `HOST` |
-| --- | --- |
-| **OpenWebUI in Docker (Docker Desktop for Windows/Mac)** | `host.docker.internal` |
-| **OpenWebUI in Docker (Linux)** | `172.17.0.1` (bridge gateway) or host's network IP |
-
-**Note:** When RAGChatService runs in a Docker container and needs to be accessible from the host or other machines, bind to `0.0.0.0` to listen on all interfaces. When running on the host machine and only local access is needed, use `127.0.0.1`.
+`host.docker.internal` and bridge-gateway addresses are connection destinations
+for clients inside Docker, not generally valid bind addresses inside a container.
+Bind only to an address owned by the machine/container running RAGChatService.
+The service defaults to loopback but currently does not enforce that restriction.
+Changing `public_base_url` alone changes neither binding nor access control.
 
 `_FRIENDLY_NAME` is set to `"RAGChatService"` so that compliance lookups
 resolve to the correct detection profile in `Config_Banned_Detection.py`.
@@ -1023,6 +1034,11 @@ Press Enter to review the license ...
 
 Internet access is configured in `Configuration/Config_Internet_Env.py`.
 
+The same file also controls **inbound HTTP serving**. Local/offline operation
+does not guarantee that RAG-LCC will not bind a socket or accept requests.
+The development configuration currently sets all three `SERVE_*` switches below
+to `"1"`; Setup defaults them off and deployment disables them.
+
 | Environment Variable | Configuration value | Purpose |
 | --- | --- | --- |
 | `LICENSE_DOWNLOAD` | `"0"` | Allow online fetch of model license files defined in `Config_Models.py`. When `"0"`, the Compliance module prompts for per-fetch consent. |
@@ -1033,7 +1049,14 @@ Internet access is configured in `Configuration/Config_Internet_Env.py`.
 | `TRANSFORMERS_OFFLINE` | `"1"` | Disable transformers library hub access when `"1"`. |
 | `HF_DATASETS_OFFLINE` | `"1"` | Disable HF datasets hub access when `"1"`. |
 | `ARGOS_MODEL_PROVIDER` | `"OPENNMT"` | Force Argos Translate to use local packages only. |
-| `SERVE_OPENWEBUI_CHAT` | varies by deployment | Enable the `RAGChatService` HTTP listener. When `"1"`, `RAGChatService.py` starts a uvicorn server that accepts incoming connections on the configured host/port (`ragchatservice` slot in `Config_Models.py`). **This opens a network listener.** Set an `API_KEY` in `_MODELS.ragchatservice._RAGCHATSERVICE` before exposing the service beyond localhost. |
+| `SERVE_OPENWEBUI_CHAT` | `"1"` in development; `"0"` in Setup/deployment | Permit `RAGChatService.py` to start its HTTP API listener and accept requests on the configured host/port (default port `11435`). The document-serving switches do not disable this API listener. |
+| `SERVE_RAGCHATSERVICE_GROUNDED_DOCS` | `"1"` in development; `"0"` in Setup/deployment | Enable `/marked` document requests on RAGChatService's existing listener. Complete capability links grant access; the `/v1/` API key does not protect these routes. |
+| `SERVE_RAGCHAT_GROUNDED_DOCS` | `"1"` in development; `"0"` in Setup/deployment | Running RAGChat opens a separate loopback-only HTTP listener for HTML documents/answers (default `127.0.0.1:11436`, configured by `_LOCAL_SERVE_DOCS.port`). Independent of RAGChatService. |
+
+Set a service API key before exposing `/v1/`, and protect `/marked` separately.
+Review [document-server risks](SECURITY.md#in-memory-document-servers-risks-and-safe-operation)
+before enabling or forwarding these listeners. Disabling downloads or web search
+does not disable incoming HTTP requests.
 
 For convenience, these values are displayed at startup.
 

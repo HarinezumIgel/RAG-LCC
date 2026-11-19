@@ -121,7 +121,7 @@ def test_deploy_hardening_on_current_configs(tmp_path: Path) -> None:
         "Config_Internet_Env.py": [
             (r'(os\.environ\["WEB_SEARCH_MODE"\]\s*=\s*)"[^"]*"', r'\g<1>"0"'),
             (
-                r'(os\.environ\["SERVE_IN_MEMORY_DOCS_HTTP"\]\s*=\s*)"[^"]*"',
+                r'(os\.environ\["SERVE_RAGCHATSERVICE_GROUNDED_DOCS"\]\s*=\s*)"[^"]*"',
                 r'\g<1>"0"',
             ),
         ],
@@ -146,7 +146,7 @@ def test_deploy_hardening_reports_missing_pdf_serving_setting(tmp_path: Path) ->
     env_config = config_dir / "Config_Internet_Env.py"
     original = env_config.read_text(encoding="utf-8")
     updated, count = re.subn(
-        r'^os\.environ\["SERVE_IN_MEMORY_DOCS_HTTP"\]\s*=.*$',
+        r'^os\.environ\["SERVE_RAGCHATSERVICE_GROUNDED_DOCS"\]\s*=.*$',
         "",
         original,
         flags=re.MULTILINE,
@@ -157,7 +157,7 @@ def test_deploy_hardening_reports_missing_pdf_serving_setting(tmp_path: Path) ->
     result = _run_hardening(config_dir, tmp_path)
 
     assert result.returncode != 0
-    assert "SERVE_IN_MEMORY_DOCS_HTTP" in result.stdout + result.stderr
+    assert "SERVE_RAGCHATSERVICE_GROUNDED_DOCS" in result.stdout + result.stderr
 
 
 @pytest.mark.parametrize(

@@ -21,6 +21,7 @@ Module: langchain_text_splitters
 Module: langdetect
 Module: lingua-language-detector
 Module: lxml
+Module: markdown-it-py
 Module: nltk
 Module: numpy
 Module: openpyxl

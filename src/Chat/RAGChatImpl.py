@@ -361,7 +361,7 @@ class RAGChatImpl(
         metadatas = result["metadatas"]
         if not texts:
             raise ValueError(
-                f"Summarize: no indexed chunks found for {target or file_path or file_name}."
+                f"Summarize: no indexed chunks found for {target or file_path or file_name}. Maybe switch collection."
             )
         if metadatas is None or len(metadatas) != len(texts):
             raise ValueError("Summarize: indexed chunks have missing metadata.")

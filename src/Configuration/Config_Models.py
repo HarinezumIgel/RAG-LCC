@@ -544,7 +544,7 @@ _MODELS: dict[str, dict[str, dict[str, Any]]] = {
         "_RAGCHATSERVICE": {
             "FRIENDLY_NAME": "RAGChatService (OpenAI-compatible REST API)",
             "SOURCE": "https://github.com/HarinezumIgel/RAG-LCC",
-            "HOST": "<RAGChatService host>",  # Listener address (0.0.0.0 for Docker/external access)
+            "HOST": "<RAGChatService host>",  # Safest: loopback; opt in to remote access explicitly
             "PORT": 11435,  # Service port
             "BASE_URL": "http://localhost:11435",  # Full service URL
             # Bearer token that OpenWebUI must send (not a Hugging Face key).

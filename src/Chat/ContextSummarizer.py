@@ -15,6 +15,7 @@ from Config.Config import Config
 from Globals.Session import Session
 from Grounding.SourceReferences import (SUMMARY_SCHEMA, SummaryStatement,
                                         parse_summary, summary_payload)
+from Gui.Colors import LIGHT_GRAY
 from Gui.PrettyWriter import PrettyWriter
 from Helpers.DebugHelper import DebugHelper
 from Helpers.Helpers import Helpers
@@ -92,6 +93,28 @@ class ContextSummarizer:
     @staticmethod
     def _format_prompt(instruction: str, parts: Sequence[SummaryStatement]) -> str:
         return f"{instruction}\n\n" + summary_payload(parts)
+
+    def _write_debug_summary(
+        self,
+        level: int,
+        stage: str,
+        statements: Sequence[SummaryStatement],
+        *,
+        session: Session | None = None,
+    ) -> None:
+        enabled = (
+            DebugHelper.check_session(session, level)
+            if session is not None and getattr(session, "debug_level", None) is not None
+            else self.debug_helper.on(level)
+        )
+        if not enabled:
+            return
+        details = "\n".join(
+            f"[chunks {', '.join(map(str, statement.context_chunk_ids)) or 'none'}] "
+            f"{statement.text}"
+            for statement in statements
+        )
+        self.pretty.write("D", "Summarize", f"{stage}:\n{details}", color=LIGHT_GRAY)
 
     def _summary_word_limits(self, length: str) -> tuple[int, int]:
         raw_limits: object = self.cfg.get("SUMMARY_WORD_LIMITS")
@@ -404,20 +427,32 @@ class ContextSummarizer:
 
         batches = self._batches(parts, self.summary_prompt_template, self.chunk_overlap)
         # Show first-call diagnostics before drawing the continuously updated bar.
-        self.chunk_summaries.append(
-            self._call_summary(batches[0], self.summary_prompt_template, final=False)
+        first_summary = self._call_summary(
+            batches[0], self.summary_prompt_template, final=False
+        )
+        self.chunk_summaries.append(first_summary)
+        self._write_debug_summary(
+            34, f"Batch summary 1/{len(batches)}", first_summary, session=session
         )
         with tqdm(
             total=len(batches), initial=1, desc="Summarize batches", unit="batch"
         ) as progress:
-            for batch in batches[1:]:
-                self.chunk_summaries.append(
-                    self._call_summary(batch, self.summary_prompt_template, final=False)
+            for batch_number, batch in enumerate(batches[1:], start=2):
+                batch_summary = self._call_summary(
+                    batch, self.summary_prompt_template, final=False
+                )
+                self.chunk_summaries.append(batch_summary)
+                self._write_debug_summary(
+                    34,
+                    f"Batch summary {batch_number}/{len(batches)}",
+                    batch_summary,
+                    session=session,
                 )
                 progress.update(1)
 
         results = [item for batch in self.chunk_summaries for item in batch]
         while not self._fits(results, self.final_prompt_template):
+            pass_number = len(self.reduction_summaries) + 1
             reduction_parts: list[SummaryStatement] = []
             for result in results:
                 reduction_parts.extend(
@@ -432,9 +467,17 @@ class ContextSummarizer:
                 desc=f"Reduce summaries (pass {len(self.reduction_summaries) + 1})",
                 unit="batch",
             ) as progress:
-                for batch in reduction_batches:
-                    reduced.append(
-                        self._call_summary(batch, reduction_prompt_template, final=True)
+                for batch_number, batch in enumerate(reduction_batches, start=1):
+                    batch_summary = self._call_summary(
+                        batch, reduction_prompt_template, final=True
+                    )
+                    reduced.append(batch_summary)
+                    self._write_debug_summary(
+                        34,
+                        f"Aggregation pass {pass_number}, batch "
+                        f"{batch_number}/{len(reduction_batches)}",
+                        batch_summary,
+                        session=session,
                     )
                     progress.update(1)
             flattened = [item for batch in reduced for item in batch]
@@ -453,6 +496,9 @@ class ContextSummarizer:
             self.summary = "\n\n".join(item.text for item in self.statements)
             if session is not None:
                 session.summary_statements = list(self.statements)
+            self._write_debug_summary(
+                32, "Final output", self.statements, session=session
+            )
             progress.update(1)
         if not any(item.context_chunk_ids for item in self.statements):
             self.pretty.write(

@@ -13,7 +13,11 @@ from Api.MarkedDocsStore import (
     get_default,
     reset_default,
 )
-from Api.MarkedDocsService import register_marked_documents
+from Api.MarkedDocsService import (
+    marked_document_response,
+    register_grounded_answer,
+    register_marked_documents,
+)
 
 # ---------------------------------------------------------------------------
 # MarkedDocsStore
@@ -94,6 +98,19 @@ def test_default_single_use_false_allows_multiple_fetches():
     assert store.get(token) is not None
 
 
+def test_store_preserves_per_entry_response_headers():
+    store = MarkedDocsStore()
+    token = store.put(
+        b"page",
+        "grounded-answer.html",
+        response_headers={"Content-Security-Policy": "default-src 'none'"},
+    )
+
+    entry = store.get(token)
+    assert entry is not None
+    assert entry.response_headers == {"Content-Security-Policy": "default-src 'none'"}
+
+
 def test_clear_drops_everything():
     store = MarkedDocsStore()
     store.put(b"1", "a.pdf")
@@ -160,7 +177,7 @@ def test_register_produces_clickable_markdown():
     assert "Animals.pdf (highlighted)" in block
     # Two registered tokens
     assert block.count("https://host:11435/marked/") == 2
-    assert block.endswith(".pdf)\n")
+    assert block.endswith(f".pdf?token={store.session_token})\n")
     assert len(store) == 2
 
 
@@ -180,3 +197,117 @@ def test_register_strips_trailing_slash_from_base_url():
     block = register_marked_documents(session, store, "http://h:1/")
     assert "http://h:1/marked/" in block
     assert "http://h:1//marked" not in block
+
+
+def test_register_falls_back_to_original_sources(tmp_path):
+    source = tmp_path / "Hedgehogs.pdf"
+    source.write_bytes(b"%PDF-1\n...")
+    store = MarkedDocsStore(ttl_seconds=600)
+    session = SimpleNamespace(
+        marked_documents=[],
+        last_chosen_chunks=[
+            SimpleNamespace(metadata={"Source": "local", "FilePath": str(source)})
+        ],
+    )
+
+    block = register_marked_documents(session, store, "https://host/")
+
+    assert "**Marked sources**" in block
+    assert "Hedgehogs.pdf (source)" in block
+    assert "https://host/marked/" in block
+    assert len(store) == 1
+
+
+class _Grounder:
+    @staticmethod
+    def collect_web_texts(_session):
+        return []
+
+    @staticmethod
+    def mark_answer_html(
+        _session, answer_markdown, _evidence, sentence_translations=None
+    ):
+        return answer_markdown.replace(
+            "Hedgehogs eat insects.",
+            '<mark class="grounded">Hedgehogs eat insects.</mark>',
+        )
+
+
+def test_register_grounded_answer_creates_expiring_html_link():
+    store = MarkedDocsStore(ttl_seconds=600)
+    session = SimpleNamespace(
+        answer_grounding_verified=True,
+        chunk_texts_for_grounding=["Hedgehogs eat insects."],
+        grounding_proxy_sentences={},
+    )
+    block = register_grounded_answer(
+        session,
+        _Grounder(),
+        "<script>alert(1)</script>\n\nHedgehogs eat insects.",
+        store,
+        "https://host/",
+    )
+
+    assert "link expires in 10 min" in block
+    assert block.startswith("\n\n---")
+    assert "https://host/marked/" in block
+    token = block.split("/marked/", 1)[1].split(".html", 1)[0]
+    entry = store.get(token)
+    assert entry is not None
+    assert b'<mark class="grounded">Hedgehogs eat insects.</mark>' in entry.data
+    assert b"&lt;script&gt;alert(1)&lt;/script&gt;" in entry.data
+    assert b"<script>alert(1)</script>" not in entry.data
+    assert "nonce-" in entry.response_headers["Content-Security-Policy"]
+
+
+def test_register_unverified_answer_creates_answer_preview():
+    store = MarkedDocsStore()
+    session = SimpleNamespace(
+        answer_grounding_verified=False,
+        chunk_texts_for_grounding=["Hedgehogs eat insects."],
+        grounding_proxy_sentences={},
+        mark_text=True,
+    )
+
+    block = register_grounded_answer(
+        session, _Grounder(), "Hedgehogs eat insects.", store, "https://host"
+    )
+
+    assert "**Answer preview**" in block
+    assert "https://host/marked/" in block
+    token = block.split("/marked/", 1)[1].split(".html", 1)[0]
+    entry = store.get(token)
+    assert entry is not None
+    assert entry.filename == "AnswerPreview.html"
+    assert b"Not fully grounded" in entry.data
+
+
+def test_marked_document_response_serves_html_with_security_headers():
+    store = MarkedDocsStore()
+    token = store.put(
+        b"<!doctype html>",
+        "grounded-answer.html",
+        response_headers={
+            "Content-Security-Policy": "default-src 'none'",
+            "X-Frame-Options": "DENY",
+        },
+    )
+
+    response = marked_document_response(f"{token}.html", store, store.session_token)
+
+    assert response.status_code == 200
+    assert response.media_type == "text/html; charset=utf-8"
+    assert response.body == b"<!doctype html>"
+    assert response.headers["Content-Security-Policy"] == "default-src 'none'"
+    assert response.headers["X-Frame-Options"] == "DENY"
+    assert response.headers["X-Content-Type-Options"] == "nosniff"
+
+
+def test_marked_document_response_returns_404_for_expired_html():
+    store = MarkedDocsStore(ttl_seconds=1)
+    token = store.put(b"page", "grounded-answer.html")
+    store._entries[token].expires_at = time.time() - 0.1  # noqa: SLF001
+
+    response = marked_document_response(f"{token}.html", store, store.session_token)
+
+    assert response.status_code == 404

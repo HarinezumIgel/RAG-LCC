@@ -6,7 +6,124 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
-## [Unreleased]
+## [Released] — 2026-11-19
+
+### Changed - Summary document delivery
+
+- Keep grounded `summarize:` replies in the local RAGChat terminal instead of
+  publishing grounded-answer HTML through its loopback HTTP listener. Marked
+  source documents remain available through file links. RAGChatService continues
+  serving grounded documents and answers to remote clients.
+
+### Added - RAGChat CLI grounded-document listener
+
+- When enabled with `SERVE_RAGCHAT_GROUNDED_DOCS`, RAGChat serves highlighted
+  documents and grounded answers as expiring HTML links through a separate
+  loopback-only listener on `127.0.0.1` (default port `11436`). Links open in a
+  browser only when clicked; other document formats keep their file links.
+  This listener is independent of RAGChatService.
+
+### Fixed - Deployment dependency discovery
+
+- Map the `markdown_it` Python import to the `markdown-it-py>=4.2.0`
+  distribution so deployment installs the correct package instead of failing
+  while installing a nonexistent `markdown_it` package.
+
+### Changed - Network listener documentation
+
+- Document `SERVE_RAGCHAT_GROUNDED_DOCS` and
+  `SERVE_RAGCHATSERVICE_GROUNDED_DOCS` alongside `SERVE_OPENWEBUI_CHAT`, including
+  their currently enabled development values and the separate CLI/service ports.
+- Clarify that local/offline operation does not guarantee absence of listening
+  sockets or incoming HTTP requests, and that document switches do not stop the
+  chat API. Link the document-serving security guidance from the main guides.
+
+### Fixed - Unverified table fallback
+
+- Include Markdown tables in the warning-based fallback previously limited to
+  lists and Mermaid diagrams. Non-terse tables that fail grounding are shown
+  unverified instead of being replaced by the no-evidence message.
+- Keep LOW answer confidence and retrieval diagnostics; tables in code examples
+  or source metadata do not enable the fallback.
+
+### Fixed - Grounded HTML list layout
+
+- Keep Markdown bullet/number markers and indentation outside grounding
+  highlight tags so browser answers retain separate list items, nested lists,
+  and bold labels instead of collapsing into a paragraph.
+- Preserve translated sentence lookups when highlighting list content.
+
+### Changed - Unverified lists and Mermaid remain visible
+
+- When grounding fails, retain generated answers containing Markdown lists or
+  Mermaid diagrams with a prominent unverified warning in CLI and service.
+- Keep answer confidence LOW and preserve retrieval diagnostics and
+  evidence-matched highlights without marking the whole answer as verified.
+  Chat history retains the warning, and turn logs record `grounding_unverified`.
+- Prose-only failures remain withheld; source-metadata lists and ordinary
+  fenced code do not bypass that behavior.
+
+### Fixed - CLI and service answer-prompt parity
+
+- Remove the shorter service-specific answer prompt. RAGChatService now inherits
+  the same answer prompt and model aliases as RAGChat, including evidence-only
+  instructions, response language, and Markdown/source formatting.
+- Restart running applications to reload the configuration. Matching prompts
+  do not guarantee identical model output when retrieved context, history,
+  request parameters, or sampling differ.
+
+### Fixed - Grounding rejection diagnostics
+
+- Explain explicitly when grounding rejects and withholds a generated answer,
+  rather than implying that retrieval found no relevant documents.
+- Keep the selected-chunk counts and retrieval scores in confidence diagnostics
+  while setting rejected-answer confidence to zero. Rejected answers still do
+  not expose unrelated sources as verified evidence.
+
+### Fixed - CLI inline-code backgrounds
+
+- Inline commands such as `new:` inherit the answer background instead of
+  drawing a black patch. Grounding highlights and full-width background
+  padding remain intact across wrapped lines.
+
+### Fixed - Mermaid browser previews
+
+- Quote flowchart labels containing parentheses before browser rendering so
+  generated labels such as `Cat[Mammal (confirmed)]` render correctly.
+- Preserve Mermaid source and show an explicit error when a diagram cannot be
+  rendered, without preventing other diagrams on the page from rendering.
+- Ask the answer model to double-quote Mermaid node labels.
+
+### Changed - Grounded-document serving flags
+
+- Document-serving switches now use the application-specific names
+  `SERVE_RAGCHATSERVICE_GROUNDED_DOCS` and `SERVE_RAGCHAT_GROUNDED_DOCS`.
+  Update existing configuration overrides to the new names. Serving behavior,
+  flag values, and the CLI's unverified browser previews are unchanged.
+
+### Fixed - Renderer test failures
+
+- Keep CLI answer styles local to each render so Rich's cached 16-colour ANSI
+  output cannot turn orange grounding marks yellow in later 256-colour output.
+- Verify confidence text independently of terminal line wrapping and exercise
+  grounding colours across console capabilities, with and without backgrounds.
+
+### Changed - Fixed CLI answer colors
+
+- Use only `ANSWER_BG` (256-color 238) and `ANSWER_FG` (256-color 252) for
+  the default answer display. Removed terminal-dependent truecolor switching
+  and the separate default answer-body background.
+
+### Fixed - Grounded CLI code-block backgrounds
+
+- Decode ANSI grounding marks before measuring and wrapping Markdown code
+  blocks, preventing missing background padding on Mermaid diagram lines.
+  Grounding highlights and the separate answer/metadata backgrounds are retained.
+- Decode ANSI colors in paragraphs, headings, lists, and tables before layout
+  too, fixing right-edge gaps on confidence notices and their trailing resets.
+  Color spans retain Markdown formatting and can cross paragraph boundaries.
+
+## [Released] — 2026-11-14
 
 ### Changed - Documentation
 
@@ -2298,6 +2415,11 @@ NLTK, Argos, etc.).*
 service accepting inbound connections from OpenWebUI is normal operation, not
 an outbound data risk. It is now printed as a plain info line with the note
 *inbound only, no outbound data risk*.
+
+This historical banner description is not a security guarantee: the service
+binds a listener, accepts requests and returns potentially sensitive content.
+It does not mean that RAG-LCC is client-only or that inbound serving cannot
+disclose data. See [document-server risks](SECURITY.md#in-memory-document-servers-risks-and-safe-operation).
 
 ### 🔧 Changed — Web search startup messages scoped to RAGChat / RAGChatService
 

@@ -37,9 +37,16 @@ RAG-LCC follows a modular, configuration-driven architecture intended for labora
 Four applications share the same core infrastructure:
 
 - **RAGLoad** — ingests documents, applies text masking and optional compliance checks, and builds four synchronized local retrieval stores (ChromaDB vector, BM25, graph, regex).
-- **RAGChat** — retrieves relevant chunks from the store and answers queries via an LLM; applies compliance checks to both the prompt and the LLM response.
+- **RAGChat** — retrieves relevant chunks from the store and answers queries via an LLM; applies compliance checks to both the prompt and the LLM response. With `SERVE_RAGCHAT_GROUNDED_DOCS="1"`, it also binds a loopback-only HTTP listener and accepts HTML document/answer requests (default port `11436`).
 - **RAGChatService** — exposes the same RAG pipeline as RAGChat over an OpenAI-compatible REST API; entry point is a network listener instead of the terminal GUI.
 - **DocClassify** — classifies documents in a directory using keyword extraction, stemming, and optional LLM-assisted label generation; writes results to CSV.
+
+RAGChatService starts its API listener when `SERVE_OPENWEBUI_CHAT="1"` (default
+port `11435`); `SERVE_RAGCHATSERVICE_GROUNDED_DOCS="1"` additionally enables
+document requests on that same listener. Both applications can therefore bind
+and accept requests even with local models and outbound network access disabled.
+The development configuration currently enables all three switches. See
+[document-server risks](SECURITY.md#in-memory-document-servers-risks-and-safe-operation).
 
 ## 🖼️ Overview Diagram
 
@@ -871,7 +878,14 @@ an existing environment value on import; `TESSERACT_PATH` and
 | `HF_HUB_DISABLE_PROGRESS_BARS` | Hugging Face progress-bar display. |
 | `TOKENIZERS_PARALLELISM` | Tokenizer parallelism. |
 | `SERVE_OPENWEBUI_CHAT` | Enable service startup. |
-| `SERVE_IN_MEMORY_DOCS_HTTP` | Enable in-memory document HTTP serving. |
+| `SERVE_RAGCHATSERVICE_GROUNDED_DOCS` | Enable RAGChatService's in-memory document HTTP serving. |
+| `SERVE_RAGCHAT_GROUNDED_DOCS` | Enable the independent RAGChat CLI loopback-only HTML listener (default port `11436`). |
+
+Both document switches expose capability-protected content, not per-user
+authenticated storage. RAGChat enforces loopback; RAGChatService defaults to
+loopback but accepts other configured bind addresses. Proxies/forwarding can
+expose either listener remotely. See
+[in-memory document-server risks](SECURITY.md#in-memory-document-servers-risks-and-safe-operation).
 
 #### Config_KeywordActionSplitter.py
 
@@ -1095,6 +1109,10 @@ See [flow settings](CONFIGURATION_REFERENCE.md#-orchestration-flows-config_orche
 | `_KEY_BERT.TOP_N_SECOND` | Second-pass query keyword count. |
 | `_CLASSIFICATION_KEYS` | Classification fields used by chat. |
 | `_DEFAULT_CHAT_NAME` | Default chat name. |
+| `_LOCAL_SERVE_DOCS.port` | Loopback-only CLI document listener port (default `11436`). |
+| `_LOCAL_SERVE_DOCS.ttl_seconds` | CLI document lifetime measured from creation. |
+| `_LOCAL_SERVE_DOCS.max_total_mb` | CLI in-memory document payload limit. |
+| `_LOCAL_SERVE_DOCS.single_use` | Remove a CLI document after its first successful fetch. |
 
 #### Config_RAGChat_Display.py
 
@@ -1177,15 +1195,16 @@ See [flow settings](CONFIGURATION_REFERENCE.md#-orchestration-flows-config_orche
 
 #### Config_RAGChatService.py
 
+Answer prompts, including the Mistral and Llama aliases, are inherited from
+`Config_RAGChat_Prompts.py` so CLI and service use the same generation instructions.
+Grounding also runs through the shared `Chatter` / `Grounder` pipeline.
+
 | Field / lookup key | Purpose |
 | --- | --- |
 | `_FRIENDLY_NAME` | Service application identity. |
 | `_LOG_DIRECTORY` | Service log directory. |
 | `_QUERY_LOG` | Web query audit log. |
 | `_INTENT_FILTER_LOG` | Intent-filter audit log. |
-| `_PROMPT_CHAT` | Service answer prompt override. |
-| `_PROMPT_CHAT_MISTRAL` | Service Mistral answer prompt override. |
-| `_PROMPT_CHAT_LLAMA` | Service Llama answer prompt override. |
 | `_SERVICE_RESOURCES_DIR` | Static service assets directory. |
 | `OPENWEBUI_THREAD_POOL_WORKERS` | Service worker pool size. |
 | `SHOW_CLI_LIKE_ALGO_RESULTS` | Append algorithm results to service answers. |
@@ -2109,7 +2128,7 @@ the cost, so confining work to the selected source pages is the primary speed-up
 
 `Chatter._open_marked_documents()` → `MarkedDocsViewer.open_marked_documents()`:
 
-- **OSC 8 terminals** (Windows Terminal, VS Code, iTerm2, Kitty, WezTerm, …): all files are written to a `tempfile.mkdtemp(prefix="rag_marked_")` directory so that the URIs in the hyperlinks are immediately valid.  When `_ABSOLUTE_PATH` is configured, the dir is created inside `<project_root>/tmp/`; otherwise the system temp directory is used.  A single `atexit` handler (registered via `atexit.register(_cleanup_dir, path, project_root)`) deletes the directory with `shutil.rmtree(ignore_errors=True)` when the Python interpreter shuts down normally.  `_cleanup_dir` contains an inline jailbreak guard: if `project_root` was supplied it refuses to delete any path that does not start with that root, matching the protection in `FileUtils.delete_file_or_dir`.  If the process is killed or crashes the OS temp-cleaner (or the platform's `tmp/` purge schedule) handles removal.
+- **OSC 8 terminals** (Windows Terminal, VS Code, iTerm2, Kitty, WezTerm, …): all files are written to a unique `tempfile.mkdtemp(prefix="rag_marked_")` directory under `<project_root>/tmp/ragchat/` so that the URIs in the hyperlinks are immediately valid. A registered `atexit` handler removes only that process's directory after validating it is a direct child of the RAGChat temp store, not the store root, and passes `FileUtils.is_safe_delete_path`. RAGChatService's marked-document and grounded-answer HTTP payloads remain in-memory and do not use this filesystem store.
 - **Picker terminals**: files are written **lazily** — only the one the user selects is written to disk.  If the user presses Enter to skip, no temp directory is ever created and no `atexit` handler is registered.
 - `.txt` sources are saved as `.txt.md` so the OS default viewer opens them as Markdown.
 
@@ -2123,6 +2142,21 @@ the cost, so confining work to the selected source pages is the primary speed-up
 - A Markdown link block is appended to the LLM answer (both streaming and non-streaming paths).
 
 ### 🎨 Answer grounding
+
+Validation requires support for every prose claim. Lists and Mermaid diagrams
+together require at least one supported item or claim; unsupported entries stay
+unmarked. In mixed answers, all prose outside lists and diagrams must still be
+supported. Short prose and lists are validated too; terse Markdown tables retain
+their existing short-answer bypass.
+
+The CLI also offers a browser preview independently of grounding success, so
+Mermaid remains viewable when validation fails or grounding is skipped/disabled.
+Failed answers still produce the no-evidence chat fallback; the preview retains
+the masked generated answer with an explicit unverified warning and no grounding
+highlights. Rich renders Markdown but displays Mermaid as source, not a diagram.
+Verified browser diagrams use orange only for supported nodes and edges, not as
+a blanket theme. Browser link notices say "Grounded answer" after validation and
+"Answer preview" otherwise.
 
 **CLI (`RAGChat`):** After the LLM answer is produced, `Grounder.ground_answer_cli()` ([Grounder.py](src/Grounding/Grounder.py)) wraps sentences that can be traced back to a retrieved chunk with an ANSI background colour (`_MARKED_DOCS_COLORS.answer_ansi`, default `48;5;214` — orange). Grounding strictness is controlled by `_GROUNDING.min_sentence_tokens`, `_GROUNDING.min_fragment_len`, `_GROUNDING.min_overlap_window` and the `_GROUNDING.relaxed_*` second-pass keys in [Config_Grounder.py](src/Configuration/Config_Grounder.py). When the answer language matches none of the evidence languages, the answer is translated into the evidence language first; a grounded translation is kept as the session grounding proxy (`session.grounding_proxy_text` / `grounding_proxy_sentences`) and drives both CLI and source-document highlights without replacing the displayed answer. `PrettyWriter` re-applies the active ANSI codes at the start of each continuation line so the background colour is preserved across terminal line-wraps.
 

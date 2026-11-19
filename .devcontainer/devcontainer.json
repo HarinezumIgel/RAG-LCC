@@ -25,7 +25,8 @@
   ],
 
   "forwardPorts": [
-    11435
+    11435,
+    11436
   ],
 
   "postCreateCommand": "python3 -m venv /workspaces/RAG-LCC/.venv && /workspaces/RAG-LCC/.venv/bin/python -m pip install --upgrade pip && echo 'source /workspaces/RAG-LCC/.venv/bin/activate' >> ~/.bashrc",
@@ -48,6 +49,11 @@
     "11435": {
       "label": "RAGChatService",
       "onAutoForward": "notify"
+    },
+    "11436": {
+      "label": "RAGChat CLI grounded documents",
+      "onAutoForward": "notify",
+      "requireLocalPort": true
     }
   }
 }

@@ -111,6 +111,12 @@ A single query can retrieve information and request a table. This example shows 
 animal classification table alongside highlighted passages in the source documents.
 The highlights help inspect matching evidence; they do not establish answer accuracy.
 
+### Mermaid diagram with grounding
+
+Mermaid diagrams can be viewed by through the RAGChat in memory web server.
+
+![Mermaid diagram with grounding](../Documentation/Pics/MermaidGrounded.png)
+
 ### OpenWebUI example (web)
 
 ![OpenWebUI  output](../Documentation/Pics/OpenWebUIGrounded.png)

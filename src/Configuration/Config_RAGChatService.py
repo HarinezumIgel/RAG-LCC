@@ -6,7 +6,7 @@ from typing import Any
 
 # -------------------------------------------------------------------------
 # RAGChatService is RAGChat served over HTTP (OpenWebUI-compatible REST API).
-# All RAGChat configuration is reused as-is — only the API host/port are added.
+# Answer prompts and grounding settings are inherited from RAGChat.
 #
 # _FRIENDLY_NAME = "RAGChatService" matches the alias added in
 # Config_Banned_Detection.py
@@ -28,45 +28,6 @@ _LOG_DIRECTORY = os.path.join(
 # Per-service audit logs (separate from RAGChat logs — each app owns its log dir).
 _QUERY_LOG: str = os.path.join(_LOG_DIRECTORY, "queries.log")
 _INTENT_FILTER_LOG: str = os.path.join(_LOG_DIRECTORY, "intent_filter.log")
-
-# -----------------------------------------------------------------------------
-# Override prompt: RAGChatService gets OpenWebUI-specific hint
-# -----------------------------------------------------------------------------
-_PROMPT_CHAT = """
-CRITICAL: You must ONLY use information found in the context below.
-Do NOT use your training knowledge, do NOT guess, do NOT infer beyond what the context states.
-If the context is entirely empty or absolutely irrelevant to the query, you MUST respond with
-EXACTLY these two lines and NOTHING else — no metadata, no explanation, no rephrasing:
-
-I couldn't find relevant information to answer your query.
-Try starting a new topic with `new:`, switching to a different collection, or adjusting your session parameters.
-
-Do NOT alter, summarize, or add to those two lines.
-
-Context:
----------------------
-{context}
----------------------
-
-IMPORTANT: If the context above is entirely empty or absolutely irrelevant to the query, you MUST respond with EXACTLY those two lines above and nothing else. Do NOT output any reasoning or verification steps.
-
-When the context does contain a direct answer:
-  • Cite direct evidence from the context.
-  • Return the answer as Markdown, not HTML or a fenced block containing Markdown.
-  • When the query requests a table, use a Markdown table with a header and separator row.
-  • At the end, put source metadata in a separate section headed exactly "### Sources".
-    List only the metadata fields you used:
-     - FileName
-     - FilePath
-     - PageNumber (if available)
-
-Query:
-{input}
-
-Answer:
-"""
-_PROMPT_CHAT_MISTRAL = _PROMPT_CHAT
-_PROMPT_CHAT_LLAMA = _PROMPT_CHAT
 
 # -----------------------------------------------------------------------------
 # OpenWebUI / REST API service settings
@@ -101,32 +62,35 @@ SHOW_CLI_LIKE_ALGO_RESULTS = True
 # _DEFAULT_ORCHESTRATION_FLOW = "ENGLISH_ALL_MULTILEG"
 
 # -----------------------------------------------------------------------------
-# Document-serving service (in-memory token store)
+# Short-lived document and grounded-answer service (in-memory token store)
 #
 # Server enable/disable gate lives in Configuration/Config_Internet_Env.py:
-#   os.environ["SERVE_IN_MEMORY_DOCS_HTTP"] = "0" or "1"
+#   os.environ["SERVE_RAGCHATSERVICE_GROUNDED_DOCS"] = "0" or "1"
 #
 # This block configures the runtime behaviour of the in-memory document
 # server once it is enabled at the internet-config level.
 #
-# When the user enables `mark_text=True`, RAG-LCC produces in-memory
-# highlighted copies of every retrieved local PDF. In service mode those
-# bytes are stored under a short-lived, unguessable token and exposed at
-# `GET /marked/{token}.pdf`, so OpenWebUI clients (potentially running on a
-# different host) can fetch them directly without any shared filesystem.
+# When enabled, RAG-LCC stores highlighted source documents and verified
+# grounded-answer HTML at `/marked/<document-token>.<ext>?token=<session-token>`.
+# OpenWebUI clients can open the links without a shared filesystem.
 #
 # Security
 #   * Tokens are 256-bit random strings — unforgeable.
+#   * A separate 192-bit session capability is required on every GET and rotates
+#     at service startup. Both tokens are embedded automatically in each link.
 #   * Entries auto-expire after `ttl_seconds`.
 #   * Total in-memory size is capped (`max_total_bytes`); oldest entries
 #     evicted FIFO when full.
 #   * `single_use=True` destroys the entry after the first successful
 #     fetch (use when you do not want refresh / sharing).
 #   * The /marked endpoint is *not* protected by the API_KEY
-#     bearer middleware (browsers won't send it). The unguessable token
-#     is the access credential.
+#     bearer middleware (browsers won't send it). The two unguessable tokens
+#     are the access credentials. Anyone with the full link can fetch the bytes.
 #
 # Reverse-proxy / multi-host setups
+#   * The document routes share the RAGChatService API listener. The default
+#     HOST is 127.0.0.1. Remote browsers need a tunnel or an explicitly configured
+#     reachable interface, firewall restrictions, and preferably an HTTPS proxy.
 #   * Set ``_SERVE_DOCS["public_base_url"]`` to the externally reachable URL
 #     of this service (e.g. "https://rag.example.com"). When set it is
 #     used as the prefix in the markdown links injected into the LLM
@@ -139,8 +103,8 @@ _SERVE_DOCS: dict[str, Any] = {
     # Use ["*"] to allow all, or specify exact origins such as
     # ["https://openwebui.example.com"].  Leave empty to disable CORS middleware.
     "cors_origins": [],
-    # TTL for highlighted documents stored in the in-memory cache.
-    # Each GET /marked/<token> resets the expiry clock.
+    # TTL for marked documents and grounded-answer pages in the in-memory cache.
+    # Expiry is measured from creation; GET requests do not extend it.
     # Shorter values reduce attack surface; longer values survive slow clients.
     "ttl_seconds": 1800,  # 30 min — also acts as a security control
     # Maximum total size of all cached documents.  Oldest entries are evicted FIFO

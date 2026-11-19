@@ -7,7 +7,6 @@ import sys
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
-from pathlib import Path
 from typing import AsyncGenerator, List
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -56,11 +55,11 @@ from Api.ChatCompletionHandler import (  # pyright: ignore[reportPrivateUsage, r
     ChatCompletionRequest, _complianceResponse, handleRequest)
 from Api.MarkedDocsStore import \
     configure_default as configure_marked_docs_store
-from Api.MarkedDocsStore import get_default as get_marked_docs_store
 from Chat.Chatter import Chatter
 from Chat.QueryParts import QueryParts
 from Chat.RAGChatImpl import RAGChatImpl
 from Compliance.HFDownloader import HFDownloader
+from DocumentServing.MarkedDocsServer import MarkedDocsServer
 from Globals.Globals import Globals
 from Gui.Informer import Informer
 from Helpers.FileUtils import FileUtils
@@ -94,12 +93,13 @@ class RAGChatService:
     def _register_marked_docs(self) -> None:
         """Configure the in-memory marked-docs store and optional CORS.
 
-        Enable/disable gate is ``SERVE_IN_MEMORY_DOCS_HTTP`` from
+        Enable/disable gate is ``SERVE_RAGCHATSERVICE_GROUNDED_DOCS`` from
         Config_Internet_Env.py. Runtime options come from ``_SERVE_DOCS``.
         When the gate is disabled the store stays uninitialised and
         the /marked route returns 404 for every request.
         """
-        if os.environ.get("SERVE_IN_MEMORY_DOCS_HTTP", "0") != "1":
+        if os.environ.get("SERVE_RAGCHATSERVICE_GROUNDED_DOCS", "0") != "1":
+            MarkedDocsServer(self.app, None)
             return
         block = self.cfg.get_dict("_SERVE_DOCS", {}) or {}
         # Fail fast: both packages are required when the feature is enabled.
@@ -116,15 +116,15 @@ class RAGChatService:
             PrettyWriter().write(
                 "E",
                 "RAGChatService",
-                f"SERVE_IN_MEMORY_DOCS_HTTP=1 but the following required package(s) are not installed: "
+                f"SERVE_RAGCHATSERVICE_GROUNDED_DOCS=1 but the following required package(s) are not installed: "
                 f"{', '.join(missing)}. "
                 f"Install with:  pip install {' '.join(missing)}"
-                f'\nSet SERVE_IN_MEMORY_DOCS_HTTP="0" in Configuration/Config_Internet_Env.py '
+                f'\nSet SERVE_RAGCHATSERVICE_GROUNDED_DOCS="0" in Configuration/Config_Internet_Env.py '
                 f"to disable document serving and suppress this error.",
                 color=RED,
             )
             StartupCommons._die()  # pyright: ignore[reportPrivateUsage]
-        configure_marked_docs_store(
+        store = configure_marked_docs_store(
             ttl_seconds=int(block.get("ttl_seconds", 1800)),
             max_total_bytes=int(block.get("max_total_mb", 200)) * 1024 * 1024,
             single_use=bool(block.get("single_use", False)),
@@ -140,19 +140,11 @@ class RAGChatService:
         PrettyWriter().write(
             "W",
             "RAGChatService",
-            f"Marked-docs in-memory service active — endpoint: {base}/marked/<token>",
+            f"Marked-docs in-memory service active — endpoint: "
+            f"{base}/marked/<document-token>?token=<session-token>",
         )
         cors_origins = list(block.get("cors_origins", []) or [])
-        if cors_origins:
-            from fastapi.middleware.cors import CORSMiddleware
-
-            self.app.add_middleware(
-                CORSMiddleware,
-                allow_origins=cors_origins,
-                allow_methods=["GET"],
-                allow_headers=["*"],
-                allow_credentials=False,
-            )
+        MarkedDocsServer(self.app, store, cors_origins=cors_origins)
 
     def _register_auth_middleware(self):
         expectedKey: str = self.cfg.get_str(
@@ -328,42 +320,6 @@ class RAGChatService:
                 executor=self.executor,
                 serviceCfgDebugLevel=self.serviceCfgDebugLevel,
                 request=request,
-            )
-
-        @self.app.get("/marked/{token_filename}")
-        async def getMarkedDocument(  # pyright: ignore[reportUnusedFunction]
-            token_filename: str,
-        ) -> Response:
-            """Serve a previously-registered, in-memory highlighted document.
-
-            ``token_filename`` is ``<token>.<ext>`` where the extension
-            matches the source file type (e.g. ``.pdf``, ``.docx``, ``.pptx``).
-            """
-            _MEDIA_TYPES: dict[str, str] = {
-                ".pdf": "application/pdf",
-                ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-                ".md": "text/markdown; charset=utf-8",
-                ".txt": "text/plain; charset=utf-8",
-            }
-            store = get_marked_docs_store()
-            if store is None:
-                return JSONResponse(status_code=404, content={"detail": "Not found"})
-            token = token_filename.split(".", 1)[0]
-            entry = store.get(token)
-            if entry is None:
-                return JSONResponse(status_code=404, content={"detail": "Not found"})
-            safe_name = entry.filename.replace('"', "")
-            suffix = Path(entry.filename).suffix.lower()
-            media_type = _MEDIA_TYPES.get(suffix, "application/octet-stream")
-            return Response(
-                content=entry.data,
-                media_type=media_type,
-                headers={
-                    "Content-Disposition": f'inline; filename="{safe_name}"',
-                    "Cache-Control": "private, no-store",
-                    "X-Content-Type-Options": "nosniff",
-                },
             )
 
         _resources_dir = self.cfg.get_str("_SERVICE_RESOURCES_DIR") or os.path.join(

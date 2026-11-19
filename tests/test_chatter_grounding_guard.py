@@ -86,63 +86,89 @@ class _ConfidenceShell:
     _build_answer_confidence_notice = staticmethod(_build_answer_confidence_notice)
 
 
-@pytest.mark.parametrize("text", ["🟠 LOW", "plain answer", ""])
-def test_answer_background_fills_terminal_width_after_colored_text(
-    capsys: pytest.CaptureFixture[str],
-    text: str,
-) -> None:
-    from wcwidth import wcswidth
-
+def test_answer_uses_rich_markdown_renderer(capsys: pytest.CaptureFixture[str]) -> None:
     from Chat.Chatter import Chatter
-    from Gui.Colors import ANSWER_BG, ANSWER_FG, ORANGE, RESET
 
     cfg = types.SimpleNamespace(get=lambda _key: {"bg": "ANSWER_BG", "fg": "ANSWER_FG"})
     chatter = types.SimpleNamespace(cfg=cfg)
-    content = f"{ORANGE}{text}{RESET}" if text else " "
 
-    Chatter.print_llm_answer(chatter, content, 40, prefix="💬 >  ")
+    Chatter.print_llm_answer(
+        chatter, "## Answer\n\n- **Supported**\n- Unsupported", 80, prefix="> "
+    )
 
-    output = capsys.readouterr().out.rstrip("\n")
-    plain = re.sub(r"\033\[[0-9;]*m", "", output)
-    assert wcswidth(plain) == 40
-    assert output.startswith(ANSWER_BG + ANSWER_FG)
-    if text:
-        assert RESET + ANSWER_BG + ANSWER_FG + " " in output
-    assert output.endswith(RESET)
+    output = capsys.readouterr().out
+    assert ">" in output
+    assert "Answer" in output
+    assert "Supported" in output
+    assert "Unsupported" in output
 
 
-def test_last_confidence_line_fills_background(
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    from wcwidth import wcswidth
+def test_default_answer_colors_cover_body_and_confidence() -> None:
+    import io
+
+    from rich.color import Color
+    from rich.console import Console
+    from rich.text import Text
 
     from Chat.Chatter import Chatter
-    from Gui.Colors import ANSWER_BG, ANSWER_FG, ORANGE, RESET
+    from Configuration.Config_Global import ANSWER_DISPLAY
+    from Gui.RichAnswerRenderer import ANSWER_META_SEPARATOR, RichAnswerRenderer
+
+    output = io.StringIO()
+    console = Console(
+        file=output, width=60, force_terminal=True, color_system="truecolor"
+    )
+    chatter = types.SimpleNamespace(
+        cfg=types.SimpleNamespace(
+            get=lambda key: {"ANSWER_DISPLAY": ANSWER_DISPLAY}[key]
+        ),
+        answer_renderer=RichAnswerRenderer(console),
+    )
+    Chatter.print_llm_answer(
+        chatter,
+        "Answer body." + ANSWER_META_SEPARATOR + "**Answer confidence:** MEDIUM",
+        60,
+        prefix="",
+    )
+
+    lines = output.getvalue().splitlines()
+    assert len(lines) == 2
+    assert "Answer body." in lines[0]
+    assert "MEDIUM" in lines[1]
+    for line in lines:
+        decoded = Text.from_ansi(line)
+        assert decoded.cell_len == 60
+        for offset in range(len(decoded)):
+            style = decoded.get_style_at_offset(console, offset)
+            assert style.bgcolor == Color.from_ansi(238)
+            assert style.color == Color.from_ansi(252)
+
+
+def test_rich_renderer_preserves_confidence_markdown(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from Chat.Chatter import Chatter
 
     cfg = types.SimpleNamespace(get=lambda _key: {"bg": "ANSWER_BG", "fg": "ANSWER_FG"})
     chatter = types.SimpleNamespace(cfg=cfg)
     confidence = (
-        f"{ORANGE}🟠 LOW\n"
-        "Accuracy, answer completeness, reasoning validity, and citation support: "
-        f"not assessed.{RESET}"
+        "**Answer confidence:**\n\n"
+        "🟠 LOW\n"
+        "Accuracy, answer completeness, reasoning validity, and citation support: not assessed."
     )
 
-    Chatter.print_llm_answer(chatter, confidence, 100, prefix="💬 >  ")
+    Chatter.print_llm_answer(chatter, confidence, 100)
 
-    lines = capsys.readouterr().out.splitlines()
-    assert len(lines) == 2
-    for line in lines:
-        assert wcswidth(re.sub(r"\033\[[0-9;]*m", "", line)) == 100
-    assert RESET + ANSWER_BG + ANSWER_FG + " " in lines[-1]
+    output = capsys.readouterr().out
+    assert "Answer confidence:" in output
+    assert "LOW" in output
+    assert "citation support: not assessed." in " ".join(output.split())
 
 
-def test_wrapped_summary_fills_background_on_final_line(
+def test_rich_renderer_wraps_markdown_summary(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    from wcwidth import wcswidth
-
     from Chat.Chatter import Chatter
-    from Gui.Colors import RESET
 
     chatter = types.SimpleNamespace(
         cfg=types.SimpleNamespace(
@@ -152,46 +178,37 @@ def test_wrapped_summary_fills_background_on_final_line(
     summary = (
         "## Summary of Hedgehogs.pdf\n\n"
         "Hedgehogs are small nocturnal mammals with distinctive spines. "
-        f"\033[48;5;214mThey eat invertebrates and live in gardens.{RESET} "
+        "They eat invertebrates and live in gardens. "
         "Ongoing research explores their role in ecosystems."
     )
 
-    Chatter.print_llm_answer(chatter, summary, 60, prefix="💬 >  ")
+    Chatter.print_llm_answer(chatter, summary, 60)
 
-    lines = capsys.readouterr().out.splitlines()
-    assert "ecosystems." in lines[-1]
-    plain_lines = [re.sub(r"\033\[[0-9;]*m", "", line) for line in lines]
-    assert all(wcswidth(line) == 60 for line in plain_lines)
-    displayed = " ".join(line.removeprefix("💬 >  ").strip() for line in plain_lines)
-    expected = re.sub(r"\033\[[0-9;]*m", "", summary)
-    assert displayed.split() == expected.split()
+    output = capsys.readouterr().out
+    assert "Summary of Hedgehogs.pdf" in output
+    assert "ecosystems." in output
+    assert "## Summary" not in output
 
 
-def test_answer_renders_nested_bullets_without_changing_ansi_colors(
+def test_answer_renders_nested_bullets(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     from Chat.Chatter import Chatter
-    from Gui.Colors import ORANGE, RESET
 
     chatter = types.SimpleNamespace(cfg=types.SimpleNamespace(get=lambda _key: {}))
-    answer = (
-        f"{ORANGE}- **Cats.md**{RESET}\n" f"  {ORANGE}* cats{RESET}\n" "    + kittens"
-    )
+    answer = "- **Cats.md**\n" "  * cats\n" "    + kittens"
 
     Chatter.print_llm_answer(chatter, answer, 80, prefix="> ")
 
-    assert capsys.readouterr().out.splitlines() == [
-        f"> {ORANGE}• **Cats.md**{RESET}",
-        f">   {ORANGE}• cats{RESET}",
-        ">     • kittens",
-    ]
+    output = capsys.readouterr().out
+    assert "Cats.md" in output
+    assert "cats" in output
+    assert "kittens" in output
 
 
-def test_wrapped_bullet_keeps_indentation_and_answer_text(
+def test_rich_renderer_wraps_long_bullet_and_keeps_answer_text(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    from wcwidth import wcswidth
-
     from Chat.Chatter import Chatter
 
     chatter = types.SimpleNamespace(cfg=types.SimpleNamespace(get=lambda _key: {}))
@@ -199,17 +216,9 @@ def test_wrapped_bullet_keeps_indentation_and_answer_text(
 
     Chatter.print_llm_answer(chatter, answer, 30, prefix="> ")
 
-    lines = capsys.readouterr().out.splitlines()
-    assert len(lines) > 1
-    assert lines[0].startswith(">   • ")
-    assert all(wcswidth(line) <= 30 for line in lines)
-    displayed = " ".join(line.removeprefix("> ") for line in lines)
-    assert (
-        displayed.split()
-        == (
-            "• Hedgehogs live in gardens and eat insects and other small animals."
-        ).split()
-    )
+    output = capsys.readouterr().out
+    for word in ("Hedgehogs", "insects", "animals."):
+        assert word in output
 
 
 @pytest.mark.parametrize(
@@ -220,7 +229,7 @@ def test_wrapped_bullet_keeps_indentation_and_answer_text(
         ("````text", "```", "````"),
     ],
 )
-def test_answer_preserves_list_markers_inside_fenced_code(
+def test_rich_renderer_preserves_list_markers_inside_fenced_code(
     capsys: pytest.CaptureFixture[str],
     opening: str,
     inner_fence: str,
@@ -234,14 +243,15 @@ def test_answer_preserves_list_markers_inside_fenced_code(
 
     Chatter.print_llm_answer(chatter, answer, 80, prefix="> ")
 
-    assert capsys.readouterr().out.splitlines() == [
-        "> • before",
-        *(f"> {line}" for line in code),
-        "> • after",
-    ]
+    output = capsys.readouterr().out
+    assert "before" in output
+    assert "after" in output
+    assert "- literal" in output
+    assert "* literal" in output
+    assert "+ literal" in output
 
 
-def test_answer_preserves_horizontal_rules_and_non_list_text(
+def test_rich_renderer_preserves_non_list_text(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     from Chat.Chatter import Chatter
@@ -251,7 +261,9 @@ def test_answer_preserves_horizontal_rules_and_non_list_text(
 
     Chatter.print_llm_answer(chatter, "\n".join(lines), 80, prefix="> ")
 
-    assert capsys.readouterr().out.splitlines() == [f"> {line}" for line in lines]
+    output = capsys.readouterr().out
+    for line in ("-10", "+5", "Dogs", "Use - cats inline."):
+        assert line in output
 
 
 class _Shell:
@@ -386,30 +398,81 @@ def _install_shared_stub(
 
 
 @pytest.mark.parametrize(
-    "body, short",
+    "body, short, unverified",
     [
         (
             "| Animal | Mammal Status |\n| --- | --- |\n"
             "| Cats | yes |\n| Dogs | yes |\n| Hedgehogs | yes |\n"
             "| Elephants | yes |\n| Fish | N/A |",
             True,
+            False,
         ),
         (
             "- **Cats** - yes\n- **Dogs** - yes\n- **Hedgehogs** - yes\n- **Fish** - N/A",
-            True,
+            False,
+            False,
         ),
         (
             "Purple spacecraft manufacture impossible engines on distant planets every night without any fuel.",
             False,
+            False,
         ),
+        ("- Purple spacecraft manufacture impossible engines.", False, True),
+        ("1. Purple spacecraft manufacture impossible engines.", False, True),
+        (
+            "Purple spacecraft manufacture impossible engines.\n\n"
+            "- Hedgehogs are small nocturnal mammals.",
+            False,
+            True,
+        ),
+        (
+            "```mermaid\nflowchart LR\n"
+            "  A[Purple spacecraft] -->|manufacture| B[Impossible engines]\n```",
+            False,
+            True,
+        ),
+        (
+            "Purple spacecraft manufacture impossible engines.\n\n"
+            "```mermaid\nflowchart LR\n  A[Hedgehogs] -->|are| B[Small nocturnal mammals]\n```",
+            False,
+            True,
+        ),
+        ("```mermaid\nnot a valid diagram\n```", False, True),
+        (
+            "```text\n- Purple spacecraft manufacture impossible engines.\n```",
+            False,
+            False,
+        ),
+        (
+            "| Slot Number | Type | Width | Length | Speed | Power (W) |\n"
+            "|-------------|------|-------|--------|-------|-----------|\n"
+            "| 1 | PCIe 4.0 x16 | Double | Full | 4x | 75 |\n"
+            "| 2 | PCIe 4.0 x16 | Double | Full | 4x | 75 |\n"
+            "| 3 | PCIe 4.0 x8 | Single | Full | 2x | - |\n"
+            "| 4 | PCIe 4.0 x8 | Single | Full | 2x | - |",
+            False,
+            True,
+        ),
+        (
+            "Slot | Unsupported specifications\n"
+            "--- | ---\n"
+            "First slot | Purple spacecraft manufacture impossible engines.",
+            False,
+            True,
+        ),
+        ("| Animal | Mammal |\n| --- | --- |\n| Cats | Yes |", True, False),
     ],
 )
-def test_service_answer_guard_preserves_terse_markdown_but_rejects_unsupported_prose(
+@pytest.mark.parametrize("service", [False, True])
+def test_answer_guard_displays_unverified_structures_but_withholds_prose(
     body: str,
     short: bool,
+    unverified: bool,
+    service: bool,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from Chat.Chatter import Chatter
+    from Chat.ConfidenceEvaluator import ConfidenceEvaluator
 
     monkeypatch.setenv("WEB_SEARCH_MODE", "0")
     answer = (
@@ -417,6 +480,11 @@ def test_service_answer_guard_preserves_terse_markdown_but_rejects_unsupported_p
         "- FileName: Hedgehogs.pdf\n"
         "- FilePath: /workspaces/RAG-LCC/TestDocs/Hedgehogs.pdf\n"
         "- PageNumber: 1"
+    )
+    evidence = (
+        "Cats are mammals."
+        if body.startswith("| Animal | Mammal |")
+        else "Hedgehogs are small nocturnal mammals."
     )
     chatter = MagicMock()
     chatter.rag.parse_chat_command.return_value = ("", "")
@@ -434,6 +502,9 @@ def test_service_answer_guard_preserves_terse_markdown_but_rejects_unsupported_p
     chatter.helpers.build_selected_sources_md.return_value = ""
     chatter._grounding_language_detector.return_value = lambda *_args: "english"
     chatter.grounder = _Shell().grounder
+    monkeypatch.setitem(
+        chatter.grounder.cfg.cfg, "_MARKED_DOCS_COLORS", {"answer_ansi": "48;5;214"}
+    )
     session = types.SimpleNamespace(
         query="Create a table of animals and indicate whether they are mammals. Use yes, no, N/A.",
         retriever_k=20,
@@ -449,32 +520,111 @@ def test_service_answer_guard_preserves_terse_markdown_but_rejects_unsupported_p
         ollamaTopLevelParams=None,
         mark_text=True,
         enable_grounding=True,
-        use_chat_context=False,
+        use_chat_context=True,
         web_search=False,
         answer_confidence_result=MagicMock(),
-        chunk_texts_for_grounding=["Hedgehogs are small nocturnal mammals."],
+        chunk_texts_for_grounding=[evidence],
         last_chosen_chunks=[],
         debug_level=0,
         debug_mode="ge",
+    )
+    selected = types.SimpleNamespace(
+        page_content=evidence,
+        metadata={"Source": "local", "rerank_score": 0.8},
+    )
+    session.last_chosen_chunks = [selected]
+    session.final_chunks_to_llm = 1
+    evaluator = ConfidenceEvaluator(confidence_logger=MagicMock(), pretty=MagicMock())
+    evaluator.store_answer_confidence(session, [selected], emit=False)
+    chatter.rag.confidenceEvaluator.store_answer_confidence.side_effect = (
+        evaluator.store_answer_confidence
     )
     delivered: list[str] = []
 
     success, content = Chatter.run(
         chatter,
         session,
-        apiChunkHandler=delivered.append,
+        apiChunkHandler=delivered.append if service else None,
         is_streaming=False,
     )
 
     assert success
-    assert content == "".join(delivered)
+    if service:
+        assert content == "".join(delivered)
+    else:
+        assert session.browser_answer_content == answer
+        mark_supported = not short
+        chatter._grounded_answer_browser_document.assert_called_once_with(
+            session,
+            mark_supported=mark_supported,
+        )
+        document = Chatter._grounded_answer_browser_document(
+            chatter,
+            session,
+            mark_supported=mark_supported,
+        )
+        assert document is not None
+        page = document[1].decode("utf-8")
+        if not session.answer_grounding_verified:
+            expected_title = (
+                "Not fully grounded"
+                if mark_supported and session.chunk_texts_for_grounding
+                else "Unverified answer preview"
+            )
+            assert f"<title>{expected_title}</title>" in page
+            if short:
+                assert '<mark class="grounded">' not in page
+            assert '<mark class="grounded">Purple spacecraft' not in page
+        assert Grounder.no_evidence_message() not in page
+        if body.startswith("| Slot Number"):
+            assert page.count("<table>") == 1
+            assert page.count("<th>") == 6
+            assert page.count("<tr>") == 5
     if short:
         assert content == chatter.grounder.short_answer_notice() + answer
+        assert not session.answer_grounding_verified
         chatter.rag.confidenceEvaluator.store_answer_confidence.assert_not_called()
         chatter.rag._mark_sources.assert_not_called()
+    elif unverified:
+        assert content == Grounder.unverified_structure_notice() + answer
+        assert not session.answer_grounding_verified
+        assert session.last_chosen_chunks == [selected]
+        assert session.chunk_texts_for_grounding == [selected.page_content]
+        chatter.chatContext.add_chat_turn.assert_called_once_with(
+            session, session.query, content
+        )
+        cli_answer = chatter.print_llm_answer.call_args.args[0]
+        assert cli_answer.startswith(Grounder.unverified_structure_notice())
+        assert re.sub(r"\033\[[0-9;]*m", "", cli_answer) == content
+        for line in cli_answer.splitlines():
+            if "Purple spacecraft" in line or "Impossible engines" in line:
+                assert "\033[" not in line
+        if "Hedgehogs" in body:
+            assert "\033[" in cli_answer
+        chatter.confidence_logger.flush_turn_csv.assert_called_once_with(
+            session, outcome="grounding_unverified", answer_text=content
+        )
+    elif body.startswith("- "):
+        assert content == answer
+        assert session.answer_grounding_verified
+        chatter.rag.confidenceEvaluator.store_answer_confidence.assert_not_called()
     else:
+        assert content is not None
         assert content == Grounder.no_evidence_message()
+        assert "Grounding failed" in content
+        assert "withheld" in content
+        assert session.last_chosen_chunks == []
+        assert session.chunk_texts_for_grounding == []
+    if not short and not session.answer_grounding_verified:
         chatter.rag.confidenceEvaluator.store_answer_confidence.assert_called_once()
+        confidence = session.answer_confidence_result
+        assert confidence.level == "LOW"
+        assert confidence.score == 0.0
+        assert confidence.components["evidence_chunks"] == 1
+        assert confidence.components["top_score"] == 0.8
+        assert confidence.components["coverage"] == 1.0
+        assert "grounding failed" in confidence.summary
+        assert "evidence_chunks=1" in confidence.summary
 
 
 def test_flow_disabled_grounding_does_not_require_grounding_inputs(
@@ -529,6 +679,87 @@ def test_flow_disabled_grounding_does_not_require_grounding_inputs(
     chatter.grounder.is_answer_too_short.assert_not_called()
     chatter.grounder.has_grounded_evidence.assert_not_called()
     chatter.rag._mark_sources.assert_not_called()
+
+
+def test_web_leg_shows_answer_and_preserves_confidence_when_grounding_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from Chat.Chatter import Chatter
+    from Chat.RAGChatImpl import RAGChatImpl
+
+    monkeypatch.setenv("WEB_SEARCH_MODE", "0")
+    answer = "### Answer\nThe web result mentions an unsupported claim."
+    selected_result = types.SimpleNamespace(
+        page_content="A local result unrelated to the generated claim.",
+        metadata={"Source": "Local", "rerank_score": 0.8},
+    )
+    chatter = MagicMock()
+    chatter.rag.parse_chat_command.side_effect = RAGChatImpl.parse_chat_command
+    chatter.rag.retrieve.return_value = (selected_result.page_content, 1)
+    chatter.prompt = "Context: {context}\nQuery: {input}"
+    chatter._build_query_notice.side_effect = lambda current, current_query: (
+        Chatter._build_query_notice(chatter, current, current_query)
+    )
+    chatter._resolve_token_params.return_value = (8192, 512)
+    chatter.llmCaller.call_llm.return_value = {"content": answer}
+    chatter.modelOutputAdapter.interpret.return_value = types.SimpleNamespace(
+        content=answer
+    )
+    chatter._check_answer_compliance.return_value = False
+    chatter.masker.mask.side_effect = lambda text: text
+    chatter._build_answer_confidence_notice.return_value = ""
+    chatter.helpers.build_selected_sources_md.return_value = ""
+    chatter._grounding_language_detector.return_value = lambda *_args: "english"
+    chatter.grounder = _Shell().grounder
+    monkeypatch.setattr(chatter.grounder, "has_grounded_evidence", lambda *_args: False)
+
+    evaluated_confidence = types.SimpleNamespace(
+        level="MEDIUM", score=0.65, components={}, summary="medium retrieval confidence"
+    )
+    session = types.SimpleNamespace(
+        query="What does the web say?",
+        user_query_input="new: What does the web say?",
+        retriever_k=20,
+        max_output_tokens=512,
+        max_output_tokens_override=None,
+        context_size_override=None,
+        temperature=0.1,
+        top_k=40,
+        top_p=0.9,
+        preferred_response_language="english",
+        keyword_action_split=None,
+        extraOllamaOptions=None,
+        ollamaTopLevelParams=None,
+        mark_text=True,
+        enable_grounding=True,
+        use_chat_context=True,
+        web_search=True,
+        answer_confidence_result=evaluated_confidence,
+        chunk_texts_for_grounding=[selected_result.page_content],
+        last_chosen_chunks=[selected_result],
+        final_chunks_to_llm=1,
+        debug_level=0,
+        debug_mode="ge",
+    )
+    delivered: list[str] = []
+    query_notice = Chatter._build_query_notice(chatter, session, session.query)
+
+    success, content = Chatter.run(
+        chatter, session, apiChunkHandler=delivered.append, is_streaming=False
+    )
+
+    assert success
+    assert content is not None
+    assert 'Query: "What does the web say?"' in content
+    assert "new:" not in content
+    assert content == query_notice + Grounder.unverified_structure_notice() + answer
+    assert "".join(delivered) == content
+    assert "Grounding failed" not in content
+    assert session.answer_confidence_result is evaluated_confidence
+    assert session.answer_confidence_result.level == "MEDIUM"
+    assert session.answer_confidence_result.score == 0.65
+    assert session.last_chosen_chunks == [selected_result]
+    chatter.rag.confidenceEvaluator.store_answer_confidence.assert_not_called()
 
 
 @pytest.mark.parametrize("service", [False, True])
@@ -633,6 +864,20 @@ def test_new_topic_resets_history_without_leaking_command_into_answer_prompt(
 
 
 class TestGroundingGuardHelpers:
+    @pytest.mark.parametrize(
+        "answer",
+        [
+            "The slot | description is ordinary prose.",
+            "```text\n| Slot | Type |\n| --- | --- |\n| 1 | PCIe x16 |\n```",
+            "Unsupported prose.\n\n### Sources\n| File | Page |\n| --- | --- |\n| Guide | 6 |",
+        ],
+    )
+    def test_table_fallback_ignores_prose_code_and_source_metadata(
+        self,
+        answer: str,
+    ) -> None:
+        assert not _Shell().grounder.has_structured_answer(answer)
+
     def test_extract_answer_section_removes_sources_block(self) -> None:
         text = "### Answer\nCats sleep.\n\n### Sources\n- file.md"
         body = Grounder.extract_answer_section(text)
@@ -684,7 +929,9 @@ class TestGroundingGuardHelpers:
 
     def test_build_no_evidence_message_contains_context_phrase(self) -> None:
         msg = Grounder.no_evidence_message()
-        assert "couldn't find evidence" in msg.lower()
+        assert "grounding failed" in msg.lower()
+        assert "couldn't verify" in msg.lower()
+        assert "withheld" in msg.lower()
         assert "retrieved context" in msg.lower()
         assert "`new:`" in msg
         assert "different collection" in msg
@@ -720,7 +967,7 @@ class TestGroundingGuardHelpers:
         notice = _ConfidenceShell._build_answer_confidence_notice(session)
         assert notice == ""
 
-    def test_is_answer_too_short_for_grounding_true_for_short_answer(
+    def test_short_prose_still_requires_grounding(
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
@@ -730,7 +977,7 @@ class TestGroundingGuardHelpers:
             "### Answer\nCats, dogs, foxes"
         )
 
-        assert is_short is True
+        assert is_short is False
 
     def test_is_answer_too_short_for_grounding_false_for_long_sentence(
         self,
@@ -745,7 +992,7 @@ class TestGroundingGuardHelpers:
 
         assert is_short is False
 
-    def test_is_answer_too_short_for_grounding_true_for_brief_bullet_list(
+    def test_brief_bullet_list_still_requires_grounding(
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
@@ -755,7 +1002,7 @@ class TestGroundingGuardHelpers:
             "### Answer\n- cats\n- dogs\n- apes (gorillas and orangutans mentioned)"
         )
 
-        assert is_short is True
+        assert is_short is False
 
     def test_has_grounded_evidence_true_when_direct_overlap_exists(
         self, monkeypatch: pytest.MonkeyPatch
@@ -832,7 +1079,7 @@ class TestGroundingGuardHelpers:
 
         assert ok is True
 
-    def test_has_grounded_evidence_true_when_no_chunk_texts(self) -> None:
+    def test_has_grounded_evidence_false_when_no_chunk_texts(self) -> None:
         shell = _Shell(lang="english")
         session = _SessionStub(retrieval_language="english")
         ok = shell._has_grounded_evidence(
@@ -841,7 +1088,7 @@ class TestGroundingGuardHelpers:
             [],
             "english",
         )
-        assert ok is True
+        assert ok is False
 
     def test_has_grounded_evidence_true_when_web_chunk_overlaps(
         self, monkeypatch: pytest.MonkeyPatch

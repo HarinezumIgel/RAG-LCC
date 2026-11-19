@@ -25,6 +25,7 @@ BRIGHT_MAGENTA = "\033[95m"
 BRIGHT_CYAN = "\033[96m"
 BRIGHT_WHITE = "\033[97m"
 BRIGHT_ORANGE = "\033[38;2;255;200;0m"
+LIGHT_GRAY = "\033[38;5;252m"
 
 # text styles
 BOLD = "\033[1m"
@@ -34,31 +35,8 @@ REVERSED = "\033[7m"
 
 
 # LLM answer block colors
-# Use 24-bit truecolor when the terminal declares it; fall back to the
-# closest 256-color equivalents (238 ≈ dark gray bg, 252 ≈ light gray fg)
-# so the block is visible on terminals without truecolor support.
-def _supports_truecolor() -> bool:
-    import os
-
-    ct = os.environ.get("COLORTERM", "").lower()
-    if ct in ("truecolor", "24bit"):
-        return True
-    # Windows Terminal and VS Code both set COLORTERM; check WT_SESSION as
-    # an extra hint for Windows Terminal when COLORTERM is absent.
-    if os.environ.get("WT_SESSION"):
-        return True
-    return False
-
-
-if _supports_truecolor():
-    _answer_bg = "\033[48;2;45;45;45m"  # dark gray background (truecolor)
-    _answer_fg = "\033[38;2;220;220;220m"  # light gray text (truecolor)
-else:
-    _answer_bg = "\033[48;5;238m"  # dark gray background (256-color)
-    _answer_fg = "\033[38;5;252m"  # light gray text (256-color)
-
-ANSWER_BG = _answer_bg
-ANSWER_FG = _answer_fg
+ANSWER_BG = "\033[48;5;238m"  # dark gray background (256-color)
+ANSWER_FG = "\033[38;5;252m"  # light gray text (256-color)
 
 # Visual-marker highlight colours (mark_text=True)
 MARKED_DOCS_HIGHLIGHT_COLOR = "yellow"  # relevant source chunks

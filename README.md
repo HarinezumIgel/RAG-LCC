@@ -25,30 +25,7 @@
 - DocClassify       Document classification - results may be used as input filter for RAGLoad
 - RAGLoad           Text extraction (document formats, pictures, MS Office) and Vector DB ingestion
 - RAGChat           (CLI GUI) and RAGChatService (Open WebUI integration)
-
-<p align="center">
-<img src="Documentation/Pics/HedgehogQueryGrounded.png" alt="RAG-LCC Document grounding" />
-<p>
-
-Instead of pushing ever‑larger context sizes, RAG‑LCC treats **classification, chunking, retrieval strategies, staged loading, and confidence evaluation** as first‑class architectural tools.
-
----
-
-### Tabular answer with source grounding
-
-A single query can retrieve information and request a table. This example shows an animal classification table alongside highlighted passages in the source documents.
-
-![Tabular answer with highlighted source documents](Documentation/Pics/TabularRepresentation.png)
-
-### 📌 OpenWeb UI Example
-
-By clicking on the *Marked Sources* link the grounded answer is displayed.
-
-OpenWebUI grounding example (via `RAGChatService`):
-
-![OpenWebUI grounded output](Documentation/Pics/OpenWebUIGrounded.png)
-
----
+                    RAGChat supports summarization, file pinning and markdown rendering
 
 ## 🧠 What it does — and why it exists
 
@@ -61,6 +38,54 @@ Standard RAG is deceptively simple: embed documents, embed query, retrieve by co
 To make tuning practical, every turn can emit a confidence breakdown that separates retrieval-quality signals (best hit quality, top-3 stability, evidence coverage, local-source share, and fallback penalties). This gives you a concrete feedback loop for improving ingestion and retrieval settings.
 
 The system is built around four applications that form a deliberate pipeline:
+
+---
+
+Instead of pushing ever‑larger context sizes, RAG‑LCC treats **classification, chunking, retrieval strategies, staged loading, and confidence evaluation** as first‑class architectural tools.
+
+### Debug levels
+
+Debug levels allow to inspect what is going on. Debug levels can be defined as lower, greater, equal. This allows to determine the output you need.
+
+### Example output
+
+See a [Query Output Example](QUERY_OUTPUT_EXAMPLE.md) at standard debug level. Please not that real output contains more colors for debug content identification. Copy/pasting removed many of the colors.
+
+### Almost everything is a configuration item
+
+The goal of the lab is facilitating quick experimentation. Instead of changing code, you change parameters. Then run and evaluate by having a look at the confidence scores. Note: these scores are determined dynamically by a LLM judge as well as by static scores. There is no comparision with "golden answers". At the highest abstraction level are [orchestration flows](CONFIGURATION_REFERENCE.md#-orchestration-flows-config_orchestratorpy), which define the pipeline flow, and [retrieval strategies](CONFIGURATION_REFERENCE.md#-chunk-selection-strategy), which configure how candidate chunks are selected and passed to the model.
+
+### 📌 OpenWeb UI Example
+
+In this example the active collection does not contain chunks that answer the user query. Because web search was enabled in the configuration, the web retrieve leg was activated.
+
+OpenWebUI grounding example (via `RAGChatService`):
+
+![OpenWebUI grounded output](Documentation/Pics/OpenWebUIGrounded.png)
+
+### Grounded answer
+
+Answers are grounded by default.
+
+![Grounded answer to hedgehog query](Documentation/Pics/HedgehogQueryGrounded.png)
+
+### Tabular answer with source grounding
+
+A single query can retrieve information and request a table. This example shows an animal classification table alongside highlighted passages in the source documents.
+
+![Tabular answer with highlighted source documents](Documentation/Pics/TabularRepresentation.png)
+
+### Mermaid diagram with grounding
+
+Mermaid diagrams can be viewed by through the RAGChat in memory web server.
+
+![Mermaid diagram with grounding](Documentation/Pics/MermaidGrounded.png)
+
+### Document summary example
+
+RAGChat summarizes documents.
+
+![OpenWebUI grounded output](Documentation/Pics/HedgehogSummarize.png)
 
 ---
 
@@ -117,6 +142,21 @@ Each query runs through a staged pipeline:
 - **Split-query controls** — `keyword_action_splitter=false` disables splitting for the session; API requests use `"enable_keyword_action_splitter": false`. Selecting a flow resets its switches, so apply session overrides afterwards. Prompts and limits are documented in [keyword/action splitting configuration](CONFIGURATION_REFERENCE.md#optional-keywordaction-splitting).
 
 When grounding is enabled, answers are checked for overlap with retrieved evidence. An internal translated answer can validate cross-language evidence without changing the displayed answer. CLI overlap marks and source-document highlights require matching spans in the original answer; translated validation alone does not authorise local source highlighting.
+
+With grounding active, explicit list and table requests get a short “Add evidence phrases” instruction in the final answer prompt unless evidence was already requested. This does not change retrieval or what qualifies as grounded.
+
+If grounding fails for an answer containing a Markdown list, table, or Mermaid diagram,
+both CLI and service still show the generated answer with a **Not fully grounded**
+warning. It remains unverified with LOW answer confidence; source references
+are not verified citations, and only evidence-matched spans can be highlighted.
+CLI and browser highlights preserve the table layout, including evidence cells.
+Prose-only answers that fail grounding are still withheld. Lists in source
+metadata or ordinary code examples do not enable this fallback.
+
+Formatted HTML answer pages in both RAGChat and RAGChatService include the
+answer-confidence level and full diagnostic breakdown, including optional
+answer-text LLM review. These diagnostics are separate from the answer's
+grounding highlights and do not verify factual accuracy.
 
 ---
 
@@ -338,7 +378,7 @@ Key capabilities organized by application. Full configuration details, defaults,
 - **Cross-encoder reranking** — the selected cross-encoder (BGE reranker by default) rescores candidates; a per-strategy sigmoid threshold drops weak matches. If low-score fallback is enabled and no local chunk clears the threshold, selection falls back to retrieval order.
 - **Flow-profile orchestration with contradiction-aware overrides** — retrieval turns are governed by named flow profiles; when session CLI knobs override flow intent, orchestration lines attribute the exact overriding knob (for example `force_retrieve_mode=WEB`, `mark_text=false`, `rerank=0`). Flow profiles also gate both rerank fallback actions (`run_low_score_fallback`, `run_low_recall_rescue`), with deterministic order: low-score fallback first, then low-recall rescue only if the first did not short-circuit. For a plain-language guide to every flow and how to compare them, see [ORCHESTRATION_FLOWS.md](ORCHESTRATION_FLOWS.md); internals in [Orchestration Flows and CLI Override Precedence](ARCHITECTURE.md#orchestration-flows-and-cli-override-precedence) and [ENGLISH_ALL_MULTILEG Orchestration Flow](Documentation/FlowCharts/THOROUGH_QUERY_REWRITE.md).
 - **Confidence evaluation signals** — per-stage execution events, final retrieval confidence, and answer quality scores are recorded each turn. Dedicated `CONFIDENCE_FLAT` CSV files expose scalar metrics and `step.<name>.<occurrence>.<field>` columns without JSON blobs or duplicate session result fields. See [Confidence Evaluation and Signals](ARCHITECTURE.md#confidence-evaluation-and-signals).
-- **Answer grounding** — when enabled, matching answer/source spans may be highlighted in the CLI and marked source documents may be served as `/marked/<token>` links. Overlap does not establish factual accuracy.
+- **Answer grounding** — when enabled, matching answer/source spans may be highlighted in the CLI. `SERVE_RAGCHAT_GROUNDED_DOCS="1"` starts a loopback HTTP listener for HTML sources and answer pages (default port `11436`); other document formats retain file links/picker. Overlap does not establish factual accuracy.
 - **PDF page identity** — ingestion stores the physical PDF index in `PageNumber` for highlighting and the printed label in `PageLabel`. LLM context and citations show only the printed page (for example `Page 6`); when the label is unknown, they explicitly identify the physical index as `PDF page 12`. Physical page metadata is hidden from LLM context when a printed label is available. Re-ingest existing collections to replace older page prefixes; there is no compatibility conversion.
 - **Compliance checks** can block queries and generated responses; streaming may emit tokens before the final response check
 - **Multi-turn conversational memory** — rolling topic summary, configurable turn window, batch pruning; `new:` starts a new topic and resets the conversation
@@ -350,7 +390,7 @@ Key capabilities organized by application. Full configuration details, defaults,
 
 - **Limited OpenAI-compatible REST API** (`POST /v1/chat/completions`) — supports clients using the implemented subset; see [API limitations](LEGAL.md#-no-openai--openwebui-feature-parity)
 - **OpenWebUI integration** — ChromaDB collections appear as selectable models in the dropdown; retrieval knobs (`strategy`, `retriever_k`, `threshold`, `web_search`, `web_weight`, `web_fetch_k`) surface as Advanced Parameters
-- **In-memory document cache** — highlighted source documents served as short-lived `GET /marked/<token>` links; configurable TTL, total size cap, and CORS origins
+- **In-memory document cache** — `SERVE_RAGCHATSERVICE_GROUNDED_DOCS="1"` enables highlighted documents and grounded-answer HTML at `GET /marked/<document-token>.<ext>?token=<session-token>` on the existing API listener; configurable TTL, total size cap, and CORS origins. Anyone with a complete link can fetch the document while available; the `/v1/` API key does not protect `/marked`.
 - **Optional Bearer-token authentication for `/v1/`**, configurable host/port, optional streaming, automatic streaming downgrade when document grounding is active; marked-document links use separate access tokens
 - **`_OPENWEB_UI_WEBSEARCH`** — when `True` (and `WEB_SEARCH_MODE="1"`), the web leg is auto-enabled for every incoming OpenWebUI request that doesn't supply an explicit parameter
 

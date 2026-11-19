@@ -1,81 +1,10 @@
 import logging
 import os
 import re
-import textwrap
 from datetime import datetime
-from typing import Any, Callable, Dict
-
-_ANSI_RE = re.compile(r"\033\[[0-9;]*m")
-_MARKDOWN_BULLET_RE = re.compile(rf"^((?:{_ANSI_RE.pattern}|[ \t])*)[-*+](?=[ \t]+\S)")
-
-
-def _wrap_preserving_ansi(text: str, width: int) -> list[str]:
-    """Wrap text at word boundaries using ANSI-stripped width, then carry
-    active ANSI codes across line breaks so background colour is not lost
-    on terminals that reset background at newlines."""
-    stripped = _ANSI_RE.sub("", text)
-    wrapped_stripped = textwrap.wrap(
-        stripped, width=width, break_long_words=False, break_on_hyphens=False
-    )
-    if len(wrapped_stripped) <= 1:
-        return [text]
-
-    result: list[str] = []
-    pending: list[str] = []  # ANSI codes active at the start of the current line
-    orig_pos = 0
-
-    for line_idx, stripped_line in enumerate(wrapped_stripped):
-        visible_needed = len(stripped_line)
-        line_start = orig_pos
-        visible_seen = 0
-        line_codes: list[str] = list(pending)  # inherit from previous line
-
-        while visible_seen < visible_needed and orig_pos < len(text):
-            m = _ANSI_RE.match(text, orig_pos)
-            if m:
-                code = m.group(0)
-                orig_pos = m.end()
-                if code == "\033[0m":
-                    line_codes.clear()
-                else:
-                    line_codes.append(code)
-            else:
-                orig_pos += 1
-                visible_seen += 1
-
-        # Consume wrap-point spaces and any interleaved style changes.
-        while orig_pos < len(text):
-            m = _ANSI_RE.match(text, orig_pos)
-            if m:
-                code = m.group(0)
-                orig_pos = m.end()
-                if code == "\033[0m":
-                    line_codes.clear()
-                else:
-                    line_codes.append(code)
-            elif text[orig_pos] == " ":
-                orig_pos += 1
-            else:
-                break
-
-        line_text = text[line_start:orig_pos].rstrip()
-
-        # Re-open inherited codes at the start of continuation lines
-        if line_idx > 0 and pending:
-            line_text = "".join(pending) + line_text
-
-        # Close any still-open codes (many terminals reset background at newlines)
-        if line_codes:
-            line_text += "\033[0m"
-
-        result.append(line_text)
-        pending = list(line_codes)
-
-    return result
-
+from typing import TYPE_CHECKING, Any, Callable, Dict
 
 from langchain_core.prompts import PromptTemplate
-from wcwidth import wcswidth  # type: ignore[reportMissingTypeStubs]
 
 from AI.AIHelpers import AIHelpers
 from AI.LLMCaller import LLMCaller
@@ -99,7 +28,9 @@ from Globals.Globals import Globals
 from Globals.Session import Session
 from Grounding.Grounder import Grounder, LanguageDetector
 from Gui.Colors import BROWN, CYAN, GREEN, ORANGE, RED, RESET, YELLOW
+from Gui.GroundedAnswerHtmlRenderer import GroundedAnswerHtmlRenderer
 from Gui.PrettyWriter import PrettyWriter
+from Gui.RichAnswerRenderer import ANSWER_META_SEPARATOR, RichAnswerRenderer
 from Gui.Symbols import Symbols
 from Helpers.ConfidenceLogger import ConfidenceLogger
 from Helpers.CSVWriter import CSVWriter
@@ -109,9 +40,32 @@ from Helpers.Helpers import Helpers
 from Helpers.QualityDimensionEvaluator import QualityDimensionEvaluator
 from Helpers.SourcePathLinkifier import SourcePathLinkifier
 
+if TYPE_CHECKING:
+    from Chat.LocalDocsServer import LocalDocsServer
+
+
+_LIST_OR_TABLE_REQUEST = re.compile(
+    r"\b(?:use|create|make|give|provide|show|return|format|output|generate|write)"
+    r"\s+(?:(?:me|it|them|the results|a|an|the|markdown|numbered|bulleted|comparison)\s+){0,4}"
+    r"(?:list|table|bullets)\b"
+    r"|\b(?:as|in)\s+(?:a\s+)?(?:(?:markdown|numbered|bulleted|comparison)\s+)?"
+    r"(?:list|table|bullets)\b"
+    r"|\b(?:bullet points|(?:bulleted|numbered|markdown) list|markdown table)\b"
+    r"|(?:^|[.!?;]\s*)\s*(?:please\s+)?list\s+\w"
+    r"|\b(?:and|then|please)\s+list\s+\w",
+    re.IGNORECASE,
+)
+_EVIDENCE_REQUEST = re.compile(
+    r"\bevidence phrases?\b|\bwith\s+(?:supporting\s+)?evidence\b"
+    r"|\b(?:add|include|give|provide|show|quote)"
+    r"\s+(?:\w+\s+){0,3}(?:evidence|quotes?|excerpts?)\b",
+    re.IGNORECASE,
+)
+
 
 class Chatter:
     def __init__(self) -> None:
+        self.local_docs_server: LocalDocsServer | None = None
         # your core components
         self.globalsInstance: Globals = Globals()
         self.helpers: Helpers = Helpers()
@@ -145,6 +99,7 @@ class Chatter:
         self.llmCaller: LLMCaller = LLMCaller()
         self.modelOutputAdapter: ModelOutputAdapter = ModelOutputAdapter()
         self.masker: Masker = Masker()
+        self.answer_renderer: RichAnswerRenderer = RichAnswerRenderer()
         self.tokenBudget: TokenBudget = TokenBudget()
         self.grounder: Grounder = Grounder()
 
@@ -170,12 +125,15 @@ class Chatter:
         original_query:
             Original CLI input, before any document selection changes the command.
         """
+        session.answer_grounding_verified = False
+        session.browser_answer_content = ""
         streaming = self.is_streaming if is_streaming is None else is_streaming
         display_query = original_query if original_query is not None else session.query
         if apiChunkHandler is not None or getattr(session, "is_service", False):
             display_query = None
 
         command, argument = self.rag.parse_chat_command(session.query or "")
+        session.summarize = command == "summarize"
         if command == "summarize":
             return self._run_document_summary(
                 session, argument, apiChunkHandler, display_query
@@ -240,7 +198,10 @@ class Chatter:
             or "english"
         )
         split = getattr(session, "keyword_action_split", None)
-        answer_query = session.query
+        mark_text_enabled = bool(getattr(session, "mark_text", False))
+        flow_grounding_enabled = bool(getattr(session, "enable_grounding", True))
+        grounding_enabled = mark_text_enabled and flow_grounding_enabled
+        answer_query = session.query or query
         if split is not None:
             action_instruction = ""
             if split.action_part is not None:
@@ -252,6 +213,22 @@ class Chatter:
                 answer_instruction=split.answer_instruction,
                 action_instruction=action_instruction,
             )
+        if grounding_enabled:
+            request = "\n".join(
+                filter(
+                    None,
+                    (
+                        query,
+                        getattr(session, "orig_translated_query_en", None),
+                        split.action_part if split is not None else None,
+                    ),
+                )
+            )
+            if _LIST_OR_TABLE_REQUEST.search(request) and not (
+                _EVIDENCE_REQUEST.search(request)
+                or _EVIDENCE_REQUEST.search(answer_query)
+            ):
+                answer_query += "\n\nAdd evidence phrases."
         if split is not None:
             self.pretty_always.write(
                 "I",
@@ -289,9 +266,6 @@ class Chatter:
         if session.extraOllamaOptions:
             ollama_options.update(session.extraOllamaOptions)
 
-        mark_text_enabled = bool(getattr(session, "mark_text", False))
-        flow_grounding_enabled = bool(getattr(session, "enable_grounding", True))
-        grounding_enabled = mark_text_enabled and flow_grounding_enabled
         will_apply_grounding = apiChunkHandler is not None and grounding_enabled
 
         # Build chunk handler — wraps real-time streaming to API client when grounding is off
@@ -320,7 +294,12 @@ class Chatter:
             )
             if apiChunkHandler is not None:
                 apiChunkHandler(web_warning)
-        if query_notice and apiChunkHandler is not None:
+        if (
+            query_notice
+            and apiChunkHandler is not None
+            and streaming
+            and not will_apply_grounding
+        ):
             apiChunkHandler(query_notice)
 
         if mark_text_enabled and not flow_grounding_enabled:
@@ -379,8 +358,12 @@ class Chatter:
             )
             return False, None
 
+        if apiChunkHandler is None:
+            session.browser_answer_content = self.masker.mask(content)
+
         grounding_notice: str = ""
         skip_grounding_for_short_answer: bool = False
+        unverified_output: bool = False
         session.grounding_proxy_text = ""
         session.grounding_proxy_sentences = {}
         if grounding_enabled:
@@ -413,36 +396,58 @@ class Chatter:
                 response_language,
                 self._grounding_language_detector(session),
             ):
+                web_leg_enabled = bool(getattr(session, "web_search", False)) or (
+                    str(getattr(session, "retrieve_mode", "") or "").upper() == "WEB"
+                )
+                unverified_output = (
+                    self.grounder.has_structured_answer(content) or web_leg_enabled
+                )
+                if unverified_output:
+                    grounding_notice = self.grounder.unverified_structure_notice()
+                    disposition = "generated output shown unverified"
+                else:
+                    content = self.grounder.no_evidence_message()
+                    disposition = "generated answer withheld"
                 self.pretty.write(
                     "W",
                     "Grounding",
-                    "No supporting evidence found in retrieved context; "
-                    "returning no-evidence fallback.",
+                    f"Grounding requirements were not satisfied by retrieved context; {disposition}.",
                     color=ORANGE,
                 )
-                content = self.grounder.no_evidence_message()
-                answer.content = content
-                self.rag.confidenceEvaluator.store_answer_confidence(
-                    session,
-                    [],
-                    note="no grounded evidence in retrieved context",
-                    emit=False,
-                )
+                if not web_leg_enabled:
+                    self.rag.confidenceEvaluator.store_answer_confidence(
+                        session,
+                        list(session.last_chosen_chunks),
+                        note=(
+                            f"grounding failed; {disposition}. "
+                            "Retrieval metrics describe selected chunks, not verified answer support"
+                        ),
+                        emit=False,
+                        grounding_failed=True,
+                    )
                 self.confidence_logger.log_step(
                     session,
                     step_name="grounding evidence check",
-                    status="fallback",
+                    status="unverified" if unverified_output else "fallback",
                     confidence_level="LOW",
                     confidence_score=0.0,
-                    detail="no supporting overlap between answer and retrieved evidence",
+                    detail=f"answer did not satisfy grounding requirements; {disposition}",
                     source="grounding",
                 )
-                # Avoid presenting unrelated source files for an ungrounded answer.
-                session.last_chosen_chunks = []
-                session.chunk_texts_for_grounding = []
+                answer.content = content
+                if not unverified_output:
+                    # A withheld answer must not present unrelated sources.
+                    session.last_chosen_chunks = []
+                    session.chunk_texts_for_grounding = []
+            else:
+                session.answer_grounding_verified = True
 
         if session.use_chat_context:
-            self.chatContext.add_chat_turn(session, query, content)
+            self.chatContext.add_chat_turn(
+                session,
+                query,
+                grounding_notice + content if unverified_output else content,
+            )
 
         # Post-process answer content
         masked_content = self.masker.mask(content)
@@ -514,7 +519,13 @@ class Chatter:
         if confidence_notice:
             cli_confidence_notice = self._build_answer_confidence_notice_cli(confidence)
             answer.content = answer.content + confidence_notice
-            cli_answer = cli_answer + (cli_confidence_notice or confidence_notice)
+            # The separator renders the confidence block with the standard
+            # background so the answer body keeps its distinct one.
+            cli_answer = (
+                cli_answer
+                + ANSWER_META_SEPARATOR
+                + (cli_confidence_notice or confidence_notice)
+            )
             self.confidence_logger.log_step(
                 session,
                 step_name="final answer confidence",
@@ -554,10 +565,18 @@ class Chatter:
                         "W", "VisualMarker", f"Visual marking failed: {exc}"
                     )
 
-        if apiChunkHandler is None and grounding_enabled:
+        if apiChunkHandler is None:
             marked = list(getattr(session, "marked_documents", []) or [])
             if marked:
                 self._open_marked_documents(marked)
+            # Offer the browser view without opening it automatically.
+            grounded_page = self._grounded_answer_browser_document(
+                session,
+                mark_supported=grounding_enabled
+                and not skip_grounding_for_short_answer,
+            )
+            if grounded_page is not None:
+                self._open_grounded_answer_page(grounded_page)
 
         self.print_llm_answer(
             cli_answer, self.terminal_line_size, original_query=display_query
@@ -569,7 +588,10 @@ class Chatter:
             if meta_md:
                 print(meta_md)
             if grounding_enabled:
-                if chosen:
+                marked = list(getattr(session, "marked_documents", []) or [])
+                if not marked and chosen:
+                    self._show_original_sources(chosen)
+                elif chosen:
                     self._show_web_sources(chosen)
             else:
                 if chosen:
@@ -577,7 +599,7 @@ class Chatter:
 
         self.confidence_logger.flush_turn_csv(
             session,
-            outcome="ok",
+            outcome="grounding_unverified" if unverified_output else "ok",
             answer_text=answer.content or "",
         )
 
@@ -595,7 +617,9 @@ class Chatter:
         display_query: str | None,
     ) -> tuple[bool, str]:
         session.reset_turn_state()
+        session.summarize = True
         session.summary_grounding = True
+        session.answer_grounding_verified = False
         session.summary_statements = []
         session.last_chosen_chunks = []
         session.marked_documents = []
@@ -638,6 +662,8 @@ class Chatter:
                 api_chunk_handler(message)
             return False, message
         raw_answer = answer
+        if api_chunk_handler is None:
+            session.browser_answer_content = self.masker.mask(raw_answer)
         selected_file = str(documents[0].metadata.get("FilePath") or title)
         confirmation = FileSelector.confirmation(selected_file)
         history_query = session.query or "summarize:"
@@ -665,6 +691,7 @@ class Chatter:
                 session.chunk_texts_for_grounding = []
                 self.pretty.write("W", "Grounding", answer, color=ORANGE)
 
+        session.answer_grounding_verified = supported
         if supported or skip_grounding:
             answer = self.masker.mask(raw_answer)
         if skip_grounding:
@@ -703,7 +730,9 @@ class Chatter:
         answer += self._build_answer_confidence_notice(
             confidence, monospace=api_chunk_handler is not None
         )
-        cli_answer += self._build_answer_confidence_notice_cli(confidence)
+        cli_confidence_notice = self._build_answer_confidence_notice_cli(confidence)
+        if cli_confidence_notice:
+            cli_answer += ANSWER_META_SEPARATOR + cli_confidence_notice
         answer = confirmation + answer
         cli_answer = confirmation + cli_answer
         self.confidence_logger.log_step(
@@ -723,8 +752,17 @@ class Chatter:
                 )  # pyright: ignore[reportPrivateUsage]
             except Exception as exc:
                 self.pretty.write("W", "VisualMarker", f"Visual marking failed: {exc}")
-            if api_chunk_handler is None and session.marked_documents:
-                self._open_marked_documents(session.marked_documents)
+        if api_chunk_handler is None and not getattr(session, "is_service", False):
+            marked = list(session.marked_documents or [])
+            if marked:
+                self._open_marked_documents(marked)
+            if not getattr(session, "summarize", False):
+                grounded_page = self._grounded_answer_browser_document(
+                    session,
+                    mark_supported=supported and session.mark_text,
+                )
+                if grounded_page is not None:
+                    self._open_grounded_answer_page(grounded_page)
         self.print_llm_answer(
             cli_answer, self.terminal_line_size, original_query=display_query
         )
@@ -778,6 +816,14 @@ class Chatter:
             if notices
             else ""
         )
+        user_query_input = getattr(session, "user_query_input", None)
+        if user_query_input:
+            command, argument = self.rag.parse_chat_command(user_query_input)
+            if command == "new":
+                return (
+                    coverage_notice
+                    + f'{Symbols.sym_icon("SEARCH")}*Query: "{argument}"*\n\n---\n\n'
+                )
         effective_q: str | None = getattr(session, "effective_query", None)
         if not effective_q or not query or effective_q.strip() == query.strip():
             return coverage_notice
@@ -846,7 +892,8 @@ class Chatter:
         elif level == "MEDIUM":
             color = YELLOW
 
-        return f"\n\n---\n\n**Answer confidence:**\n{color}{payload}{RESET}"
+        status, newline, details = payload.partition("\n")
+        return f"\n\n---\n\n**Answer confidence:**\n{color}{status}{RESET}{newline}{details}"
 
     def _handle_no_results(
         self,
@@ -1043,6 +1090,59 @@ class Chatter:
             self.pretty,
             cyan=CYAN,
             project_root=self.cfg.get_str("_ABSOLUTE_PATH") or None,
+            _file_utils=self.fileUtils,
+            local_server=getattr(self, "local_docs_server", None),
+        )
+
+    def _grounded_answer_browser_document(
+        self, session: Session, *, mark_supported: bool = True
+    ) -> tuple[str, bytes, dict[str, str]] | None:
+        """Build an answer preview, explicitly labelled when not verified."""
+        verified = bool(getattr(session, "answer_grounding_verified", False))
+        browser_answer = getattr(session, "browser_answer_content", "")
+        answer = str(
+            browser_answer or getattr(session, "last_answer_content", "") or ""
+        )
+        evidence = list(getattr(session, "chunk_texts_for_grounding", []) or [])
+        evidence.extend(self.grounder.collect_web_texts(session))
+        if not answer.strip():
+            return None
+        if browser_answer:
+            answer += self._build_answer_confidence_notice(
+                session.answer_confidence_result
+            )
+        page, csp = GroundedAnswerHtmlRenderer().render(
+            answer,
+            self.grounder,
+            session,
+            evidence,
+            sentence_translations=session.grounding_proxy_sentences,
+            verified=verified,
+            mark_supported=mark_supported,
+        )
+        return (
+            "GroundedAnswer.html" if verified else "AnswerPreview.html",
+            page.encode("utf-8"),
+            {
+                "Content-Security-Policy": csp,
+                "Referrer-Policy": "no-referrer",
+                "X-Frame-Options": "DENY",
+            },
+        )
+
+    def _open_grounded_answer_page(
+        self, document: tuple[str, bytes, dict[str, str]]
+    ) -> None:
+        """Offer the grounded answer as a link that opens only on user request."""
+        from Chat.MarkedDocsViewer import open_grounded_answer_html
+
+        open_grounded_answer_html(
+            document[0],
+            document[1],
+            self.pretty,
+            cyan=CYAN,
+            local_server=getattr(self, "local_docs_server", None),
+            response_headers=document[2],
         )
 
     def _show_web_sources(self, chosen: list[Any]) -> None:
@@ -1093,9 +1193,14 @@ class Chatter:
                 f"{len(sorted_paths)} document(s), click to open:",
                 color=CYAN,
             )
+            link_green: str = "\033[32m"
+            reset: str = "\033[0m"
             for path in sorted_paths:
                 abs_path = Path(path).resolve()
-                print(f"   {Symbols.sym_icon('DOC')}{abs_path.as_uri()}")
+                print(
+                    f"{link_green}   {Symbols.sym_icon('DOC')}{abs_path.name}: "
+                    f"{abs_path.as_uri()}{reset}"
+                )
 
         self._show_web_sources(chosen)
 
@@ -1107,28 +1212,18 @@ class Chatter:
         color: str = "",
         original_query: str | None = None,
     ) -> None:
-        """
-        Wrap `answer` by words to fit `terminal_width` and print each line prefixed.
-
-        - Preserves existing paragraph breaks (lines from answer.splitlines()).
-        - Displays Markdown list markers as bullets outside fenced code blocks.
-        - Avoids breaking words when possible.
-        - Falls back safely if terminal_width is too small.
-        """
-        # Build optional background/foreground ANSI codes from config
+        """Render the CLI answer as Markdown with Rich."""
         from typing import cast as _cast
 
         import Gui.Colors as _colors
 
-        if original_query is not None:
-            print(f"{YELLOW}Original query: {original_query}{RESET}")
-
         if prefix is None:
             prefix = f"{Symbols.sym_icon('CHAT')}>  "
 
-        if color:
-            style: str = color
-        else:
+        background = ""
+        foreground = ""
+        body_background = ""
+        if not color:
             display_raw: Any = self.cfg.get("ANSWER_DISPLAY")
             display_cfg: dict[str, Any] = (
                 _cast(dict[str, Any], display_raw)
@@ -1137,54 +1232,21 @@ class Chatter:
             )
             bg_name: str = str(display_cfg.get("bg") or "")
             fg_name: str = str(display_cfg.get("fg") or "")
-            bg: str = str(getattr(_colors, bg_name, "")) if bg_name else ""
-            fg: str = str(getattr(_colors, fg_name, "")) if fg_name else ""
-            style = bg + fg
+            body_bg_name: str = str(display_cfg.get("body_bg") or "")
+            background = str(getattr(_colors, bg_name, "")) if bg_name else ""
+            foreground = str(getattr(_colors, fg_name, "")) if fg_name else ""
+            body_background = (
+                str(getattr(_colors, body_bg_name, "")) if body_bg_name else ""
+            )
 
-        avail = max(1, terminal_width - max(0, wcswidth(_ANSI_RE.sub("", prefix))))
-
-        fence = ""
-        for paragraph in answer.splitlines():
-            # preserve empty lines as a prefixed blank line
-            if not paragraph.strip():
-                print(f"{style}{prefix}{' ' * avail}{RESET}" if style else prefix)
-                continue
-
-            plain = _ANSI_RE.sub("", paragraph).lstrip(" \t")
-            fence_match = re.match(r"(`{3,}|~{3,})(.*)$", plain)
-            if fence_match:
-                delimiter, trailing = fence_match.groups()
-                if not fence:
-                    fence = delimiter
-                elif (
-                    delimiter[0] == fence[0]
-                    and len(delimiter) >= len(fence)
-                    and not trailing.strip()
-                ):
-                    fence = ""
-            elif not fence and not re.fullmatch(
-                r"([-*_])(?:[ \t]*\1){2,}[ \t]*", plain
-            ):
-                paragraph = _MARKDOWN_BULLET_RE.sub(r"\1•", paragraph, count=1)
-
-            wrapped_lines = _wrap_preserving_ansi(paragraph, avail)
-
-            # If wrap returned nothing (very long unbreakable word), force a fallback
-            if not wrapped_lines:
-                # hard-break the paragraph into chunks of avail
-                wrapped_lines = [
-                    paragraph[i : i + avail] for i in range(0, len(paragraph), avail)
-                ]
-
-            for line in wrapped_lines:
-                if style:
-                    # Re-apply the outer style after every inner RESET so that
-                    # grounded-sentence spans (which close with \033[0m) don't
-                    # cancel the background for the rest of the line.
-                    visible_width = max(0, wcswidth(_ANSI_RE.sub("", line)))
-                    padded = line.replace(RESET, RESET + style) + " " * max(
-                        0, avail - visible_width
-                    )
-                    print(f"{style}{prefix}{padded}{RESET}")
-                else:
-                    print(f"{prefix}{line}")
+        renderer = getattr(self, "answer_renderer", None) or RichAnswerRenderer()
+        renderer.render(
+            answer,
+            terminal_width,
+            prefix=prefix,
+            original_query=original_query,
+            color=color,
+            background=background,
+            foreground=foreground,
+            body_background=body_background,
+        )

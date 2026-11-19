@@ -37,6 +37,8 @@ Rules:
   entities must contain "animal", not "animals". Retrieval queries may use correct grammar.
 - Keywords may include general synonyms of the information need (diet, nutrition, habitat),
   but NEVER guessed answer values (insects, forests, RAM sizes, dates, etc.).
+  Output-format terms (table, list, diagram, flowchart, mermaid) are NEVER keywords
+  or retrieval queries; they belong only in action_part and answer_instruction.
 - Use the accepted rewrite only to supply approved conversational referents.
   Do not independently interpret conversation history, invent entities, or guess references.
 - Pronoun substitution enabled: {pronoun_substitution}.
@@ -96,7 +98,9 @@ Example output:
   "key_words": ["RAM capacity", "maximum memory", "expansion slots", "memory capacity", "product A", "product B"]
 }}
 Notice that "compare", "table" and "missing evidence" are NOT search keywords.
-They are output instructions, not the subject to retrieve. Do not copy these
+They are output instructions, not the subject to retrieve. The same applies to
+requested diagrams: "diagram", "flowchart" and "mermaid" go only into action_part
+and answer_instruction. Do not copy these
 example products into the actual result.
 
 Example input request:

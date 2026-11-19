@@ -20,6 +20,8 @@ SUMMARY_WORD_LIMITS: dict[str, dict[str, int]] = {
 # into selected evidence languages. The displayed answer language is unchanged.
 # Retrieval language is used only for evidence lacking language metadata.
 # Web evidence without language metadata is language-detected first.
+# Every prose claim must pass; lists and Mermaid need one supported claim.
+# Short prose/list claims are validated even below the highlighting threshold.
 # Debug level 30 shows the pre-validation answer and translation routes;
 # debug level 33 shows per-chunk matches and grounding/marking timings.
 # Source-document highlights are prepared only when the original answer has

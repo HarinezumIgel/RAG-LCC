@@ -29,6 +29,12 @@ def test_resolve_install_spec_maps_lingua_with_minimum_version() -> None:
     )
 
 
+def test_resolve_install_spec_maps_markdown_it_to_distribution() -> None:
+    assert install_required.resolve_install_spec("markdown_it") == (
+        "markdown-it-py>=4.2.0"
+    )
+
+
 def test_install_packages_streams_output(monkeypatch, tmp_path: Path) -> None:
     python_exe = tmp_path / "venv" / "bin" / "python"
     python_exe.parent.mkdir(parents=True)

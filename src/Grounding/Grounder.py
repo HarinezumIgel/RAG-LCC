@@ -33,8 +33,11 @@ import time
 from collections import OrderedDict
 from typing import TYPE_CHECKING, Any, Callable, Mapping, Sequence, cast
 
+from markdown_it import MarkdownIt
+
 from Commons.SingletonMixin import SingletonMixin
 from Config.Config import Config
+from Grounding.MermaidGrounder import MermaidGrounder
 from Grounding.SourceReferences import SummaryStatement
 from Gui.Colors import CYAN, ORANGE
 from Gui.PrettyWriter import PrettyWriter
@@ -51,6 +54,47 @@ _LANE_WIDTH_RX = re.compile(r"\bx(?=\d+\b)", re.IGNORECASE)
 # Split on sentence-ending punctuation followed by whitespace or end-of-string.
 # Keeps the delimiter attached to the preceding sentence.
 _SENTENCE_SPLIT_RX = re.compile(r"(?<=[.!?])\s+")
+_SENTENCE_SPACING_RX = re.compile(r"(?<=[.!?])(\s+)")
+_MARKDOWN_LINE_PREFIX_RX = re.compile(r"[ \t]*(?:(?:[-+*]|\d{1,9}[.)])[ \t]+)?")
+_TABLE_PIPE_RX = re.compile(r"(?<!\\)(\|)")
+
+# Verdict/negation words in Mermaid claims (e.g. "Cats Mammals Yes") express
+# the diagram's judgment, not retrievable evidence text, and are therefore
+# exempt from the lexical co-occurrence fallback.
+_MERMAID_VERDICT_TOKENS = frozenset(
+    {"yes", "no", "not", "true", "false", "unknown", "unclear"}
+)
+
+# Minimum shared-prefix length for Mermaid stem matching: long enough that
+# abbreviations match their full form (chimp/chimpanzee) while short generic
+# stems (cat/catalog) cannot.
+_MERMAID_STEM_PREFIX_LEN = 5
+
+
+def _mermaid_stem(token: str) -> str:
+    """Strip a trailing plural 's' so singular/plural label forms compare equal."""
+    if len(token) > 3 and token.endswith("s") and not token.endswith("ss"):
+        return token[:-1]
+    return token
+
+
+def _mermaid_stem_in_chunk(stem: str, chunk_stems: set[str]) -> bool:
+    """Match a claim stem against chunk stems, allowing long-prefix variants.
+
+    Exact stem equality, or a shared prefix of at least
+    ``_MERMAID_STEM_PREFIX_LEN`` characters where one stem is a prefix of the
+    other (e.g. diagram label "chimp" vs. evidence "chimpanzee").
+    """
+    if stem in chunk_stems:
+        return True
+    if len(stem) < _MERMAID_STEM_PREFIX_LEN:
+        return False
+    return any(
+        (chunk_stem.startswith(stem) or stem.startswith(chunk_stem))
+        and min(len(stem), len(chunk_stem)) >= _MERMAID_STEM_PREFIX_LEN
+        for chunk_stem in chunk_stems
+    )
+
 
 Gram = tuple[str, ...]
 # (text, native_lang, stage_label) -> detected language name or code.
@@ -60,6 +104,24 @@ LanguageDetector = Callable[[str, str, str], str]
 def split_sentences(paragraph: str) -> list[str]:
     """Split one paragraph exactly like the grounding checks do."""
     return _SENTENCE_SPLIT_RX.split(paragraph)
+
+
+def _table_row_lines(markdown: str) -> set[int]:
+    if "|" not in markdown:
+        return set()
+    return {
+        token.map[0]
+        for token in MarkdownIt("default").enable("table").parse(markdown)
+        if token.type == "tr_open" and token.map
+    }
+
+
+def _mark_table_cells(text: str, mark: Callable[[str], str]) -> str:
+    """Keep Markdown cell separators outside the highlight markup."""
+    return "".join(
+        mark(part) if index % 2 == 0 else part
+        for index, part in enumerate(_TABLE_PIPE_RX.split(text))
+    )
 
 
 def tokenize(text: str) -> list[str]:
@@ -205,6 +267,7 @@ class Grounder(SingletonMixin):
         )
         self.pretty = PrettyWriter()
         self.pretty_always = PrettyWriter(always_on=True)
+        self.mermaid_grounder = MermaidGrounder()
 
     # ------------------------------------------------------------------
     # Sentence matching
@@ -411,6 +474,129 @@ class Grounder(SingletonMixin):
                     result[position].append(sentence)
         return result
 
+    def mark_answer_html(
+        self,
+        session: Any,
+        answer_text: str,
+        evidence_texts: Sequence[str],
+        sentence_translations: Mapping[str, str] | None = None,
+    ) -> str:
+        """Wrap only evidence-supported answer spans in HTML ``<mark>`` tags."""
+        if not evidence_texts or not answer_text:
+            return answer_text
+
+        def inline_mark(text: str) -> str:
+            return f'<mark class="grounded">{text}</mark>'
+
+        def mark_cell(text: str) -> str:
+            body = text.strip()
+            if not body:
+                return text
+            start = len(text) - len(text.lstrip())
+            return text[:start] + inline_mark(body) + text[start + len(body) :]
+
+        def mark_span(text: str, in_table: bool) -> str:
+            if in_table:
+                return _mark_table_cells(text, mark_cell)
+            # Markdown must see indentation and list/quote markers before inline HTML.
+            match = re.match(r"^[ \t]*(?:(?:[-+*]|\d+[.)]|>)[ \t]+)*", text)
+            prefix = match.group(0) if match else ""
+            return prefix + inline_mark(text[len(prefix) :])
+
+        started = time.perf_counter()
+        try:
+            translations = sentence_translations or {}
+            is_summary = bool(getattr(session, "summary_grounding", False))
+            indexes = [] if is_summary else self._indexes(evidence_texts)
+            window = self.cfg.get_int("_GROUNDING.min_overlap_window")
+            min_tokens = self.cfg.get_int("_GROUNDING.min_sentence_tokens")
+            support: dict[str, list[tuple[int, str]]] = {}
+            if is_summary:
+                docs = list(getattr(session, "last_chosen_chunks", []) or [])
+                probes = "\n".join(
+                    translations.get(sentence.strip(), sentence)
+                    for line in self.mermaid_grounder.without_blocks(
+                        answer_text
+                    ).splitlines()
+                    for sentence in split_sentences(line)
+                )
+                support = self._session_summary_support(
+                    session,
+                    probes,
+                    evidence_texts,
+                    [doc.metadata for doc in docs],
+                    translations,
+                )
+
+            result: list[str] = []
+            fence_char = ""
+            fence_size = 0
+            table_rows = _table_row_lines(answer_text)
+            for line_num, line in enumerate(answer_text.splitlines(keepends=True)):
+                content = line.rstrip("\r\n")
+                newline = line[len(content) :]
+                plain = content.lstrip()
+                opening = re.match(r"(`{3,}|~{3,})", plain)
+                closing = re.match(r"(`{3,}|~{3,})[ \t]*$", plain)
+                if opening is not None and not fence_char:
+                    fence_char = opening.group(1)[0]
+                    fence_size = len(opening.group(1))
+                    result.append(line)
+                    continue
+                if fence_char:
+                    result.append(line)
+                    if (
+                        closing is not None
+                        and closing.group(1)[0] == fence_char
+                        and len(closing.group(1)) >= fence_size
+                    ):
+                        fence_char = ""
+                        fence_size = 0
+                    continue
+
+                in_table = line_num in table_rows
+                parts = _SENTENCE_SPACING_RX.split(content)
+                for position in range(0, len(parts), 2):
+                    sentence = parts[position]
+                    translated = translations.get(sentence.strip(), sentence)
+                    if is_summary:
+                        if translated in support:
+                            parts[position] = mark_span(sentence, in_table)
+                        elif translated == sentence:
+                            spans = sorted(
+                                (start, start + len(part))
+                                for part in support
+                                if (start := sentence.find(part)) >= 0
+                            )
+                            marked: list[str] = []
+                            end = 0
+                            for start, stop in spans:
+                                if start < end:
+                                    continue
+                                marked.extend(
+                                    (
+                                        sentence[end:start],
+                                        mark_span(sentence[start:stop], in_table),
+                                    )
+                                )
+                                end = stop
+                            if end:
+                                marked.append(sentence[end:])
+                                parts[position] = "".join(marked)
+                    else:
+                        probe = self._sentence_probe(translated, min_tokens)
+                        if probe is not None and any(
+                            _supports(probe, index, window) for index in indexes
+                        ):
+                            parts[position] = mark_span(sentence, in_table)
+                result.append("".join(parts) + newline)
+            return self.mermaid_grounder.with_grounding_styles(
+                "".join(result),
+                lambda claim: self._mermaid_claim_is_grounded(claim, evidence_texts),
+            )
+        finally:
+            self._debug_timing(session, "HTML answer marks", started)
+
     def ground_answer_cli(
         self,
         answer: str,
@@ -442,23 +628,69 @@ class Grounder(SingletonMixin):
                 _supports(probe, index, window) for index in indexes
             )
 
+        def mark_part(part: str) -> str:
+            body = part.strip()
+            if not body:
+                return transform(part)
+            start = len(part) - len(part.lstrip())
+            stop = start + len(body)
+            return (
+                transform(part[:start])
+                + open_tag
+                + transform(body)
+                + reset
+                + transform(part[stop:])
+            )
+
+        # Rich parses Markdown before decoding ANSI. Keep list prefixes and
+        # table delimiters outside the colour spans without changing the probes.
+        table_rows = _table_row_lines(answer)
         result_lines: list[str] = []
-        for para in answer.splitlines():
-            if not para.strip():
-                result_lines.append(para)
+        fence_char = ""
+        fence_size = 0
+        for line_num, para in enumerate(answer.splitlines(keepends=True)):
+            line_end = para[len(para.rstrip("\r\n")) :]
+            para = para.removesuffix(line_end)
+            plain = re.sub(r"\033\[[0-9;]*m", "", para).lstrip()
+            opening = re.match(r"(`{3,}|~{3,})", plain)
+            if opening is not None and not fence_char:
+                fence_char = opening.group(1)[0]
+                fence_size = len(opening.group(1))
+                result_lines.append(transform(para) + line_end)
                 continue
-            annotated: list[str] = []
-            for sentence in split_sentences(para):
-                probes = [sentence]
-                translated = (sentence_translations or {}).get(sentence.strip())
-                if translated and translated != sentence:
+            closing = re.match(r"(`{3,}|~{3,})[ \t]*$", plain)
+            if fence_char:
+                result_lines.append(transform(para) + line_end)
+                if (
+                    closing is not None
+                    and closing.group(1)[0] == fence_char
+                    and len(closing.group(1)) >= fence_size
+                ):
+                    fence_char = ""
+                    fence_size = 0
+                continue
+            if not para.strip():
+                result_lines.append(para + line_end)
+                continue
+            prefix = _MARKDOWN_LINE_PREFIX_RX.match(para)
+            prefix_end = prefix.end() if prefix is not None else 0
+            parts = _SENTENCE_SPACING_RX.split(para[prefix_end:])
+            for position in range(0, len(parts), 2):
+                sentence = parts[position]
+                probe_text = para[:prefix_end] + sentence if position == 0 else sentence
+                probes = [probe_text]
+                translated = (sentence_translations or {}).get(probe_text.strip())
+                if translated and translated != probe_text:
                     probes.insert(0, translated)
                 if any(_grounded(probe) for probe in probes):
-                    annotated.append(f"{open_tag}{transform(sentence)}{reset}")
+                    if line_num in table_rows:
+                        parts[position] = _mark_table_cells(sentence, mark_part)
+                    else:
+                        parts[position] = mark_part(sentence)
                 else:
-                    annotated.append(transform(sentence))
-            result_lines.append(" ".join(annotated))
-        return "\n".join(result_lines)
+                    parts[position] = transform(sentence)
+            result_lines.append(para[:prefix_end] + "".join(parts) + line_end)
+        return "".join(result_lines)
 
     def find_grounding_fragments_in_chunk(
         self, grounded_sentences: list[str], chunk_text: str
@@ -560,11 +792,34 @@ class Grounder(SingletonMixin):
 
     @staticmethod
     def no_evidence_message() -> str:
-        """Return the standard fallback when no evidence is found in context."""
+        """Explain that answer validation failed, not necessarily retrieval."""
         return (
-            "I couldn't find evidence in the retrieved context to answer your query.\n\n"
+            "Grounding failed: I couldn't verify the generated answer against the "
+            "retrieved context, so I withheld it to avoid presenting unsupported claims.\n\n"
+            "This does not mean that no relevant documents were retrieved.\n\n"
             "Try starting a new topic with `new:`, switching to a different collection, "
             "or adjusting your session parameters."
+        )
+
+    def has_structured_answer(self, answer_text: str) -> bool:
+        """Recognize answer structures without counting source metadata or code examples."""
+        body = self.extract_answer_section(answer_text)
+        if self.mermaid_grounder.find_blocks(body):
+            return True
+        _, items = self._answer_claims(body)
+        return bool(items) or any(
+            token.type == "table_open"
+            for token in MarkdownIt("default").enable("table").parse(body)
+        )
+
+    @staticmethod
+    def unverified_structure_notice() -> str:
+        """Warn before displaying an answer that failed grounding."""
+        return (
+            f"{Symbols.sym_warning()} **Not fully grounded:** The generated output "
+            "is shown below, but some or all claims could not be "
+            "verified against the retrieved context. Treat it as unverified, not "
+            "as confirmed facts. Source references are not verified citations.\n\n"
         )
 
     @staticmethod
@@ -578,14 +833,20 @@ class Grounder(SingletonMixin):
     def is_answer_too_short(self, answer_text: str) -> bool:
         """Return True when answer text is too brief for reliable grounding.
 
-        Grounding gets noisy on terse list-style answers (e.g. short bullet lists),
-        so we require both:
-        - at least one sentence at/above min_sentence_tokens, and
-        - a minimum total token volume across the answer body.
+        Lists, prose and Mermaid are checked even when short. Terse Markdown
+        tables retain their existing sentence-level grounding bypass.
         """
         answer_body = self.extract_answer_section(answer_text)
         if not answer_body:
             return True
+        mermaid_blocks = self.mermaid_grounder.find_blocks(answer_body)
+        answer_body = self.mermaid_grounder.without_blocks(answer_body)
+        answer_body = re.sub(r"(?m)^\s{0,3}#{1,6}\s+.*$", "", answer_body)
+        if mermaid_blocks or any(
+            line.strip() and not re.fullmatch(r"\s*\|.*\|\s*", line)
+            for line in answer_body.splitlines()
+        ):
+            return False
 
         min_tokens = self.cfg.get_int("_GROUNDING.min_sentence_tokens")
         min_total_tokens = max(min_tokens * 2, 10)
@@ -682,6 +943,31 @@ class Grounder(SingletonMixin):
                         return True
         return False
 
+    @staticmethod
+    def _answer_claims(answer: str) -> tuple[list[str], list[str]]:
+        """Separate prose claims from list claims using Markdown block structure."""
+        prose: list[str] = []
+        items: list[str] = []
+        list_depth = 0
+        heading = False
+        for token in MarkdownIt("default").parse(answer):
+            if token.type == "list_item_open":
+                list_depth += 1
+            elif token.type == "list_item_close":
+                list_depth -= 1
+            elif token.type == "heading_open":
+                heading = True
+            elif token.type == "heading_close":
+                heading = False
+            elif token.type in {"inline", "fence", "code_block"} and not heading:
+                target = items if list_depth and token.type == "inline" else prose
+                target.extend(
+                    sentence.strip()
+                    for sentence in split_sentences(token.content.replace("\n", " "))
+                    if tokenize(sentence)
+                )
+        return prose, items
+
     def has_grounded_evidence(
         self,
         session: Session,
@@ -702,6 +988,11 @@ class Grounder(SingletonMixin):
         metadata. A grounded proxy is stored on the session
         (``grounding_proxy_text`` / ``grounding_proxy_sentences``) so CLI and
         PDF highlights use it; the displayed answer is never replaced.
+        Document summaries require at least one verified passage from the
+        selected document, using the same matcher as summary highlighting.
+        For other answers, every prose claim must pass. Lists and Mermaid
+        together need at least one supported claim; unsupported items remain
+        unmarked.
         """
         started = time.perf_counter()
         try:
@@ -720,31 +1011,103 @@ class Grounder(SingletonMixin):
         detect_language: LanguageDetector,
     ) -> bool:
         if not answer_text.strip():
-            return True
-
-        try:
-            web_chunk_texts = [
-                item
-                for item in cast(list[object], self.collect_web_texts(session))
-                if isinstance(item, str) and item.strip()
-            ]
-        except Exception:
-            web_chunk_texts = []
-
-        evidence_texts: list[str] = [c for c in chunk_texts if c and c.strip()]
-        evidence_texts.extend(web_chunk_texts)
-        if not evidence_texts:
-            return True
-
-        answer_body = self.extract_answer_section(answer_text)
-        if not answer_body:
             return False
 
-        def _directly_grounded(text: str) -> bool:
-            return bool(
-                self.find_grounded_sentences(text, evidence_texts)
-                or self.relaxed_overlap_supported(text, evidence_texts)
+        is_summary = bool(getattr(session, "summary_grounding", False))
+        chosen_docs = list(getattr(session, "last_chosen_chunks", []) or [])
+        if is_summary:
+            # Keep chunk positions aligned with SummaryChunkId metadata.
+            evidence_texts = chunk_texts
+        else:
+            try:
+                web_chunk_texts = [
+                    item
+                    for item in cast(list[object], self.collect_web_texts(session))
+                    if isinstance(item, str) and item.strip()
+                ]
+            except Exception:
+                web_chunk_texts = []
+            evidence_texts = [c for c in chunk_texts if c and c.strip()]
+            evidence_texts.extend(web_chunk_texts)
+        answer_body = self.extract_answer_section(answer_text)
+        if not answer_body or not any(c and c.strip() for c in evidence_texts):
+            return False
+
+        mermaid_blocks = self.mermaid_grounder.find_blocks(answer_body)
+        mermaid_claims: list[str] = []
+        for block in mermaid_blocks:
+            if not block.parseable or not block.claims:
+                return False
+            mermaid_claims.extend(block.claims)
+        supported: set[str] = set()
+        if mermaid_claims:
+            supported = {
+                claim
+                for claim in mermaid_claims
+                if self._mermaid_claim_is_grounded(claim, evidence_texts)
+            }
+            unsupported_claims = [c for c in mermaid_claims if c not in supported]
+            if unsupported_claims:
+                self.pretty.write(
+                    "W",
+                    "Grounding",
+                    "Mermaid claims without evidence (not highlighted): "
+                    + "; ".join(repr(claim) for claim in unsupported_claims),
+                    color=ORANGE,
+                )
+
+        answer_body = self.mermaid_grounder.without_blocks(answer_body)
+
+        def _directly_grounded(
+            text: str, proxies: Mapping[str, str] | None = None
+        ) -> bool:
+            if is_summary:
+                return bool(
+                    self._session_summary_support(
+                        session,
+                        text,
+                        evidence_texts,
+                        [doc.metadata for doc in chosen_docs],
+                        proxies,
+                    )
+                )
+            prose, items = self._answer_claims(text)
+
+            def claim_supported(claim: str) -> bool:
+                if self.find_grounded_sentences(
+                    claim, evidence_texts
+                ) or self.relaxed_overlap_supported(claim, evidence_texts):
+                    return True
+                # Highlighting excludes short sentences, but validation must
+                # still check short prose and terse list entries.
+                probe = _SentenceProbe(tokenize(claim))
+                return len(probe.tokens) < self.cfg.get_int(
+                    "_GROUNDING.min_sentence_tokens"
+                ) and any(
+                    _supports(
+                        probe, index, self.cfg.get_int("_GROUNDING.min_overlap_window")
+                    )
+                    for index in self._indexes(evidence_texts)
+                )
+
+            return all(claim_supported(claim) for claim in prose) and (
+                bool(supported)
+                or any(
+                    claim_supported(claim)
+                    or claim_supported(
+                        " ".join(
+                            token
+                            for token in tokenize(claim)
+                            if token not in _MERMAID_VERDICT_TOKENS
+                        )
+                    )
+                    for claim in items
+                )
+                or (bool(prose) and not items and not mermaid_claims)
             )
+
+        if not answer_body.strip():
+            return not is_summary and bool(supported)
 
         from Helpers.LanguageConfig import get_lang_name_to_code
 
@@ -757,7 +1120,6 @@ class Grounder(SingletonMixin):
             return language_codes.get(language, language)
 
         evidence_languages: list[str] = []
-        chosen_docs = list(getattr(session, "last_chosen_chunks", []) or [])
         has_unknown_language = not chosen_docs
         for doc in chosen_docs:
             metadata = getattr(doc, "metadata", {}) or {}
@@ -834,13 +1196,41 @@ class Grounder(SingletonMixin):
             return True
         return translate_first and _directly_grounded(answer_body)
 
+    def _mermaid_claim_is_grounded(
+        self, claim: str, evidence_texts: Sequence[str]
+    ) -> bool:
+        """Check each Mermaid label/relationship as a complete lexical claim."""
+        probe = _SentenceProbe(tokenize(claim))
+        if len(probe.tokens) < 2:
+            return False
+        window = self.cfg.get_int("_GROUNDING.min_overlap_window")
+        indexes = self._indexes(evidence_texts)
+        if any(_supports(probe, index, window) for index in indexes):
+            return True
+        # Verdict-style claims ("Cats Mammals Yes") never occur verbatim in
+        # evidence. Fall back to requiring every substantive claim token to
+        # co-occur within a single evidence chunk; hallucinated labels and
+        # relationships assembled across chunks still fail.
+        substantive = {
+            _mermaid_stem(token)
+            for token in probe.tokens
+            if token not in _MERMAID_VERDICT_TOKENS
+        }
+        if len(substantive) < 2:
+            return False
+        for index in indexes:
+            chunk_stems = {_mermaid_stem(token) for token in index.tokens}
+            if all(_mermaid_stem_in_chunk(stem, chunk_stems) for stem in substantive):
+                return True
+        return False
+
     def _check_answer_in_document_languages(
         self,
         session: Session,
         answer_body: str,
         answer_language: str,
         document_languages: Sequence[str],
-        is_grounded: Callable[[str], bool],
+        is_grounded: Callable[[str, Mapping[str, str]], bool],
     ) -> bool:
         """Translate and check the answer without changing its displayed text.
 
@@ -919,7 +1309,7 @@ class Grounder(SingletonMixin):
                     f"document language {target}):\n{proxy_text}",
                     color=CYAN,
                 )
-            if is_grounded(proxy_text):
+            if is_grounded(proxy_text, proxy_sentences):
                 session.grounding_proxy_text = proxy_text
                 session.grounding_proxy_sentences = proxy_sentences
                 self.pretty_always.write(
@@ -979,6 +1369,9 @@ class Grounder(SingletonMixin):
             getattr(session, "last_answer_content", "") or ""
         )
         local_texts = list(getattr(session, "chunk_texts_for_grounding", []) or [])
+        answer_body = self.mermaid_grounder.without_blocks(answer_body)
+        if not answer_body.strip():
+            return False
         if getattr(session, "summary_grounding", False):
             docs = list(getattr(session, "last_chosen_chunks", []) or [])
             return bool(
@@ -1017,11 +1410,16 @@ class Grounder(SingletonMixin):
         started = time.perf_counter()
         ansi = self.cfg.get_str("_MARKED_DOCS_COLORS.answer_ansi") or ""
         try:
+            marked_answer = self._mark_grounded_mermaid_blocks(
+                answer_text, evidence_texts, ansi
+            )
             if getattr(session, "summary_grounding", False):
                 docs = list(getattr(session, "last_chosen_chunks", []) or [])
                 probes = "\n".join(
                     (sentence_translations or {}).get(sentence.strip(), sentence)
-                    for line in answer_text.splitlines()
+                    for line in self.mermaid_grounder.without_blocks(
+                        answer_text
+                    ).splitlines()
                     for sentence in split_sentences(line)
                 )
                 support = self._session_summary_support(
@@ -1061,12 +1459,27 @@ class Grounder(SingletonMixin):
                         end = stop
                     return "".join(marked) + transform(sentence[end:])
 
-                return "\n".join(
-                    " ".join(mark(sentence) for sentence in split_sentences(line))
-                    for line in answer_text.splitlines()
-                )
+                lines: list[str] = []
+                in_fence = False
+                for line in marked_answer.splitlines():
+                    fence_match = re.match(r"\s*(`{3,}|~{3,})", line)
+                    if fence_match is not None:
+                        if not in_fence:
+                            in_fence = True
+                        else:
+                            in_fence = False
+                        lines.append(transform(line))
+                    elif in_fence:
+                        lines.append(transform(line))
+                    else:
+                        lines.append(
+                            " ".join(
+                                mark(sentence) for sentence in split_sentences(line)
+                            )
+                        )
+                return "\n".join(lines)
             return self.ground_answer_cli(
-                answer_text,
+                marked_answer,
                 evidence_texts,
                 ansi_codes=ansi,
                 sentence_translations=sentence_translations,
@@ -1074,6 +1487,48 @@ class Grounder(SingletonMixin):
             )
         finally:
             self._debug_timing(session, "CLI answer marks", started)
+
+    def _mark_grounded_mermaid_blocks(
+        self, answer_text: str, evidence_texts: Sequence[str], ansi_codes: str
+    ) -> str:
+        """Highlight the individual Mermaid lines whose claim is supported.
+
+        Mirrors prose grounding: supported diagram lines are marked, lines
+        whose claim lacks evidence stay unmarked.
+        """
+        if not ansi_codes:
+            return answer_text
+        open_tag = f"\033[{ansi_codes}m"
+        reset = "\033[0m"
+        result = answer_text
+        for block in reversed(self.mermaid_grounder.find_blocks(answer_text)):
+            if not block.parseable or not block.claim_lines:
+                continue
+            grounded: dict[str, bool] = {
+                claim: self._mermaid_claim_is_grounded(claim, evidence_texts)
+                for claim in {claim for _, claim in block.claim_lines}
+            }
+            lines_to_mark = {
+                index for index, claim in block.claim_lines if grounded[claim]
+            }
+            if not lines_to_mark:
+                continue
+            source_lines = block.source.splitlines(keepends=True)
+            marked_source: list[str] = []
+            for index, line in enumerate(source_lines):
+                content = line.rstrip("\r\n")
+                newline = line[len(content) :]
+                marked_source.append(
+                    f"{open_tag}{content}{reset}{newline}"
+                    if content and index in lines_to_mark
+                    else line
+                )
+            result = (
+                result[: block.source_start]
+                + "".join(marked_source)
+                + result[block.source_end :]
+            )
+        return result
 
     # ------------------------------------------------------------------
     # Source-document snippets
@@ -1121,6 +1576,10 @@ class Grounder(SingletonMixin):
             session, "last_answer_content", ""
         )
         if not answer_text:
+            return grounded
+        # Diagram claims are validated separately; source snippets stay sentence-based.
+        answer_text = self.mermaid_grounder.without_blocks(answer_text)
+        if not answer_text.strip():
             return grounded
 
         # Only existing local files can be marked. Positions below refer to this

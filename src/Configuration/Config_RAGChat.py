@@ -57,6 +57,17 @@ _CLASSIFICATION_KEYS = []
 
 _DEFAULT_CHAT_NAME = "MyFirstChat"  # Fallback user identifier
 
+# Loopback-only CLI HTML links; gate: SERVE_RAGCHAT_GROUNDED_DOCS in
+# Config_Internet_Env.py. Uses the same bounded token cache as RAGChatService.
+# HTML stays in memory (no temp files) and is cleared at expiry/shutdown.
+# Setup offers port 11436; match forwardPorts/portsAttributes if changed.
+_LOCAL_SERVE_DOCS = {
+    "port": 11436,
+    "ttl_seconds": 1800,
+    "max_total_mb": 200,
+    "single_use": False,
+}
+
 # -----------------------------------------------------------------------------
 # Declared preferred response language of the user (lowercase NLTK language name,
 # e.g. "english", "german", "french"). Must match a value in

@@ -20,7 +20,7 @@ import os
 
 from Compliance.path_validation import validate_absolute_path
 
-_VERSION = "v0.5.2.1/1645 2026-11-14"
+_VERSION = "v0.5.2.2/1660 2026-11-19"
 
 # -----------------------------------------------------------------------------
 # Adjust these hashes when you changed any of these files:
@@ -145,6 +145,7 @@ _ALLOWED_DEBUG_LEVELS = {
     # Answer grounding: translated answer text (or no-translation-needed status),
     # per-chunk sentence matches, snippet counts, marker type.
     "Grounding": 33,
+    "Summary Details": 34,  # Intermediate batch and aggregation summaries
     "Algos": 40,  # Scorer internals, masker, accumulator, keyword extraction
     "Components": 55,  # Synonyms detail, argostranslate, transformers, URL logging
     "Chat Prompt": 60,  # Full prompt text sent to LLM
@@ -226,7 +227,7 @@ TERMINAL_LINE_SIZE = 140
 # LLM answer display
 #   bg: name of a Colors.py constant for the background, or None to disable
 #   fg: name of a Colors.py constant for the foreground, or None for default
-# Adjust the RGB values in Colors.py (ANSWER_BG / ANSWER_FG) to your taste.
+# Adjust the 256-color values in Colors.py (ANSWER_BG / ANSWER_FG) to your taste.
 # -----------------------------------------------------------------------------
 ANSWER_DISPLAY = {
     "bg": "ANSWER_BG",

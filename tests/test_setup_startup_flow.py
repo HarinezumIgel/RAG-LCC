@@ -7,7 +7,7 @@ import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, Literal
 
 import pytest
 
@@ -61,6 +61,111 @@ def _patch_setup_common(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 class TestSetupFlow:
+    @pytest.mark.parametrize("runtime", ["docker", "windows", "host"])
+    def test_listener_guidance_orders_options_by_exposure(
+        self,
+        runtime: Literal["docker", "windows", "host"],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        Setup._print_ragchatservice_listener_guidance(runtime)
+        output = capsys.readouterr().out
+        assert (
+            output.index("127.0.0.1")
+            < output.index("specific")
+            < output.index("0.0.0.0")
+        )
+        assert "remote browsers" in output
+        assert "_SERVE_DOCS.public_base_url" in output
+        assert f"{Setup._PALE_WHITE}    Document links share" in output
+        assert "Loopback-only listeners are reachable only from the" in output
+        assert "same host (or through port forwarding/tunneling)." in output
+        assert "an HTTPS reverse proxy" in output
+        assert f"{Setup._TURQUOISE}127.0.0.1" in output
+        assert f"{Setup._TURQUOISE}0.0.0.0" in output
+
+    @pytest.mark.parametrize("enabled", [False, True])
+    @pytest.mark.parametrize("docs_port", ["11436", "12436"])
+    def test_setup_persists_local_listener_independently_of_openwebui(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+        enabled: bool,
+        docs_port: str,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        config = tmp_path / "Config_Internet_Env.py"
+        flags = (
+            "HF_HUB_OFFLINE",
+            "LICENSE_DOWNLOAD",
+            "WEB_SEARCH_MODE",
+            "SERVE_OPENWEBUI_CHAT",
+            "SERVE_RAGCHATSERVICE_GROUNDED_DOCS",
+            "SERVE_RAGCHAT_GROUNDED_DOCS",
+            "RAG_LCC_NW_TRACE",
+        )
+        config.write_text(
+            "\n".join(f'os.environ["{flag}"] = "0"' for flag in flags) + "\n",
+            encoding="utf-8",
+        )
+        chat_config = tmp_path / "Config_RAGChat.py"
+        chat_config.write_text(
+            '_LOCAL_SERVE_DOCS = {"port": 11436}\n', encoding="utf-8"
+        )
+        monkeypatch.setattr(Setup, "_CFG_DIR", tmp_path)
+        monkeypatch.setattr(Setup, "_detect_runtime_network_context", lambda: "windows")
+        monkeypatch.setattr(Setup, "_write_setup_log", lambda *args, **kwargs: None)
+        monkeypatch.setattr("builtins.input", lambda *args: "")
+        choices = iter(["2", "1"])
+        port_answers = iter(["invalid", "0", "65536", docs_port, docs_port])
+        port_corrections: list[str | None] = []
+
+        def choice(
+            prompt: str,
+            options: list[str],
+            default: str,
+            **kwargs: Any,
+        ) -> str:
+            return next(choices) if prompt.startswith("Choose:") else default
+
+        def text(prompt: str, default: str, **kwargs: Any) -> str:
+            if prompt == "Set _LOCAL_SERVE_DOCS.port":
+                assert default == "11436"
+                port_corrections.append(kwargs.get("correction_value"))
+                return default if docs_port == "11436" else next(port_answers)
+            if "BASE_URL" in prompt:
+                return "http://localhost:11434"
+            if prompt.endswith(".HOST"):
+                assert default == "127.0.0.1"
+                return default
+            return default
+
+        corrections: list[bool | None] = []
+
+        def boolean(prompt: str, default: bool, **kwargs: Any) -> bool:
+            if prompt == "Enable SERVE_RAGCHAT_GROUNDED_DOCS":
+                corrections.append(kwargs.get("correction_value"))
+                return enabled
+            return default
+
+        monkeypatch.setattr(Setup, "_prompt_choice", choice)
+        monkeypatch.setattr(Setup, "_prompt_text", text)
+        monkeypatch.setattr(Setup, "_prompt_bool", boolean)
+
+        Setup._run_setup_questions()
+
+        saved = config.read_text(encoding="utf-8")
+        assert f'os.environ["SERVE_RAGCHAT_GROUNDED_DOCS"] = "{int(enabled)}"' in saved
+        assert 'os.environ["SERVE_OPENWEBUI_CHAT"] = "0"' in saved
+        assert 'os.environ["SERVE_RAGCHATSERVICE_GROUNDED_DOCS"] = "0"' in saved
+        assert corrections == [None, enabled]
+        namespace: dict[str, Any] = {}
+        exec(chat_config.read_text(encoding="utf-8"), namespace)
+        assert namespace["_LOCAL_SERVE_DOCS"]["port"] == int(docs_port)
+        assert port_corrections[-1] == docs_port
+        output = capsys.readouterr().out
+        if docs_port != "11436":
+            assert output.count("Enter a port number between 1 and 65535.") == 3
+
     def test_config_review_uses_installed_configs(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
@@ -285,6 +390,38 @@ class TestSetupFlow:
 
 
 class TestStartupEnvironmentChecks:
+    @pytest.mark.parametrize("enabled", [False, True])
+    def test_ragchat_listener_setting_is_reported_in_orange_when_enabled(
+        self, monkeypatch: pytest.MonkeyPatch, enabled: bool
+    ) -> None:
+        from Gui.Colors import BRIGHT_BLUE, ORANGE
+        from Gui.PrettyWriter import PrettyWriter
+
+        calls: list[tuple[str, str | None]] = []
+        monkeypatch.setenv("SERVE_RAGCHAT_GROUNDED_DOCS", "1" if enabled else "0")
+        monkeypatch.setenv("WEB_SEARCH_MODE", "0")
+
+        def record(
+            self: PrettyWriter,
+            severity: str,
+            label: str,
+            message: str,
+            *args: Any,
+            color: str | None = None,
+            **kwargs: Any,
+        ) -> str:
+            calls.append((message, color))
+            return message
+
+        monkeypatch.setattr(PrettyWriter, "write", record)
+        StartupCommons._report_environment_settings(
+            PrettyWriter(always_on=True), Config(), "RAGChat"
+        )
+        assert (
+            f"SERVE_RAGCHAT_GROUNDED_DOCS={int(enabled)}",
+            ORANGE if enabled else BRIGHT_BLUE,
+        ) in calls
+
     def test_environment_checks_match_expected_keys(self) -> None:
         checks = StartupCommons._environment_checks()
         assert set(checks.keys()) == {

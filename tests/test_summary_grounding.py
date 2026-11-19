@@ -130,9 +130,11 @@ def test_summary_policy_does_not_leak_into_next_question():
     from Globals.Session import Session
 
     session = object.__new__(Session)
+    session.summarize = True
     session.summary_grounding = True
     session.summary_statements = STATEMENTS
     session.reset_turn_state()
+    assert session.summarize is False
     assert session.summary_grounding is False
     assert session.summary_statements == []
 

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import ast
 import os
+import re
 import threading
 from pathlib import Path
 from types import SimpleNamespace
@@ -30,8 +31,10 @@ from Commons.Exceptions import CollectionNotFoundError, LLMResultError
 from Config.Config import Config
 from Configuration import Config_ContextSummarizer, Config_Grounder
 from Chat.ConfidenceEvaluator import ConfidenceEvaluator
-from Gui.Colors import GREEN, ORANGE, RESET, YELLOW
+from Gui.Colors import GREEN, LIGHT_GRAY, ORANGE, RESET, YELLOW
+from Gui.RichAnswerRenderer import ANSWER_META_SEPARATOR
 from Gui.Symbols import Symbols
+from Grounding.Grounder import Grounder
 from Grounding.SourceReferences import (
     SUMMARY_SCHEMA,
     SummaryStatement,
@@ -687,6 +690,60 @@ def test_recursive_reduction_fits_every_prompt(summarizer):
         assert len(call.kwargs["prompt"].encode("utf-8")) + 15 <= 640
 
 
+def test_summary_debug_shows_batches_aggregations_and_final_output(summarizer, session):
+    original_get_str = summarizer.cfg.get_str.side_effect
+    summarizer.cfg.get_str.side_effect = lambda key, *args: (
+        "33" if key == "DEBUG_LEVEL" else original_get_str(key, *args)
+    )
+    summarizer.token_budget.get_effective_context_limit.return_value = 640
+    summarizer.llm_caller.call_llm.return_value = _response(
+        "one two three four five six seven eight", [1]
+    )
+    session.debug_level = 34
+    session.debug_mode = "ge"
+    summarizer.summarize_documents(
+        [Document(page_content=f"chunk{i} " + "word " * 13) for i in range(60)],
+        session=session,
+    )
+
+    debug_calls = [
+        call
+        for call in summarizer.pretty.write.call_args_list
+        if call.kwargs.get("color") == LIGHT_GRAY
+    ]
+    debug_messages = [call.args[2] for call in debug_calls]
+    expected_intermediate = len(summarizer.chunk_summaries) + sum(
+        len(batch_summaries) for batch_summaries in summarizer.reduction_summaries
+    )
+    assert len(summarizer.reduction_summaries) >= 1
+    assert len(debug_messages) == expected_intermediate + 1
+    assert sum(message.startswith("Batch summary ") for message in debug_messages) == (
+        len(summarizer.chunk_summaries)
+    )
+    for pass_number, batch_summaries in enumerate(summarizer.reduction_summaries, 1):
+        assert sum(
+            message.startswith(f"Aggregation pass {pass_number}, batch ")
+            for message in debug_messages
+        ) == len(batch_summaries)
+    assert debug_messages[-1].startswith("Final output:")
+
+
+def test_summary_debug_level_32_shows_only_final_output(summarizer):
+    original_get_str = summarizer.cfg.get_str.side_effect
+    summarizer.cfg.get_str.side_effect = lambda key, *args: (
+        "32" if key == "DEBUG_LEVEL" else original_get_str(key, *args)
+    )
+    summarizer.summarize_documents([Document(page_content="some source content")])
+
+    debug_calls = [
+        call
+        for call in summarizer.pretty.write.call_args_list
+        if call.kwargs.get("color") == LIGHT_GRAY
+    ]
+    assert len(debug_calls) == 1
+    assert debug_calls[0].args[2].startswith("Final output:")
+
+
 def test_progress_counts_successful_calls_per_stage(summarizer, monkeypatch):
     bars: list[Any] = []
 
@@ -1146,10 +1203,28 @@ def _chatter(rag):
         RESET=RESET,
         Symbols=Symbols,
         ModelOutput=SimpleNamespace,
+        ANSWER_META_SEPARATOR=ANSWER_META_SEPARATOR,
         LLMResultError=LLMResultError,
         CollectionNotFoundError=CollectionNotFoundError,
         ContextSummarizer=MagicMock(),
         FileSelector=FileSelector,
+        _LIST_OR_TABLE_REQUEST=re.compile(
+            r"\b(?:use|create|make|give|provide|show|return|format|output|generate|write)"
+            r"\s+(?:(?:me|it|them|the results|a|an|the|markdown|numbered|bulleted|comparison)\s+){0,4}"
+            r"(?:list|table|bullets)\b"
+            r"|\b(?:as|in)\s+(?:a\s+)?(?:(?:markdown|numbered|bulleted|comparison)\s+)?"
+            r"(?:list|table|bullets)\b"
+            r"|\b(?:bullet points|(?:bulleted|numbered|markdown) list|markdown table)\b"
+            r"|(?:^|[.!?;]\s*)\s*(?:please\s+)?list\s+\w"
+            r"|\b(?:and|then|please)\s+list\s+\w",
+            re.IGNORECASE,
+        ),
+        _EVIDENCE_REQUEST=re.compile(
+            r"\bevidence phrases?\b|\bwith\s+(?:supporting\s+)?evidence\b"
+            r"|\b(?:add|include|give|provide|show|quote)"
+            r"\s+(?:\w+\s+){0,3}(?:evidence|quotes?|excerpts?)\b",
+            re.IGNORECASE,
+        ),
     )
     shell.rag = rag
     shell.is_streaming = False
@@ -1180,6 +1255,8 @@ def _chatter(rag):
     shell._grounding_language_detector = MagicMock(return_value="detector")
     shell._evaluate_answer_quality = MagicMock()
     shell._open_marked_documents = MagicMock()
+    shell._grounded_answer_browser_document = MagicMock(return_value=None)
+    shell._open_grounded_answer_page = MagicMock()
     rag.confidenceEvaluator = ConfidenceEvaluator(
         confidence_logger=MagicMock(), pretty=MagicMock()
     )
@@ -1525,7 +1602,8 @@ def test_grounded_document_link_is_opened_before_cli_answer(
     assert chatter.print_llm_answer.call_args.kwargs["original_query"] == "question"
     output = capsys.readouterr().out
     assert output.startswith(f"{YELLOW}Original query: question{RESET}\n")
-    assert "Grounded answer." in output.splitlines()[1]
+    # The prefix line sits between the query line and the Rich-rendered answer.
+    assert "Grounded answer." in output
 
 
 def test_summary_displays_input_before_document_selection(rag, session):
@@ -1731,21 +1809,131 @@ def test_cli_summary_skips_prompt_checks_with_selected_file(
     app.csvWriter.write_json2csv.assert_not_called()
 
 
-def test_unsupported_summary_has_zero_confidence_and_no_highlights(rag, session):
+@pytest.mark.parametrize("translated", [False, True])
+def test_supported_structured_summary_is_the_final_reply(
+    rag, session, monkeypatch, translated
+):
+    source = "Storage for program variables is reserved by memory allocation."
+    supported = "Memory allocation reserves storage for program variables."
+    framing = "This overview presents the central ideas covered in the document."
+    statement = (
+        "Die Speicherverwaltung reserviert Platz für Programmvariablen."
+        if translated
+        else supported
+    )
+    introduction = (
+        "Diese Übersicht stellt die zentralen Ideen des Dokuments vor."
+        if translated
+        else framing
+    )
+    summary = f"{introduction}\n\n{statement}"
+    rag.collection.get.return_value["documents"] = [source, source]
+    for metadata in rag.collection.get.return_value["metadatas"]:
+        metadata["Language"] = "english"
+
+    if translated:
+        translator = MagicMock()
+        translations = {introduction: framing, statement: supported}
+        translator.translate_text.side_effect = lambda text, **_: translations[text]
+        monkeypatch.setattr(
+            "Compliance.SharedHelpers.SharedHelpers", lambda: translator
+        )
+
+    def summarize(_documents, *, session):
+        session.summary_statements = [
+            SummaryStatement(introduction, (1,)),
+            SummaryStatement(statement, (2,)),
+        ]
+        return summary
+
     chatter = _chatter(rag)
     factory = chatter._run_document_summary.__func__.__globals__["ContextSummarizer"]
-    factory.return_value.summarize_documents.return_value = "unsupported summary"
-    chatter.grounder.has_grounded_evidence.return_value = False
+    factory.return_value.summarize_documents.side_effect = summarize
+    grounder = Grounder()
+    chatter.grounder = grounder
+    chatter._grounding_language_detector.return_value = lambda *_: (
+        "german" if translated else "english"
+    )
+    callback = MagicMock()
 
+    success, answer = chatter.run(session, apiChunkHandler=callback)
+
+    assert success is True
+    assert answer.startswith(CONFIRMATION + f"## Summary of doc.pdf\n\n{summary}")
+    callback.assert_called_once_with(answer)
+    assert session.last_answer_content == answer
+    assert session.answer_grounding_verified is True
+    assert session.chunk_texts_for_grounding == [source, source]
+    assert grounder.has_local_spans(session)
+    rag._mark_sources.assert_called_once_with(
+        session, session.last_chosen_chunks, summary=True
+    )
+    if translated:
+        assert session.grounding_proxy_sentences[statement] == supported
+
+
+@pytest.mark.parametrize("is_service", [False, True])
+def test_summary_skips_local_answer_preview_but_keeps_marked_documents(
+    rag,
+    session,
+    is_service,
+):
+    session.is_service = is_service
+    session.mark_text = True
+    chatter = _chatter(rag)
+    factory = chatter._run_document_summary.__func__.__globals__["ContextSummarizer"]
+    factory.return_value.summarize_documents.return_value = "Grounded summary."
+
+    def mark_sources(current, *_args, **_kwargs):
+        current.marked_documents = [(r"D:\docs\source.pdf", b"marked document")]
+
+    rag._mark_sources.side_effect = mark_sources
     success, answer = chatter.run(session)
 
     assert success is True
+    assert "Grounded summary." in answer
+    assert session.summarize is True
+    chatter._grounded_answer_browser_document.assert_not_called()
+    assert session.marked_documents == [(r"D:\docs\source.pdf", b"marked document")]
+    if is_service:
+        chatter._open_marked_documents.assert_not_called()
+        from Api.MarkedDocsService import register_marked_documents
+        from Api.MarkedDocsStore import MarkedDocsStore
+
+        link_block = register_marked_documents(
+            session, MarkedDocsStore(), "https://service.example.test"
+        )
+        assert "https://service.example.test/marked/" in link_block
+    else:
+        chatter._open_marked_documents.assert_called_once_with(session.marked_documents)
+
+
+def test_unsupported_summary_has_zero_confidence_and_no_highlights(rag, session):
+    source = "The compiler optimizes program execution and allocates registers in version 4.4.1."
+    summary = source.replace("4.4.1", "4.8.2")
+    rag.collection.get.return_value["documents"] = [source, source]
+
+    def summarize(_documents, *, session):
+        session.summary_statements = [SummaryStatement(summary, (2,))]
+        return summary
+
+    chatter = _chatter(rag)
+    factory = chatter._run_document_summary.__func__.__globals__["ContextSummarizer"]
+    factory.return_value.summarize_documents.side_effect = summarize
+    chatter.grounder = Grounder()
+    chatter._grounding_language_detector.return_value = lambda *_: "english"
+    callback = MagicMock()
+
+    success, answer = chatter.run(session, apiChunkHandler=callback)
+
+    assert success is True
     assert "couldn't find supporting evidence" in answer
-    assert "unsupported summary" not in answer
+    assert summary not in answer
+    callback.assert_called_once_with(answer)
+    assert session.answer_grounding_verified is False
     assert session.answer_confidence_result.score == 0
     assert session.last_chosen_chunks == []
     assert session.chunk_texts_for_grounding == []
-    chatter.grounder.mark_answer_cli.assert_not_called()
     rag._mark_sources.assert_not_called()
 
 

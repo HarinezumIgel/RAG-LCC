@@ -39,9 +39,6 @@ class Session:
         self.query: str | None = None
         # API input before command removal and operator-system-prompt composition.
         self.user_query_input: str | None = None
-        self.indexed_query_notices: list[str] = []
-        self.indexed_query_error: str | None = None
-        self.indexed_query_warning_keys: set[tuple[str, str | None]] = set()
         self.strategy: str | None = None
         default_orchestration_flow = FlowConfig.default_flow_name(self.cfg)
         self.orchestrator_flow: str = default_orchestration_flow
@@ -91,32 +88,10 @@ class Session:
         self.extraOllamaOptions: dict[str, Any] | None = None
         # Top-level Ollama payload params forwarded from API clients (think, keep_alive, format)
         self.ollamaTopLevelParams: dict[str, Any] | None = None
-        # One-shot flag set when the user prefixes their query with "new:" or
-        # "new topic:" to signal a deliberate topic change.  When True,
-        # PromptRewrite.rewrite() skips the LLM call for this turn only.
-        # RAGChatImpl resets it to False at the start of every _retrieve() call.
-        self.force_skip_rewrite: bool = False
         # Per-turn controls populated by Orchestrator flow selection.
         # None means "use global PromptRewrite defaults".
         self.enable_query_rewrite: bool | None = None
         self.enable_keyword_action_splitter: bool | None = None
-        self.keyword_action_split: KeywordActionSplit | None = None
-        # Query IDs are zero-based positions in split.retrieval_queries.
-        # For ["Where do hedgehogs live?", "What do hedgehogs eat?"],
-        # query ID 0 is the habitat query; query ID 1 is the diet query.
-        # Keys are stable chunk identities from OrchestratorHelper.doc_identity.
-        # Example: {"id:chunk-A": [0, 1]} means the chunk was found for both needs.
-        self.keyword_action_query_ids: dict[str, list[int]] = {}
-        # Raw cross-encoder scores per chunk AND need, rather than one score
-        # against the entire compound request: {"id:chunk-A": {0: 4.2, 1: 0.3}}.
-        # These associations do not reserve context slots or change selection.
-        self.keyword_action_scores: dict[str, dict[int, float]] = {}
-        # Each need's indexed query variants by document-language bucket.
-        # Example: {0: {"de": "Lebensraum Igel", "en": "hedgehog habitat"}}.
-        self.keyword_action_language_queries: dict[int, dict[str, str]] = {}
-        self.keyword_action_status: str = "not_run"
-        self.keyword_action_local_needs: int = 0
-        self.keyword_action_keyword_leg: bool = False
         self.enable_pronoun_substitution: bool | None = None
         self.enable_guardrail_leg: bool | None = None
         self.enable_vector_alternate_queries: bool | None = None
@@ -139,13 +114,8 @@ class Session:
         # Session override of the flow's retrieval_language (ENGLISH | NATIVE).
         # Separate from retrieval_language_mode, which holds the effective value.
         self.retrieval_language_override: str | None = None
-        # Per-step confidence labels emitted by Orchestrator.
-        self.orchestration_step_confidence: dict[str, str] = {}
         self.confidence_step_events: list[dict[str, Any]] = []
         self.lang_detection_events: list[dict[str, Any]] = []
-        # Final answer confidence derived from selected retrieval evidence.
-        self.answer_confidence_result: AnswerConfidenceResult | None = None
-        self.rerank_low_confidence_fallback_triggered: bool = False
         self.rerank_partial_recall_rescue_triggered: bool = False
         # Preferred language for LLM responses, set interactively via /settings.
         self.preferred_response_language: str | None = None
@@ -160,6 +130,88 @@ class Session:
         # to tag stored turns and filter fetched turns by language so that
         # German context never bleeds into an English query and vice-versa.
         self.current_query_lang: str | None = None
+        # ENGLISH (legacy) | NATIVE; set per turn from the orchestration flow.
+        self.retrieval_language_mode: str = "ENGLISH"
+
+        # Set by RetrievalGate when retrieval should be skipped.  Chatter reads
+        # this and prints the clarification message instead of the LLM answer.
+        self.clarification_response: str | None = None
+        # When True, RAGChatImpl produces a copy of every retrieved local
+        # PDF source with the chunk text highlighted, kept in memory only
+        # (see `marked_documents`).  Chatter opens the highlighted PDF(s)
+        # in the OS default viewer so the user can save via "Save As".
+        # RAGChat: always True (saves locally). RAGChatService: True only
+        # when SERVE_RAGCHATSERVICE_GROUNDED_DOCS=1 (set in ChatCompletionHandler).
+        self.mark_text: bool = self.cfg.get_str("_FRIENDLY_NAME") == "RAGChat"
+        # Output of the visual-marker pass: list of (source_path,
+        # highlighted_pdf_bytes) tuples for the current query.  Populated
+        # by RAGChatImpl when mark_text is True; consumed by Chatter.
+        self.marked_documents: list[tuple[str, bytes]] = []
+        # Raw text of every chunk sent to the LLM for this query.  Populated
+        # by RAGChatImpl after chunk selection so that Grounder can
+        # match answer sentences back to source content.
+        self.chunk_texts_for_grounding: list[str] = []
+        # Last generated answer content for this query. Stored so that
+        # grounded sentences can be extracted and marked in PDFs after
+        # answer generation completes.
+        self.last_answer_content: str | None = None
+        # Translated grounding proxy, set when the answer language differs
+        # from the evidence language and the translation was grounded.
+        # Maps displayed answer sentences to their translations so CLI and
+        # PDF highlights match what the evidence check accepted. The
+        # displayed answer is never replaced.
+        self.grounding_proxy_text: str = ""
+        self.grounding_proxy_sentences: dict[str, str] = {}
+        self.answer_grounding_verified: bool = False
+        # Last chosen chunks for this query. Stored so that orange grounding
+        # can map grounded sentences back to their source documents.
+        self.last_chosen_chunks: list[Any] = []
+        self._reset_turn_state(retrieval_language=None)
+
+    def reset_turn_state(self) -> None:
+        """Reset per-turn retrieval/rewrite telemetry and language contract fields."""
+        self._reset_turn_state(retrieval_language="english")
+
+    def _reset_turn_state(self, retrieval_language: str | None) -> None:
+        # One-shot flag set when the user prefixes their query with "new:" or
+        # "new topic:" to signal a deliberate topic change.  When True,
+        # PromptRewrite.rewrite() skips the LLM call for this turn only.
+        # RAGChatImpl resets it to False at the start of every _retrieve() call.
+        self.force_skip_rewrite: bool = False
+        self.keyword_action_split: KeywordActionSplit | None = None
+        # Query IDs are zero-based positions in split.retrieval_queries.
+        # For ["Where do hedgehogs live?", "What do hedgehogs eat?"],
+        # query ID 0 is the habitat query; query ID 1 is the diet query.
+        # Keys are stable chunk identities from OrchestratorHelper.doc_identity.
+        # Example: {"id:chunk-A": [0, 1]} means the chunk was found for both needs.
+        self.keyword_action_query_ids: dict[str, list[int]] = {}
+        # Raw cross-encoder scores per chunk AND need, rather than one score
+        # against the entire compound request: {"id:chunk-A": {0: 4.2, 1: 0.3}}.
+        # These associations do not reserve context slots or change selection.
+        self.keyword_action_scores: dict[str, dict[int, float]] = {}
+        # Each need's indexed query variants by document-language bucket.
+        # Example: {0: {"de": "Lebensraum Igel", "en": "hedgehog habitat"}}.
+        self.keyword_action_language_queries: dict[int, dict[str, str]] = {}
+        self.keyword_action_status: str = "not_run"
+        self.keyword_action_local_needs: int = 0
+        self.keyword_action_keyword_leg: bool = False
+        self.summarize: bool = False
+        self.summary_grounding: bool = False
+        self.browser_answer_content: str = ""
+        self.summary_statements: list[SummaryStatement] = []
+        # Set by RAGChatImpl to the effective (translated / rewritten) retrieval
+        # query when it differs from the user's original input.  Chatter uses
+        # this to show a notice at the top of the answer.
+        self.effective_query: str | None = None
+        # Why the query changed: "translated", "rewritten", or
+        # "translated+rewritten".  Chatter uses this to pick the notice label.
+        self.effective_query_reason: str | None = None
+        self.indexed_query_notices: list[str] = []
+        self.indexed_query_error: str | None = None
+        self.indexed_query_warning_keys: set[tuple[str, str | None]] = set()
+        self.orchestration_step_confidence: dict[str, str] = {}
+        self.answer_confidence_result: AnswerConfidenceResult | None = None
+        self.rerank_low_confidence_fallback_triggered: bool = False
         # Language contract fields for the query-normalisation pipeline.
         # user_language: language detected on the raw user turn (response side)
         # retrieval_language: target language used for retrieval queries
@@ -168,12 +220,8 @@ class Session:
         # rewrite_language: detected language of rewritten_query
         # post_rewrite_query_en: final retrieval query after post-rewrite enforcement
         self.user_language: str | None = None
-        self.retrieval_language: str | None = None
-        # ENGLISH (legacy) | NATIVE; set per turn from the orchestration flow.
-        self.retrieval_language_mode: str = "ENGLISH"
+        self.retrieval_language: str | None = retrieval_language
         self.orig_translated_query_en: str | None = None
-        self.post_rewrite_query_en: str | None = None
-
         # Compatibility aliases.
         self.seed_retrieval_query: str | None = None
         self.final_retrieval_query: str | None = None
@@ -182,13 +230,12 @@ class Session:
         self.t1_query: str | None = None
         self.rewritten_query: str | None = None
         self.rewrite_language: str | None = None
+        self.post_rewrite_query_en: str | None = None
         self.t2_query: str | None = None
-
         # Retrieval guardrail counters: documents returned by seed-query
         # versus final-query legs before they are fused.
         self.retrieval_top_k_orig_query_en: int | None = None
         self.retrieval_top_k_post_rewrite_query_en: int | None = None
-
         # Compatibility aliases.
         self.retrieval_top_k_seed_query: int | None = None
         self.retrieval_top_k_final_query: int | None = None
@@ -214,106 +261,9 @@ class Session:
         self.original_query_leg_regex_hits: int | None = None
         self.original_query_leg_regex_added: int | None = None
         self.original_query_leg_regex_overlap: int | None = None
-        # Set by RAGChatImpl to the effective (translated / rewritten) retrieval
-        # query when it differs from the user's original input.  Chatter uses
-        # this to show a notice at the top of the answer.
-        self.effective_query: str | None = None
-        # Why the query changed: "translated", "rewritten", or
-        # "translated+rewritten".  Chatter uses this to pick the notice label.
-        self.effective_query_reason: str | None = None
         # Set by PromptRewrite when it strips a pronoun from a depends=False /
         # referents=[] query.  Used by RetrievalGate as a secondary trigger.
         self.rewrite_was_underspecified: bool = False
-        # Set by RetrievalGate when retrieval should be skipped.  Chatter reads
-        # this and prints the clarification message instead of the LLM answer.
-        self.clarification_response: str | None = None
-        # When True, RAGChatImpl produces a copy of every retrieved local
-        # PDF source with the chunk text highlighted, kept in memory only
-        # (see `marked_documents`).  Chatter opens the highlighted PDF(s)
-        # in the OS default viewer so the user can save via "Save As".
-        # RAGChat: always True (saves locally). RAGChatService: True only
-        # when SERVE_IN_MEMORY_DOCS_HTTP=1 (set in ChatCompletionHandler).
-        self.mark_text: bool = self.cfg.get_str("_FRIENDLY_NAME") == "RAGChat"
-        # Output of the visual-marker pass: list of (source_path,
-        # highlighted_pdf_bytes) tuples for the current query.  Populated
-        # by RAGChatImpl when mark_text is True; consumed by Chatter.
-        self.marked_documents: list[tuple[str, bytes]] = []
-        # Raw text of every chunk sent to the LLM for this query.  Populated
-        # by RAGChatImpl after chunk selection so that Grounder can
-        # match answer sentences back to source content.
-        self.chunk_texts_for_grounding: list[str] = []
-        # Last generated answer content for this query. Stored so that
-        # grounded sentences can be extracted and marked in PDFs after
-        # answer generation completes.
-        self.last_answer_content: str | None = None
-        # Translated grounding proxy, set when the answer language differs
-        # from the evidence language and the translation was grounded.
-        # Maps displayed answer sentences to their translations so CLI and
-        # PDF highlights match what the evidence check accepted. The
-        # displayed answer is never replaced.
-        self.grounding_proxy_text: str = ""
-        self.grounding_proxy_sentences: dict[str, str] = {}
-        self.summary_grounding: bool = False
-        self.summary_statements: list[SummaryStatement] = []
-        # Last chosen chunks for this query. Stored so that orange grounding
-        # can map grounded sentences back to their source documents.
-        self.last_chosen_chunks: list[Any] = []
-
-    def reset_turn_state(self) -> None:
-        """Reset per-turn retrieval/rewrite telemetry and language contract fields."""
-        self.force_skip_rewrite = False
-        self.keyword_action_split = None
-        self.keyword_action_query_ids = {}
-        self.keyword_action_scores = {}
-        self.keyword_action_language_queries = {}
-        self.keyword_action_status = "not_run"
-        self.keyword_action_local_needs = 0
-        self.keyword_action_keyword_leg = False
-        self.summary_grounding = False
-        self.summary_statements = []
-        self.effective_query = None
-        self.effective_query_reason = None
-        self.indexed_query_notices = []
-        self.indexed_query_error = None
-        self.indexed_query_warning_keys = set()
-        self.orchestration_step_confidence = {}
-        self.answer_confidence_result = None
-        self.rerank_low_confidence_fallback_triggered = False
-        self.user_language = None
-        self.retrieval_language = "english"
-        self.orig_translated_query_en = None
-        self.seed_retrieval_query = None
-        self.t1_query = None
-        self.rewritten_query = None
-        self.rewrite_language = None
-        self.post_rewrite_query_en = None
-        self.final_retrieval_query = None
-        self.rerank_query = None
-        self.t2_query = None
-        self.retrieval_top_k_orig_query_en = None
-        self.retrieval_top_k_post_rewrite_query_en = None
-        self.retrieval_top_k_seed_query = None
-        self.retrieval_top_k_final_query = None
-        self.retrieval_top_k_before_t2 = None
-        self.retrieval_top_k_after_t2 = None
-        self.user_query_original = None
-        self.original_query_leg_enabled = False
-        self.original_query_leg_query = None
-        self.original_query_leg_language = None
-        self.original_query_leg_reason = None
-        self.original_query_leg_vector_hits = None
-        self.original_query_leg_vector_added = None
-        self.original_query_leg_vector_overlap = None
-        self.original_query_leg_bm25_hits = None
-        self.original_query_leg_bm25_added = None
-        self.original_query_leg_bm25_overlap = None
-        self.original_query_leg_graph_hits = None
-        self.original_query_leg_graph_added = None
-        self.original_query_leg_graph_overlap = None
-        self.original_query_leg_regex_hits = None
-        self.original_query_leg_regex_added = None
-        self.original_query_leg_regex_overlap = None
-        self.rewrite_was_underspecified = False
 
     def export_session_state_as_cell(self, max_items_per_line: int = 6) -> str:
         """

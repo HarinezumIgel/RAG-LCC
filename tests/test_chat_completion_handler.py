@@ -1113,7 +1113,7 @@ class TestHandleRequest:
 
     @pytest.mark.parametrize("stream", [False, True])
     def test_markdown_table_reaches_openwebui_unchanged(self, stream, monkeypatch):
-        monkeypatch.setenv("SERVE_IN_MEMORY_DOCS_HTTP", "0")
+        monkeypatch.setenv("SERVE_RAGCHATSERVICE_GROUNDED_DOCS", "0")
         table = (
             "| Animal | Mammal |\n| --- | --- |\n" "| Hedgehogs | yes |\n| Fish | N/A |"
         )
@@ -1186,7 +1186,7 @@ class TestHandleRequest:
         path,
         expected_filter,
     ):
-        monkeypatch.setenv("SERVE_IN_MEMORY_DOCS_HTTP", "0")
+        monkeypatch.setenv("SERVE_RAGCHATSERVICE_GROUNDED_DOCS", "0")
 
         class RecordingChatter(StubChatter):
             cfg = StubConfig()
@@ -1390,7 +1390,7 @@ class TestHandleRequest:
         assert body["model"] == "AnimalDocs"
 
     def test_grounded_document_link_precedes_answer(self, monkeypatch):
-        monkeypatch.setenv("SERVE_IN_MEMORY_DOCS_HTTP", "1")
+        monkeypatch.setenv("SERVE_RAGCHATSERVICE_GROUNDED_DOCS", "1")
         link_block = "[Grounded document](https://example.test/marked/source.pdf)\n\n"
         monkeypatch.setattr(
             "Api.ChatCompletionHandler.register_marked_documents",
@@ -1405,6 +1405,27 @@ class TestHandleRequest:
         content = json.loads(response.body)["choices"][0]["message"]["content"]
         assert content.startswith(link_block)
         assert content.index("Grounded document") < content.index(
+            "The grounded answer."
+        )
+
+    def test_grounded_html_answer_link_is_included(self, monkeypatch):
+        monkeypatch.setenv("SERVE_RAGCHATSERVICE_GROUNDED_DOCS", "1")
+        link_block = (
+            "\n\n---\n**Grounded answer**\n"
+            "- [Open formatted HTML answer](https://example.test/marked/token.html)\n"
+        )
+        monkeypatch.setattr(
+            "Api.ChatCompletionHandler.register_grounded_answer",
+            lambda *_args: link_block,
+        )
+
+        response = self._run_handle(
+            _base_req(stream=False), answer="The grounded answer."
+        )
+
+        content = json.loads(response.body)["choices"][0]["message"]["content"]
+        assert link_block in content
+        assert content.index("Open formatted HTML answer") < content.index(
             "The grounded answer."
         )
 
@@ -1483,8 +1504,8 @@ class TestHandleRequest:
 
     def test_streaming_returns_streaming_response(self):
         # Ensure grounding doesn't force buffered reply (which disables streaming)
-        old_val = os.environ.get("SERVE_IN_MEMORY_DOCS_HTTP")
-        os.environ["SERVE_IN_MEMORY_DOCS_HTTP"] = "0"
+        old_val = os.environ.get("SERVE_RAGCHATSERVICE_GROUNDED_DOCS")
+        os.environ["SERVE_RAGCHATSERVICE_GROUNDED_DOCS"] = "0"
         try:
             req = _base_req(stream=True)
             resp = self._run_handle(req)
@@ -1492,9 +1513,9 @@ class TestHandleRequest:
             assert resp.media_type == "text/event-stream"
         finally:
             if old_val is None:
-                os.environ.pop("SERVE_IN_MEMORY_DOCS_HTTP", None)
+                os.environ.pop("SERVE_RAGCHATSERVICE_GROUNDED_DOCS", None)
             else:
-                os.environ["SERVE_IN_MEMORY_DOCS_HTTP"] = old_val
+                os.environ["SERVE_RAGCHATSERVICE_GROUNDED_DOCS"] = old_val
 
     # --- prompt compliance blocked ------------------------------------------
 

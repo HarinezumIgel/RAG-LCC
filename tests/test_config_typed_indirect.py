@@ -194,3 +194,27 @@ def test_app_confidence_override_has_precedence(monkeypatch) -> None:
     cfg.__init__()
 
     assert cfg.get("_QUALITY_CONFIDENCE.emit_in_answer_block") is False
+
+
+@pytest.mark.parametrize(
+    "prompt_slot", ["_PROMPT_CHAT", "_PROMPT_CHAT_MISTRAL", "_PROMPT_CHAT_LLAMA"]
+)
+def test_chat_runtimes_resolve_the_same_answer_prompt(prompt_slot, monkeypatch) -> None:
+    from langchain_core.prompts import PromptTemplate
+
+    formatted_prompts: list[str] = []
+    for app in ("RAGChat", "RAGChatService"):
+        monkeypatch.setattr(cfg_mod.sys, "argv", [f"{app}.py"])
+        cfg = object.__new__(cfg_mod.Config)
+        cfg.__init__()
+        prompt, _ = cfg.indirect_get(prompt_slot)
+        formatted_prompts.append(
+            PromptTemplate.from_template(prompt).format(
+                context="PCIe 4.0 x8 card slot 6; PCIe 4.0 x16 card slot 5.",
+                input="Describe the PCIe card slots of the Lenovo P620 ThinkStation.",
+                response_language="german",
+            )
+        )
+
+    assert formatted_prompts[0] == formatted_prompts[1]
+    assert "Write your final answer in: german" in formatted_prompts[1]

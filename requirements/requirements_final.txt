@@ -21,6 +21,7 @@ langchain_text_splitters
 langdetect
 lingua-language-detector>=2.2.0
 lxml
+markdown-it-py>=4.2.0
 nltk==3.9.2
 numpy
 openpyxl

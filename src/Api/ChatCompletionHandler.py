@@ -23,7 +23,8 @@ from Api.ChatRequestSessionMapper import (_ALLOWED_STRATEGIES,
                                           _resolve_allowed_orchestration_flows,
                                           _resolve_default_orchestration_flow)
 from Api.ChatResponseStreamer import ChatResponseStreamer, _json_str
-from Api.MarkedDocsService import register_marked_documents
+from Api.MarkedDocsService import (register_grounded_answer,
+                                   register_marked_documents)
 from Api.MarkedDocsStore import get_default as get_marked_docs_store
 from Api.OpenWebUIHousekeeping import (_OPENWEBUI_FOLLOWUP_PREFIX,
                                        _OPENWEBUI_TAGS_PREFIX,
@@ -315,6 +316,28 @@ def _marked_docs_base_url(cfg: Config, request: Optional[Request]) -> str:
     host = cfg.get_str("_MODELS.ragchatservice._RAGCHATSERVICE.HOST", "127.0.0.1")
     port = cfg.get_int("_MODELS.ragchatservice._RAGCHATSERVICE.PORT", 11435)
     return f"http://{host}:{port}"
+
+
+def _register_answer_links(
+    session: Session,
+    chatter: Chatter,
+    answer_text: str,
+    base_url: str,
+    *,
+    emit_cli_blocks: bool,
+) -> tuple[str, str]:
+    store = get_marked_docs_store()
+    marked_block = register_marked_documents(session, store, base_url)
+    grounded_answer_block = register_grounded_answer(
+        session,
+        getattr(chatter, "grounder", None),
+        answer_text,
+        store,
+        base_url,
+    )
+    if marked_block and emit_cli_blocks:
+        chatter.print_llm_answer(marked_block, chatter.terminal_line_size)
+    return marked_block, grounded_answer_block
 
 
 _MSG_CONTENT_LIMIT: int = 80  # max chars shown per message content in the debug summary
@@ -627,7 +650,7 @@ async def handleRequest(
                     "RAGChatService streaming:",
                     (
                         "Requested stream=True but switched to stream=False because grounding is enabled "
-                        "(switches: SERVE_IN_MEMORY_DOCS_HTTP=1 for RAGChatService, mark_text for RAGChat.py)."
+                        "(switches: SERVE_RAGCHATSERVICE_GROUNDED_DOCS=1 for RAGChatService, mark_text for RAGChat.py)."
                     ),
                     color=YELLOW,
                 )
@@ -992,14 +1015,21 @@ async def handleRequest(
         # Marked documents are prepared in Chatter.run() via shared RAGChatImpl logic.
 
         _mb_base_url = _marked_docs_base_url(cfg, request)
-        marked_block = register_marked_documents(
-            session, get_marked_docs_store(), _mb_base_url
+        marked_block, grounded_answer_block = _register_answer_links(
+            session,
+            chatter,
+            answer_text or "",
+            _mb_base_url,
+            emit_cli_blocks=emit_cli_blocks,
         )
-        if marked_block:
-            if emit_cli_blocks:
-                chatter.print_llm_answer(marked_block, chatter.terminal_line_size)
 
-        answer_out = request_notice + marked_block + (answer_text or "") + algo_block
+        answer_out = (
+            request_notice
+            + marked_block
+            + grounded_answer_block
+            + (answer_text or "")
+            + algo_block
+        )
 
         metadata_helper = getattr(rag, "helperInstance", None)
         metadata_block = (

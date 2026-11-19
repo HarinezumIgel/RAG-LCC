@@ -193,6 +193,7 @@ _YELLOW = "\033[93m"
 _RED = "\033[91m"
 _DIM = "\033[2m"
 _WHITE = "\033[97m"
+_PALE_WHITE = "\033[37m"
 _ORANGE = "\033[38;2;255;165;0m"
 _TURQUOISE = "\033[38;2;0;255;220m"
 
@@ -761,58 +762,83 @@ def _print_ragchatservice_listener_guidance(
     )
 
     if runtime_context == "docker":
+        print(f"{_GREEN}    Container mode detected (Dev Container / Docker).{_RESET}")
         print(
-            f"{_TURQUOISE}    Container mode detected (Dev Container / Docker).{_RESET}"
+            f"{_PALE_WHITE}    Safest (container-local only): {_TURQUOISE}127.0.0.1{_PALE_WHITE} (default).{_RESET}"
         )
         print(
-            f"{_TURQUOISE}    Bind to 0.0.0.0 so host-side clients can reach the forwarded port.{_RESET}"
+            f"{_PALE_WHITE}    Wider bind: a specific container IP (may change); widest: {_TURQUOISE}0.0.0.0{_PALE_WHITE} (all container interfaces).{_RESET}"
         )
-        print(f"{_TURQUOISE}    Typical value: 0.0.0.0{_RESET}")
         print(
-            f"{_TURQUOISE}    Safety note: exposure is controlled by forwarded ports and host firewall rules.{_RESET}"
+            f"{_PALE_WHITE}    Docker published ports need a non-loopback container bind, commonly {_TURQUOISE}0.0.0.0{_PALE_WHITE}.{_RESET}"
+        )
+        print(
+            f"{_PALE_WHITE}    Restrict host exposure separately: docker run -p {_TURQUOISE}127.0.0.1:11435:11435{_PALE_WHITE} ...{_RESET}"
+        )
+        print(
+            f"{_PALE_WHITE}    This limits the published host port, not access from other containers on the same network.{_RESET}"
+        )
+        print(
+            f"{_PALE_WHITE}    VS Code port forwarding can reach a container-loopback listener; keep forwarding local/private.{_RESET}"
         )
     elif runtime_context == "windows":
-        print(f"{_TURQUOISE}    Windows host mode detected.{_RESET}")
-        print(f"{_TURQUOISE}    Safest (local-only): localhost or 127.0.0.1{_RESET}")
+        print(f"{_GREEN}    Windows host mode detected.{_RESET}")
         print(
-            f"{_TURQUOISE}    Less safe (LAN exposure): specific NIC IP (for example 192.168.x.x){_RESET}"
+            f"{_PALE_WHITE}    Safest (local-only): {_TURQUOISE}localhost{_PALE_WHITE} or {_TURQUOISE}127.0.0.1{_RESET}"
         )
         print(
-            f"{_TURQUOISE}    Least restrictive / less safe: 0.0.0.0 (all interfaces).{_RESET}"
+            f"{_PALE_WHITE}    Less safe (LAN exposure): specific NIC IP (for example {_TURQUOISE}192.168.x.x{_PALE_WHITE}){_RESET}"
         )
         print(
-            f"{_TURQUOISE}    If using NIC IP or 0.0.0.0, ensure Windows firewall allows only trusted networks.{_RESET}"
+            f"{_PALE_WHITE}    Least restrictive / less safe: {_TURQUOISE}0.0.0.0{_PALE_WHITE} (all interfaces).{_RESET}"
+        )
+        print(
+            f"{_PALE_WHITE}    If using NIC IP or {_TURQUOISE}0.0.0.0{_PALE_WHITE}, ensure Windows firewall allows only trusted networks.{_RESET}"
         )
     else:
-        print(f"{_TURQUOISE}    Host mode detected (non-container).{_RESET}")
-        print(f"{_TURQUOISE}    Safest (local-only): localhost or 127.0.0.1{_RESET}")
+        print(f"{_PALE_WHITE}    Host mode detected (non-container).{_RESET}")
         print(
-            f"{_TURQUOISE}    Less safe (LAN exposure): specific NIC IP (single interface only).{_RESET}"
+            f"{_PALE_WHITE}    Safest (local-only): {_TURQUOISE}localhost{_PALE_WHITE} or {_TURQUOISE}127.0.0.1{_RESET}"
         )
         print(
-            f"{_TURQUOISE}    Least restrictive / less safe: 0.0.0.0 (all interfaces).{_RESET}"
+            f"{_PALE_WHITE}    Less safe (LAN exposure): specific NIC IP (single interface only).{_RESET}"
+        )
+        print(
+            f"{_PALE_WHITE}    Least restrictive / less safe: {_TURQUOISE}0.0.0.0{_PALE_WHITE} (all interfaces).{_RESET}"
         )
 
     print()
+    print(
+        f"{_PALE_WHITE}    Document links share this listener. Loopback-only listeners are reachable only from the{_RESET}"
+    )
+    print(
+        f"{_PALE_WHITE}    same host (or through port forwarding/tunneling). For remote browsers, use a reachable{_RESET}"
+    )
+    print(
+        f"{_PALE_WHITE}    host and an HTTPS reverse proxy; set _SERVE_DOCS.public_base_url to the browser-reachable{_RESET}"
+    )
+    print(f"{_PALE_WHITE}    URL and restrict firewall access.{_RESET}")
+    print()
 
 
-def _print_ragchatservice_port_forwarding_guidance(
+def _print_port_forwarding_guidance(
     runtime_context: _RuntimeNetworkContext,
+    default_port: int,
 ) -> None:
-    """Print Docker-specific port forwarding guidance for RAGChatService."""
+    """Print Docker-specific port forwarding guidance for a listener."""
     if runtime_context != "docker":
         return
 
     print()
-    print(f"{_CYAN}  Port forwarding — default port 11435:{_RESET}")
+    print(f"{_CYAN}  Port forwarding — default port {default_port}:{_RESET}")
     print(
-        f"{_TURQUOISE}    .devcontainer/devcontainer.json declares forwardPorts: [11435].{_RESET}"
+        f"{_PALE_WHITE}    .devcontainer/devcontainer.json declares forwardPorts: [{_TURQUOISE}11435{_PALE_WHITE}, {_TURQUOISE}11436{_PALE_WHITE}].{_RESET}"
     )
     print(
-        f"{_TURQUOISE}    VS Code may still require manual forwarding in the Ports panel.{_RESET}"
+        f"{_PALE_WHITE}    VS Code may still require manual forwarding in the Ports panel; use the same local port.{_RESET}"
     )
     print(
-        f'{_TURQUOISE}    If you change the port from 11435, you MUST update .devcontainer/devcontainer.json -> "forwardPorts", recreate/rebuild the container, and start Setup.py again.{_RESET}'
+        f'{_PALE_WHITE}    If you change the port from {_TURQUOISE}{default_port}{_PALE_WHITE}, update .devcontainer/devcontainer.json -> "forwardPorts" and "portsAttributes", recreate/rebuild the container, and start Setup.py again.{_RESET}'
     )
     print()
 
@@ -1436,6 +1462,8 @@ def _run_setup_questions() -> None:
     openweb_ui_websearch = False
     serve_openwebui_chat = False
     serve_in_memory_docs = False
+    serve_ragchat_docs = False
+    ragchat_docs_port = "11436"
     network_tracer = False
     runtime_context = _detect_runtime_network_context()
 
@@ -1539,9 +1567,8 @@ def _run_setup_questions() -> None:
         while True:
             rag_chat_service_listener = _prompt_text(
                 "Set _MODELS.ragchatservice._RAGCHATSERVICE.HOST",
-                "",
+                "127.0.0.1",
                 no_yn=True,
-                confirm_default=False,
                 correction_value=(
                     rag_chat_service_listener if correction_mode else None
                 ),
@@ -1557,7 +1584,7 @@ def _run_setup_questions() -> None:
             "src/Configuration/Config_Models.py",
             "Port where RAGChatService HTTP listener should bind (_MODELS.ragchatservice._RAGCHATSERVICE.PORT).",
         )
-        _print_ragchatservice_port_forwarding_guidance(runtime_context)
+        _print_port_forwarding_guidance(runtime_context, 11435)
         rag_chat_service_listener_port = _prompt_text(
             "Set _MODELS.ragchatservice._RAGCHATSERVICE.PORT",
             "11435",
@@ -1698,7 +1725,7 @@ def _run_setup_questions() -> None:
         if not serve_openwebui_chat:
             serve_in_memory_docs = False
             print(
-                f"{_YELLOW}  SERVE_OPENWEBUI_CHAT is disabled, so SERVE_IN_MEMORY_DOCS_HTTP is forced to 0.{_RESET}"
+                f"{_YELLOW}  SERVE_OPENWEBUI_CHAT is disabled, so SERVE_RAGCHATSERVICE_GROUNDED_DOCS is forced to 0.{_RESET}"
             )
         else:
             _print_setting_context(
@@ -1707,10 +1734,47 @@ def _run_setup_questions() -> None:
                 "Enable in-memory docs HTTP token server for /marked (grounded documents) links.",
             )
             serve_in_memory_docs = _prompt_bool(
-                "Enable SERVE_IN_MEMORY_DOCS_HTTP",
+                "Enable SERVE_RAGCHATSERVICE_GROUNDED_DOCS",
                 default=False,
                 correction_value=serve_in_memory_docs if correction_mode else None,
             )
+
+        _print_setting_context(
+            "Config_Internet_Env.py",
+            "src/Configuration/Config_Internet_Env.py",
+            "RAGChat CLI: serve expiring HTML links on 127.0.0.1 using a "
+            "configurable port (default 11436). Clicking opens the browser; "
+            "nothing opens automatically. "
+            "Other document formats keep file links. Independent of the OpenWebUI service.",
+        )
+        serve_ragchat_docs = _prompt_bool(
+            "Enable SERVE_RAGCHAT_GROUNDED_DOCS",
+            default=False,
+            correction_value=serve_ragchat_docs if correction_mode else None,
+        )
+
+        _print_setting_context(
+            "Config_RAGChat.py",
+            "src/Configuration/Config_RAGChat.py",
+            "Port for RAGChat CLI grounded-document links (_LOCAL_SERVE_DOCS.port). "
+            "The listener always binds to 127.0.0.1, independently of RAGChatService.",
+        )
+        _print_port_forwarding_guidance(runtime_context, 11436)
+        while True:
+            ragchat_docs_port = _prompt_text(
+                "Set _LOCAL_SERVE_DOCS.port",
+                "11436",
+                no_yn=True,
+                correction_value=ragchat_docs_port if correction_mode else None,
+            ).strip()
+            if (
+                ragchat_docs_port.isascii()
+                and ragchat_docs_port.isdecimal()
+                and 1 <= int(ragchat_docs_port) <= 65535
+            ):
+                ragchat_docs_port = str(int(ragchat_docs_port))
+                break
+            print(f"{_RED}  Enter a port number between 1 and 65535.{_RESET}")
 
         # --------------------------------------------------------------
         # Group 5: Debug and tracing
@@ -1755,8 +1819,12 @@ def _run_setup_questions() -> None:
             f"{_WHITE}  SERVE_OPENWEBUI_CHAT:{_RESET} {'1' if serve_openwebui_chat else '0'}"
         )
         print(
-            f"{_WHITE}  SERVE_IN_MEMORY_DOCS_HTTP:{_RESET} {'1' if serve_in_memory_docs else '0'}"
+            f"{_WHITE}  SERVE_RAGCHATSERVICE_GROUNDED_DOCS:{_RESET} {'1' if serve_in_memory_docs else '0'}"
         )
+        print(
+            f"{_WHITE}  SERVE_RAGCHAT_GROUNDED_DOCS:{_RESET} {'1' if serve_ragchat_docs else '0'}"
+        )
+        print(f"{_WHITE}  _LOCAL_SERVE_DOCS.port:{_RESET} {ragchat_docs_port}")
         print(
             f"{_WHITE}  _MODELS.ragchatservice._RAGCHATSERVICE.HOST:{_RESET} {rag_chat_service_listener}"
         )
@@ -1839,8 +1907,18 @@ def _run_setup_questions() -> None:
         },
         {
             "conf": "Config_Internet_Env.py",
-            "slot_name": 'os.environ["SERVE_IN_MEMORY_DOCS_HTTP"]',
+            "slot_name": 'os.environ["SERVE_RAGCHATSERVICE_GROUNDED_DOCS"]',
             "value": _as_py_string("1" if serve_in_memory_docs else "0"),
+        },
+        {
+            "conf": "Config_Internet_Env.py",
+            "slot_name": 'os.environ["SERVE_RAGCHAT_GROUNDED_DOCS"]',
+            "value": _as_py_string("1" if serve_ragchat_docs else "0"),
+        },
+        {
+            "conf": "Config_RAGChat.py",
+            "slot_name": "_LOCAL_SERVE_DOCS.port",
+            "value": ragchat_docs_port,
         },
         {
             "conf": "Config_Internet_Env.py",
@@ -1878,7 +1956,7 @@ def _run_setup_questions() -> None:
         )
         if runtime_context == "docker":
             print(
-                f"{_ORANGE}  Container mode: port {rag_chat_service_listener_port} is not covered by default forwardPorts [11435], so you must update devcontainer forwarding.{_RESET}"
+                f"{_ORANGE}  Container mode: check forwarding for port {rag_chat_service_listener_port}; default forwardPorts are [11435, 11436].{_RESET}"
             )
             print(f"{_DIM}  Required actions in Docker/Dev Container mode:{_RESET}")
             print(
@@ -1895,6 +1973,17 @@ def _run_setup_questions() -> None:
                 f"{_ORANGE}  Host mode: update OpenWebUI and client URLs to use port {rag_chat_service_listener_port}.{_RESET}"
             )
         print()
+
+    if (
+        runtime_context == "docker"
+        and serve_ragchat_docs
+        and ragchat_docs_port != "11436"
+    ):
+        print(
+            f"{_ORANGE}  RAGChat CLI documents use port {_TURQUOISE}{ragchat_docs_port}{_ORANGE}. "
+            "Update forwardPorts and portsAttributes in .devcontainer/devcontainer.json "
+            f"and rebuild the container, or forward the same local port in the VS Code Ports panel.{_RESET}"
+        )
 
     print()
     print(f"{_CYAN}{'-' * w}{_RESET}")
@@ -1921,6 +2010,8 @@ def _run_setup_questions() -> None:
         openweb_ui_websearch=openweb_ui_websearch,
         serve_openwebui_chat=serve_openwebui_chat,
         serve_in_memory_docs_http=serve_in_memory_docs,
+        serve_ragchat_docs_http=serve_ragchat_docs,
+        ragchat_docs_port=ragchat_docs_port,
         rag_lcc_nw_trace=network_tracer,
         openwebui_api_host=rag_chat_service_listener,
         openwebui_api_port=rag_chat_service_listener_port,

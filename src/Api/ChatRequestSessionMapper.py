@@ -415,7 +415,9 @@ class RequestSessionMapper:
 
         # Enable visual markers (yellow highlighting) and HTTP serving only when enabled.
         # Answer grounding (orange) works independently via chunk_texts_for_grounding.
-        session.mark_text = os.environ.get("SERVE_IN_MEMORY_DOCS_HTTP", "0") == "1"
+        session.mark_text = (
+            os.environ.get("SERVE_RAGCHATSERVICE_GROUNDED_DOCS", "0") == "1"
+        )
 
         if req.debug_level is not None or req.debug_mode is not None:
             level = (

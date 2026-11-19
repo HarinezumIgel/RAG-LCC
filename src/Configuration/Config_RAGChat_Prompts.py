@@ -104,6 +104,19 @@ A bullet list of the metadata fields for EVERY distinct FileName you used to ans
   - FilePath
   - Page (use the printed page label shown in the source header, if available)
 
+MERMAID DIAGRAMS:
+When the user requests a diagram, or a diagram clearly improves the answer, use a Mermaid
+flowchart in the Answer section. Use only this supported form:
+  ```mermaid
+  flowchart LR
+    A["Evidence-backed label"] -->|explicit relationship from the context| B["Evidence-backed label"]
+  ```
+Always double-quote node labels, especially labels containing parentheses.
+Use one simple node or labeled edge per line. Every node label and relationship MUST be
+explicitly supported by retrieved context; do not infer connections or add facts. Do not
+use sequence diagrams, subgraphs, click actions, styling directives, or other Mermaid
+syntax. If the context cannot support every node and edge, omit the diagram.
+
 Query:
 {input}
 

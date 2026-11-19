@@ -387,10 +387,30 @@ def test_reranking_uses_need_language_and_keeps_web_query(
 
 
 @pytest.mark.parametrize(
-    "prompt_case", ["default", "custom", "no_action", "disabled", "invalid"]
+    ("prompt_case", "query", "mark_text", "enable_grounding", "add_evidence"),
+    [
+        ("default", "normalized request", True, True, True),
+        ("custom", "normalized request", False, True, False),
+        ("no_action", "normalized request", True, True, False),
+        ("invalid", "normalized request", False, True, False),
+        ("disabled", "Create a table of animals.", True, True, True),
+        ("disabled", "List all animals.", True, True, True),
+        ("disabled", "Show the results in a table.", True, False, False),
+        ("disabled", "Show the results as a list.", False, True, False),
+        ("disabled", "Create a table. Also add evidence phrases.", True, True, False),
+        ("disabled", "Create a table with supporting evidence.", True, True, False),
+        ("disabled", "Make a Mermaid diagram.", True, True, False),
+        ("disabled", "What information is in the table?", True, True, False),
+    ],
 )
 def test_answer_prompt_uses_complete_request_and_history_keeps_original(
-    splitter: KeywordActionSplitter, monkeypatch: pytest.MonkeyPatch, prompt_case: str
+    splitter: KeywordActionSplitter,
+    monkeypatch: pytest.MonkeyPatch,
+    prompt_case: str,
+    query: str,
+    mark_text: bool,
+    enable_grounding: bool,
+    add_evidence: bool,
 ) -> None:
     payload = _payload()
     if prompt_case == "no_action":
@@ -408,7 +428,8 @@ def test_answer_prompt_uses_complete_request_and_history_keeps_original(
         )
     elif prompt_case == "invalid":
         splitter.cfg.cfg["_PROMPT_KEYWORD_ACTION_ANSWER"] = "{unknown_placeholder}"
-    session.query = "normalized request"
+    session.query = query
+    session.orig_translated_query_en = query
     session.retriever_k = 5
     session.max_output_tokens = 256
     session.temperature = 0.1
@@ -419,7 +440,8 @@ def test_answer_prompt_uses_complete_request_and_history_keeps_original(
     session.max_output_tokens_override = None
     session.context_size_override = None
     session.extraOllamaOptions = None
-    session.mark_text = False
+    session.mark_text = mark_text
+    session.enable_grounding = enable_grounding
     session.web_search = False
     session.ollamaTopLevelParams = None
     chatter: Any = object.__new__(Chatter)
@@ -470,8 +492,11 @@ def test_answer_prompt_uses_complete_request_and_history_keeps_original(
     else:
         assert "Requested operation to execute on the retrieved evidence:" not in prompt
         assert "Create a list of foods hedgehogs eat." not in prompt
-    assert "normalized request" in prompt
-    assert session.query == "normalized request"
+    assert prompt.count("\n\nAdd evidence phrases.") == int(add_evidence)
+    if add_evidence:
+        assert "\n\nAdd evidence phrases.\nLanguage:" in prompt
+    assert query in prompt
+    assert session.query == query
 
 
 def test_reset_clears_decomposition_not_feature_override() -> None:

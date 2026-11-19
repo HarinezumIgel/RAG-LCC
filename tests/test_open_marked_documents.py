@@ -163,6 +163,7 @@ class _Shell:
 
     pretty = types.SimpleNamespace(write=_pretty_write)
     cfg = types.SimpleNamespace(get_str=_cfg_get_str)
+    fileUtils = types.SimpleNamespace(is_safe_delete_path=lambda _path: True)
 
     @staticmethod
     def _supports_osc8() -> bool:
@@ -171,6 +172,13 @@ class _Shell:
 
     def _open_marked_documents(self, marked):
         Chatter = _get_chatter_class()
+        if marked:
+            project_root = str(Path(marked[0][0]).parent)
+            self.cfg = types.SimpleNamespace(
+                get_str=lambda key, default="": (
+                    project_root if key == "_ABSOLUTE_PATH" else default
+                )
+            )
         # Bind the real method to self
         Chatter._open_marked_documents(self, marked)
 
@@ -446,28 +454,80 @@ class TestCleanupDir:
         project_root.mkdir()
         outside = tmp_path / "outside"
         outside.mkdir()
-        with pytest.raises(RuntimeError, match="outside the project root"):
-            _mdv._cleanup_dir(str(outside), project_root=str(project_root))
+        with pytest.raises(RuntimeError, match="is_safe_delete_path rejected"):
+            _mdv._cleanup_dir(
+                str(outside),
+                project_root=str(project_root),
+                file_utils=_FileUtilsGuard(allowed=False),
+            )
 
     def test_raises_when_path_does_not_exist(self, tmp_path):
         import Chat.MarkedDocsViewer as _mdv
 
         project_root = tmp_path / "project"
         project_root.mkdir()
-        missing = project_root / "rag_marked_gone"
+        missing = project_root / "tmp" / "ragchat" / "rag_marked_gone"
         with pytest.raises(RuntimeError, match="does not exist"):
-            _mdv._cleanup_dir(str(missing), project_root=str(project_root))
+            _mdv._cleanup_dir(
+                str(missing),
+                project_root=str(project_root),
+                file_utils=_FileUtilsGuard(),
+            )
 
     def test_deletes_dir_within_project_root(self, tmp_path):
         import Chat.MarkedDocsViewer as _mdv
 
         project_root = tmp_path / "project"
         project_root.mkdir()
-        d = project_root / "tmp" / "rag_marked_xyz"
+        d = project_root / "tmp" / "ragchat" / "rag_marked_xyz"
         d.mkdir(parents=True)
         (d / "file.pdf").write_bytes(b"data")
-        _mdv._cleanup_dir(str(d), project_root=str(project_root))
+        _mdv._cleanup_dir(
+            str(d),
+            project_root=str(project_root),
+            file_utils=_FileUtilsGuard(),
+        )
         assert not d.exists()
+
+    def test_refuses_to_delete_shared_or_other_service_temp_roots(self, tmp_path):
+        import Chat.MarkedDocsViewer as _mdv
+
+        project_root = tmp_path / "project"
+        ragchat_root = project_root / "tmp" / "ragchat"
+        service_dir = project_root / "tmp" / "ragchatservice" / "run"
+        ragchat_root.mkdir(parents=True)
+        service_dir.mkdir(parents=True)
+
+        allow_delete = _FileUtilsGuard()
+        with pytest.raises(RuntimeError, match="store root"):
+            _mdv._cleanup_dir(
+                str(ragchat_root),
+                project_root=str(project_root),
+                file_utils=allow_delete,
+            )
+        with pytest.raises(RuntimeError, match="outside the RAGChat temp store"):
+            _mdv._cleanup_dir(
+                str(service_dir),
+                project_root=str(project_root),
+                file_utils=allow_delete,
+            )
+
+        assert ragchat_root.exists()
+        assert service_dir.exists()
+
+    def test_file_utils_delete_guard_must_allow_cleanup(self, tmp_path):
+        import Chat.MarkedDocsViewer as _mdv
+
+        project_root = tmp_path / "project"
+        target = project_root / "tmp" / "ragchat" / "run"
+        target.mkdir(parents=True)
+        with pytest.raises(RuntimeError, match="is_safe_delete_path rejected"):
+            _mdv._cleanup_dir(
+                str(target),
+                project_root=str(project_root),
+                file_utils=_FileUtilsGuard(allowed=False),
+            )
+        assert target.exists()
 
     def test_raises_when_target_is_drive_root(self, monkeypatch):
         import Chat.MarkedDocsViewer as _mdv
@@ -482,8 +542,12 @@ class TestCleanupDir:
         monkeypatch.setattr("shutil.rmtree", _fail_rmtree)
 
         root = os.path.splitdrive(os.path.abspath(os.sep))[0] + os.sep
-        with pytest.raises(RuntimeError, match="drive/filesystem root"):
-            _mdv._cleanup_dir(root, project_root=root)
+        with pytest.raises(RuntimeError, match="is_safe_delete_path rejected"):
+            _mdv._cleanup_dir(
+                root,
+                project_root=root,
+                file_utils=_FileUtilsGuard(allowed=False),
+            )
 
     def test_raises_when_project_root_is_drive_root(self, monkeypatch):
         import Chat.MarkedDocsViewer as _mdv
@@ -496,9 +560,13 @@ class TestCleanupDir:
         monkeypatch.setattr("shutil.rmtree", _fail_rmtree)
 
         root = os.path.splitdrive(os.path.abspath(os.sep))[0] + os.sep
-        child = os.path.join(root, "tmp", "rag_marked_x")
-        with pytest.raises(RuntimeError, match="drive/filesystem root"):
-            _mdv._cleanup_dir(child, project_root=root)
+        child = os.path.join(root, "tmp", "ragchat", "rag_marked_x")
+        with pytest.raises(RuntimeError, match="is_safe_delete_path rejected"):
+            _mdv._cleanup_dir(
+                child,
+                project_root=root,
+                file_utils=_FileUtilsGuard(allowed=False),
+            )
 
     def test_raises_when_target_is_windows_drive_root_literal(self, tmp_path):
         import Chat.MarkedDocsViewer as _mdv
@@ -506,5 +574,125 @@ class TestCleanupDir:
         project_root = tmp_path / "project"
         project_root.mkdir()
 
-        with pytest.raises(RuntimeError, match="drive/filesystem root"):
-            _mdv._cleanup_dir("C:\\", project_root=str(project_root))
+        with pytest.raises(RuntimeError, match="is_safe_delete_path rejected"):
+            _mdv._cleanup_dir(
+                "C:\\",
+                project_root=str(project_root),
+                file_utils=_FileUtilsGuard(allowed=False),
+            )
+
+    def test_process_cleanup_removes_only_its_ragchat_temp_directory(
+        self,
+        tmp_path,
+        monkeypatch,
+    ):
+        import Chat.MarkedDocsViewer as _mdv
+
+        monkeypatch.setattr(_mdv, "supports_osc8", lambda: True)
+        registered: list[tuple[Any, tuple[Any, ...]]] = []
+        file_utils = _FileUtilsGuard()
+
+        monkeypatch.setattr(
+            _mdv.atexit,
+            "register",
+            lambda callback, *args: registered.append((callback, args)),
+        )
+
+        _mdv.open_marked_documents(
+            [("source.pdf", b"temporary")],
+            _PrettyRecorder(),
+            project_root=str(tmp_path),
+            _file_utils=file_utils,
+        )
+        files = list((tmp_path / "tmp" / "ragchat").rglob("source_marked.pdf"))
+        assert len(files) == 1
+        run_dir = files[0].parent
+        other_service_dir = tmp_path / "tmp" / "ragchatservice" / "run"
+        other_service_dir.mkdir(parents=True)
+        (other_service_dir / "keep.dat").write_bytes(b"keep")
+
+        assert len(registered) == 1
+        callback, args = registered[0]
+        callback(*args)
+
+        assert file_utils.paths == [str(run_dir)]
+        assert not run_dir.exists()
+        assert (other_service_dir / "keep.dat").read_bytes() == b"keep"
+
+
+# ===========================================================================
+# open_grounded_answer_html — browser page for the grounded answer
+# ===========================================================================
+
+
+class _PrettyRecorder:
+    def __init__(self) -> None:
+        self.lines: list[str] = []
+
+    def write(self, *args: Any, **kwargs: Any) -> None:
+        self.lines.append(" ".join(str(a) for a in args))
+
+
+class _FileUtilsGuard:
+    def __init__(self, allowed: bool = True) -> None:
+        self.allowed = allowed
+        self.paths: list[str] = []
+
+    def is_safe_delete_path(self, path: str) -> bool:
+        self.paths.append(path)
+        return self.allowed
+
+
+class TestOpenGroundedAnswerHtml:
+    def test_disabled_listener_warns_without_writing_or_opening(
+        self, monkeypatch, capsys
+    ):
+        import Chat.MarkedDocsViewer as _mdv
+
+        monkeypatch.setattr(
+            _mdv.tempfile,
+            "mkdtemp",
+            lambda **kwargs: pytest.fail("HTML temp file created"),
+        )
+        monkeypatch.setattr(
+            _mdv,
+            "_open_with_os",
+            lambda path: pytest.fail("OS viewer opened without a click"),
+        )
+        pretty = _PrettyRecorder()
+
+        out = _mdv.open_grounded_answer_html(
+            "GroundedAnswer.html",
+            b"<!doctype html>",
+            pretty,
+        )
+
+        assert out is None
+        assert any("SERVE_RAGCHAT_GROUNDED_DOCS=1" in line for line in pretty.lines)
+        assert "file://" not in capsys.readouterr().out
+
+    @pytest.mark.parametrize("suffix", [".html", ".htm", ".HTML"])
+    def test_disabled_html_sources_warn_without_file_links_or_picker(
+        self,
+        suffix,
+        monkeypatch,
+        capsys,
+    ):
+        import Chat.MarkedDocsViewer as _mdv
+
+        monkeypatch.setattr(
+            _mdv.tempfile,
+            "mkdtemp",
+            lambda **kwargs: pytest.fail("HTML temp file created"),
+        )
+        monkeypatch.setattr(
+            "builtins.input", lambda *args: pytest.fail("HTML picker opened")
+        )
+        pretty = _PrettyRecorder()
+        _mdv.open_marked_documents(
+            [(f"source{suffix}", b"<h1>Source</h1>")],
+            pretty,
+        )
+
+        assert any("SERVE_RAGCHAT_GROUNDED_DOCS=1" in line for line in pretty.lines)
+        assert "file://" not in capsys.readouterr().out

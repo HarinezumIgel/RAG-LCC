@@ -30,7 +30,7 @@ cfg = ctx.cfg  # typed as Config args = ctx.args
 
 import re
 from pprint import pprint
-from typing import Any, Dict
+from typing import Any, Dict, cast
 
 import colorama
 
@@ -41,6 +41,7 @@ from AI.TokenBudget import TokenBudget
 from Chat.Chatter import Chatter
 from Chat.CommandProcessor import CommandProcessor
 from Chat.FileSelector import CliFileSelector
+from Chat.LocalDocsServer import LocalDocsServer
 from Chat.QueryParts import QueryParts
 from Compliance.BannedPhraseCollector import BannedPhraseCollector
 from Compliance.HFDownloader import HFDownloader
@@ -222,7 +223,7 @@ class RAGChat:
         active_filter = base_kwargs.get("filter")
         if active_filter:
             filter_desc = "  ".join(
-                f"{k}={v.get('$eq') if isinstance(v, dict) else v}"
+                f"{k}={cast(Dict[str, Any], v).get('$eq') if isinstance(v, dict) else v}"
                 for k, v in active_filter.items()
             )
             self.pretty.write("I", "Active filter", filter_desc, color=TURQUOISE)
@@ -294,11 +295,29 @@ class RAGChat:
         )
 
     def _run(self):
-        self._showIntro()
-        self._run_query()
-        self._show_results()
-        if os.environ.get("RAG_LCC_NW_TRACE", "0") == "1" and NetworkTracer is not None:
-            NetworkTracer.disable_tracer()  # Patch socket to trace network calls
+        local_docs: LocalDocsServer | None = None
+        try:
+            if os.environ.get("SERVE_RAGCHAT_GROUNDED_DOCS", "0") == "1":
+                block: dict[str, Any] = self.cfg.get_dict("_LOCAL_SERVE_DOCS", {})
+                local_docs = LocalDocsServer(
+                    port=int(block.get("port", 11436)),
+                    ttl_seconds=int(block.get("ttl_seconds", 1800)),
+                    max_total_bytes=int(block.get("max_total_mb", 200)) * 1024 * 1024,
+                    single_use=bool(block.get("single_use", False)),
+                )
+                self.chatter.local_docs_server = local_docs
+            self._showIntro()
+            self._run_query()
+            self._show_results()
+        finally:
+            if local_docs is not None:
+                local_docs.close()
+                self.chatter.local_docs_server = None
+            if (
+                os.environ.get("RAG_LCC_NW_TRACE", "0") == "1"
+                and NetworkTracer is not None
+            ):
+                NetworkTracer.disable_tracer()  # Patch socket to trace network calls
 
 
 def main():

@@ -1,7 +1,7 @@
-"""In-memory store for visually-marked documents served over HTTP.
+"""In-memory store for marked documents and grounded HTML answers served over HTTP.
 
-Used by ``RAGChatService`` to expose highlighted PDFs to OpenWebUI (or
-any HTTP client) via short-lived, unguessable URLs without ever
+Used by ``RAGChatService`` to expose highlighted documents and grounded answers
+to OpenWebUI (or any HTTP client) via short-lived, unguessable URLs without ever
 touching the filesystem.
 
 Security model:
@@ -13,11 +13,11 @@ Security model:
     are evicted when the cap would be exceeded.
   * Optional single-use mode (``single_use``): the entry is destroyed
     after the first successful fetch.
-  * No cross-user isolation is implemented at this layer — any
-    request that knows a token can fetch the bytes.  Combine with the
-    existing Bearer-token middleware (``_MODELS.ragchatservice._RAGCHATSERVICE.API_KEY``) on the
-    same FastAPI app, or place the service behind a trusted reverse
-    proxy, when stricter controls are required.
+  * A separate 192-bit capability is generated for each store lifetime.
+    HTTP requests require both the document token and this session capability.
+    Neither token provides user isolation; use a trusted reverse proxy
+    when stricter access controls are required. The /v1 Bearer middleware
+    does not protect document routes.
 
 Thread-safety:
   * All mutating operations are guarded by a ``threading.Lock`` so
@@ -31,7 +31,7 @@ import threading
 import time
 from collections import OrderedDict
 from dataclasses import dataclass
-from typing import Optional
+from typing import Mapping, Optional
 
 
 @dataclass
@@ -41,6 +41,7 @@ class MarkedEntry:
     data: bytes
     filename: str
     expires_at: float  # epoch seconds
+    response_headers: dict[str, str]
 
 
 class MarkedDocsStore:
@@ -56,6 +57,7 @@ class MarkedDocsStore:
         self.ttl_seconds: int = max(1, int(ttl_seconds))
         self.max_total_bytes: int = max(1, int(max_total_bytes))
         self.single_use: bool = bool(single_use)
+        self.session_token: str = secrets.token_urlsafe(24)
         self._entries: "OrderedDict[str, MarkedEntry]" = OrderedDict()
         self._total_bytes: int = 0
         self._lock: threading.Lock = threading.Lock()
@@ -64,7 +66,13 @@ class MarkedDocsStore:
     # Mutating API
     # ------------------------------------------------------------------
 
-    def put(self, data: bytes, filename: str) -> str:
+    def put(
+        self,
+        data: bytes,
+        filename: str,
+        *,
+        response_headers: Mapping[str, str] | None = None,
+    ) -> str:
         """Store *data* under a fresh token and return that token."""
         if not isinstance(data, (bytes, bytearray)):
             raise TypeError("data must be bytes")
@@ -77,6 +85,7 @@ class MarkedDocsStore:
             data=bytes(data),
             filename=str(filename),
             expires_at=time.time() + self.ttl_seconds,
+            response_headers=dict(response_headers or {}),
         )
         with self._lock:
             self._purge_expired_locked()
@@ -114,6 +123,11 @@ class MarkedDocsStore:
         with self._lock:
             self._entries.clear()
             self._total_bytes = 0
+
+    def purge_expired(self) -> None:
+        """Release expired documents even when no requests are arriving."""
+        with self._lock:
+            self._purge_expired_locked()
 
     # ------------------------------------------------------------------
     # Introspection (for tests / diagnostics)
