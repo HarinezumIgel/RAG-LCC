@@ -5,7 +5,6 @@ import time
 from typing import Any, Tuple
 
 from Chat.KeywordActionSplitter import KeywordActionSplitter
-from Commons.Exceptions import QueryTranslationError
 from Globals.Session import Session
 from Gui.Colors import CYAN, ORANGE
 from Helpers.DebugHelper import DebugHelper
@@ -15,8 +14,7 @@ from Orchestrator.LocalRetrievalPipeline import LocalRetrievalPipeline
 from Orchestrator.OrchestratorHelper import OrchestratorHelper
 from Orchestrator.OrchestratorMessages import OrchestratorMessages
 from Orchestrator.OrchestratorOverrides import OrchestratorOverrides
-from Orchestrator.OrchestratorTypes import (INDEXED_RETRIEVER_LABELS,
-                                            GraphRegexStageIteration,
+from Orchestrator.OrchestratorTypes import (GraphRegexStageIteration,
                                             GuardrailInputs, LocalDocs,
                                             OrchestrationFlowProfile,
                                             OriginalQueryLeg,
@@ -199,17 +197,23 @@ class Orchestrator(
         )
 
     def _prepare_session(self, mySession: Session) -> str:
-        return self._rag_chat_impl._prepare_session(mySession)
+        return self._rag_chat_impl._prepare_session(
+            mySession
+        )  # pyright: ignore[reportPrivateUsage]
 
     def _normalize_query(
         self,
         mySession: Session,
         user_query_original: str,
     ) -> tuple[str, list[str]]:
-        return self._rag_chat_impl._normalize_query(mySession, user_query_original)
+        return self._rag_chat_impl._normalize_query(
+            mySession, user_query_original
+        )  # pyright: ignore[reportPrivateUsage]
 
     def _check_gates(self, mySession: Session, final_query: str) -> bool:
-        return self._rag_chat_impl._check_gates(mySession, final_query)
+        return self._rag_chat_impl._check_gates(
+            mySession, final_query
+        )  # pyright: ignore[reportPrivateUsage]
 
     def _resolve_plan(self, mySession: Session) -> RetrievalPlan:
         user_query_original = self._prepare_session(mySession)
@@ -313,7 +317,9 @@ class Orchestrator(
             f"stop  web block n={len(web_docs)} elapsed={time.perf_counter() - _t_web:.3f}s",
         )
         if DebugHelper.check_session(mySession, 10):
-            self._rag_chat_impl._print_web_debug(web_docs)
+            self._rag_chat_impl._print_web_debug(
+                web_docs
+            )  # pyright: ignore[reportPrivateUsage]
         return web_docs
 
     def _apply_web_prefilters(
@@ -384,7 +390,7 @@ class Orchestrator(
             )
             kept_ids = {id(d) for d in docs_after}
             dropped = [d for d in docs_before if id(d) not in kept_ids]
-            self._rag_chat_impl._print_web_prefilter_debug(
+            self._rag_chat_impl._print_web_prefilter_debug(  # pyright: ignore[reportPrivateUsage]
                 docs_after,
                 dropped,
                 label,
@@ -398,7 +404,7 @@ class Orchestrator(
         local_docs: LocalDocs,
         web_docs: list[Any],
     ) -> Tuple[str, int]:
-        chosen = self._rag_chat_impl._merge_and_select(
+        chosen = self._rag_chat_impl._merge_and_select(  # pyright: ignore[reportPrivateUsage]
             mySession,
             local_docs.vector_docs,
             local_docs.bm25_docs,
@@ -406,7 +412,9 @@ class Orchestrator(
             local_docs.regex_docs,
             web_docs,
         )
-        return self._rag_chat_impl._build_context(mySession, chosen)
+        return self._rag_chat_impl._build_context(
+            mySession, chosen
+        )  # pyright: ignore[reportPrivateUsage]
 
     def _run_merge_and_context_stage(
         self,
@@ -447,7 +455,7 @@ class Orchestrator(
             primary_query,
             guardrail_query,
             use_guardrail,
-        ) = self._rag_chat_impl._resolve_guardrail_queries(
+        ) = self._rag_chat_impl._resolve_guardrail_queries(  # pyright: ignore[reportPrivateUsage]
             bm25_query=bm25_query,
             orig_translated_query_en=orig_translated_query_en,
         )
@@ -615,10 +623,8 @@ class Orchestrator(
                 "split" if plan.keyword_action_split is not None else "fallback"
             )
             if plan.keyword_action_split is None:
-                plan.alternate_queries = (
-                    self._rag_chat_impl._generate_alternate_queries(
-                        plan.final_query, mySession
-                    )
+                plan.alternate_queries = self._rag_chat_impl._generate_alternate_queries(  # pyright: ignore[reportPrivateUsage]
+                    plan.final_query, mySession
                 )
             elif not plan.keyword_action_split.retrieval_queries:
                 mySession.keyword_action_status = "unsupported_no_retrieval"
@@ -863,7 +869,9 @@ class Orchestrator(
         self.orchestratorMessages.emit_session_overrides(mySession)
         self.orchestratorMessages.trace(mySession, "start retrieval turn")
 
-        if not self._rag_chat_impl._set_vector_store(mySession):
+        if not self._rag_chat_impl._set_vector_store(
+            mySession
+        ):  # pyright: ignore[reportPrivateUsage]
             self.orchestratorMessages.trace(
                 mySession, "vector store setup failed; aborting retrieval"
             )

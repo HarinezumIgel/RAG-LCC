@@ -6,6 +6,45 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [Released] — 2026-11-20
+
+### Fixed - Confidence for partially grounded answers
+
+- Preserve independently calculated confidence when an answer has grounded
+  parts instead of forcing LOW/0. Keep the partial-verification warning and
+  unverified citation status.
+- Record partial grounding with the retained level and score in confidence
+  diagnostics. Local-only answers with no grounded support still receive LOW/0;
+  existing web-leg confidence handling is unchanged.
+
+### Changed - Partially verified answer warning
+
+- Preserve the warning triangle's emoji presentation (`⚠️`) in API/OpenWebUI
+  replies, matching the internet-access warning. CLI uses a text-style triangle
+  so its orange ANSI colour remains visible.
+- Show an orange warning triangle and **Answer not completely verified.** when
+  a rejected answer still contains evidence-grounded parts, in CLI and browser
+  output. API replies and chat history use the same distinct warning text.
+- Keep **Answer not verified.** when no answer parts match evidence. Retrieved
+  sources alone do not count as partial grounding; citation verification rules
+  are unchanged.
+
+### Fixed - RAGChat session debug settings
+
+- Default bare numeric and string debug levels to `le` (`<=`) in configuration,
+  CLI commands, and API requests without an explicit mode. Fresh sessions and
+  picker/display fallbacks also use `le`; explicit `ge` remains available.
+- Keep `DEBUG_LEVEL = 30` as the persisted default: a restarted RAGChat session
+  initializes `debug_level=30, debug_mode='le'`, selecting levels up to 30.
+- Share one session across CLI settings and query processing so debug level
+  and comparison mode remain consistent.
+- Use session debug settings for startup configuration and prompt dumps.
+  `le 30` suppresses the level-40 configuration dump even when global config
+  selects `ge 30`. Interactive changes do not remove earlier startup output.
+- Add regression tests for session/global mismatches, comparison modes,
+  bare-number defaults through configuration/CLI/API, silent output,
+  unset-level fallback, and shared command-processor state.
+
 ## [Released] — 2026-11-19
 
 ### Changed - Summary document delivery
@@ -429,7 +468,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `Config_Orchestrator.py` like the CLI. An optional service-only override is
   provided as a commented line. Removed the unused `_ACTIVE_ORCHESTRATION_FLOW`
   slot from `Config_RAGChatService.py`.
-
 
 ### Added - Native retrieval language
 
@@ -1399,6 +1437,12 @@ cross-encoder logit and its sigmoid probability in every row:
 ---
 
 ## [Unreleased] — 2026-07-31
+
+### Fixed - BM25 strict typing diagnostics
+
+- Use initialized, typed spaCy model maps, caches, and warning sets directly
+  instead of runtime container probes. Remove a redundant configuration type
+  check, resolving strict Pylance errors without changing retrieval behavior. — 2026-07-31
 
 ### ✨ Added — Web source links displayed in CLI after each answer
 

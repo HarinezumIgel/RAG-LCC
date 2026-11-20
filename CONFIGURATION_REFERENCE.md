@@ -383,8 +383,8 @@ where they represent different pipeline stages, even when their text is equal.
 
 | **Component** | **Options/Values** | **Purpose** |
 |---------------|-------------------|-------------|
-| **Debug Levels** | `None`: 0, `Basic`: 10, `Service`: 20, `Query Rewrite`: 29, `Standard`: 30, `Prompt Check Input`: 31, `Chunk Content`: 32, `Grounding`: 33, `Algos`: 40, `Components`: 55, `Chat Prompt`: 60, `Extracted Content`: 70, `LLM Response`: 80, `Streaming`: 100 | Hierarchical debug output verbosity. Higher levels include all lower levels. Standard (30) shows pipeline flow; Chunk Content (32) shows full retrieved text; Chat Prompt (60) shows LLM inputs; Streaming (100) shows raw token output. |
-| **Debug Level Format** | `30` (exact), `ge 30` (≥30), `is 33` (==33), `none` (silent) | How to specify debug levels. Can target exact level, minimum level, or specific level only. |
+| **Debug Levels** | `None`: 0, `Basic`: 10, `Service`: 20, `Query Rewrite`: 29, `Standard`: 30, `Prompt Check Input`: 31, `Chunk Content`: 32, `Grounding`: 33, `Algos`: 40, `Components`: 55, `Chat Prompt`: 60, `Extracted Content`: 70, `LLM Response`: 80, `Streaming`: 100 | Debug output is selected by comparison mode. Chunk Content (32) shows full retrieved text; Chat Prompt (60) shows LLM inputs; Streaming (100) shows raw token output. |
+| **Debug Level Format** | `30` or `ge 30` (≥30), `le 30` (≤30), `is 33` (==33), `none` (silent) | Select messages above, below, or exactly at a level. |
 | **Performance Logging** | `PERFORMANCE_LOGGING`: True/False | Logs start/stop timestamps of all major operations to logs/Performance/perf.log. Used for profiling and optimization. |
 
 ### ⚙️ System & Environment
@@ -728,7 +728,7 @@ _BANNED_DETECT["STRICT_DETECT_CONFIG"]["RAGChat"]["MASKING"]["APPLY_MASKING"] = 
 **Adjust debug verbosity:**
 ```python
 # Config_Global.py
-DEBUG_LEVEL = 30  # Standard; use "ge 30" for >=30, "is 33" for exact level
+DEBUG_LEVEL = 30  # Standard, <=30; use "ge 30" for >=30, "is 33" for exact level
 ```
 
 **In-chat debug adjustment:**
@@ -1066,20 +1066,29 @@ These settings control whether excluded files are skipped during processing. For
 ### 🐛 Debug Levels
 
 ```python
-DEBUG_LEVEL = "30"    # Default used in this repository (Standard, >= 30).
-                      # Format: 30  (>=30)   ge 30  (>=30)   is 30  (==30)   none  (silent)
+DEBUG_LEVEL = 30      # Default used in this repository (Standard, <= 30).
+                      # Format: 30  (<=30)   ge 30  (>=30)   is 30  (==30)   none  (silent)
 ```
 
 `DEBUG_LEVEL` is a **single combined key** — the comparison mode is encoded in the
 string alongside the numeric level.  There is no separate `DEBUG_MODE` config key;
-mode is embedded as an optional prefix: `"ge 30"` means ≥ 30, `"is 30"` means == 30.
+mode is embedded as an optional prefix: `"ge 30"` means ≥ 30, `"le 30"` means ≤ 30,
+and `"is 30"` means == 30. Comparisons apply to the message's level.
 
 Levels are spaced by 10 to allow future insertions without renumbering.
-`ge` (the default) activates the selected level **and all levels above it**.
+`ge` activates the selected level **and all levels above it**.
 `is` activates **only the exact level specified** — useful for isolating
 one subsystem without the noise from higher levels.
-`le` activates the selected level **and all levels below it** — useful for
+`le` (the default) activates the selected level **and all levels below it** — useful for
 capping output to a maximum verbosity.
+
+Bare numeric or string `30` defaults to `le 30`, selecting levels 30 and below
+in configuration, chat commands, and API requests without an explicit mode.
+Use explicit `ge 30` to select levels 30 and above. Higher-level output can
+include full prompts, chunk text, and raw responses.
+Unconditional debug guards are not affected by the comparison mode.
+Network debug logging is refreshed when the chat debug setting changes. It is
+enabled when level 55 is selected or when `URL_DEBUG` is `True`.
 
 | Level | Label | What it shows |
 | --- | --- | --- |
@@ -1104,7 +1113,7 @@ or via the API `debug_level` field:
 
 | String form | Equivalent | Meaning |
 | --- | --- | --- |
-| `"30"` | `debug_level=30, mode=ge` | Standard (≥ 30), default mode |
+| `"30"` | `debug_level=30, mode=le` | Standard (≤ 30), default mode |
 | `"ge 30"` or `">= 30"` | `debug_level=30, mode=ge` | Explicit greater-equal |
 | `"is 30"` or `"== 30"` | `debug_level=30, mode=is` | Exact level only |
 | `"le 30"` or `"<= 30"` | `debug_level=30, mode=le` | This level and all below (≤ 30) |
@@ -1113,16 +1122,18 @@ or via the API `debug_level` field:
 The `DebugHelper` class (`src/Helpers/DebugHelper.py`) provides a thin wrapper
 around these checks: `dbg.on(level)`, `dbg.only(level)`, `dbg.active(level)`, and
 the static `DebugHelper.parse(raw)` parser.  Two mode-aware static helpers are the
-primary consumer API — `DebugHelper.check(cfg, level)` (replaces `level(cfg) >= N`
-guards, respects `debug_mode`) and `DebugHelper.check_session(session, level)`
-(reads `session.debug_level` and `session.debug_mode`).  All consumer code uses
-`DebugHelper` instead of calling `cfg.get_int("DEBUG_LEVEL")` directly, so the
-combined string format is parsed in one place.
+primary consumer API — `DebugHelper.check(cfg, level)` (respects `debug_mode`)
+and `DebugHelper.check_session(session, level)` (reads `session.debug_level` and
+`session.debug_mode`). The combined string format is parsed in one place.
 
 `debug_level` and `debug_mode` are also **live-settable** at the `🛠️` chat prompt:
 `debug_level=30`, `debug_level!` (interactive named-preset picker), `debug_level?`
 (show current), `debug_mode=ge` / `debug_mode=is` / `debug_mode=le`, `debug_mode!`.
 The effective values appear on the `▶ Debug:` line of the `show?` status block.
+RAGChat settings and queries share one session. Startup debug guards use that
+session's level and mode: the level-40 configuration dump is hidden with
+`le 30`, even if global configuration selects `ge 30`. Startup runs before the
+interactive settings prompt; later changes cannot remove output already printed.
 At the RAGChat settings prompt, `show?` repeats the grouped current values shown
 at startup. `help?` uses the same Chat, Summarize, Retrieval and Orchestration
 hierarchy, but displays command explanations and usage examples instead.
@@ -1425,7 +1436,8 @@ The answer-text judge uses `qwen2.5:14b` with Ollama and the served model name
 `openai/qwen2_5_14b_instruct` with vLLM. Provision the model externally
 (for example, `ollama pull qwen2.5:14b`) and ensure the vLLM endpoint exposes
 that exact served name. The judge call uses its own role's output-token budget
-and `_QUALITY_CONFIDENCE.judge_temperature`.
+and `_QUALITY_CONFIDENCE.judge_temperature`. Its context window is resolved
+for the judge model, reduced if the session sets a lower `context_size`.
 
 Small models are not suitable judges. With the same prompt, `qwen2.5:1.5b`
 returned identical ratings for clear, self-contradictory, and garbled answers.
@@ -2228,10 +2240,14 @@ deployment always forces it off. Restart RAGChat after changing the setting.
 
 Browser previews retain evidence-supported highlights even when whole-answer
 grounding fails, matching the CLI's partial marking. The page title and heading
-say **Not fully grounded**, with an explicit unverified-answer warning; supported
+say **Not fully grounded**, with an orange warning triangle and
+**Answer not completely verified** when some answer parts match evidence.
+When no parts match, the warning remains **Answer not verified**; supported
 spans or diagram elements may be orange while unsupported claims stay unmarked.
 Highlights do not promote the answer to verified status or validate source
-references. If grounding is disabled or skipped, the preview remains unmarked.
+references. Partially grounded answers retain their calculated confidence
+instead of being forced to LOW/0; local-only answers with no grounded support
+still receive LOW/0. If grounding is disabled or skipped, the preview remains unmarked.
 
 #### Service delivery (`RAGChatService`)
 

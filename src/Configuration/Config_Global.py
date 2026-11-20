@@ -20,7 +20,7 @@ import os
 
 from Compliance.path_validation import validate_absolute_path
 
-_VERSION = "v0.5.2.2/1660 2026-11-19"
+_VERSION = "v0.5.2.2.1/1662 2026-11-20"
 
 # -----------------------------------------------------------------------------
 # Adjust these hashes when you changed any of these files:
@@ -128,7 +128,7 @@ _OFFICE_DOC_EXTRACTION = {
 _CONSIDER_AS_TEXT_FILE = ["txt", "md", "py", "c", "h", "cpp", "csv", "log"]
 # -----------------------------------------------------------------------------
 # Debug settings.
-# Format: 30  (== 30, exact)   ge 30  (>= 30)   is 30  (== 30)   none / ""  (silent)
+# Format: 30 / le 30  (<= 30)   ge 30  (>= 30)   is 30  (== 30)   none / ""  (silent)
 # Can also be set via --debug-level CLI arg or in-chat with: set debug ge 30
 # -----------------------------------------------------------------------------
 _ALLOWED_DEBUG_LEVELS = {
@@ -155,7 +155,7 @@ _ALLOWED_DEBUG_LEVELS = {
 }
 
 DEBUG_LEVEL = (
-    30  # Examples: none (silent)  30 / ge 30 (>=30)  is 33 (==33 Grounding only)
+    30  # Default: <=30. Examples: none (silent)  ge 30 (>=30)  is 33 (Grounding only)
 )
 
 # Enable urllib (http requests) debugging

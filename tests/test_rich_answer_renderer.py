@@ -9,12 +9,55 @@ from rich.color import Color
 from rich.console import Console
 from rich.text import Text
 
-from Gui.Colors import YELLOW
+from Grounding.Grounder import Grounder
+from Gui.Colors import ORANGE, TURQUOISE, YELLOW
 from Gui.RichAnswerRenderer import ANSWER_META_SEPARATOR, RichAnswerRenderer
+from Gui.Symbols import Symbols
 
 
 def _plain(text: str) -> str:
     return re.sub(r"\033\[[0-9;]*m", "", text)
+
+
+@pytest.mark.parametrize("partial", [False, True])
+def test_unverified_answer_label_colour_in_cli(partial: bool):
+    output = io.StringIO()
+    renderer = RichAnswerRenderer(
+        Console(file=output, width=100, force_terminal=True, color_system="truecolor")
+    )
+    renderer.render(
+        Grounder.unverified_answer_notice(cli=True, partial=partial)
+        + "Generated prose.",
+        100,
+        foreground="\033[38;2;220;220;220m",
+    )
+    rendered = output.getvalue()
+    expected_label = (
+        "Answer not completely verified." if partial else "Answer not verified."
+    )
+    label_line = next(line for line in rendered.splitlines() if expected_label in line)
+    assert (ORANGE if partial else TURQUOISE)[2:-1] in label_line
+    icon = Symbols.sym_icon("WARNING" if partial else "EXCLAMATION")
+    assert icon.replace("\ufe0f", "").strip() in _plain(label_line)
+    assert "Generated prose." in _plain(rendered)
+
+
+@pytest.mark.parametrize("terminal_emoji", [False, True])
+def test_partial_warning_preserves_emoji_presentation_for_openwebui(
+    monkeypatch: pytest.MonkeyPatch,
+    terminal_emoji: bool,
+) -> None:
+    monkeypatch.setattr(
+        Symbols,
+        "sym_icon",
+        lambda _name: "\u26a0\ufe0f " if terminal_emoji else "\u26a0 ",
+    )
+
+    notice = Grounder.unverified_answer_notice(partial=True)
+    assert notice.startswith("\u26a0\ufe0f **Answer not completely verified.**")
+    cli_notice = Grounder.unverified_answer_notice(partial=True, cli=True)
+    assert cli_notice.startswith(ORANGE + "\u26a0 **Answer not completely verified.**")
+    assert "\ufe0f" not in cli_notice
 
 
 def test_rich_renderer_displays_markdown_table_list_and_mermaid_source():

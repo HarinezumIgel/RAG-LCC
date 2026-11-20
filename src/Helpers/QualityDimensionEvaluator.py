@@ -9,6 +9,7 @@ from Orchestrator import FlowConfig
 
 if TYPE_CHECKING:
     from AI.LLMCaller import LLMCaller
+    from AI.TokenBudget import TokenBudget
     from Chat.ConfidenceEvaluator import (AnswerConfidenceResult,
                                           ConfidenceEvaluator)
     from Globals.Session import Session
@@ -81,6 +82,7 @@ class QualityDimensionEvaluator:
         *,
         llm_caller: "LLMCaller",
         model: str,
+        token_budget: "TokenBudget",
         confidence_evaluator: "ConfidenceEvaluator",
     ) -> None:
         """Run the optional text review, store diagnostics, and update reporting."""
@@ -105,6 +107,9 @@ class QualityDimensionEvaluator:
                     ollama_options={
                         "temperature": float(
                             self.cfg.get("_QUALITY_CONFIDENCE.judge_temperature", 0.0)
+                        ),
+                        "num_ctx": token_budget.get_effective_context_limit(
+                            model, session
                         ),
                     },
                     answer_is_json=True,

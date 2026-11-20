@@ -463,7 +463,7 @@ COMMAND_SPECS: dict[str, dict[str, Any]] = {
         "section": "Chat Context",
         "prompt": (
             "Sets the verbosity of debug output. "
-            "Accepts a plain level number (e.g. '30') for >= mode, "
+            "Accepts a plain level number (e.g. '30') for <= mode, "
             "'ge 30' for explicit >= mode, 'is 30' for exact-match mode, "
             "or 'le 30' for <= mode (this level and all below). "
             "Higher levels show internal decisions, scoring, and filtering steps. "
@@ -477,9 +477,9 @@ COMMAND_SPECS: dict[str, dict[str, Any]] = {
         "section": "Chat Context",
         "prompt": (
             "Sets the comparison mode for debug_level. "
-            "'ge' activates the selected level and all below it (>=). "
+            "'ge' activates the selected level and all above it (>=). "
             "'is' activates that exact level only (==). "
-            "'le' activates that level and all above it (<=)."
+            "'le' activates that level and all below it (<=)."
         ),
         "mode": "debug_mode",
         "type": "str",

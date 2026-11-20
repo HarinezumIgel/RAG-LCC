@@ -364,6 +364,7 @@ class Chatter:
         grounding_notice: str = ""
         skip_grounding_for_short_answer: bool = False
         unverified_output: bool = False
+        partially_grounded: bool = False
         session.grounding_proxy_text = ""
         session.grounding_proxy_sentences = {}
         if grounding_enabled:
@@ -399,22 +400,24 @@ class Chatter:
                 web_leg_enabled = bool(getattr(session, "web_search", False)) or (
                     str(getattr(session, "retrieve_mode", "") or "").upper() == "WEB"
                 )
-                unverified_output = (
-                    self.grounder.has_structured_answer(content) or web_leg_enabled
+                unverified_output = True
+                partially_grounded = self.grounder.has_grounded_parts(
+                    session,
+                    content,
+                    chunk_texts_for_grounding
+                    + self.grounder.collect_web_texts(session),
                 )
-                if unverified_output:
-                    grounding_notice = self.grounder.unverified_structure_notice()
-                    disposition = "generated output shown unverified"
-                else:
-                    content = self.grounder.no_evidence_message()
-                    disposition = "generated answer withheld"
+                grounding_notice = self.grounder.unverified_answer_notice(
+                    partial=partially_grounded
+                )
+                disposition = "generated answer shown unverified"
                 self.pretty.write(
                     "W",
                     "Grounding",
                     f"Grounding requirements were not satisfied by retrieved context; {disposition}.",
                     color=ORANGE,
                 )
-                if not web_leg_enabled:
+                if not web_leg_enabled and not partially_grounded:
                     self.rag.confidenceEvaluator.store_answer_confidence(
                         session,
                         list(session.last_chosen_chunks),
@@ -425,20 +428,23 @@ class Chatter:
                         emit=False,
                         grounding_failed=True,
                     )
+                confidence = session.answer_confidence_result
+                if confidence is None:
+                    raise ValueError("Retrieval did not populate answer confidence")
                 self.confidence_logger.log_step(
                     session,
                     step_name="grounding evidence check",
-                    status="unverified" if unverified_output else "fallback",
-                    confidence_level="LOW",
-                    confidence_score=0.0,
-                    detail=f"answer did not satisfy grounding requirements; {disposition}",
+                    status="partially_verified" if partially_grounded else "unverified",
+                    confidence_level=confidence.level if partially_grounded else "LOW",
+                    confidence_score=confidence.score if partially_grounded else 0.0,
+                    detail=(
+                        "answer partially grounded; calculated confidence retained; "
+                        if partially_grounded
+                        else "answer did not satisfy grounding requirements; "
+                    )
+                    + disposition,
                     source="grounding",
                 )
-                answer.content = content
-                if not unverified_output:
-                    # A withheld answer must not present unrelated sources.
-                    session.last_chosen_chunks = []
-                    session.chunk_texts_for_grounding = []
             else:
                 session.answer_grounding_verified = True
 
@@ -578,6 +584,14 @@ class Chatter:
             if grounded_page is not None:
                 self._open_grounded_answer_page(grounded_page)
 
+        if unverified_output:
+            cli_answer = cli_answer.replace(
+                grounding_notice,
+                self.grounder.unverified_answer_notice(
+                    cli=True, partial=partially_grounded
+                ),
+                1,
+            )
         self.print_llm_answer(
             cli_answer, self.terminal_line_size, original_query=display_query
         )
@@ -782,6 +796,7 @@ class Chatter:
             answer,
             llm_caller=self.llmCaller,
             model=self.helpers.get_model_args("_ACTIVE_LLM_JUDGE")["MODEL"],
+            token_budget=self.tokenBudget,
             confidence_evaluator=self.rag.confidenceEvaluator,
         )
 

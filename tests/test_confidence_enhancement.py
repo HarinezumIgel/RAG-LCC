@@ -3,6 +3,7 @@ from unittest.mock import Mock
 
 import pytest
 
+from AI.TokenBudget import TokenBudget
 from Config.Config import Config
 from Configuration.Config_Confidence import _PROMPT_QUALITY_DIMENSION_JUDGE
 from Chat.ConfidenceEvaluator import ConfidenceEvaluator
@@ -38,6 +39,18 @@ def _quality_session(mode="both"):
     return session
 
 
+@pytest.fixture
+def judge_budget():
+    budget = Mock(spec=TokenBudget)
+    budget.get_context_limit.return_value = 8192
+    budget.get_effective_context_limit.side_effect = (
+        lambda model, session: TokenBudget.get_effective_context_limit(
+            budget, model, session
+        )
+    )
+    return budget
+
+
 def test_judge_prompt_only_requests_supported_text_ratings():
     prompt = _PROMPT_QUALITY_DIMENSION_JUDGE.format(answer="Actual answer")
     assert "Actual answer" in prompt
@@ -50,7 +63,7 @@ def test_judge_prompt_only_requests_supported_text_ratings():
 
 
 @pytest.mark.parametrize("mode", ["off", "heuristic", "llm", "both"])
-def test_modes_keep_scorers_separate_and_preserve_baseline(mode):
+def test_modes_keep_scorers_separate_and_preserve_baseline(mode, judge_budget):
     evaluator = QualityDimensionEvaluator(_quality_config())
     session = _quality_session(mode)
     confidence = session.answer_confidence_result
@@ -72,6 +85,7 @@ def test_modes_keep_scorers_separate_and_preserve_baseline(mode):
         llm_caller=llm,
         model="test-model",
         confidence_evaluator=helper,
+        token_budget=judge_budget,
     )
     assert (confidence.level, confidence.score, confidence.components) == baseline
     assert confidence.quality_error is None
@@ -87,11 +101,16 @@ def test_modes_keep_scorers_separate_and_preserve_baseline(mode):
         )
         assert llm.call_llm.call_args.kwargs["model"] == "test-model"
         assert llm.call_llm.call_args.kwargs["model_role"] == "_ACTIVE_LLM_JUDGE"
-        assert llm.call_llm.call_args.kwargs["ollama_options"] == {"temperature": 0.0}
+        assert llm.call_llm.call_args.kwargs["ollama_options"] == {
+            "temperature": 0.0,
+            "num_ctx": 8192,
+        }
+        judge_budget.get_context_limit.assert_called_once_with("test-model")
         assert scores["internal_consistency"] == {"llm": 0.0}
         assert confidence.judge_model == "test-model"
     else:
         llm.call_llm.assert_not_called()
+        judge_budget.get_context_limit.assert_not_called()
         assert confidence.judge_response is None
         assert confidence.judge_model is None
     assert set(scores) == expected
@@ -123,7 +142,9 @@ def test_modes_keep_scorers_separate_and_preserve_baseline(mode):
         {"content": '{"accuracy":1,"completeness":1,"reasoning":1,"provenance":1}'},
     ],
 )
-def test_failed_judge_is_explicit_and_never_invents_llm_ratings(mode, response):
+def test_failed_judge_is_explicit_and_never_invents_llm_ratings(
+    mode, response, judge_budget
+):
     evaluator = QualityDimensionEvaluator(_quality_config())
     session = _quality_session(mode)
     llm = Mock()
@@ -136,6 +157,7 @@ def test_failed_judge_is_explicit_and_never_invents_llm_ratings(mode, response):
         llm_caller=llm,
         model="judge",
         confidence_evaluator=helper,
+        token_budget=judge_budget,
     )
     confidence = session.answer_confidence_result
     assert confidence.quality_error
@@ -152,7 +174,7 @@ def test_failed_judge_is_explicit_and_never_invents_llm_ratings(mode, response):
     )
 
 
-def test_display_can_be_disabled_without_discarding_diagnostics():
+def test_display_can_be_disabled_without_discarding_diagnostics(judge_budget):
     cfg = _quality_config({"_QUALITY_CONFIDENCE.emit_in_answer_block": False})
     session = _quality_session("heuristic")
     helper = Mock()
@@ -163,13 +185,14 @@ def test_display_can_be_disabled_without_discarding_diagnostics():
         llm_caller=Mock(),
         model="judge",
         confidence_evaluator=helper,
+        token_budget=judge_budget,
     )
     assert session.answer_confidence_result.quality_dimensions
     helper.add_quality_dimensions.assert_not_called()
 
 
 @pytest.mark.parametrize("mode", ["heuristic", "llm", "both"])
-def test_report_explains_limits_and_only_shows_requested_sections(mode):
+def test_report_explains_limits_and_only_shows_requested_sections(mode, judge_budget):
     helper = ConfidenceEvaluator(confidence_logger=Mock(), pretty=Mock())
     session = _quality_session(mode)
     llm = Mock()
@@ -183,6 +206,7 @@ def test_report_explains_limits_and_only_shows_requested_sections(mode):
         llm_caller=llm,
         model="same-generation-model",
         confidence_evaluator=helper,
+        token_budget=judge_budget,
     )
     summary = session.answer_confidence_result.summary
     assert "LOW" in summary
@@ -227,7 +251,10 @@ def test_flow_defaults_and_session_overrides():
         QualityDimensionEvaluator.resolve_mode(cfg, session)
 
 
-def test_judge_temperature_defaults_to_deterministic_and_is_configurable():
+@pytest.mark.parametrize("override, expected_window", [(4096, 4096), (16384, 8192)])
+def test_judge_passes_session_window_within_model_limit(
+    override, expected_window, judge_budget
+):
     from Configuration.Config_Confidence import _QUALITY_CONFIDENCE
 
     assert _QUALITY_CONFIDENCE["judge_temperature"] == 0.0
@@ -237,6 +264,7 @@ def test_judge_temperature_defaults_to_deterministic_and_is_configurable():
     }
     cfg = _quality_config({"_QUALITY_CONFIDENCE.judge_temperature": 0.3})
     session = _quality_session("llm")
+    session.context_size_override = override
     QualityDimensionEvaluator(cfg).evaluate_answer(
         session,
         session.answer_confidence_result,
@@ -244,8 +272,12 @@ def test_judge_temperature_defaults_to_deterministic_and_is_configurable():
         llm_caller=llm,
         model="judge",
         confidence_evaluator=Mock(),
+        token_budget=judge_budget,
     )
-    assert llm.call_llm.call_args.kwargs["ollama_options"] == {"temperature": 0.3}
+    assert llm.call_llm.call_args.kwargs["ollama_options"] == {
+        "temperature": 0.3,
+        "num_ctx": expected_window,
+    }
 
 
 def test_chatter_passes_dedicated_judge_model_not_generation_model():

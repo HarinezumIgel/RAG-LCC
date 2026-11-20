@@ -690,6 +690,7 @@ class TestRewriteSuccess:
             ),
         )
         session = StubSession(debug_level=59)
+        session.debug_mode = "le"
         rw.rewrite(session)
 
         for args, _ in _pretty_calls(rw):

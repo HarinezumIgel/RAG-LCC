@@ -19,7 +19,7 @@ class CommandProcessor:
         self.chromaDBHelper: ChromaDBHelper = ChromaDBHelper()
         self.queryParts: QueryParts = QueryParts()
         self.cfg: Config = Config()
-        self.session: Session = Session()
+        self.session: Session = self.queryParts.session
 
         # load allowed strategies
         self.allowed_strategies: list[Any] = self.cfg.get_list("_ALLOWED_STRATEGIES")
@@ -71,7 +71,7 @@ class CommandProcessor:
                 )
             else:
                 for c in cmds:
-                    self.queryParts._apply(c)  # type: ignore[reportPrivateUsage]
+                    self.queryParts.apply(c)
             self.hist.save(
                 HistoryManager.key(
                     self.session.collection_name, self.session.chat_name

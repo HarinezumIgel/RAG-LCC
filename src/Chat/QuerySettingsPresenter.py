@@ -231,7 +231,7 @@ class QuerySettingsPresenter:
             "enable_regex_retriever": getattr(s, "enable_regex_retriever", None),
         }
 
-        values["debug_mode"] = getattr(s, "debug_mode", "ge") or "ge"
+        values["debug_mode"] = getattr(s, "debug_mode", "le") or "le"
         values["bm25_pre_filter"] = (
             self.cfg.get_float("_WEB_SEARCH.bm25_pre_filter") or 0.0
         )
@@ -311,11 +311,11 @@ class QuerySettingsPresenter:
             print(f"[web_fetch_k] {val}")
 
         def _show_debug_level() -> None:
-            mode = getattr(s, "debug_mode", "ge") or "ge"
+            mode = getattr(s, "debug_mode", "le") or "le"
             print(f"[debug_level] {int(s.debug_level or 0)}  mode={mode!r}")
 
         def _show_debug_mode() -> None:
-            mode = getattr(s, "debug_mode", "ge") or "ge"
+            mode = getattr(s, "debug_mode", "le") or "le"
             print(f"[debug_mode] {mode!r}")
 
         handlers: dict[str, Callable[[], None]] = {

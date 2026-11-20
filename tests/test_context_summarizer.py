@@ -700,7 +700,7 @@ def test_summary_debug_shows_batches_aggregations_and_final_output(summarizer, s
         "one two three four five six seven eight", [1]
     )
     session.debug_level = 34
-    session.debug_mode = "ge"
+    session.debug_mode = "le"
     summarizer.summarize_documents(
         [Document(page_content=f"chunk{i} " + "word " * 13) for i in range(60)],
         session=session,

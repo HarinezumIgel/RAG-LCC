@@ -13,6 +13,7 @@ from Globals.Session import Session
 from Gui.Colors import ORANGE, RESET, YELLOW
 from Gui.HistoryManager import HistoryManager
 from Helpers.DebugHelper import DebugHelper
+from Helpers.FileUtils import FileUtils
 from Helpers.Helpers import Helpers
 from Helpers.QualityDimensionEvaluator import QualityDimensionEvaluator
 from Orchestrator import FlowConfig
@@ -50,6 +51,10 @@ class SessionSettingsApplier:
         self.session.debug_mode = mode
         combined = "none" if level == 0 else f"{mode} {level}"
         self.cfg.set("DEBUG_LEVEL", combined, force=True)
+        FileUtils.configure_network_debug(
+            self.cfg.get_bool("URL_DEBUG")
+            or DebugHelper.check_session(self.session, 55)
+        )
 
     def _set(self: QueryPartsContext, tok: str, p: str):
         if p is None:  # type: ignore[reportUnnecessaryComparison]

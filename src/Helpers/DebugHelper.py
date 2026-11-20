@@ -31,8 +31,8 @@ class DebugHelper:
 
         level, mode = DebugHelper.parse("is 30")   # → (30, "is")
         level, mode = DebugHelper.parse("ge 30")   # → (30, "ge")
-        level, mode = DebugHelper.parse("30")      # → (30, "is")  plain int defaults to is
-        level, mode = DebugHelper.parse(30)        # → (30, "is")
+        level, mode = DebugHelper.parse("30")      # → (30, "le")
+        level, mode = DebugHelper.parse(30)        # → (30, "le")
     """
 
     def __init__(self, cfg: "Config") -> None:
@@ -60,16 +60,22 @@ class DebugHelper:
     def active(self, level: int) -> bool:
         """Return True when the guard at *level* fires given the current DEBUG_LEVEL and DEBUG_MODE.
 
-        - ``DEBUG_MODE = "ge"``  →  ``DEBUG_LEVEL >= level``  (default, activates this level and all below)
-        - ``DEBUG_MODE = "is"``  →  ``DEBUG_LEVEL == level``  (activates this exact level only)
-        - ``DEBUG_MODE = "le"``  →  ``DEBUG_LEVEL <= level``  (activates this level and all above)
+        - ``ge`` activates messages at or above the configured level.
+        - ``is`` activates messages at the configured level only.
+        - ``le`` activates messages at or below the configured level.
         """
         configured, mode = self._parsed()
-        if mode == "is":
-            return configured == level
-        if mode == "le":
-            return configured <= level
-        return configured >= level  # "ge" — default
+        return DebugHelper._matches(configured, mode, level)
+
+    @staticmethod
+    def _matches(configured: int, mode: str, level: int) -> bool:
+        if configured == 0:
+            return False
+        if mode in ("is", "eq", "=="):
+            return level == configured
+        if mode in ("le", "<="):
+            return level <= configured
+        return level >= configured
 
     # ── parser ───────────────────────────────────────────────────────────────
 
@@ -90,17 +96,13 @@ class DebugHelper:
 
         Reads ``DEBUG_LEVEL`` from config and applies the comparison mode:
 
-        - ``"ge"``  →  ``configured >= level``  (default, this level and above)
-        - ``"is"``  →  ``configured == level``  (exact level only)
-        - ``"le"``  →  ``configured <= level``  (this level and below)
+        - ``"ge"``  →  ``level >= configured``  (this level and above)
+        - ``"is"``  →  ``level == configured``  (exact level only)
+        - ``"le"``  →  ``level <= configured``  (default, this level and below)
         """
         raw = cfg.get_str("DEBUG_LEVEL", "none")
         configured, mode = DebugHelper.parse(raw)
-        if mode == "is":
-            return configured == level
-        if mode == "le":
-            return configured <= level
-        return configured >= level  # "ge" — default
+        return DebugHelper._matches(configured, mode, level)
 
     @staticmethod
     def check_session(session: Any, level: int) -> bool:
@@ -118,17 +120,9 @@ class DebugHelper:
         except (TypeError, ValueError):
             configured = 0
 
-        raw_mode = getattr(session, "debug_mode", "ge")
-        mode = str(raw_mode or "ge").strip().lower()
-        if mode in ("eq", "=="):
-            mode = "is"
-        if mode in (">=", "ge"):
-            return configured >= level
-        if mode in ("<=", "le"):
-            return configured <= level
-        if mode == "is":
-            return configured == level
-        return configured >= level
+        raw_mode = getattr(session, "debug_mode", "le")
+        mode = str(raw_mode or "le").strip().lower()
+        return DebugHelper._matches(configured, mode, level)
 
     @staticmethod
     def parse(raw: "str | int") -> tuple[int, str]:
@@ -139,8 +133,8 @@ class DebugHelper:
         =============  =========  ============================================
         Input          Result     Meaning
         =============  =========  ============================================
-        ``30``         (30, "ge") plain int → >= (default)
-        ``"30"``       (30, "ge") plain string number
+        ``30``         (30, "le") plain int → <= (default)
+        ``"30"``       (30, "le") plain string number
         ``"ge 30"``    (30, "ge") explicit greater-equal
         ``">= 30"``    (30, "ge") alternative spelling
         ``"is 30"``    (30, "is") exact match
@@ -155,7 +149,7 @@ class DebugHelper:
         Raises ``ValueError`` on unrecognised input.
         """
         if isinstance(raw, int):
-            return (0, "is") if raw == 0 else (raw, "ge")
+            return (0, "is") if raw == 0 else (raw, "le")
 
         text: str = str(raw).strip().lower()
 
@@ -184,10 +178,10 @@ class DebugHelper:
             except ValueError:
                 raise ValueError(f"Debug level must be an integer, got '{num_str}'.")
 
-        # Single token: plain integer — default mode is 'ge' (>=)
+        # Single token: plain integer — default mode is 'le' (<=)
         try:
             n = int(text)
-            return (0, "is") if n == 0 else (n, "ge")
+            return (0, "is") if n == 0 else (n, "le")
         except ValueError:
             raise ValueError(
                 f"Invalid debug level '{raw}'. "

@@ -134,7 +134,7 @@ class ChatCompletionRequest(BaseModel):
     web_fetch_k: Optional[int] = None
     debug_level: Optional[int] = None
     debug_mode: Optional[str] = (
-        None  # "ge" (>=, default), "is" (== exact), or "le" (<= less-equal)
+        None  # "le" (<=, default), "is" (== exact), or "ge" (>= greater-equal)
     )
 
     # Ollama options passthrough

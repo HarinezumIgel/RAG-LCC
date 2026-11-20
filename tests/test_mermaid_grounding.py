@@ -48,6 +48,33 @@ def _session():
 
 
 EVIDENCE = "Hedgehogs live in gardens and eat insects."
+
+
+@pytest.mark.parametrize(
+    "body, expected",
+    [
+        (EVIDENCE + " Purple spacecraft manufacture impossible engines.", True),
+        (
+            "Purple spacecraft manufacture impossible engines.\n\nMetadata used:\n"
+            + EVIDENCE,
+            False,
+        ),
+        (
+            "```mermaid\nflowchart LR\n"
+            " A[Purple spacecraft] -->|manufacture| B[Impossible engines]\n"
+            " classDef fake fill:orange;\n class A fake;\n```",
+            False,
+        ),
+    ],
+)
+def test_partial_grounding_requires_supported_answer_not_sources_or_styles(
+    grounder: Grounder,
+    body: str,
+    expected: bool,
+) -> None:
+    assert grounder.has_grounded_parts(_session(), body, [EVIDENCE]) is expected
+
+
 DIAGRAM = (
     "```mermaid\n" "flowchart LR\n" "  A[Hedgehogs] -->|live in| B[Gardens]\n" "```"
 )
@@ -627,6 +654,11 @@ def test_unverified_browser_preview_preserves_only_supported_cli_spans(grounder)
     assert "<title>Not fully grounded</title>" in page
     assert "<h1>Not fully grounded</h1>" in page
     assert "Not fully grounded:" in page
+    assert (
+        '<strong class="partial-label">&#9888; Answer not completely verified.</strong>'
+        in page
+    )
+    assert ".partial-label { color: #ef6c00; }" in page
     assert f'<mark class="grounded">{supported}</mark>' in page
     assert f"<li>{unsupported}</li>" in page
     assert page.count('<mark class="grounded">') == 1

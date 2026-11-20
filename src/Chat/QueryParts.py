@@ -61,25 +61,25 @@ class QuerySettingsPicker:
         session.file_path_select = mode
         return True
 
-    def _pick_debug_mode(self: QueryPartsContext) -> str:
+    def _pick_debug_mode(self: QueryPartsContext, level: int) -> str:
         return pick_value(
             inquirer,
-            message="Choose comparison mode:",
+            message="Choose comparison mode (level 0 is silent):",
             choices=[
                 Choice(
-                    name="ge — show messages at or below the selected level",
-                    value="ge",
-                ),
-                Choice(
-                    name="le — show messages at or above the selected level",
+                    name=f"le — show messages at or below the selected level (<= {level})",
                     value="le",
                 ),
                 Choice(
-                    name="is — show messages at the selected level only",
+                    name=f"ge — show messages at or above the selected level (>= {level})",
+                    value="ge",
+                ),
+                Choice(
+                    name=f"is — show messages at the selected level only (== {level})",
                     value="is",
                 ),
             ],
-            default=self.session.debug_mode or "ge",
+            default=self.session.debug_mode or "le",
         )
 
     def _ask_value(self: QueryPartsContext, tok: str):
@@ -230,12 +230,12 @@ class QuerySettingsPicker:
                 choices=choices,
                 default=s.debug_level,
             )
-            mode_choice = self._pick_debug_mode()
+            mode_choice = self._pick_debug_mode(choice_value)
             self._set_debug(choice_value, mode_choice)
             return
 
         if mode == "debug_mode":
-            mode_choice = self._pick_debug_mode()
+            mode_choice = self._pick_debug_mode(s.debug_level or 0)
             self._set_debug(s.debug_level or 0, mode_choice)
             return
 
@@ -671,7 +671,8 @@ class QueryParts(
             out.append(Cmd(tok, op, pay))
         return out
 
-    def _apply(self, cmd: Cmd):
+    def apply(self, cmd: Cmd):
+        """Apply a parsed settings command."""
         if cmd.op == "?":
             if cmd.token == "show":
                 self.print_values()

@@ -58,6 +58,11 @@ class GroundedAnswerHtmlRenderer:
             if mark_supported
             else safe_markdown
         )
+        partially_grounded = (
+            not verified
+            and mark_supported
+            and grounder.has_grounded_parts(session, safe_markdown, evidence_texts)
+        )
         if verified:
             title = "Grounded answer"
             note = (
@@ -79,6 +84,12 @@ class GroundedAnswerHtmlRenderer:
                 "Grounding failed, was skipped, or was disabled. This generated answer "
                 "is unverified and may contain unsupported claims."
             )
+        if verified:
+            unverified_label = ""
+        elif partially_grounded:
+            unverified_label = '<strong class="partial-label">&#9888; Answer not completely verified.</strong> '
+        else:
+            unverified_label = '<strong class="unverified-label">&#10071; Answer not verified.</strong> '
         markdown = MarkdownIt("default", {"html": True}).enable(
             ["table", "strikethrough"]
         )
@@ -175,6 +186,8 @@ h1, h2, h3 {{ line-height: 1.25; }}
 a {{ color: #075e9b; }}
 mark.grounded {{ background: #ffe0b2; color: inherit; border-radius: .2em; padding: 0 .12em; }}
 .grounding-note {{ color: #555; font-size: .9rem; }}
+.unverified-label {{ color: #00756c; }}
+.partial-label {{ color: #ef6c00; }}
 table {{ border-collapse: collapse; display: block; overflow-x: auto; }}
 th, td {{ border: 1px solid #bbb; padding: .4rem .7rem; }}
 th {{ background: #f3f3f3; }}
@@ -187,7 +200,7 @@ img {{ max-width: 100%; height: auto; }}
 </head>
 <body>
 <h1>{title}</h1>
-<p class="grounding-note">{note}</p>
+<p class="grounding-note">{unverified_label}{note}</p>
 {rendered_body}
 {rendered_confidence}
 </body>

@@ -415,13 +415,19 @@ def _install_shared_stub(
         (
             "Purple spacecraft manufacture impossible engines on distant planets every night without any fuel.",
             False,
-            False,
+            True,
         ),
         ("- Purple spacecraft manufacture impossible engines.", False, True),
         ("1. Purple spacecraft manufacture impossible engines.", False, True),
         (
             "Purple spacecraft manufacture impossible engines.\n\n"
             "- Hedgehogs are small nocturnal mammals.",
+            False,
+            True,
+        ),
+        (
+            "Hedgehogs are small nocturnal mammals.\n\n"
+            "Purple spacecraft manufacture impossible engines.",
             False,
             True,
         ),
@@ -441,7 +447,7 @@ def _install_shared_stub(
         (
             "```text\n- Purple spacecraft manufacture impossible engines.\n```",
             False,
-            False,
+            True,
         ),
         (
             "| Slot Number | Type | Width | Length | Speed | Power (W) |\n"
@@ -464,7 +470,7 @@ def _install_shared_stub(
     ],
 )
 @pytest.mark.parametrize("service", [False, True])
-def test_answer_guard_displays_unverified_structures_but_withholds_prose(
+def test_answer_guard_displays_unverified_prose_and_structures(
     body: str,
     short: bool,
     unverified: bool,
@@ -535,7 +541,9 @@ def test_answer_guard_displays_unverified_structures_but_withholds_prose(
     session.last_chosen_chunks = [selected]
     session.final_chunks_to_llm = 1
     evaluator = ConfidenceEvaluator(confidence_logger=MagicMock(), pretty=MagicMock())
-    evaluator.store_answer_confidence(session, [selected], emit=False)
+    calculated_confidence = evaluator.store_answer_confidence(
+        session, [selected], emit=False
+    )
     chatter.rag.confidenceEvaluator.store_answer_confidence.side_effect = (
         evaluator.store_answer_confidence
     )
@@ -549,6 +557,8 @@ def test_answer_guard_displays_unverified_structures_but_withholds_prose(
     )
 
     assert success
+    assert content is not None
+    partial = unverified and "Hedgehogs" in body
     if service:
         assert content == "".join(delivered)
     else:
@@ -572,6 +582,12 @@ def test_answer_guard_displays_unverified_structures_but_withholds_prose(
                 else "Unverified answer preview"
             )
             assert f"<title>{expected_title}</title>" in page
+            expected_label = (
+                '<strong class="partial-label">&#9888; Answer not completely verified.</strong>'
+                if partial
+                else '<strong class="unverified-label">&#10071; Answer not verified.</strong>'
+            )
+            assert expected_label in page
             if short:
                 assert '<mark class="grounded">' not in page
             assert '<mark class="grounded">Purple spacecraft' not in page
@@ -586,7 +602,10 @@ def test_answer_guard_displays_unverified_structures_but_withholds_prose(
         chatter.rag.confidenceEvaluator.store_answer_confidence.assert_not_called()
         chatter.rag._mark_sources.assert_not_called()
     elif unverified:
-        assert content == Grounder.unverified_structure_notice() + answer
+        assert content == Grounder.unverified_answer_notice(partial=partial) + answer
+        assert (
+            "Answer not completely verified." if partial else "Answer not verified."
+        ) in content
         assert not session.answer_grounding_verified
         assert session.last_chosen_chunks == [selected]
         assert session.chunk_texts_for_grounding == [selected.page_content]
@@ -594,8 +613,12 @@ def test_answer_guard_displays_unverified_structures_but_withholds_prose(
             session, session.query, content
         )
         cli_answer = chatter.print_llm_answer.call_args.args[0]
-        assert cli_answer.startswith(Grounder.unverified_structure_notice())
-        assert re.sub(r"\033\[[0-9;]*m", "", cli_answer) == content
+        assert cli_answer.startswith(
+            Grounder.unverified_answer_notice(cli=True, partial=partial)
+        )
+        assert re.sub(r"\033\[[0-9;]*m", "", cli_answer).replace(
+            "\ufe0f", ""
+        ) == content.replace("\ufe0f", "")
         for line in cli_answer.splitlines():
             if "Purple spacecraft" in line or "Impossible engines" in line:
                 assert "\033[" not in line
@@ -604,18 +627,27 @@ def test_answer_guard_displays_unverified_structures_but_withholds_prose(
         chatter.confidence_logger.flush_turn_csv.assert_called_once_with(
             session, outcome="grounding_unverified", answer_text=content
         )
-    elif body.startswith("- "):
+    else:
         assert content == answer
         assert session.answer_grounding_verified
         chatter.rag.confidenceEvaluator.store_answer_confidence.assert_not_called()
-    else:
-        assert content is not None
-        assert content == Grounder.no_evidence_message()
-        assert "Grounding failed" in content
-        assert "withheld" in content
-        assert session.last_chosen_chunks == []
-        assert session.chunk_texts_for_grounding == []
-    if not short and not session.answer_grounding_verified:
+    if partial:
+        chatter.rag.confidenceEvaluator.store_answer_confidence.assert_not_called()
+        assert session.answer_confidence_result is calculated_confidence
+        assert calculated_confidence.level != "LOW"
+        assert calculated_confidence.score > 0.0
+        chatter._evaluate_answer_quality.assert_called_once_with(
+            session, calculated_confidence, content
+        )
+        evidence_check = next(
+            call.kwargs
+            for call in chatter.confidence_logger.log_step.call_args_list
+            if call.kwargs.get("step_name") == "grounding evidence check"
+        )
+        assert evidence_check["status"] == "partially_verified"
+        assert evidence_check["confidence_level"] == calculated_confidence.level
+        assert evidence_check["confidence_score"] == calculated_confidence.score
+    elif not short and not session.answer_grounding_verified:
         chatter.rag.confidenceEvaluator.store_answer_confidence.assert_called_once()
         confidence = session.answer_confidence_result
         assert confidence.level == "LOW"
@@ -752,7 +784,7 @@ def test_web_leg_shows_answer_and_preserves_confidence_when_grounding_fails(
     assert content is not None
     assert 'Query: "What does the web say?"' in content
     assert "new:" not in content
-    assert content == query_notice + Grounder.unverified_structure_notice() + answer
+    assert content == query_notice + Grounder.unverified_answer_notice() + answer
     assert "".join(delivered) == content
     assert "Grounding failed" not in content
     assert session.answer_confidence_result is evaluated_confidence
@@ -1370,11 +1402,13 @@ def test_source_marking_uses_translated_proxy(monkeypatch: pytest.MonkeyPatch) -
     ("level", "mode", "visible"),
     [
         (0, "is", False),
-        (30, "ge", False),
+        (30, "ge", True),
         (33, "is", True),
         (33, "ge", True),
         (34, "is", False),
-        (34, "ge", True),
+        (34, "ge", False),
+        (30, "le", False),
+        (34, "le", True),
     ],
 )
 @pytest.mark.parametrize("supported", [True, False])
@@ -1418,11 +1452,13 @@ def test_translated_grounding_text_respects_debug_mode(
     ("level", "mode", "visible"),
     [
         (0, "is", False),
-        (30, "ge", False),
+        (30, "ge", True),
         (33, "is", True),
         (33, "ge", True),
         (34, "is", False),
-        (34, "ge", True),
+        (34, "ge", False),
+        (30, "le", False),
+        (34, "le", True),
     ],
 )
 @pytest.mark.parametrize("supported", [True, False])

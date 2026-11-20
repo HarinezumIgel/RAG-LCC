@@ -23,6 +23,7 @@ from Compliance.Exclusions import Exclusions
 from Config.Config import Config
 from Globals.CounterInstance import (FailedCount, HumanReviewCount,
                                      IgnoredCount, ProcessedCount)
+from Globals.Session import Session
 from Gui.Colors import GREEN, ORANGE, RED, YELLOW
 from Gui.PrettyWriter import PrettyWriter
 from Helpers.ChromaDBHelper import ChromaDBHelper
@@ -200,7 +201,7 @@ class Informer:
             f"VLLM is reachable on: {probe_url} streaming: {self.is_streaming}",
         )
 
-    def inform(self) -> None:
+    def inform(self, session: Session | None = None) -> None:
         self.piplineSummarizer.display()
         if self.cfg.get_str("_ACTIVE_ENDPOINT", "ollama").lower() == "vllm":
             self._check_vllm_is_running()
@@ -211,7 +212,12 @@ class Informer:
         self._inform_cuda()
         if self.friendly_name == "RAGLoad":
             self._delete_collection()
-        if DebugHelper.check(self.cfg, 40):
+        show_config = (
+            DebugHelper.check_session(session, 40)
+            if session is not None and session.debug_level is not None
+            else DebugHelper.check(self.cfg, 40)
+        )
+        if show_config:
             self.pretty.write(
                 "I",
                 "Actual config values:",

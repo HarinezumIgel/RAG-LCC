@@ -95,6 +95,7 @@ class RAGChat:
 
         # Share the same per-session state across CLI components
         self.queryParts.session = self.session
+        self.cp.queryParts = self.queryParts
         self.cp.session = self.session
 
         # Apply strategy defaults so session fields are populated even if the
@@ -124,12 +125,12 @@ class RAGChat:
 
     def _showIntro(self):
         # print config summary
-        self.inf.inform()
+        self.inf.inform(self.session)
         # clean and show prompt template
         self._show_clean_prompt()
 
     def _show_clean_prompt(self):
-        if DebugHelper.check(self.cfg, 60):
+        if DebugHelper.check_session(self.session, 60):
             self.pretty.write("D", "Prompt template:", f"{self.prompt_name}")
             raw = self.prompt
             clean = " ".join(raw.replace("\\n", " ").split())

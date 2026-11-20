@@ -288,7 +288,7 @@ class TestCallLlmOptions:
         assert stage_line[1]["color"] == TURQUOISE
 
     def test_call_summary_is_hidden_below_debug_30(self):
-        caller = _make_caller({"DEBUG_LEVEL": 20})
+        caller = _make_caller({"DEBUG_LEVEL": "le 20"})
         self._capture_post(
             caller,
             model="mistral:7b",
@@ -299,6 +299,18 @@ class TestCallLlmOptions:
         assert not any(
             call[0][1] == "Call LLM" and call[0][2].startswith(("Model:", "Stage:"))
             for call in caller.pretty.calls
+        )
+
+    @pytest.mark.parametrize(("mode", "visible"), [("le", False), ("ge", True)])
+    def test_request_payload_respects_comparison_mode(self, mode, visible):
+        caller = _make_caller({"DEBUG_LEVEL": f"{mode} 30"})
+        self._capture_post(
+            caller, model="mistral:7b", prompt="hello", ollama_options={}
+        )
+
+        assert (
+            any("REQUEST PAYLOAD" in call[0][1] for call in caller.pretty.calls)
+            is visible
         )
 
     def _capture_post(self, caller, lines=None, **call_kwargs):

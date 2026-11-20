@@ -145,13 +145,19 @@ When grounding is enabled, answers are checked for overlap with retrieved eviden
 
 With grounding active, explicit list and table requests get a short “Add evidence phrases” instruction in the final answer prompt unless evidence was already requested. This does not change retrieval or what qualifies as grounded.
 
-If grounding fails for an answer containing a Markdown list, table, or Mermaid diagram,
-both CLI and service still show the generated answer with a **Not fully grounded**
-warning. It remains unverified with LOW answer confidence; source references
-are not verified citations, and only evidence-matched spans can be highlighted.
-CLI and browser highlights preserve the table layout, including evidence cells.
-Prose-only answers that fail grounding are still withheld. Lists in source
-metadata or ordinary code examples do not enable this fallback.
+If grounding fails, both CLI and service still show the generated answer with
+an **Answer not verified** warning, including for prose-only answers. If parts
+match evidence, an orange warning triangle instead labels the answer
+**Answer not completely verified**.
+API/OpenWebUI replies use the emoji triangle (`⚠️`); its colour is determined by
+the client's emoji renderer. CLI and browser previews explicitly colour the
+partial-verification triangle orange. Source
+references are not verified citations, and only evidence-matched spans can be
+highlighted. CLI and browser highlights preserve table layout, including evidence
+cells. Partial grounding retains the independently calculated confidence, but
+does not make the whole answer or its citations verified. A local-only answer
+with no grounded support still receives LOW confidence; with the web leg enabled,
+the retrieval confidence is retained.
 
 Formatted HTML answer pages in both RAGChat and RAGChatService include the
 answer-confidence level and full diagnostic breakdown, including optional

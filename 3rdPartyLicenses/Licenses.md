@@ -71,19 +71,19 @@ This overview is provided for informational purposes only. Signing attests only 
 | inquirerpy | 0.3.4 | MIT License | Kevin Zhuang |
 | joblib | 1.6.0 | BSD-3-Clause | Gael Varoquaux <gael.varoquaux@normalesup.org> |
 | json5 | 0.17.3 | Apache-2.0 | Dirk Pranke <dpranke@gmail.com> |
-| jsonpatch | 1.47 | BSD-3-Clause | Stefan Kögl |
+| jsonpatch | 1.48 | BSD-3-Clause | Stefan Kögl |
 | jsonpointer | 3.12 | BSD-3-Clause | Stefan Kögl |
 | jsonschema | 4.26.0 | MIT | Julian Berman <Julian+jsonschema@GrayVines.com> |
 | jsonschema-specifications | 2025.9.1 | MIT | Julian Berman <Julian+jsonschema-specifications@GrayVines.com> |
 | keybert | 0.9.0 | MIT License | Maarten Grootendorst <maartengrootendorst@gmail.com> |
 | kubernetes | 37.0.3 | Apache-2.0 | Kubernetes |
 | langchain-chroma | 1.1.0 | MIT | UNKNOWN |
-| langchain-core | 1.8.3 | MIT License | UNKNOWN |
+| langchain-core | 1.8.4 | MIT License | UNKNOWN |
 | langchain-huggingface | 1.2.3 | MIT License | UNKNOWN |
-| langchain-protocol | 0.0.21 | MIT License | UNKNOWN |
+| langchain-protocol | 0.0.22 | MIT License | UNKNOWN |
 | langchain-text-splitters | 1.1.3 | MIT License | UNKNOWN |
 | langdetect | 1.0.9 | Apache Software License | Michal Mimino Danilak |
-| langsmith | 0.15.0 | MIT | LangChain |
+| langsmith | 0.15.1 | MIT | LangChain |
 | lingua-language-detector | 2.2.0 | Apache Software License | "Peter M. Stahl" <pemistahl@gmail.com> |
 | lxml | 6.1.3 | BSD-3-Clause | lxml dev team |
 | markdown-it-py | 4.3.0 | MIT License | Chris Sewell <chrisj_sewell@hotmail.com> |
@@ -158,7 +158,7 @@ This overview is provided for informational purposes only. Signing attests only 
 | setuptools | 81.0.0 | MIT | Python Packaging Authority <distutils-sig@python.org> |
 | shellingham | 1.5.4 | ISC License (ISCL) | Tzu-ping Chung |
 | six | 1.17.0 | MIT License | Benjamin Peterson |
-| smart_open | 9.0.5 | MIT | Radim Rehurek <me@radimrehurek.com> |
+| smart_open | 9.0.6 | MIT | Radim Rehurek <me@radimrehurek.com> |
 | sniffio | 1.3.1 | Apache Software License; MIT License | "Nathaniel J. Smith" <njs@pobox.com> |
 | spacy | 3.8.18 | MIT License | Explosion |
 | spacy-legacy | 3.0.12 | MIT License | Explosion |
@@ -190,7 +190,7 @@ This overview is provided for informational purposes only. Signing attests only 
 | websockets | 17.4 | BSD-3-Clause | Aymeric Augustin <aymeric.augustin@m4x.org> |
 | wheel | 0.48.0 | MIT | Daniel Holth <dholth@fastmail.fm> |
 | wrapt | 2.5.2 | BSD-2-Clause | Graham Dumpleton <Graham.Dumpleton@gmail.com> |
-| xlsxwriter | 3.3.1 | BSD-2-Clause | John McNamara <jmcnamara@cpan.org> |
+| xlsxwriter | 3.3.3 | BSD-2-Clause | John McNamara <jmcnamara@cpan.org> |
 | xxhash | 4.1.0 | BSD-2-Clause | Yue Du |
 | yarg | 0.1.10 | MIT License | Kura |
 | yarl | 1.25.1 | Apache-2.0 | Andrew Svetlov |
@@ -5987,7 +5987,7 @@ SOFTWARE.
 
 ```
 
-### jsonpatch 1.47
+### jsonpatch 1.48
 
 **License:** BSD-3-Clause
 
@@ -6376,7 +6376,7 @@ SOFTWARE.
 
 ```
 
-### langchain-core 1.8.3
+### langchain-core 1.8.4
 
 **License:** MIT License
 
@@ -6438,7 +6438,7 @@ SOFTWARE.
 
 ```
 
-### langchain-protocol 0.0.21
+### langchain-protocol 0.0.22
 
 **License:** MIT License
 
@@ -6523,7 +6523,7 @@ SOFTWARE.
 
 ```
 
-### langsmith 0.15.0
+### langsmith 0.15.1
 
 **License:** MIT
 
@@ -16810,7 +16810,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ```
 
-### smart_open 9.0.5
+### smart_open 9.0.6
 
 **License:** MIT
 
@@ -18807,7 +18807,7 @@ POSSIBILITY OF SUCH DAMAGE.
 
 ```
 
-### xlsxwriter 3.3.1
+### xlsxwriter 3.3.3
 
 **License:** BSD-2-Clause
 

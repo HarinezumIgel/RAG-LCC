@@ -27,10 +27,12 @@ from AI.ModelsCache import ModelsCache
 @pytest.mark.parametrize(
     "debug,stage,expected",
     [
-        ("ge 30", "Encode", True),
-        ("ge 55", "Encode", True),
-        ("ge 30", "Cross-encode", True),
-        ("ge 20", "Cross-encode", False),
+        ("le 30", "Encode", True),
+        ("le 55", "Encode", True),
+        ("le 30", "Cross-encode", True),
+        ("le 20", "Cross-encode", False),
+        ("ge 20", "Cross-encode", True),
+        ("ge 55", "Cross-encode", False),
     ],
 )
 def test_vllm_embedding_traces_require_component_debug(debug, stage, expected):
@@ -40,12 +42,12 @@ def test_vllm_embedding_traces_require_component_debug(debug, stage, expected):
 
 
 def test_vllm_first_embedding_trace_per_model_at_level_30():
-    mc = _build_models_cache({"DEBUG_LEVEL": "ge 30"})
+    mc = _build_models_cache({"DEBUG_LEVEL": "le 30"})
     mc._log_vllm_call("Encode", "first", "model-a")
     mc._log_vllm_call("Encode", "repeat", "model-a")
     mc._log_vllm_call("Encode", "other model", "model-b")
     assert len(mc.pretty.messages) == 4
-    mc.cfg.set("DEBUG_LEVEL", "ge 55")
+    mc.cfg.set("DEBUG_LEVEL", "le 55")
     mc._log_vllm_call("Encode", "detail", "model-a")
     assert len(mc.pretty.messages) == 6
 

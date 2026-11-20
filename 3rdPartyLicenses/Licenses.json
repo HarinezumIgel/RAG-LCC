@@ -1,6 +1,6 @@
 {
   "disclaimer": "This overview is provided for informational purposes only. Signing attests only to the integrity of this document, not to the legal validity, authorship, or completeness of any third-party licenses referenced herein. Users are responsible for reviewing and complying with all third-party terms.",
-  "generated": "2026-11-19T14:20:48.861496",
+  "generated": "2026-11-20T13:32:17.067152",
   "packages": [
     {
       "Author": "UNKNOWN",
@@ -554,11 +554,11 @@
     {
       "Author": "Stefan Kögl",
       "License": "BSD-3-Clause",
-      "LicenseFile": "<your-venv>/Lib/site-packages/jsonpatch-1.47.dist-info/licenses/LICENSE",
+      "LicenseFile": "<your-venv>/Lib/site-packages/jsonpatch-1.48.dist-info/licenses/LICENSE",
       "LicenseText": "Copyright (c) 2011 Stefan Kögl <stefan@skoegl.net>\n\nRedistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:\n\n1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.\n\n2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.\n\n3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.\n\nTHIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS \"AS IS\" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.\n",
       "Name": "jsonpatch",
       "URL": "https://github.com/stefankoegl/python-json-patch",
-      "Version": "1.47"
+      "Version": "1.48"
     },
     {
       "Author": "Stefan Kögl",
@@ -617,11 +617,11 @@
     {
       "Author": "UNKNOWN",
       "License": "MIT License",
-      "LicenseFile": "<your-venv>/Lib/site-packages/langchain_core-1.8.3.dist-info/licenses/LICENSE",
+      "LicenseFile": "<your-venv>/Lib/site-packages/langchain_core-1.8.4.dist-info/licenses/LICENSE",
       "LicenseText": "MIT License\n\nCopyright (c) LangChain, Inc.\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.\n",
       "Name": "langchain-core",
       "URL": "https://docs.langchain.com/",
-      "Version": "1.8.3"
+      "Version": "1.8.4"
     },
     {
       "Author": "UNKNOWN",
@@ -635,11 +635,11 @@
     {
       "Author": "UNKNOWN",
       "License": "MIT License",
-      "LicenseFile": "<your-venv>/Lib/site-packages/langchain_protocol-0.0.21.dist-info/licenses/LICENSE",
+      "LicenseFile": "<your-venv>/Lib/site-packages/langchain_protocol-0.0.22.dist-info/licenses/LICENSE",
       "LicenseText": "MIT License\n\nCopyright (c) 2026 LangChain, Inc.\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.\n",
       "Name": "langchain-protocol",
       "URL": "https://github.com/langchain-ai/agent-protocol/tree/main/streaming",
-      "Version": "0.0.21"
+      "Version": "0.0.22"
     },
     {
       "Author": "UNKNOWN",
@@ -662,11 +662,11 @@
     {
       "Author": "LangChain",
       "License": "MIT",
-      "LicenseFile": "<your-venv>/Lib/site-packages/langsmith-0.15.0.dist-info/licenses/LICENSE",
+      "LicenseFile": "<your-venv>/Lib/site-packages/langsmith-0.15.1.dist-info/licenses/LICENSE",
       "LicenseText": "Copyright 2026 langChain\n\nPermission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the \"Software\"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.\n",
       "Name": "langsmith",
       "URL": "https://github.com/langchain-ai/langsmith-python",
-      "Version": "0.15.0"
+      "Version": "0.15.1"
     },
     {
       "Author": "\"Peter M. Stahl\" <pemistahl@gmail.com>",
@@ -1337,11 +1337,11 @@
     {
       "Author": "Radim Rehurek <me@radimrehurek.com>",
       "License": "MIT",
-      "LicenseFile": "<your-venv>/Lib/site-packages/smart_open-9.0.5.dist-info/licenses/LICENSE",
+      "LicenseFile": "<your-venv>/Lib/site-packages/smart_open-9.0.6.dist-info/licenses/LICENSE",
       "LicenseText": "The MIT License (MIT)\n\nCopyright (c) 2015 Radim Řehůřek\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.\n",
       "Name": "smart_open",
       "URL": "https://github.com/piskvorky/smart_open",
-      "Version": "9.0.5"
+      "Version": "9.0.6"
     },
     {
       "Author": "\"Nathaniel J. Smith\" <njs@pobox.com>",
@@ -1625,11 +1625,11 @@
     {
       "Author": "John McNamara <jmcnamara@cpan.org>",
       "License": "BSD-2-Clause",
-      "LicenseFile": "<your-venv>/Lib/site-packages/xlsxwriter-3.3.1.dist-info/licenses/LICENSE.txt",
+      "LicenseFile": "<your-venv>/Lib/site-packages/xlsxwriter-3.3.3.dist-info/licenses/LICENSE.txt",
       "LicenseText": "BSD 2-Clause License\n\nCopyright (c) 2013-2026, John McNamara <jmcnamara@cpan.org>\nAll rights reserved.\n\nRedistribution and use in source and binary forms, with or without\nmodification, are permitted provided that the following conditions are met:\n\n1. Redistributions of source code must retain the above copyright notice, this\n   list of conditions and the following disclaimer.\n\n2. Redistributions in binary form must reproduce the above copyright notice,\n   this list of conditions and the following disclaimer in the documentation\n   and/or other materials provided with the distribution.\n\nTHIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS \"AS IS\"\nAND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE\nIMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE\nDISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE\nFOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL\nDAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR\nSERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER\nCAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,\nOR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE\nOF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.\n",
       "Name": "xlsxwriter",
       "URL": "https://github.com/jmcnamara/XlsxWriter",
-      "Version": "3.3.1"
+      "Version": "3.3.3"
     },
     {
       "Author": "Yue Du",

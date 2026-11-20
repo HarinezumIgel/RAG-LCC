@@ -220,6 +220,10 @@ def test_register_falls_back_to_original_sources(tmp_path):
 
 class _Grounder:
     @staticmethod
+    def has_grounded_parts(_session, answer_markdown, evidence):
+        return "Hedgehogs eat insects." in answer_markdown and bool(evidence)
+
+    @staticmethod
     def collect_web_texts(_session):
         return []
 
@@ -260,7 +264,7 @@ def test_register_grounded_answer_creates_expiring_html_link():
     assert "nonce-" in entry.response_headers["Content-Security-Policy"]
 
 
-def test_register_unverified_answer_creates_answer_preview():
+def test_register_partially_grounded_answer_uses_cautious_label():
     store = MarkedDocsStore()
     session = SimpleNamespace(
         answer_grounding_verified=False,
@@ -273,13 +277,29 @@ def test_register_unverified_answer_creates_answer_preview():
         session, _Grounder(), "Hedgehogs eat insects.", store, "https://host"
     )
 
-    assert "**Answer preview**" in block
+    assert "**Not fully grounded**" in block
     assert "https://host/marked/" in block
     token = block.split("/marked/", 1)[1].split(".html", 1)[0]
     entry = store.get(token)
     assert entry is not None
     assert entry.filename == "AnswerPreview.html"
-    assert b"Not fully grounded" in entry.data
+
+
+def test_register_unverified_answer_creates_answer_preview():
+    store = MarkedDocsStore()
+    session = SimpleNamespace(
+        answer_grounding_verified=False,
+        chunk_texts_for_grounding=["Hedgehogs eat insects."],
+        grounding_proxy_sentences={},
+        mark_text=True,
+    )
+
+    block = register_grounded_answer(
+        session, _Grounder(), "Cats are reptiles.", store, "https://host"
+    )
+
+    assert "**Answer preview**" in block
+    assert "**Not fully grounded**" not in block
 
 
 def test_marked_document_response_serves_html_with_security_headers():

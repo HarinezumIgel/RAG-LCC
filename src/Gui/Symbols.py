@@ -88,6 +88,7 @@ class Symbols:
     _INLINE_ICONS: dict[str, tuple[str, str]] = {
         "INFO": ("\u2139\ufe0f ", "\u2139 "),
         "WARNING": ("\u26a0\ufe0f ", "\u26a0 "),
+        "EXCLAMATION": ("\u2757 ", "! "),
         "HIGH": ("\U0001f7e2 ", "H "),
         "MEDIUM": ("\U0001f7e1 ", "M "),
         "LOW": ("\U0001f7e0 ", "L "),

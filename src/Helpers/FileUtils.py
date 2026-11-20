@@ -215,7 +215,14 @@ class FileUtils:
                 "I", "", f"DEBUG mode is set to {DebugHelper.level(self.cfg)}."
             )
             logging.basicConfig(level=logging.DEBUG)
-        if self.cfg.get_bool("URL_DEBUG") or DebugHelper.check(self.cfg, 55):
+        self.configure_network_debug(
+            self.cfg.get_bool("URL_DEBUG") or DebugHelper.check(self.cfg, 55)
+        )
+
+    @staticmethod
+    def configure_network_debug(enabled: bool) -> None:
+        if enabled:
+            logging.basicConfig(level=logging.DEBUG)
             logging.getLogger("argostranslate.utils").setLevel(logging.WARNING)
             logging.getLogger("urllib3").setLevel(logging.DEBUG)
             logging.getLogger("urllib3.connectionpool").setLevel(logging.DEBUG)

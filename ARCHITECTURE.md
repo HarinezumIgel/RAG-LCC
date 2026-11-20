@@ -2047,7 +2047,7 @@ Overridable settings include:
 | `orchestrator_flow` | `▶ Orchestration strategy` | |
 | `force_retrieve_mode`, `main_query_source`, `secondary_query_source`, `rerank_query_source`, `retrieval_language`, `rerank` | `▶ Flow selectors` | |
 | `vector_weight`, `bm25_weight`, `graph_weight`, `regex_weight`, `web_weight` | `▶ Retriever weights` | |
-| `debug_level`, `debug_mode` | `▶ Debug` | `debug_level!` shows a named-preset picker driven by `_ALLOWED_DEBUG_LEVELS`; also prompts for `ge`/`is` mode. `debug_mode` can be changed independently. Both write the combined string back to `Config.DEBUG_LEVEL` via `DebugHelper`. |
+| `debug_level`, `debug_mode` | `▶ Debug` | `debug_level!` shows a named-preset picker driven by `_ALLOWED_DEBUG_LEVELS`; also prompts for `ge`/`is`/`le` mode. `debug_mode` can be changed independently. Both write the combined string back to `Config.DEBUG_LEVEL` via `DebugHelper`. |
 
 See `Chatter._resolve_token_params()` for the token-budget resolution logic.
 
@@ -2151,9 +2151,10 @@ their existing short-answer bypass.
 
 The CLI also offers a browser preview independently of grounding success, so
 Mermaid remains viewable when validation fails or grounding is skipped/disabled.
-Failed answers still produce the no-evidence chat fallback; the preview retains
-the masked generated answer with an explicit unverified warning and no grounding
-highlights. Rich renders Markdown but displays Mermaid as source, not a diagram.
+Failed validation shows the masked generated answer in chat and in the preview
+with an **Answer not verified** warning. Any highlights mark only spans or
+diagram elements matched to the evidence, not the answer as a whole.
+Rich renders Markdown but displays Mermaid as source, not a diagram.
 Verified browser diagrams use orange only for supported nodes and edges, not as
 a blanket theme. Browser link notices say "Grounded answer" after validation and
 "Answer preview" otherwise.

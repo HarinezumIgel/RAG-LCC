@@ -22,6 +22,7 @@ import os
 import sys
 import types
 from typing import Any
+from unittest.mock import Mock
 
 import pytest
 
@@ -151,6 +152,27 @@ from Strategies.HomeBrewChunkSelector import ScoreRankedSelector  # noqa: E402
 
 def _make_selector(session: _StubSession) -> ScoreRankedSelector:
     return ScoreRankedSelector(session)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    ("mode", "show_summary", "show_content"),
+    [("le", True, False), ("ge", False, True), ("is", False, False)],
+)
+def test_score_selector_debug_levels_do_not_change_selected_chunks(
+    mode, show_summary, show_content
+):
+    session = _StubSession(debug_level=30)
+    session.debug_mode = mode
+    selector = _make_selector(session)
+    chunk = _make_chunk(0.9, "")
+    selector.filter_threshold = Mock(return_value=[chunk])
+    selector._get_path = Mock(return_value="")
+    selector._debugPrint = Mock()
+    selector._print_chunk_content = Mock()
+
+    assert selector.select([chunk]) == [chunk]
+    assert selector._debugPrint.called is show_summary
+    assert selector._print_chunk_content.called is show_content
 
 
 # ===========================================================================

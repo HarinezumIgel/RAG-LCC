@@ -52,6 +52,9 @@ def register_grounded_answer(
         verified=verified,
         mark_supported=True,
     )
+    partially_grounded = not verified and grounder.has_grounded_parts(
+        session, answer_markdown, evidence_texts
+    )
     filename = "GroundedAnswer.html" if verified else "AnswerPreview.html"
     try:
         token = store.put(
@@ -75,7 +78,11 @@ def register_grounded_answer(
 
     url = marked_document_url(base_url, store, token, ".html")
     ttl_minutes = max(1, store.ttl_seconds // 60)
-    label = "Grounded answer" if verified else "Answer preview"
+    label = (
+        "Grounded answer"
+        if verified
+        else "Not fully grounded" if partially_grounded else "Answer preview"
+    )
     return (
         "\n\n---\n"
         f"🌐 **{label}** *(link expires in {ttl_minutes} min)*\n"

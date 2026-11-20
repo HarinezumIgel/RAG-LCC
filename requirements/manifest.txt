@@ -2,7 +2,7 @@
 Deployment Manifest
 ================================================================================
 
-Generated      : 2026-11-19T13:20:48.901308+00:00
+Generated      : 2026-11-20T12:32:17.096543+00:00
 Python         : 3.14.10 (CPython)
 Platform       : Windows-11-10.0.26300-SP0
 Git commit     : unavailable
@@ -20,9 +20,9 @@ License Generation Tool
 SHA-256 Integrity Hashes
 ────────────────────────────────────────────────────────────────────────────────
   requirements_final.txt : 7fb1682c9a5991f84c013cdd509f2083c10d3ee6b9aa6b77d9f439e5635586d9
-  Licenses.json          : b90d1c85ffe12b85bd4e066c7393db29e3425b6a757578323158b454118d1fe2
-  Licenses.txt           : bb2622b99eccc9c6f17d9fcabbe56501249622dd65fc3a888beed536200780bd
-  Licenses.spdx          : f5db55d6af39ae1af92d344c85a977d3e5dd98ada29fd778ca28cd9540654af9
+  Licenses.json          : 0a7991494e20a3e0b968f72cdc64eb7a687249e439d54d58dd8168fa30952a03
+  Licenses.txt           : 57290fc3623b6484f061b6169613b74755ff55296a1b04a834e73e7a9dd19871
+  Licenses.spdx          : 04947da8bbecc33816c0419d464b9dfd6b997b41c4c781d45aba94f50f0db5f2
 
 ────────────────────────────────────────────────────────────────────────────────
 Installed Packages  (requirements_final.txt)
@@ -90,7 +90,7 @@ This overview is provided for informational purposes only. Signing attests only 
 this document, not to the legal validity, authorship, or completeness of any third-party licenses
 referenced herein. Users are responsible for reviewing and complying with all third-party terms.
 
-Generated : 2026-11-19T14:20:48.861496
+Generated : 2026-11-20T13:32:17.067152
 Packages  : 185
 
 ---------------------------------------------------------------------------------------------------------------------------------------------
@@ -158,19 +158,19 @@ iniconfig                                2.3.1        MIT                       
 inquirerpy                               0.3.4        MIT License                                        Kevin Zhuang
 joblib                                   1.6.0        BSD-3-Clause                                       Gael Varoquaux <gael.varoquaux@no...
 json5                                    0.17.3       Apache-2.0                                         Dirk Pranke <dpranke@gmail.com>
-jsonpatch                                1.47         BSD-3-Clause                                       Stefan Kögl
+jsonpatch                                1.48         BSD-3-Clause                                       Stefan Kögl
 jsonpointer                              3.12         BSD-3-Clause                                       Stefan Kögl
 jsonschema                               4.26.0       MIT                                                Julian Berman <Julian+jsonschema@...
 jsonschema-specifications                2025.9.1     MIT                                                Julian Berman <Julian+jsonschema-...
 keybert                                  0.9.0        MIT License                                        Maarten Grootendorst <maartengroo...
 kubernetes                               37.0.3       Apache-2.0                                         Kubernetes
 langchain-chroma                         1.1.0        MIT                                                UNKNOWN
-langchain-core                           1.8.3        MIT License                                        UNKNOWN
+langchain-core                           1.8.4        MIT License                                        UNKNOWN
 langchain-huggingface                    1.2.3        MIT License                                        UNKNOWN
-langchain-protocol                       0.0.21       MIT License                                        UNKNOWN
+langchain-protocol                       0.0.22       MIT License                                        UNKNOWN
 langchain-text-splitters                 1.1.3        MIT License                                        UNKNOWN
 langdetect                               1.0.9        Apache Software License                            Michal Mimino Danilak
-langsmith                                0.15.0       MIT                                                LangChain
+langsmith                                0.15.1       MIT                                                LangChain
 lingua-language-detector                 2.2.0        Apache Software License                            "Peter M. Stahl" <pemistahl@gmail...
 lxml                                     6.1.3        BSD-3-Clause                                       lxml dev team
 markdown-it-py                           4.3.0        MIT License                                        Chris Sewell <chrisj_sewell@hotma...
@@ -245,7 +245,7 @@ sentencepiece                            0.2.3        Apache-2.0                
 setuptools                               81.0.0       MIT                                                Python Packaging Authority <distu...
 shellingham                              1.5.4        ISC License (ISCL)                                 Tzu-ping Chung
 six                                      1.17.0       MIT License                                        Benjamin Peterson
-smart_open                               9.0.5        MIT                                                Radim Rehurek <me@radimrehurek.com>
+smart_open                               9.0.6        MIT                                                Radim Rehurek <me@radimrehurek.com>
 sniffio                                  1.3.1        Apache Software License; MIT License               "Nathaniel J. Smith" <njs@pobox.com>
 spacy                                    3.8.18       MIT License                                        Explosion
 spacy-legacy                             3.0.12       MIT License                                        Explosion
@@ -277,7 +277,7 @@ websocket-client                         1.9.2        Apache-2.0                
 websockets                               17.4         BSD-3-Clause                                       Aymeric Augustin <aymeric.augusti...
 wheel                                    0.48.0       MIT                                                Daniel Holth <dholth@fastmail.fm>
 wrapt                                    2.5.2        BSD-2-Clause                                       Graham Dumpleton <Graham.Dumpleto...
-xlsxwriter                               3.3.1        BSD-2-Clause                                       John McNamara <jmcnamara@cpan.org>
+xlsxwriter                               3.3.3        BSD-2-Clause                                       John McNamara <jmcnamara@cpan.org>
 xxhash                                   4.1.0        BSD-2-Clause                                       Yue Du
 yarg                                     0.1.10       MIT License                                        Kura
 yarl                                     1.25.1       Apache-2.0                                         Andrew Svetlov

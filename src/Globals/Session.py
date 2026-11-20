@@ -82,8 +82,8 @@ class Session:
         self.collection_name: str | None = None
         self.retrieve_mode: str | None = "ALL"  # See _ALLOWED_RETRIEVE_MODES
         self.debug_level: int | None = None
-        # Comparison mode for debug_level: "ge" = >= level (default), "is" = == level exactly
-        self.debug_mode: str = "ge"
+        # Comparison mode for message levels: "le" (default), "is", or "ge".
+        self.debug_mode: str = "le"
         # Extra Ollama options forwarded from API clients (e.g. OpenWebUI advanced params)
         self.extraOllamaOptions: dict[str, Any] | None = None
         # Top-level Ollama payload params forwarded from API clients (think, keep_alive, format)

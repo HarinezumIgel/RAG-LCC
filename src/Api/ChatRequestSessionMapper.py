@@ -427,9 +427,9 @@ class RequestSessionMapper:
             )
             mode = (
                 req.debug_mode.strip().lower() if req.debug_mode is not None else None
-            ) or "ge"
+            ) or "le"
             if mode not in ("ge", "is", "le"):
-                mode = "ge"
+                mode = "le"
             session.debug_level = level
             session.debug_mode = mode
             combined = "none" if level == 0 else f"{mode} {level}"

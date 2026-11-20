@@ -39,7 +39,7 @@ from Commons.SingletonMixin import SingletonMixin
 from Config.Config import Config
 from Grounding.MermaidGrounder import MermaidGrounder
 from Grounding.SourceReferences import SummaryStatement
-from Gui.Colors import CYAN, ORANGE
+from Gui.Colors import CYAN, ORANGE, RESET, TURQUOISE
 from Gui.PrettyWriter import PrettyWriter
 from Gui.Symbols import Symbols
 from Helpers.DebugHelper import DebugHelper
@@ -812,15 +812,64 @@ class Grounder(SingletonMixin):
             for token in MarkdownIt("default").enable("table").parse(body)
         )
 
-    @staticmethod
-    def unverified_structure_notice() -> str:
-        """Warn before displaying an answer that failed grounding."""
-        return (
-            f"{Symbols.sym_warning()} **Not fully grounded:** The generated output "
-            "is shown below, but some or all claims could not be "
-            "verified against the retrieved context. Treat it as unverified, not "
-            "as confirmed facts. Source references are not verified citations.\n\n"
+    def has_grounded_parts(
+        self, session: Any, answer_text: str, evidence_texts: Sequence[str]
+    ) -> bool:
+        """Check for supported answer spans without counting source metadata."""
+        body = self.extract_answer_section(answer_text)
+        if not body or not evidence_texts:
+            return False
+        if any(
+            self._mermaid_claim_is_grounded(claim, evidence_texts)
+            for block in self.mermaid_grounder.find_blocks(body)
+            if block.parseable
+            for claim in block.claims
+        ):
+            return True
+        body = self.mermaid_grounder.without_blocks(body)
+        translations = getattr(session, "grounding_proxy_sentences", {}) or {}
+        probes = "\n".join(
+            translations.get(sentence.strip(), sentence)
+            for line in body.splitlines()
+            for sentence in split_sentences(line)
         )
+        if getattr(session, "summary_grounding", False):
+            docs = list(getattr(session, "last_chosen_chunks", []) or [])
+            return bool(
+                self._session_summary_support(
+                    session,
+                    probes,
+                    evidence_texts,
+                    [doc.metadata for doc in docs],
+                    translations,
+                )
+            )
+        return bool(self.find_grounded_sentences(probes, evidence_texts))
+
+    @staticmethod
+    def unverified_answer_notice(*, cli: bool = False, partial: bool = False) -> str:
+        """Warn before displaying an answer that failed grounding."""
+        if partial:
+            icon = (
+                Symbols.sym_icon("WARNING").replace("\ufe0f", "")
+                if cli
+                else "\u26a0\ufe0f "
+            )
+            label = f"{icon}**Answer not completely verified.**"
+            detail = (
+                "Some claims were verified against the retrieved context, but others "
+                "could not be verified. Unmarked claims and source references are "
+                "not verified citations."
+            )
+        else:
+            label = f"{Symbols.sym_icon('EXCLAMATION')}**Answer not verified.**"
+            detail = (
+                "Some or all claims could not be verified against the retrieved "
+                "context. Source references are not verified citations."
+            )
+        if cli:
+            label = f"{ORANGE if partial else TURQUOISE}{label}{RESET}"
+        return f"{label}\n\n{detail}\n\n"
 
     @staticmethod
     def short_answer_notice() -> str:

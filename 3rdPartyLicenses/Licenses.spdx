@@ -4,7 +4,7 @@ SPDXID: SPDXRef-DOCUMENT
 DocumentName: RAG-LCC-DEPLOY-Licenses
 DocumentNamespace: http://example.org/spdxdocs/RAG-LCC-DEPLOY-Licenses
 Creator: pip-licenses
-Created: 2026-11-19T14:20:48+01:00
+Created: 2026-11-20T13:32:17+01:00
 
 #####
 PackageName: Jinja2
@@ -558,7 +558,7 @@ PackageLicenseDeclared: Apache-2.0
 #####
 PackageName: jsonpatch
 SPDXID: SPDXRef-Package-jsonpatch
-PackageVersion: 1.47
+PackageVersion: 1.48
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: BSD-3-Clause
@@ -621,7 +621,7 @@ PackageLicenseDeclared: MIT
 #####
 PackageName: langchain-core
 SPDXID: SPDXRef-Package-langchain-core
-PackageVersion: 1.8.3
+PackageVersion: 1.8.4
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: MIT License
@@ -639,7 +639,7 @@ PackageLicenseDeclared: MIT License
 #####
 PackageName: langchain-protocol
 SPDXID: SPDXRef-Package-langchain-protocol
-PackageVersion: 0.0.21
+PackageVersion: 0.0.22
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: MIT License
@@ -666,7 +666,7 @@ PackageLicenseDeclared: Apache Software License
 #####
 PackageName: langsmith
 SPDXID: SPDXRef-Package-langsmith
-PackageVersion: 0.15.0
+PackageVersion: 0.15.1
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: MIT
@@ -1341,7 +1341,7 @@ PackageLicenseDeclared: MIT License
 #####
 PackageName: smart_open
 SPDXID: SPDXRef-Package-smart_open
-PackageVersion: 9.0.5
+PackageVersion: 9.0.6
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: MIT
@@ -1629,7 +1629,7 @@ PackageLicenseDeclared: BSD-2-Clause
 #####
 PackageName: xlsxwriter
 SPDXID: SPDXRef-Package-xlsxwriter
-PackageVersion: 3.3.1
+PackageVersion: 3.3.3
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: BSD-2-Clause

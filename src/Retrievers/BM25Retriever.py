@@ -207,8 +207,6 @@ class BM25Retriever(SingletonMixin, RetrieverBase):
             "_BM25_INDEX.spacy_models_by_language",
             {},
         )
-        if not isinstance(raw_mapping, dict):
-            return {}
         active_codes = get_active_language_codes(self.cfg)
 
         normalized_mapping: Dict[str, str] = {}
@@ -221,13 +219,10 @@ class BM25Retriever(SingletonMixin, RetrieverBase):
 
     def _spacy_model_for_language(self, language: str | None) -> str:
         language_code = self._normalize_language_code(language)
-        by_language = getattr(self, "_spacy_models_by_language", {})
-        if isinstance(by_language, dict):
-            mapped = by_language.get(language_code)
-            if mapped:
-                return str(mapped)
-        default_model = str(getattr(self, "_spacy_model", "") or "").strip()
-        return default_model
+        mapped = self._spacy_models_by_language.get(language_code)
+        if mapped:
+            return mapped
+        return self._spacy_model.strip()
 
     def _warn_spacy_model_unavailable(
         self,
@@ -236,10 +231,7 @@ class BM25Retriever(SingletonMixin, RetrieverBase):
         language: str | None,
         reason: str,
     ) -> None:
-        warned = getattr(self, "_warned_spacy_model_unavailable", None)
-        if not isinstance(warned, set):
-            warned = set()
-            self._warned_spacy_model_unavailable = warned
+        warned = self._warned_spacy_model_unavailable
 
         language_code = self._normalize_language_code(language) or "default"
         warn_key = f"{model_name}|{language_code}"
@@ -284,10 +276,7 @@ class BM25Retriever(SingletonMixin, RetrieverBase):
         if not model_name:
             return None
 
-        model_cache = getattr(self, "_nlp_by_model", None)
-        if not isinstance(model_cache, dict):
-            model_cache = {}
-            self._nlp_by_model = model_cache
+        model_cache = self._nlp_by_model
 
         cached_nlp = model_cache.get(model_name)
         if cached_nlp is not None:
