@@ -5,7 +5,7 @@ description: Experimental RAG under constraints
 ---
 
 <p align="center">
-  <img src="assets/AI_Igel.png" alt="RAG-LCC hedgehog icon" width="260" />
+  <img src="https://raw.githubusercontent.com/HarinezumIgel/RAG-LCC/main/docs/assets/AI_Igel.png" alt="RAG-LCC hedgehog icon" width="260" />
 </p>
 
 ## Overview
@@ -33,24 +33,24 @@ Short: If you want to understand *why* your RAG fails, RAG-LCC gives you a playg
 
 ## What you get
 
-- [Hybrid retrieval pipeline](../ORCHESTRATION_FLOWS.md#the-retrievers) with Vector, BM25, Graph, and Regex retrieval
-- [Multi-turn chat support](../ARCHITECTURE.md#-chat-context) with [query rewriting and topic switching](../ARCHITECTURE.md#query-rewrite-coreference-resolution)
-- [Document summarization](../HANDS_ON_TOUR.md#summarize-an-indexed-document) across all indexed chunks of a selected document
+- [Hybrid retrieval pipeline](https://github.com/HarinezumIgel/RAG-LCC/blob/main/ARCHITECTURE.md#retrieval-chunk-selection) with Vector, BM25, Graph, and Regex retrieval
+- [Multi-turn chat support](https://github.com/HarinezumIgel/RAG-LCC/blob/main/ARCHITECTURE.md#-chat-context) with [query rewriting and topic switching](https://github.com/HarinezumIgel/RAG-LCC/blob/main/ARCHITECTURE.md#query-rewrite-coreference-resolution)
+- [Document summarization](https://github.com/HarinezumIgel/RAG-LCC/blob/main/HANDS_ON_TOUR.md#summarize-an-indexed-document) across all indexed chunks of a selected document
 - Optional web retrieval to augment local results with live web content
-- [Multi-query expansion](../ORCHESTRATION_FLOWS.md#alternates) for better recall
-- [Cross-encoder reranking and strategy-based context assembly](../ORCHESTRATION_FLOWS.md#after-retrieval)
-- Configurable [orchestration flows](../ORCHESTRATION_FLOWS.md) for per-turn pipeline control
-- [Confidence evaluation signals](../ARCHITECTURE.md#confidence-evaluation-and-signals) for evidence-quality tuning
-- Optional [answer-quality judge](../CONFIGURATION_REFERENCE.md#retrieval-diagnostics-and-answer-text-review) with named-model output and aligned scores;
+- [Multi-query expansion](https://github.com/HarinezumIgel/RAG-LCC/blob/main/ARCHITECTURE.md#retrieval-chunk-selection) for better recall
+- [Cross-encoder reranking and strategy-based context assembly](https://github.com/HarinezumIgel/RAG-LCC/blob/main/ARCHITECTURE.md#retrieval-chunk-selection)
+- Configurable [orchestration flows](https://github.com/HarinezumIgel/RAG-LCC/blob/main/CONFIGURATION_REFERENCE.md#-orchestration-flows-config_orchestratorpy) for per-turn pipeline control
+- [Confidence evaluation signals](https://github.com/HarinezumIgel/RAG-LCC/blob/main/ARCHITECTURE.md#confidence-evaluation-and-signals) for evidence-quality tuning
+- Optional [answer-quality judge](https://github.com/HarinezumIgel/RAG-LCC/blob/main/CONFIGURATION_REFERENCE.md#retrieval-diagnostics-and-answer-text-review) with named-model output and aligned scores;
   flat CSV exports expose individual metrics and repeated pipeline steps
-- [Compliance filtering](../LEGAL.md) during ingestion, query, and answer phases
-- [Grounding markers](../ARCHITECTURE.md#-answer-grounding) to inspect matching evidence; overlap does not establish accuracy
+- [Compliance filtering](https://github.com/HarinezumIgel/RAG-LCC/blob/main/LEGAL.md) during ingestion, query, and answer phases
+- [Grounding markers](https://github.com/HarinezumIgel/RAG-LCC/blob/main/ARCHITECTURE.md#-answer-grounding) to inspect matching evidence; overlap does not establish accuracy
 
 ## Application suite
 
 Confidence logging, quality-scoring switches, and the judge prompt are centralized
-in [Config_Confidence.py](../src/Configuration/Config_Confidence.py). See the
-[configuration reference](../CONFIGURATION_REFERENCE.md#answer-quality-confidence)
+in [Config_Confidence.py](https://github.com/HarinezumIgel/RAG-LCC/blob/main/src/Configuration/Config_Confidence.py). See the
+[configuration reference](https://github.com/HarinezumIgel/RAG-LCC/blob/main/CONFIGURATION_REFERENCE.md#answer-quality-confidence)
 for defaults, output sections, and the `CONFIDENCE_FLAT` CSV schema.
 
 | Application | Purpose | Typical output |
@@ -85,7 +85,7 @@ Most RAG stacks optimize only retrieval score. RAG-LCC also optimizes context qu
 
 ## Query and grounding examples
 
-- [QUERY_OUTPUT_EXAMPLE.md](../QUERY_OUTPUT_EXAMPLE.md)
+- [QUERY_OUTPUT_EXAMPLE.md](https://github.com/HarinezumIgel/RAG-LCC/blob/main/QUERY_OUTPUT_EXAMPLE.md)
   Full CLI transcript of a real RAGChat run, including startup checks,
   retrieval settings, configurable orchestration decisions, rerank diagnostics,
   grounding, and confidence-evaluation output.
@@ -98,14 +98,14 @@ Most RAG stacks optimize only retrieval score. RAG-LCC also optimizes context qu
 
 ### CLI grounding example: hedgehog query
 
-![Hedgehog grounded CLI output](../Documentation/Pics/HedgehogQueryGrounded.png)
+![Hedgehog grounded CLI output](https://raw.githubusercontent.com/HarinezumIgel/RAG-LCC/main/Documentation/Pics/HedgehogQueryGrounded.png)
 
 Shows sentence-level overlap markers in the CLI flow. These help inspect matching
 evidence but do not verify that an answer is factually correct.
 
 ### Tabular answer with source grounding
 
-![Tabular answer with highlighted source documents](../Documentation/Pics/TabularRepresentation.png)
+![Tabular answer with highlighted source documents](https://raw.githubusercontent.com/HarinezumIgel/RAG-LCC/main/Documentation/Pics/TabularRepresentation.png)
 
 A single query can retrieve information and request a table. This example shows an
 animal classification table alongside highlighted passages in the source documents.
@@ -115,11 +115,11 @@ The highlights help inspect matching evidence; they do not establish answer accu
 
 Mermaid diagrams can be viewed by through the RAGChat in memory web server.
 
-![Mermaid diagram with grounding](../Documentation/Pics/MermaidGrounded.png)
+![Mermaid diagram with grounding](https://raw.githubusercontent.com/HarinezumIgel/RAG-LCC/main/Documentation/Pics/MermaidGrounded.png)
 
 ### OpenWebUI example (web)
 
-![OpenWebUI  output](../Documentation/Pics/OpenWebUIGrounded.png)
+![OpenWebUI  output](https://raw.githubusercontent.com/HarinezumIgel/RAG-LCC/main/Documentation/Pics/OpenWebUIGrounded.png)
 
 Shows the same grounding concept through the OpenWebUI integration path
 (`RAGChatService`). Useful for validating that API/UI output preserves
@@ -127,7 +127,7 @@ evidence links, not just CLI output; matching text is not proof of accuracy.
 
 ### OpenWebUI grounded example (local results)
 
-![OpenWebUI grounded answer](../Documentation/Pics/OpenWebuiGrounded.jpg)
+![OpenWebUI grounded answer](https://raw.githubusercontent.com/HarinezumIgel/RAG-LCC/main/Documentation/Pics/OpenWebuiGrounded.jpg)
 
 This example shows an OpenWebUI answer with source attribution, including a web
 result. Source links help inspect retrieved evidence but do not prove answer
