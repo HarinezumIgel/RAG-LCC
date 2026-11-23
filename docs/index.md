@@ -24,7 +24,13 @@ th {
   background-color: #222;
 }
 tr:nth-child(even) {
-  background-color: #181818;
+  background-color: #181818 !important;
+}
+table tr {
+  background-color: #111 !important;
+}
+img[alt="RAG-LCC hedgehog icon"] {
+  background-color: transparent !important;
 }
 </style>
 
