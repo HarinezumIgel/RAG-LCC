@@ -58,6 +58,11 @@ AI, retrieval & language:
 [![Lingua](https://img.shields.io/badge/Lingua-language%20detection-8E44AD)](https://github.com/pemistahl/lingua-py)
 [![Argos Translate](https://img.shields.io/badge/Argos%20Translate-translation-2E86C1)](https://github.com/argosopentech/argos-translate)
 
+Configured LLM families:
+[![Qwen](https://img.shields.io/badge/Alibaba%20Cloud-Qwen-7B3FE4)](https://huggingface.co/Qwen/Qwen2.5-7B-Instruct)
+[![Llama](https://img.shields.io/badge/Meta-Llama-0467DF)](https://github.com/meta-llama/llama-models)
+[![Mistral](https://img.shields.io/badge/Mistral%20AI-Mistral-FF7000)](https://huggingface.co/mistralai/Mistral-7B-v0.1)
+
 Document processing:
 [![Tesseract OCR](https://img.shields.io/badge/Tesseract-OCR-5C4EE5)](https://github.com/tesseract-ocr/tesseract)
 [![pdfplumber](https://img.shields.io/badge/pdfplumber-PDF%20extraction-C0392B)](https://github.com/jsvine/pdfplumber)
