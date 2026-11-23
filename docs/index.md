@@ -4,6 +4,13 @@ title: RAG-LCC
 description: Experimental RAG under constraints
 ---
 
+<style>
+body {
+  background-color: #000;
+  color: #fff;
+}
+</style>
+
 <p align="center">
   <img src="https://raw.githubusercontent.com/HarinezumIgel/RAG-LCC/main/docs/assets/AI_Igel.png" alt="RAG-LCC hedgehog icon" width="160" />
 </p>
