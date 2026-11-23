@@ -5,20 +5,51 @@ description: Experimental RAG under constraints
 ---
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/HarinezumIgel/RAG-LCC/main/docs/assets/AI_Igel.png" alt="RAG-LCC hedgehog icon" width="260" />
+  <img src="https://raw.githubusercontent.com/HarinezumIgel/RAG-LCC/main/docs/assets/AI_Igel.png" alt="RAG-LCC hedgehog icon" width="160" />
 </p>
+
+[![Status: Experimental](https://img.shields.io/badge/status-experimental-orange)](https://github.com/HarinezumIgel/RAG-LCC)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](https://github.com/HarinezumIgel/RAG-LCC/blob/main/LICENSE)
+
+**Built with & integrates:**
+
+AI, retrieval & language:
+[![Python](https://img.shields.io/badge/Python-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![LangChain](https://img.shields.io/badge/LangChain-1C3C3C?logo=langchain&logoColor=white)](https://www.langchain.com/)
+[![ChromaDB](https://img.shields.io/badge/ChromaDB-FFDE2D)](https://www.trychroma.com/)
+[![PyTorch](https://img.shields.io/badge/PyTorch-EE4C2C?logo=pytorch&logoColor=white)](https://pytorch.org/)
+[![Transformers](https://img.shields.io/badge/Hugging%20Face-Transformers-FFD21E)](https://huggingface.co/docs/transformers/)
+[![Sentence Transformers](https://img.shields.io/badge/Sentence%20Transformers-FFB000)](https://www.sbert.net/)
+[![KeyBERT](https://img.shields.io/badge/KeyBERT-4B8BBE)](https://github.com/MaartenGr/KeyBERT)
+[![spaCy](https://img.shields.io/badge/spaCy-09A3D5?logo=spacy&logoColor=white)](https://spacy.io/)
+[![NLTK](https://img.shields.io/badge/NLTK-3A7D44)](https://www.nltk.org/)
+[![Lingua](https://img.shields.io/badge/Lingua-language%20detection-8E44AD)](https://github.com/pemistahl/lingua-py)
+[![Argos Translate](https://img.shields.io/badge/Argos%20Translate-translation-2E86C1)](https://github.com/argosopentech/argos-translate)
+
+Document processing:
+[![Tesseract OCR](https://img.shields.io/badge/Tesseract-OCR-5C4EE5)](https://github.com/tesseract-ocr/tesseract)
+[![pdfplumber](https://img.shields.io/badge/pdfplumber-PDF%20extraction-C0392B)](https://github.com/jsvine/pdfplumber)
+
+Service & optional integrations:
+[![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![Ollama](https://img.shields.io/badge/Ollama-333333?logo=ollama&logoColor=white)](https://ollama.com/)
+[![vLLM](https://img.shields.io/badge/vLLM-6B4EFF)](https://docs.vllm.ai/)
+[![Open WebUI](https://img.shields.io/badge/Open%20WebUI-4A90E2)](https://github.com/open-webui/open-webui)
+[![DuckDuckGo](https://img.shields.io/badge/DuckDuckGo-web%20search-DE5833?logo=duckduckgo&logoColor=white)](https://duckduckgo.com/)
+[![Docker](https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
+
+## Jump to a topic
+
+- [Overview](#overview) · [Who this is for](#who-this-is-for) · [Presentation](#presentation)
+- [What you get](#what-you-get) · [Application suite](#application-suite) · [Why this project is different](#why-this-project-is-different)
+- [Quick start](#quick-start) · [Query and grounding examples](#query-and-grounding-examples) · [Documentation hub](#documentation-hub)
+- [Installation](https://github.com/HarinezumIgel/RAG-LCC/blob/main/INSTALL.md) · [Hands-on tour](https://github.com/HarinezumIgel/RAG-LCC/blob/main/HANDS_ON_TOUR.md) · [Source repository](#source-repository)
 
 ## Overview
 
 Experimental Retrieval-Augmented Generation under constraints.
 
 RAG-LCC is a practical lab for understanding where RAG systems fail and how to fix them: retrieval misses, context poisoning, multilingual drift, and compliance edge cases.
-
-View or download the [PowerPoint presentation](https://github.com/HarinezumIgel/RAG-LCC/blob/main/Documentation/Presentations/RAG-LCC_Presentation.pptx), or watch it play below:
-
-![Animated RAG-LCC presentation](https://raw.githubusercontent.com/HarinezumIgel/RAG-LCC/main/Documentation/Presentations/RAG-LCC_Presentation.gif)
-
-The presentation also highlights tabular answers, document summarization, and the optional web-retrieval leg.
 
 ## Who this is for
 
@@ -30,6 +61,14 @@ The presentation also highlights tabular answers, document summarization, and th
 - People who want to experiment beyond "embed + cosine + top‑k"
 
 Short: If you want to understand *why* your RAG fails, RAG-LCC gives you a playground to experiment with the parameters that matter. You can tune settings, compare alternatives on a small test corpus, and carry those insights back into your own RAG. In other words, RAG-LCC is an insight tool with reusable ideas, not an everyday production RAG.
+
+## Presentation
+
+View or download the [PowerPoint presentation](https://github.com/HarinezumIgel/RAG-LCC/blob/main/Documentation/Presentations/RAG-LCC_Presentation.pptx), or watch it play below:
+
+![Animated RAG-LCC presentation](https://raw.githubusercontent.com/HarinezumIgel/RAG-LCC/main/Documentation/Presentations/RAG-LCC_Presentation.gif)
+
+The presentation also highlights tabular answers, document summarization, and the optional web-retrieval leg.
 
 ## What you get
 

@@ -1,14 +1,49 @@
 <!-- markdownlint-disable MD033 MD060 -->
+<p align="center">
+  <img src="Documentation/Pics/AI_Igel.png" alt="RAG-LCC Logo" width="160" />
+</p>
+
 # 🧪 RAG‑LCC — Experimental RAG Under Constraints
 
-<p align="center">
-  <img src="Documentation/Pics/AI_Igel.png" alt="RAG-LCC Logo" width="50%" />
-</p>
+[![Status: Experimental](https://img.shields.io/badge/status-experimental-orange)](#project-status)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-<p align="center">
-  <img src="Documentation/Presentations/RAG-LCC_Presentation.gif" alt="Animated RAG-LCC presentation" width="95%" />
-</p>
+**Built with & integrates:**
 
+AI, retrieval & language:
+[![Python](https://img.shields.io/badge/Python-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![LangChain](https://img.shields.io/badge/LangChain-1C3C3C?logo=langchain&logoColor=white)](https://www.langchain.com/)
+[![ChromaDB](https://img.shields.io/badge/ChromaDB-FFDE2D)](https://www.trychroma.com/)
+[![PyTorch](https://img.shields.io/badge/PyTorch-EE4C2C?logo=pytorch&logoColor=white)](https://pytorch.org/)
+[![Transformers](https://img.shields.io/badge/Hugging%20Face-Transformers-FFD21E)](https://huggingface.co/docs/transformers/)
+[![Sentence Transformers](https://img.shields.io/badge/Sentence%20Transformers-FFB000)](https://www.sbert.net/)
+[![KeyBERT](https://img.shields.io/badge/KeyBERT-4B8BBE)](https://github.com/MaartenGr/KeyBERT)
+[![spaCy](https://img.shields.io/badge/spaCy-09A3D5?logo=spacy&logoColor=white)](https://spacy.io/)
+[![NLTK](https://img.shields.io/badge/NLTK-3A7D44)](https://www.nltk.org/)
+[![Lingua](https://img.shields.io/badge/Lingua-language%20detection-8E44AD)](https://github.com/pemistahl/lingua-py)
+[![Argos Translate](https://img.shields.io/badge/Argos%20Translate-translation-2E86C1)](https://github.com/argosopentech/argos-translate)
+
+Document processing:
+[![Tesseract OCR](https://img.shields.io/badge/Tesseract-OCR-5C4EE5)](https://github.com/tesseract-ocr/tesseract)
+[![pdfplumber](https://img.shields.io/badge/pdfplumber-PDF%20extraction-C0392B)](https://github.com/jsvine/pdfplumber)
+
+Service & optional integrations:
+[![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![Ollama](https://img.shields.io/badge/Ollama-333333?logo=ollama&logoColor=white)](https://ollama.com/)
+[![vLLM](https://img.shields.io/badge/vLLM-6B4EFF)](https://docs.vllm.ai/)
+[![Open WebUI](https://img.shields.io/badge/Open%20WebUI-4A90E2)](https://github.com/open-webui/open-webui)
+[![DuckDuckGo](https://img.shields.io/badge/DuckDuckGo-web%20search-DE5833?logo=duckduckgo&logoColor=white)](https://duckduckgo.com/)
+[![Docker](https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
+
+## 🧭 Jump to a topic
+
+- [Who this is for](#who-this-is-for) · [What it does](#what-it-does) · [Quick mental model](#quick-mental-model)
+- Applications: [DocClassify](#docclassify-overview) · [RAGLoad](#ragload-overview) · [RAGChat](#ragchat-overview) · [RAGChatService](#ragchatservice-overview)
+- [Feature highlights](#feature-highlights) · [Configuration](#configuration-at-a-glance) · [Presentation](#presentation)
+- [Quick start](#quick-start) · [Installation](INSTALL.md) · [Hands-on tour](HANDS_ON_TOUR.md) · [Documentation](#documentation)
+- [Project status](#project-status) · [Citation](#citation) · [Disclaimer](#disclaimer)
+
+<a id="who-this-is-for"></a>
 ## 🎯 Who this is for
 
 - 🔬 Researchers and practitioners exploring *why* RAG pipelines succeed or fail
@@ -27,6 +62,18 @@
 - RAGChat           (CLI GUI) and RAGChatService (Open WebUI integration)
                     RAGChat supports summarization, file pinning and markdown rendering
 
+## Presentation
+
+A slide deck is available as [`RAG-LCC_Presentation.pptx`](Documentation/Presentations/RAG-LCC_Presentation.pptx) and as an animated [GIF](Documentation/Presentations/RAG-LCC_Presentation.gif).
+It provides a quick visual overview of the architecture, the four applications, the retrieval pipeline, and the key design decisions — useful as a starting point before diving into the detailed documentation.
+
+<p align="center">
+  <img src="Documentation/Presentations/RAG-LCC_Presentation.gif" alt="Animated RAG-LCC presentation" width="95%" />
+</p>
+
+---
+
+<a id="what-it-does"></a>
 ## 🧠 What it does — and why it exists
 
 Short: If you want to understand *why* your RAG fails, RAG-LCC gives you a playground to experiment with the parameters that matter. You can tune settings, compare alternatives on a small test corpus, and carry those insights back into your own RAG. You also get explicit confidence metrics per turn (`C_final`, `C_top`, `C_mean_top3`, `C_coverage`, `C_local`, `C_fallback_penalty`), so ingestion and retrieval changes can be evaluated with measurable signals instead of intuition. In other words, RAG-LCC is an insight tool with reusable ideas, not an everyday production RAG.
@@ -89,6 +136,7 @@ RAGChat summarizes documents.
 
 ---
 
+<a id="docclassify-overview"></a>
 ### 🏷️ DocClassify — Know your corpus before you index it
 
 Before indexing, `DocClassify` runs LLM‑powered keyword extraction and batch classification over eligible documents. Successfully classified files receive structured metadata — topic, category, language, and any custom fields you define — in a CSV.
@@ -104,6 +152,7 @@ Documents that fail the criteria are not processed for indexing in that run. Exi
 
 ---
 
+<a id="ragload-overview"></a>
 ### 📥 RAGLoad — Index with intent, filter at the gate
 
 `RAGLoad` ingests the documents you selected and builds four parallel indexes simultaneously:
@@ -121,6 +170,7 @@ Files unchanged since the last run are skipped. Files flagged by prior complianc
 
 ---
 
+<a id="ragchat-overview"></a>
 ### 💬 RAGChat — Retrieval that fights context failures
 
 `RAGChat` is a multi‑turn chat interface backed by the indexes built by RAGLoad. It is designed around the observation that **most RAG failures are not retrieval failures** — they are context assembly failures: semantically similar chunks that reinforce each other’s errors, pronoun references that resolved to the wrong entity two turns ago, or factually contradictory passages delivered side‑by‑side without scoping. See [Query Output Example](QUERY_OUTPUT_EXAMPLE.md) for an annotated full-pipeline run.
@@ -166,6 +216,7 @@ grounding highlights and do not verify factual accuracy.
 
 ---
 
+<a id="ragchatservice-overview"></a>
 ### 🌐 RAGChatService — OpenAI‑compatible RAG as a service
 
 `RAGChatService` exposes a **limited subset of the OpenAI‑compatible REST API** (`POST /v1/chat/completions`). It can be used with [OpenWebUI](https://github.com/open-webui/open-webui) and other clients that support that subset; full OpenAI API compatibility is not provided.
@@ -176,6 +227,7 @@ Supports optional Bearer‑token authentication for `/v1/` routes, streaming, an
 
 ---
 
+<a id="quick-mental-model"></a>
 ## 🧭 Quick mental model
 
 ```text
@@ -344,13 +396,7 @@ The orchestrator is an architectural component designed for extension. For examp
 
 ---
 
-## 📊 Presentation
-
-A slide deck is available as [`RAG-LCC_Presentation.pptx`](Documentation/Presentations/RAG-LCC_Presentation.pptx) and as an animated [GIF](Documentation/Presentations/RAG-LCC_Presentation.gif).
-It provides a quick visual overview of the architecture, the four applications, the retrieval pipeline, and the key design decisions — useful as a starting point before diving into the detailed documentation.
-
----
-
+<a id="feature-highlights"></a>
 ## 🔑 Feature Highlights
 
 Key capabilities organized by application. Full configuration details, defaults, and code examples in [CONFIGURATION_REFERENCE.md](CONFIGURATION_REFERENCE.md).
@@ -410,6 +456,7 @@ Key capabilities organized by application. Full configuration details, defaults,
 
 ---
 
+<a id="configuration-at-a-glance"></a>
 ## 🎛️ Configuration at a Glance
 
 RAG‑LCC exposes every significant architectural decision as a configuration slot. Nothing is hardwired — chunking boundaries, retrieval algorithm mix, scoring thresholds, model roles, compliance rules, and answer grounding sensitivity are all independently tunable.
@@ -431,7 +478,7 @@ deployments. Use it to serve the LLMs, embedder, and reranker required by RAG-LC
 | **Reranking** | Cross-encoder on/off per orchestration flow; per-strategy sigmoid score threshold | Neural relevance pass after retrieval — switch off for speed, tune threshold for precision |
 | **Query processing** | Multi-query expansion (N alternate phrasings); context-dependent rewriting; pronoun/referent resolution; meta-descriptor guard | Boost recall via vocabulary diversity; prevent stale chat history from poisoning retrieval |
 | **Chat session** | Turns to keep, history window size, topic summary mode, preferred response language | Control conversational memory budget; reset the conversation with `new:` |
-| **Models** | Any Ollama or vLLM model; separate roles for generation, query rewriting, and safety checking | Swap models per role — use a large model for generation and a small one for rewriting |
+| **Models** | Any Ollama or vLLM model; separate roles for generation, query rewriting, and safety checking; central Ollama GPU/CPU switch | Swap models per role — use a large model for generation and a small one for rewriting; set `_MODELS["ollama"]["_OLLAMA"].OLLAMA_USES_GPU` to `False` for Ollama CPU-only inference |
 | **Prompts** | Fully customisable per model and task: chat, classification, safety check, query rewrite, topic detect | Adapt RAG‑LCC to any domain by editing prompts; no code changes needed |
 | **Compliance** | 5-algorithm detection pipeline (Regex+Levenshtein, Jaccard, BM25, KeyBERT); per-app thresholds; masking; consensus count | Fine-tune false-positive/negative tradeoff independently for indexing vs chat |
 | **Content hardening** | Leet-speak and Unicode confusable normalization; WordNet synonym expansion; LLM guard model | Experiment with layered checks; detection is incomplete and streamed tokens may precede the final check |
@@ -446,6 +493,7 @@ Find settings by task in the [configuration reference](CONFIGURATION_REFERENCE.m
 
 ---
 
+<a id="documentation"></a>
 ## ❓ Documentation
 
 | Document | What's inside |
@@ -501,6 +549,7 @@ These are not tutorials — they document *observed failure modes* that this lab
 
 ---
 
+<a id="project-status"></a>
 ## ⚠️ Project status
 
 🧪 **Experimental / lab software**
@@ -515,6 +564,7 @@ It is **not** a plug‑and‑play production framework.
 
 ---
 
+<a id="citation"></a>
 ## ⭐ Citation & visibility
 
 If this project helps you reason about **retrieval, chunking, and context assembly failures** in RAG systems, a ⭐ helps other practitioners find it.
@@ -523,6 +573,7 @@ A `CITATION.cff` file is included for academic or technical reference.
 
 ---
 
+<a id="quick-start"></a>
 ### TL;DR — try it locally
 
 Read [INSTALL.md](INSTALL.md#-0-guided-setup-first) before running anything. You get information what will be done during setup.
@@ -544,6 +595,7 @@ python ./src/Apps/RAGChat.py  --doc-dir TestDocs
 Read [INSTALL.md](INSTALL.md#-required-model-license-consent) before running anything — model licenses must be
 accepted on first start.
 
+<a id="disclaimer"></a>
 ## RAG‑LCC — Disclaimer
 
 ### ⚠️ Experimental Research Framework
