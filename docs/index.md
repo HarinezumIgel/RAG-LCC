@@ -9,6 +9,23 @@ body {
   background-color: #000;
   color: #fff;
 }
+table {
+  border-collapse: collapse;
+  background-color: #111;
+  color: #fff;
+}
+th,
+td {
+  border: 1px solid #666;
+  color: #fff !important;
+  padding: 0.5rem;
+}
+th {
+  background-color: #222;
+}
+tr:nth-child(even) {
+  background-color: #181818;
+}
 </style>
 
 <p align="center">
