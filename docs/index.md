@@ -34,6 +34,8 @@ img[alt="RAG-LCC hedgehog icon"] {
 }
 </style>
 
+# 🧪 RAG‑LCC Your local RAG experimentation lab. Identify where RAG fails
+
 <p align="center">
   <img src="https://raw.githubusercontent.com/HarinezumIgel/RAG-LCC/main/docs/assets/AI_Igel.png" alt="RAG-LCC hedgehog icon" width="160" />
 </p>
