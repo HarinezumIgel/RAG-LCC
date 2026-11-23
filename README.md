@@ -1,9 +1,9 @@
 <!-- markdownlint-disable MD033 MD060 -->
+# 🧪 RAG‑LCC Your local RAG experimentation lab. Identify where RAG fails
+
 <p align="center">
   <img src="Documentation/Pics/AI_Igel.png" alt="RAG-LCC Logo" width="160" />
 </p>
-
-# 🧪 RAG‑LCC — Experimental RAG Under Constraints
 
 [![Status: Experimental](https://img.shields.io/badge/status-experimental-orange)](#project-status)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)

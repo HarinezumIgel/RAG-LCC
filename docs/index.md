@@ -1,7 +1,7 @@
 ---
 layout: default
 title: RAG-LCC
-description: Experimental RAG under constraints
+description: Your local RAG experimentation lab. Identify where RAG fails
 ---
 
 <style>
